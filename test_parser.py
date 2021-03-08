@@ -135,7 +135,6 @@ def test_ParserGenerator_cfg():
 
 
 def test_ParserGenerator_arithmetic():
-  import math
   # left associative, with operator precedence
   op_plus = Production('Sum', 'Sum', '+', 'Prod')
   op_minus = Production('Sum', 'Sum', '-', 'Prod')
@@ -193,6 +192,86 @@ def test_ParserGenerator_arithmetic():
   evaluate('3-2-1')
   evaluate('1*2+3*4')
   evaluate('4/2-1')
+
+
+def test_ParserGenerator_regex():
+  choice_op = Production('Choice', 'Choice', '|', 'Concat')
+  concat_op = Production('Concat', 'Concat', 'Repeat')
+  repeat_op = Production('Repeat', 'Range', '*')
+  repeat_exists_op = Production('Repeat', 'Range', '+')
+  optional_op = Production('Repeat', 'Range', '?')
+  range_op = Production('Range', '[', 'Lit', '-', 'Lit', ']')
+  range_lits_op = Production('Range', '[', 'Lits', ']')
+  inv_range_op = Production('Range', '[', '^', 'Lit', '-', 'Lit', ']')
+  inv_range_lits_op = Production('Range', '[', '^', 'Lits', ']')
+  lits_op = Production('Lits', 'Lit', 'Lits')
+  # we can clean this up once we have proper tokens
+  literal_terms = {
+    Production('Lit', l): l for l in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;\'\"'}
+  g = Grammar(*[
+    Production('Regex', 'Choice'),
+    choice_op,
+    Production('Choice', 'Concat'),
+    concat_op,
+    Production('Concat', 'Repeat'),
+    repeat_op, repeat_exists_op, optional_op,
+    Production('Repeat', 'Range'),
+    range_op, inv_range_op, range_lits_op, inv_range_lits_op,
+    Production('Range', 'Lit'),
+    Production('Range', '(', 'Choice', ')'),
+    lits_op,
+    Production('Lits', 'Lit'),
+    Production('Lit', '\\\\'),
+    Production('Lit', '\\-'),
+    Production('Lit', '\\('),
+    Production('Lit', '\\)')]
+    + list(literal_terms.keys())
+  )
+  parser = ParserGenerator(g)
+
+  def evaluate(raw_word, target_value):
+    assert isinstance(raw_word, str)
+    word = list(raw_word)  # user proper tokenizer
+    print('word:', raw_word)
+    analysis = parser.parse_analysis(word)
+    print('right-most analysis:', analysis)
+
+    stack = []
+    for prod in reversed(analysis):
+      if prod in literal_terms:
+        stack.append({literal_terms[prod]})
+      elif prod in (choice_op, lits_op):
+        b, a = stack.pop(-1), stack.pop(-1)
+        stack.append(b | a)
+      elif prod == concat_op:
+        b, a = stack.pop(-1), stack.pop(-1)
+        stack.append(set(i + j for i in a for j in b))
+      elif prod == optional_op:
+        a = stack.pop(-1)
+        stack.append(a | {''})
+      elif prod == range_op:
+        b, a = stack.pop(-1), stack.pop(-1)
+        assert len(a) == len(b) == 1
+        b0, a0 = b.pop(), a.pop()
+        if ord(a0) > ord(b0):
+          b0, a0 = a0, b0
+        stack.append({chr(c) for c in range(ord(a0), ord(b0) + 1)})
+      elif prod == range_lits_op:
+        pass  # already handled by lits_op
+      elif prod in (repeat_op, repeat_exists_op, inv_range_op, inv_range_lits_op):
+        assert False, 'here not supported'
+    assert len(stack) == 1
+    result_value = stack[0]
+    print('result:', sorted(result_value))
+    nose.tools.assert_equal(result_value, target_value)
+
+  evaluate('hello', {'hello'})
+  evaluate('you|me', {'you', 'me'})
+  evaluate('[aeiou]', {'a', 'e', 'i', 'o', 'u'})
+  evaluate('regexp?', {'regex', 'regexp'})
+  evaluate('hello (world|everybody|there)', {'hello world', 'hello everybody', 'hello there'})
+  evaluate('([1-9][0-9]?|0)', {str(d) for d in range(0, 100)})
+  evaluate('[0-9](.[1-9])?', {repr(d / 10) for d in range(0, 100) if not d % 10 == 0} | {str(d) for d in range(10)})
 
 
 if __name__ == "__main__":
