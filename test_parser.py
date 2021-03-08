@@ -129,9 +129,70 @@ def test_ParserGenerator_cfg():
   )
   parser = ParserGenerator(g)
   word = ['A', '->', 'B', 'c', '|', 'B', ';', 'B', '->', 'c', 'a']
-  print('input word:', word)
+  print('tokenized word:', word)
   analysis = parser.parse_analysis(word)
   print('right-most analysis:', analysis)
+
+
+def test_ParserGenerator_arithmetic():
+  import math
+  # left associative, with operator precedence
+  op_plus = Production('Sum', 'Sum', '+', 'Prod')
+  op_minus = Production('Sum', 'Sum', '-', 'Prod')
+  op_mult = Production('Prod', 'Prod', '*', 'Term')
+  op_div = Production('Prod', 'Prod', '/', 'Term')
+  const_terms = {Production('Term', str(i)): i for i in range(11)}  # we can clean this up once we have proper tokens
+  g = Grammar(*[
+    Production('Expr', 'Sum'),
+    op_plus, op_minus,
+    Production('Sum', 'Prod'),
+    op_mult, op_div,
+    Production('Prod', 'Term'),
+    Production('Term', '(', 'Sum', ')')]
+    + list(const_terms.keys())
+  )
+  parser = ParserGenerator(g)
+
+  def evaluate(raw_word):
+    """
+    :param str raw_word:
+    """
+    assert isinstance(raw_word, str)
+    word = list(raw_word)
+    print('input word:', raw_word)
+    analysis = parser.parse_analysis(word)
+    print('analysis:', analysis)
+
+    stack = []
+    for prod in reversed(analysis):
+      if prod in const_terms:
+        stack.append(const_terms[prod])
+      elif prod == op_plus:
+        b, a = stack.pop(-1), stack.pop(-1)
+        stack.append(a + b)
+      elif prod == op_minus:
+        b, a = stack.pop(-1), stack.pop(-1)
+        stack.append(a - b)
+      elif prod == op_mult:
+        b, a = stack.pop(-1), stack.pop(-1)
+        stack.append(a * b)
+      elif prod == op_div:
+        b, a = stack.pop(-1), stack.pop(-1)
+        stack.append(a / b)
+    assert len(stack) == 1
+    result_value = stack[0]
+    print('result:', result_value)
+    assert result_value == eval(raw_word)
+
+  evaluate('1*2+3')
+  evaluate('1+2*3')
+  evaluate('(1+2)*3')
+  evaluate('1+2+3')
+  evaluate('1+2-3')
+  evaluate('1-2+3')
+  evaluate('3-2-1')
+  evaluate('1*2+3*4')
+  evaluate('4/2-1')
 
 
 if __name__ == "__main__":
