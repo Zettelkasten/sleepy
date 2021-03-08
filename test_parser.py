@@ -252,10 +252,7 @@ def test_ParserGenerator_regex():
       elif prod == range_op:
         b, a = stack.pop(-1), stack.pop(-1)
         assert len(a) == len(b) == 1
-        b0, a0 = b.pop(), a.pop()
-        if ord(a0) > ord(b0):
-          b0, a0 = a0, b0
-        stack.append({chr(c) for c in range(ord(a0), ord(b0) + 1)})
+        stack.append({chr(c) for c in range(ord(a.pop()), ord(b.pop()) + 1)})
       elif prod == range_lits_op:
         pass  # already handled by lits_op
       elif prod in (repeat_op, repeat_exists_op, inv_range_op, inv_range_lits_op):
@@ -272,6 +269,7 @@ def test_ParserGenerator_regex():
   evaluate('hello (world|everybody|there)', {'hello world', 'hello everybody', 'hello there'})
   evaluate('([1-9][0-9]?|0)', {str(d) for d in range(0, 100)})
   evaluate('[0-9](.[1-9])?', {repr(d / 10) for d in range(0, 100) if not d % 10 == 0} | {str(d) for d in range(10)})
+  evaluate('[4-2]', set())
 
 
 if __name__ == "__main__":
