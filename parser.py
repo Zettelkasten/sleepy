@@ -219,7 +219,9 @@ class ParserGenerator:
   def parse_analysis(self, word):
     """
     :param list[str] word:
-    :rtype list[Production]|False:
+    :rtype: list[Production]:
+    :raises: ParseError
+    :returns: a right-most analysis of `word` or raises ParseError
     """
     assert EPSILON not in word
 
@@ -249,4 +251,5 @@ class ParserGenerator:
         raise ParseError(
           word, pos, 'No action in state %s (%s) with lookahead %r possible' % (state, self._state_descr[state], la))
 
+    assert rev_analysis[-1] == self._start_prod
     return list(reversed(rev_analysis))

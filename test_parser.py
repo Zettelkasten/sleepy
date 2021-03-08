@@ -109,6 +109,31 @@ def test_ParserGenerator_simple_lookahead():
     parser.parse_analysis(['b', 'a'])
 
 
+def test_ParserGenerator_cfg():
+  g = Grammar(
+    Production('Grammar', 'Decl'),
+    Production('Decl', 'Prod', ';', 'Decl'),
+    Production('Decl', 'Prod', '\n', 'Decl'),
+    Production('Decl', 'Prod'),
+    Production('Prod', 'Symb', '->', 'Right'),
+    Production('Right', 'Symbs', '|', 'Symbs'),
+    Production('Right', 'Symbs'),
+    Production('Symbs', 'Symb', 'Symbs'),
+    Production('Symbs'),
+    Production('Symb', 'A'),
+    Production('Symb', 'B'),
+    Production('Symb', 'C'),
+    Production('Symb', 'a'),
+    Production('Symb', 'b'),
+    Production('Symb', 'c')
+  )
+  parser = ParserGenerator(g)
+  word = ['A', '->', 'B', 'c', '|', 'B', ';', 'B', '->', 'c', 'a']
+  print('input word:', word)
+  analysis = parser.parse_analysis(word)
+  print('right-most analysis:', analysis)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

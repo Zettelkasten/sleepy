@@ -21,7 +21,7 @@ class Production:
     self.right = right  # type: tuple[str]
 
   def __repr__(self):
-    return 'Production[%s -> %s]' % (self.left, ' '.join(self.right))
+    return 'Production[%r -> %s]' % (self.left, ' '.join([repr(symbol) for symbol in self.right]))
 
   def __hash__(self):
     return hash((self.left, self.right))
