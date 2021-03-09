@@ -195,67 +195,49 @@ def test_ParserGenerator_arithmetic():
 
 
 def test_ParserGenerator_regex():
-  choice_op = Production('Choice', 'Choice', '|', 'Concat')
-  concat_op = Production('Concat', 'Concat', 'Repeat')
-  repeat_op = Production('Repeat', 'Range', '*')
-  repeat_exists_op = Production('Repeat', 'Range', '+')
-  optional_op = Production('Repeat', 'Range', '?')
-  range_op = Production('Range', '[', 'Lit', '-', 'Lit', ']')
-  range_lits_op = Production('Range', '[', 'Lits', ']')
-  inv_range_op = Production('Range', '[', '^', 'Lit', '-', 'Lit', ']')
-  inv_range_lits_op = Production('Range', '[', '^', 'Lits', ']')
-  lits_op = Production('Lits', 'Lit', 'Lits')
-  # we can clean this up once we have proper tokens
-  literal_terms = {
-    Production('Lit', l): l for l in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;\'\"'}
-  g = Grammar(*[
-    Production('Regex', 'Choice'),
-    choice_op,
-    Production('Choice', 'Concat'),
-    concat_op,
-    Production('Concat', 'Repeat'),
-    repeat_op, repeat_exists_op, optional_op,
-    Production('Repeat', 'Range'),
-    range_op, inv_range_op, range_lits_op, inv_range_lits_op,
-    Production('Range', 'Lit'),
-    Production('Range', '(', 'Choice', ')'),
-    lits_op,
-    Production('Lits', 'Lit'),
-    Production('Lit', '\\\\'),
-    Production('Lit', '\\-'),
-    Production('Lit', '\\('),
-    Production('Lit', '\\)')]
-    + list(literal_terms.keys())
-  )
-  parser = ParserGenerator(g)
+  from regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_CHOICE_OP, REGEX_LITS_OP, REGEX_CONCAT_OP, \
+    REGEX_OPTIONAL_OP, REGEX_RANGE_OP, REGEX_RANGE_LITS_OP, REGEX_REPEAT_OP, REGEX_REPEAT_EXISTS_OP, \
+    REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP, REGEX_LIT_TOKEN
+  parser = REGEX_PARSER
 
-  def evaluate(raw_word, target_value):
-    assert isinstance(raw_word, str)
-    word = list(raw_word)  # user proper tokenizer
-    print('word:', raw_word)
-    analysis = parser.parse_analysis(word)
+  def evaluate(word, target_value):
+    """
+    :param str word:
+    :param set[str] target_value:
+    """
+    assert isinstance(word, str)
+    tokens, token_attribute_table = tokenize_regex(word)
+    print('word:', word)
+    print('tokens:', tokens)
+    analysis = parser.parse_analysis(tokens)
     print('right-most analysis:', analysis)
 
     stack = []
+    pos = 0
     for prod in reversed(analysis):
-      if prod in literal_terms:
-        stack.append({literal_terms[prod]})
-      elif prod in (choice_op, lits_op):
+      if prod == REGEX_LIT_OP:
+        # assume that REGEX_LIT_OP is only production generating 'a'
+        while tokens[pos] != REGEX_LIT_TOKEN:
+          pos += 1
+        a = token_attribute_table[pos]
+        pos += 1
+        stack.append({a})
+      elif prod in (REGEX_CHOICE_OP, REGEX_LITS_OP):
         b, a = stack.pop(-1), stack.pop(-1)
         stack.append(b | a)
-      elif prod == concat_op:
+      elif prod == REGEX_CONCAT_OP:
         b, a = stack.pop(-1), stack.pop(-1)
         stack.append(set(i + j for i in a for j in b))
-      elif prod == optional_op:
+      elif prod == REGEX_OPTIONAL_OP:
         a = stack.pop(-1)
         stack.append(a | {''})
-      elif prod == range_op:
+      elif prod == REGEX_RANGE_OP:
         b, a = stack.pop(-1), stack.pop(-1)
         assert len(a) == len(b) == 1
         stack.append({chr(c) for c in range(ord(a.pop()), ord(b.pop()) + 1)})
-      elif prod == range_lits_op:
-        pass  # already handled by lits_op
-      elif prod in (repeat_op, repeat_exists_op, inv_range_op, inv_range_lits_op):
+      elif prod == REGEX_RANGE_LITS_OP:
+        pass  # already handled by REGEX_LITS_OP
+      elif prod in {REGEX_REPEAT_OP, REGEX_REPEAT_EXISTS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP}:
         assert False, 'here not supported'
     assert len(stack) == 1
     result_value = stack[0]

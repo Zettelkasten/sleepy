@@ -68,9 +68,19 @@ class Grammar:
       all(self.start not in p.right for p in self.prods))
 
 
+class LexError(Exception):
+  """
+  A lexical error, when a word is not recognized (does not have a first-longest-match analysis).
+  """
+
+  def __init__(self, word, pos, message):
+    super().__init__(
+      '%s: %s' % (' '.join([repr(s) for s in word[:pos]] + ['!'] + [repr(s) for s in word[pos:]]), message))
+
+
 class ParseError(Exception):
   """
-  Thrown when a word is not recognized.
+  A parse error, when a word is not recognized by a context free grammar.
   """
 
   def __init__(self, word, pos, message):
