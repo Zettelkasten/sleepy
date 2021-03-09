@@ -195,9 +195,9 @@ def test_ParserGenerator_arithmetic():
 
 
 def test_ParserGenerator_regex():
-  from regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_CHOICE_OP, REGEX_LITS_OP, REGEX_CONCAT_OP, \
-    REGEX_OPTIONAL_OP, REGEX_RANGE_OP, REGEX_RANGE_LITS_OP, REGEX_REPEAT_OP, REGEX_REPEAT_EXISTS_OP, \
-    REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP, REGEX_LIT_TOKEN
+  from regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_CHOICE_OP, REGEX_LITS_SINGLE_OP, \
+    REGEX_LITS_MULTIPLE_OP, REGEX_CONCAT_OP, REGEX_OPTIONAL_OP, REGEX_RANGE_OP, REGEX_RANGE_LITS_OP, REGEX_REPEAT_OP, \
+    REGEX_REPEAT_EXISTS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP, REGEX_LIT_TOKEN
   parser = REGEX_PARSER
 
   def evaluate(word, target_value):
@@ -214,17 +214,24 @@ def test_ParserGenerator_regex():
 
     stack = []
     pos = 0
-    for prod in reversed(analysis):
-      if prod == REGEX_LIT_OP:
-        # assume that REGEX_LIT_OP is only production generating 'a'
-        while tokens[pos] != REGEX_LIT_TOKEN:
-          pos += 1
-        a = token_attribute_table[pos]
+
+    def next_literal_name():
+      nonlocal pos
+      while tokens[pos] != REGEX_LIT_TOKEN:
         pos += 1
-        stack.append({a})
-      elif prod in (REGEX_CHOICE_OP, REGEX_LITS_OP):
+      name = token_attribute_table[pos]
+      pos += 1
+      return name
+
+    for prod in reversed(analysis):
+      if prod in {REGEX_LIT_OP, REGEX_LITS_SINGLE_OP}:
+        stack.append({next_literal_name()})
+      elif prod == REGEX_CHOICE_OP:
         b, a = stack.pop(-1), stack.pop(-1)
-        stack.append(b | a)
+        stack.append(a | b)
+      elif prod == REGEX_LITS_MULTIPLE_OP:
+        b, a = {next_literal_name()}, stack.pop()
+        stack.append(a | b)
       elif prod == REGEX_CONCAT_OP:
         b, a = stack.pop(-1), stack.pop(-1)
         stack.append(set(i + j for i in a for j in b))
@@ -232,9 +239,8 @@ def test_ParserGenerator_regex():
         a = stack.pop(-1)
         stack.append(a | {''})
       elif prod == REGEX_RANGE_OP:
-        b, a = stack.pop(-1), stack.pop(-1)
-        assert len(a) == len(b) == 1
-        stack.append({chr(c) for c in range(ord(a.pop()), ord(b.pop()) + 1)})
+        a, b = next_literal_name(), next_literal_name()
+        stack.append({chr(c) for c in range(ord(a), ord(b) + 1)})
       elif prod == REGEX_RANGE_LITS_OP:
         pass  # already handled by REGEX_LITS_OP
       elif prod in {REGEX_REPEAT_OP, REGEX_REPEAT_EXISTS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP}:

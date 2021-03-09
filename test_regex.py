@@ -18,6 +18,24 @@ def test_tokenize_regex():
     tokenize_regex('escape \\me')
 
 
+def test_make_regex_nfa():
+  from regex import make_regex_nfa
+  nfa1 = make_regex_nfa('ab|c+')
+  assert_equal(nfa1.accepts('ab'), True)
+  assert_equal(nfa1.accepts('c'), True)
+  assert_equal(nfa1.accepts('cccc'), True)
+  assert_equal(nfa1.accepts('a'), False)
+  assert_equal(nfa1.accepts('b'), False)
+  assert_equal(nfa1.accepts(''), False)
+  nfa2 = make_regex_nfa('1(0|1)*(.(0|1)+)?')
+  assert_equal(nfa2.accepts('01'), False)
+  assert_equal(nfa2.accepts('1'), True)
+  assert_equal(nfa2.accepts('10000'), True)
+  assert_equal(nfa2.accepts('10000.1011'), True)
+  assert_equal(nfa2.accepts('1.'), False)
+  assert_equal(nfa2.accepts('x'), False)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
