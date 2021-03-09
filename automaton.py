@@ -1,7 +1,8 @@
 from grammar import EPSILON
+from typing import List, Dict, Set, FrozenSet
 
 
-class NonDeterministicAutomaton():
+class NonDeterministicAutomaton:
   """
   A NFA with epsilon transitions.
   """
@@ -10,7 +11,7 @@ class NonDeterministicAutomaton():
     """
     :param int initial_state:
     :param set[int] final_states:
-    :param list[dict[str, str[int]]] state_transition_table:
+    :param list[dict[str, set[int]]] state_transition_table:
     """
     self.initial_state = initial_state
     self.final_states = final_states
@@ -50,3 +51,81 @@ class NonDeterministicAutomaton():
     for char in word:
       state_set = self.get_epsilon_closure({s for state in state_set for s in self.get_next_states(state, char)})
     return any(final_state in state_set for final_state in self.final_states)
+
+
+class DeterministicAutomaton:
+  """
+  A DFA (without epsilon-transitions).
+  """
+
+  def __init__(self, initial_state, final_states, state_transition_table):
+    """
+    :param int initial_state:
+    :param set[int] final_states:
+    :param list[dict[str, int]] state_transition_table:
+    """
+    self.initial_state = initial_state
+    self.final_states = final_states
+    self.state_transition_table = state_transition_table
+
+  def accepts(self, word):
+    """
+    :param str word:
+    :rtype: bool
+    """
+    state = self.initial_state
+    for char in word:
+      if char not in self.state_transition_table[state]:
+        return False
+      state = self.state_transition_table[state][char]
+    return state in self.final_states
+
+
+def make_dfa_from_nfa(nfa):
+  """
+  Applies powerset construction.
+  :param NonDeterministicAutomaton nfa:
+  :rtype: DeterministicAutomaton
+  """
+  powerset_idx_transition_table = []  # type: List[Dict[str, int]]
+  final_powersets_idx = set()  # type: Set[int]
+  added_powersets = {}  # type: Dict[FrozenSet[int], int]
+  dirty_powersets = set()  # type: Set[FrozenSet[int]]
+
+  def add_next_powersets(powerset):
+    """
+    :param frozenset[int] powerset:
+    """
+    assert powerset in added_powersets
+    powerset_idx = added_powersets[powerset]
+    added_chars = set()  # type: Set[str]
+    for state in powerset:
+      for char in nfa.state_transition_table[state].keys():
+        if char in added_chars or char is EPSILON:
+          continue
+        next_powerset = frozenset(
+          nfa.get_epsilon_closure({s for state in powerset for s in nfa.get_next_states(state, char)}))
+        if next_powerset in added_powersets:
+          next_powerset_idx = added_powersets[next_powerset]
+        else:
+          next_powerset_idx = len(added_powersets)
+          powerset_idx_transition_table.insert(next_powerset_idx, {})
+          if any(final_state in next_powerset for final_state in nfa.final_states):
+            final_powersets_idx.add(next_powerset_idx)
+          added_powersets[next_powerset] = next_powerset_idx
+          dirty_powersets.add(next_powerset)
+        added_chars.add(char)
+        powerset_idx_transition_table[powerset_idx][char] = next_powerset_idx
+
+  initial_powerset = frozenset(nfa.get_epsilon_closure({nfa.initial_state}))
+  initial_powerset_idx = 0
+  powerset_idx_transition_table.insert(initial_powerset_idx, {})
+  if any(final_state in initial_powerset for final_state in nfa.final_states):
+    final_powersets_idx.add(initial_powerset_idx)
+  added_powersets[initial_powerset] = initial_powerset_idx
+  dirty_powersets.add(initial_powerset)
+
+  while len(dirty_powersets) >= 1:
+    add_next_powersets(dirty_powersets.pop())
+
+  return DeterministicAutomaton(initial_powerset_idx, final_powersets_idx, powerset_idx_transition_table)

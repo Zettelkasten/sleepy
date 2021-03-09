@@ -18,22 +18,46 @@ def test_tokenize_regex():
     tokenize_regex('escape \\me')
 
 
-def test_make_regex_nfa():
+def test_make_regex_nfa_and_dfa():
   from regex import make_regex_nfa
+  from automaton import make_dfa_from_nfa
+
+  def test_nfa_dfa_equal(nfa, dfa, word, should_accept):
+    """
+    :param NonDeterministicAutomaton nfa:
+    :param DeterministicAutomaton dfa:
+    :param str word:
+    :param bool should_accept:
+    """
+    nfa_accepts = nfa.accepts(word)
+    assert_equal(nfa_accepts, should_accept)
+    dfa_accepts = dfa.accepts(word)
+    assert_equal(dfa_accepts, should_accept)
+
   nfa1 = make_regex_nfa('ab|c+')
-  assert_equal(nfa1.accepts('ab'), True)
-  assert_equal(nfa1.accepts('c'), True)
-  assert_equal(nfa1.accepts('cccc'), True)
-  assert_equal(nfa1.accepts('a'), False)
-  assert_equal(nfa1.accepts('b'), False)
-  assert_equal(nfa1.accepts(''), False)
+  dfa1 = make_dfa_from_nfa(nfa1)
+  test_nfa_dfa_equal(nfa1, dfa1, 'ab', True)
+  test_nfa_dfa_equal(nfa1, dfa1, 'c', True)
+  test_nfa_dfa_equal(nfa1, dfa1, 'cccc', True)
+  test_nfa_dfa_equal(nfa1, dfa1, 'a', False)
+  test_nfa_dfa_equal(nfa1, dfa1, 'b', False)
+  test_nfa_dfa_equal(nfa1, dfa1, '', False)
   nfa2 = make_regex_nfa('1(0|1)*(.(0|1)+)?')
-  assert_equal(nfa2.accepts('01'), False)
-  assert_equal(nfa2.accepts('1'), True)
-  assert_equal(nfa2.accepts('10000'), True)
-  assert_equal(nfa2.accepts('10000.1011'), True)
-  assert_equal(nfa2.accepts('1.'), False)
-  assert_equal(nfa2.accepts('x'), False)
+  dfa2 = make_dfa_from_nfa(nfa2)
+  test_nfa_dfa_equal(nfa2, dfa2, '01', False)
+  test_nfa_dfa_equal(nfa2, dfa2, '1', True)
+  test_nfa_dfa_equal(nfa2, dfa2, '10000', True)
+  test_nfa_dfa_equal(nfa2, dfa2, '1000011011101111111', True)
+  test_nfa_dfa_equal(nfa2, dfa2, '10000.1011', True)
+  test_nfa_dfa_equal(nfa2, dfa2, '1.', False)
+  test_nfa_dfa_equal(nfa2, dfa2, 'x', False)
+  nfa3 = make_regex_nfa('(file|https?)://(www.)?github.(com|de)?')
+  dfa3 = make_dfa_from_nfa(nfa3)
+  test_nfa_dfa_equal(nfa3, dfa3, 'file://www.github.com', True)
+  test_nfa_dfa_equal(nfa3, dfa3, 'http://www.github.com', True)
+  test_nfa_dfa_equal(nfa3, dfa3, 'https://github.de', True)
+  test_nfa_dfa_equal(nfa3, dfa3, 'https://github', False)
+  test_nfa_dfa_equal(nfa3, dfa3, 'files://github.com', False)
 
 
 if __name__ == "__main__":
