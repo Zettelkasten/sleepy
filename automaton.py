@@ -2,6 +2,12 @@ from grammar import EPSILON
 from typing import List, Dict, Set, FrozenSet
 
 
+"""
+General placeholder for all unproductive (error) states.
+"""
+ERROR_STATE = None
+
+
 class NonDeterministicAutomaton:
   """
   A NFA with epsilon transitions.
@@ -67,6 +73,15 @@ class DeterministicAutomaton:
     self.initial_state = initial_state
     self.final_states = final_states
     self.state_transition_table = state_transition_table
+
+  def get_next_state(self, state, char):
+    """
+    :param int state:
+    :param str|None char: char
+    :returns: next state or `ERROR_STATE` if next state is not productive
+    :rtype: str|None
+    """
+    return self.state_transition_table[state].get(char, ERROR_STATE)
 
   def accepts(self, word):
     """

@@ -1,4 +1,4 @@
-from automaton import NonDeterministicAutomaton
+from automaton import NonDeterministicAutomaton, DeterministicAutomaton, make_dfa_from_nfa
 from grammar import Grammar, Production, LexError, EPSILON
 from parser import ParserGenerator
 from typing import List, Dict, Set, Optional
@@ -169,3 +169,11 @@ def make_regex_nfa(regex):
   assert len(from_stack) == len(to_stack) == 1
   initial_state, final_state = from_stack.pop(), to_stack.pop()
   return NonDeterministicAutomaton(initial_state, {final_state}, state_transition_table)
+
+
+def make_regex_dfa(regex):
+  """
+  :param str regex:
+  :rtype: DeterministicAutomaton
+  """
+  return make_dfa_from_nfa(make_regex_nfa(regex))
