@@ -1,6 +1,7 @@
 from automaton import NonDeterministicAutomaton
 from grammar import Grammar, Production, LexError, EPSILON
 from parser import ParserGenerator
+from typing import List, Dict, Set, Optional
 
 REGEX_LIT_TOKEN = 'a'
 REGEX_SPECIAL_TOKENS = frozenset({'(', ')', '\\', '-', '[', ']', '*', '+', '?', '|'})
@@ -10,13 +11,13 @@ REGEX_CONCAT_OP = Production('Concat', 'Concat', 'Repeat')
 REGEX_REPEAT_OP = Production('Repeat', 'Range', '*')
 REGEX_REPEAT_EXISTS_OP = Production('Repeat', 'Range', '+')
 REGEX_OPTIONAL_OP = Production('Repeat', 'Range', '?')
-REGEX_RANGE_OP = Production('Range', '[', 'Lit', '-', 'Lit', ']')
+REGEX_RANGE_OP = Production('Range', '[', 'a', '-', 'a', ']')
 REGEX_RANGE_LITS_OP = Production('Range', '[', 'Lits', ']')
-REGEX_INV_RANGE_OP = Production('Range', '[', '^', 'Lit', '-', 'Lit', ']')
+REGEX_INV_RANGE_OP = Production('Range', '[', '^', 'a', '-', 'a', ']')
 REGEX_INV_RANGE_LITS_OP = Production('Range', '[', '^', 'Lits', ']')
 REGEX_LIT_OP = Production('Range', 'Lit')
-REGEX_LITS_MULTIPLE_OP = Production('Lits', 'Lit', 'Lits')
-REGEX_LITS_SINGLE_OP = Production('Lits', 'Lit')
+REGEX_LITS_MULTIPLE_OP = Production('Lits', 'a', 'Lits')
+REGEX_LITS_SINGLE_OP = Production('Lits', 'a')
 
 REGEX_GRAMMAR = Grammar(
   Production('Regex', 'Choice'),
@@ -76,22 +77,27 @@ def make_regex_nfa(regex):
   REGEX_PARSER.parse_analysis(tokens)
 
   num_states = 0
-  state_transition_table = []  # type: list[dict[str|None, set[int]]]
+  state_transition_table = []  # type: List[Dict[Optional[str], Set[int]]]
   # TODO: replace this with attribute grammars when we have that
   # for each subregex, build a epsilon-NFA with start state in from_stack, and single final state in to_stack.
   # invariant: no ingoing transitions into start, no outgoing transitions from end
-  from_stack = []  # type: list[int]
-  to_stack = []  # type: list[int]
-
+  from_stack = []  # type: List[int]
+  to_stack = []  # type: List[int]
+  range_lits = set()  # type: Set[str]
   pos = 0
+
+  def next_literal_name():
+    nonlocal pos
+    while tokens[pos] != REGEX_LIT_TOKEN:
+      pos += 1
+    name = token_attribute_table[pos]
+    pos += 1
+    return name
+
   for prod in reversed(analysis):
     from_state, to_state = num_states, num_states + 1
     if prod == REGEX_LIT_OP:
-      # assume that REGEX_LIT_OP is only production generating 'a'
-      while tokens[pos] != REGEX_LIT_TOKEN:
-        pos += 1
-      a = token_attribute_table[pos]
-      pos += 1
+      a = next_literal_name()
       # build DFA for a
       state_transition_table.append({a: {to_state}})
       state_transition_table.append({})
@@ -135,10 +141,22 @@ def make_regex_nfa(regex):
       assert None not in state_transition_table[a_end]
       state_transition_table[a_end][EPSILON] = {a_start, to_state}
       state_transition_table.append({})
-    elif prod in {
-      REGEX_RANGE_OP, REGEX_RANGE_LITS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP, REGEX_LITS_SINGLE_OP,
-      REGEX_LITS_MULTIPLE_OP}:
-      assert False, 'here not supported'
+    elif prod in {REGEX_LITS_SINGLE_OP, REGEX_LITS_MULTIPLE_OP}:
+      range_lits.add(next_literal_name())
+      continue  # does not add states to NFA
+    elif prod == REGEX_RANGE_OP:
+      a, b = next_literal_name(), next_literal_name()
+      # build DFA for [a-b]
+      state_transition_table.append({chr(symbol_ord): {to_state} for symbol_ord in range(ord(a), ord(b) + 1)})
+      state_transition_table.append({})
+    elif prod == REGEX_RANGE_LITS_OP:
+      assert len(range_lits) >= 1
+      # build DFA for [abcd..]
+      state_transition_table.append({symbol: {to_state} for symbol in range_lits})
+      state_transition_table.append({})
+      range_lits.clear()
+    elif prod in {REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP}:
+      assert False, 'not supported yet'
     else:
       # all other productions don't change anything. do not add any states.
       continue
@@ -150,4 +168,4 @@ def make_regex_nfa(regex):
 
   assert len(from_stack) == len(to_stack) == 1
   initial_state, final_state = from_stack.pop(), to_stack.pop()
-  return NonDeterministicAutomaton(initial_state, set([final_state]), state_transition_table)
+  return NonDeterministicAutomaton(initial_state, {final_state}, state_transition_table)

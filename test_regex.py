@@ -58,6 +58,18 @@ def test_make_regex_nfa_and_dfa():
   test_nfa_dfa_equal(nfa3, dfa3, 'https://github.de', True)
   test_nfa_dfa_equal(nfa3, dfa3, 'https://github', False)
   test_nfa_dfa_equal(nfa3, dfa3, 'files://github.com', False)
+  nfa4 = make_regex_nfa('[A-Z][a-z]*')
+  dfa4 = make_dfa_from_nfa(nfa4)
+  test_nfa_dfa_equal(nfa4, dfa4, 'Hallloooo', True)
+  test_nfa_dfa_equal(nfa4, dfa4, 'H', True)
+  test_nfa_dfa_equal(nfa4, dfa4, 'HALLO', False)
+  test_nfa_dfa_equal(nfa4, dfa4, 'hallo', False)
+  nfa5 = make_regex_nfa('Hell[aoe] world!')
+  dfa5 = make_dfa_from_nfa(nfa5)
+  test_nfa_dfa_equal(nfa5, dfa5, 'Hello world!', True)
+  test_nfa_dfa_equal(nfa5, dfa5, 'Helle world!', True)
+  test_nfa_dfa_equal(nfa5, dfa5, 'Helloe world!', False)
+  test_nfa_dfa_equal(nfa5, dfa5, 'Hell world!', False)
 
 
 if __name__ == "__main__":
