@@ -166,7 +166,7 @@ def make_regex_nfa(regex):
       assert len(range_lits) >= 1
       # build DFA for [abcd..]
       recognized = range_lits
-      if prod == REGEX_INV_RANGE_OP:
+      if prod == REGEX_INV_RANGE_LITS_OP:
         recognized = REGEX_RECOGNIZED_CHARS - recognized
       state_transition_table.append({char: {to_state} for char in recognized})
       state_transition_table.append({})

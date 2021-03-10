@@ -85,6 +85,12 @@ def test_make_regex_nfa_and_dfa():
   test_nfa_dfa_equal(nfa7, dfa7, 'Char:  ', True)
   test_nfa_dfa_equal(nfa7, dfa7, 'Char: \\', True)
   test_nfa_dfa_equal(nfa7, dfa7, 'Char: ', False)
+  nfa8 = make_regex_nfa('[^ ]+')
+  dfa8 = make_dfa_from_nfa(nfa8)
+  test_nfa_dfa_equal(nfa8, dfa8, 'hello', True)
+  test_nfa_dfa_equal(nfa8, dfa8, 'a', True)
+  test_nfa_dfa_equal(nfa8, dfa8, '-', True)
+  test_nfa_dfa_equal(nfa8, dfa8, '', False)
 
 
 if __name__ == "__main__":
