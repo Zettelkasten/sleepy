@@ -73,10 +73,8 @@ class Grammar:
 
 class AttributeGrammar(Grammar):
   """
-  A context-free L-attributed grammar with synthesized and inherited attributes.
-  Synthesized attributes are evaluated bottom-to-top, inherited top-to-bottom.
+  A context-free attributed grammar with synthesized and inherited attributes.
 
-  For synthesized attributes:
   For each terminal x, give function `syn.0 = f(token_word, inh.0)`
   For each production A -> B1 B2 ... Bn, give functions
 
@@ -149,6 +147,13 @@ class AttributeGrammar(Grammar):
     :rtype: set[str]
     """
     return self.inh_attrs | self.syn_attrs
+
+  def is_s_attributed(self):
+    """
+    Check whether this grammar is s-attributed, i.e. only contains synthesized attributes.
+    :rtype: bool
+    """
+    return len(self.inh_attrs) == 0
 
 
 class LexError(Exception):

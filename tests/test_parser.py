@@ -2,11 +2,11 @@ import _setup_test_env  # noqa
 import sys
 import unittest
 import better_exchook
-import nose.tools
+from nose.tools import assert_equal, assert_raises, assert_equals
 
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
-from sleepy.grammar import EPSILON, Production, Grammar, ParseError
+from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar
 
 
 def test_Grammar():
@@ -15,10 +15,30 @@ def test_Grammar():
     Production('S', 'A', 'b'),
     Production('A', 'a', 'a')
   )
-  assert set(g.symbols) == set(['S2', 'S', 'A', 'a', 'b'])
-  assert set(g.terminals) == set(['a', 'b'])
-  assert set(g.non_terminals) == set(['S2', 'S', 'A'])
-  assert set(g.get_prods_for('S')) == set([g.prods[1]])
+  assert_equal(set(g.symbols), set(['S2', 'S', 'A', 'a', 'b']))
+  assert_equal(set(g.terminals), set(['a', 'b']))
+  assert_equal(set(g.non_terminals), set(['S2', 'S', 'A']))
+  assert_equal(set(g.get_prods_for('S')), set([g.prods[1]]))
+
+
+def test_AttributeGrammar_syn():
+  g = AttributeGrammar(prods=[
+      Production('S', 'S', '+', 'S'),
+      Production('S', 'zero'),
+      Production('S', 'digit')
+    ],
+    inh_attrs=set(),
+    syn_attrs={'res'},
+    prod_attr_rules=[
+      {'res.0': lambda res: res(1) + res(3)},
+      {'res.0': lambda res: 0},
+      {'res.0': lambda res: res(1)}
+    ],
+    terminal_attr_rules={'digit': lambda word: int(word)}
+  )
+  assert_equal(g.attrs, {'res'})
+  assert_equal(g.syn_attrs, {'res'})
+  assert_equal(g.inh_attrs, set())
 
 
 def test_make_first1_sets():
@@ -30,13 +50,13 @@ def test_make_first1_sets():
     Production('O', '+'),
     Production('O', '*'),
   )
-  nose.tools.assert_equal(set(g.terminals), set(['0', '1', '(', ')', '+', '*']))
-  nose.tools.assert_equal(set(g.non_terminals), set(['S', 'O']))
+  assert_equal(set(g.terminals), set(['0', '1', '(', ')', '+', '*']))
+  assert_equal(set(g.non_terminals), set(['S', 'O']))
   first1 = make_first1_sets(g)
   print('first1 sets:', first1)
-  nose.tools.assert_equal(first1['S'], set(['0', '1', '(']))
-  nose.tools.assert_equal(first1['O'], set(['+', '*']))
-  nose.tools.assert_equal(get_first1_set_for_word(first1, ('(', 'S')), set(['(']))
+  assert_equal(first1['S'], set(['0', '1', '(']))
+  assert_equal(first1['O'], set(['+', '*']))
+  assert_equal(get_first1_set_for_word(first1, ('(', 'S')), set(['(']))
 
 
 def test_make_first1_sets_epsilon():
@@ -49,10 +69,10 @@ def test_make_first1_sets_epsilon():
   )
   first1 = make_first1_sets(g)
   print('first1 sets:', first1)
-  nose.tools.assert_equal(first1['A'], set([EPSILON, 'a']))
-  nose.tools.assert_equal(first1['B'], set([EPSILON, 'a', 'b']))
-  nose.tools.assert_equal(first1['S'], set([EPSILON, 'a', 'b']))
-  nose.tools.assert_equal(get_first1_set_for_word(first1, ('B', 'c')), set(['a', 'b', 'c']))
+  assert_equal(first1['A'], set([EPSILON, 'a']))
+  assert_equal(first1['B'], set([EPSILON, 'a', 'b']))
+  assert_equal(first1['S'], set([EPSILON, 'a', 'b']))
+  assert_equal(get_first1_set_for_word(first1, ('B', 'c')), set(['a', 'b', 'c']))
 
 
 def test_ParserGenerator_simple():
@@ -62,12 +82,12 @@ def test_ParserGenerator_simple():
     Production('A', 'a', 'a')
   )
   parser = ParserGenerator(g)
-  nose.tools.assert_equal(parser.parse_analysis(['a', 'a', 'b']), [g.prods[0], g.prods[1], g.prods[2]])
-  with nose.tools.assert_raises(ParseError):
+  assert_equal(parser.parse_analysis(['a', 'a', 'b']), [g.prods[0], g.prods[1], g.prods[2]])
+  with assert_raises(ParseError):
     parser.parse_analysis(['a', 'a', 'a', 'b'])
-  with nose.tools.assert_raises(ParseError):
+  with assert_raises(ParseError):
     parser.parse_analysis(['a', 'a', 'b', 'b'])
-  with nose.tools.assert_raises(ParseError):
+  with assert_raises(ParseError):
     parser.parse_analysis(['a', 'a'])
 
 
@@ -79,9 +99,9 @@ def test_ParserGenerator_simple_left_recursive():
   )
   parser = ParserGenerator(g)
   for count in [1, 2, 3, 20, 100, 10000]:
-    nose.tools.assert_equal(
+    assert_equal(
       parser.parse_analysis(['a'] * count), [g.prods[0]] + (count-1) * [g.prods[1]] + [g.prods[2]])
-  with nose.tools.assert_raises(ParseError):
+  with assert_raises(ParseError):
     parser.parse_analysis([])
 
 
@@ -93,7 +113,7 @@ def test_ParserGenerator_simple_left_recursive_epsilon():
   )
   parser = ParserGenerator(g)
   for count in [0, 1, 2, 3, 20, 100, 10000]:
-    nose.tools.assert_equal(
+    assert_equal(
       parser.parse_analysis(['a'] * count), [g.prods[0]] + count * [g.prods[1]] + [g.prods[2]])
 
 
@@ -104,9 +124,9 @@ def test_ParserGenerator_simple_lookahead():
     Production('S', 'a', 'b')
   )
   parser = ParserGenerator(g)
-  nose.tools.assert_equal(parser.parse_analysis(['b', 'b']), [g.prods[0], g.prods[1]])
-  nose.tools.assert_equal(parser.parse_analysis(['a', 'b']), [g.prods[0], g.prods[2]])
-  with nose.tools.assert_raises(ParseError):
+  assert_equal(parser.parse_analysis(['b', 'b']), [g.prods[0], g.prods[1]])
+  assert_equal(parser.parse_analysis(['a', 'b']), [g.prods[0], g.prods[2]])
+  with assert_raises(ParseError):
     parser.parse_analysis(['b', 'a'])
 
 
@@ -272,7 +292,7 @@ def test_ParserGenerator_regex():
     assert len(stack) == 1
     result_value = stack[0]
     print('result:', sorted(result_value))
-    nose.tools.assert_equal(result_value, target_value)
+    assert_equal(result_value, target_value)
 
   evaluate('hello', {'hello'})
   evaluate('you|me', {'you', 'me'})
