@@ -217,16 +217,17 @@ class AttributeGrammar(Grammar):
 
       return get
 
-    func_kwargs = {
-      attr_name: make_attr_getter(attr_name)
-      for attr_name in {attr_name for right_eval in right_attr_evals for attr_name in right_eval}}
-
     attr_eval = {}  # type: Dict[str, Any]
     for attr_target, func in self.prod_attr_rules[prod].items():
       attr_name, attr_pos = self._get_attr_func_name(attr_target)
       if attr_name not in self.syn_attrs:
         continue
       assert attr_pos == 0
+
+      func_arg_names = func.__code__.co_varnames
+      assert all(
+        any(from_attr_name in right_eval for right_eval in right_attr_evals) for from_attr_name in func_arg_names)
+      func_kwargs = {from_attr_name: make_attr_getter(from_attr_name) for from_attr_name in func_arg_names}
       attr_eval[attr_name] = func(**func_kwargs)
     return attr_eval
 
