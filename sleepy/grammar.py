@@ -102,13 +102,45 @@ class AttributeGrammar(Grammar):
     :param dict[str, function] terminal_attr_rules: functions that evaluate attributes for terminals.
     :param None|str start: start non-terminal, by default left of first production
     """
-    super().__init__(prods, start=start)
-    assert inh_attrs & syn_attrs == {}, 'inherited and synthesized attributes must be disjoint'
+    super().__init__(*prods, start=start)
+    assert inh_attrs & syn_attrs == set(), 'inherited and synthesized attributes must be disjoint'
     self.inh_attrs = inh_attrs
     self.syn_attrs = syn_attrs
     assert len(prod_attr_rules) == len(self.prods), 'need one rule set for each production'
     self.prod_attr_rules = prod_attr_rules
     self.terminal_attr_rules = terminal_attr_rules
+    self._sanity_check()
+
+  def _get_attr_func_name(self, attr_target):
+    """
+    :param str attr_target: attr.i
+    :rtype: tuple[str, int]
+    :returns: attribute name + attribute position, i.e. (attr, i)
+    """
+    assert '.' in attr_target
+    attr_name, attr_pos = attr_target.split('.', 2)
+    assert attr_name in self.attrs
+    attr_pos = int(attr_pos)
+    assert attr_pos >= 0
+    return attr_name, attr_pos
+
+  def _sanity_check(self):
+    """
+    Some asserts that attribute rules are well defined.
+    """
+    for prod, attr_rules in zip(self.prods, self.prod_attr_rules):
+      for target, func in attr_rules.items():
+        attr_name, attr_pos = self._get_attr_func_name(target)
+        assert 0 <= attr_pos <= len(prod.right)
+        assert attr_name in self.attrs
+        if attr_name in self.inh_attrs:
+          assert attr_pos >= 1, '%r: rules for inherited attributes only allowed for right side of production' % target
+        elif attr_name in self.syn_attrs:
+          assert attr_pos == 0, '%r: rules for synthesized attributes only allowed for left side of production' % target
+        else:
+          assert False
+        assert callable(func)
+        # In the future, we might also want to check the signature of func.
 
   @property
   def attrs(self):
