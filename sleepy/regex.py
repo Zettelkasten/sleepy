@@ -4,7 +4,9 @@ from sleepy.parser import ParserGenerator
 from typing import List, Dict, Set, Optional
 
 REGEX_LIT_TOKEN = 'a'
-REGEX_SPECIAL_TOKENS = frozenset({'(', ')', '\\', '-', '[', ']', '*', '+', '?', '|'})
+REGEX_SPECIAL_TOKENS = frozenset({'(', ')', '\\', '-', '[', ']', '*', '+', '?', '|', '^'})
+# Currently we only recognize 7-bit ASCII
+REGEX_RECOGNIZED_CHARS = frozenset({chr(c) for c in range(32, 128)})
 
 REGEX_CHOICE_OP = Production('Choice', 'Choice', '|', 'Concat')
 REGEX_CONCAT_OP = Production('Concat', 'Concat', 'Repeat')
@@ -87,6 +89,9 @@ def make_regex_nfa(regex):
   pos = 0
 
   def next_literal_name():
+    """
+    :rtype: str
+    """
     nonlocal pos
     while tokens[pos] != REGEX_LIT_TOKEN:
       pos += 1
@@ -144,19 +149,23 @@ def make_regex_nfa(regex):
     elif prod in {REGEX_LITS_SINGLE_OP, REGEX_LITS_MULTIPLE_OP}:
       range_lits.add(next_literal_name())
       continue  # does not add states to NFA
-    elif prod == REGEX_RANGE_OP:
+    elif prod in {REGEX_RANGE_OP, REGEX_INV_RANGE_OP}:
       a, b = next_literal_name(), next_literal_name()
       # build DFA for [a-b]
-      state_transition_table.append({chr(symbol_ord): {to_state} for symbol_ord in range(ord(a), ord(b) + 1)})
+      recognized = {chr(symbol_ord) for symbol_ord in range(ord(a), ord(b) + 1)}
+      if prod == REGEX_INV_RANGE_OP:
+        recognized = REGEX_RECOGNIZED_CHARS - recognized
+      state_transition_table.append({char: {to_state} for char in recognized})
       state_transition_table.append({})
-    elif prod == REGEX_RANGE_LITS_OP:
+    elif prod in {REGEX_RANGE_LITS_OP, REGEX_INV_RANGE_LITS_OP}:
       assert len(range_lits) >= 1
       # build DFA for [abcd..]
-      state_transition_table.append({symbol: {to_state} for symbol in range_lits})
+      recognized = range_lits
+      if prod == REGEX_INV_RANGE_OP:
+        recognized = REGEX_RECOGNIZED_CHARS - recognized
+      state_transition_table.append({char: {to_state} for char in recognized})
       state_transition_table.append({})
       range_lits.clear()
-    elif prod in {REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP}:
-      assert False, 'not supported yet'
     else:
       # all other productions don't change anything. do not add any states.
       continue

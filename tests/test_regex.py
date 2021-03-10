@@ -13,6 +13,8 @@ def test_tokenize_regex():
   assert_equal(tokenize_regex('[a-z]*'), (('[', 'a', '-', 'a', ']', '*'), (None, 'a', None, 'z', None, None)))
   assert_equal(tokenize_regex('\\\\\\?'), (('a', 'a'), ('\\', '?')))
   assert_equal(tokenize_regex('(b|c)+'), (('(', 'a', '|', 'a', ')', '+'), (None, 'b', None, 'c', None, None)))
+  assert_equal(
+    tokenize_regex('[^a-z]*'), (('[', '^', 'a', '-', 'a', ']', '*'), (None, None, 'a', None, 'z', None, None)))
   with assert_raises(LexError):
     tokenize_regex('never ending\\')
   with assert_raises(LexError):
@@ -71,6 +73,12 @@ def test_make_regex_nfa_and_dfa():
   test_nfa_dfa_equal(nfa5, dfa5, 'Helle world!', True)
   test_nfa_dfa_equal(nfa5, dfa5, 'Helloe world!', False)
   test_nfa_dfa_equal(nfa5, dfa5, 'Hell world!', False)
+  nfa6 = make_regex_nfa('[^a-z]+[a-z]+')
+  dfa6 = make_dfa_from_nfa(nfa6)
+  test_nfa_dfa_equal(nfa6, dfa6, '12311baaa', True)
+  test_nfa_dfa_equal(nfa6, dfa6, 'bushof', False)
+  test_nfa_dfa_equal(nfa6, dfa6, '42', False)
+  test_nfa_dfa_equal(nfa6, dfa6, '   test', True)
 
 
 if __name__ == "__main__":
