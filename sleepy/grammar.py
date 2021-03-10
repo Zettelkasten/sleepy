@@ -116,12 +116,15 @@ class AttributeGrammar(Grammar):
     self.terminal_attr_rules = terminal_attr_rules
     self._sanity_check()
 
-  def _get_attr_func_name(self, attr_target):
+  def _split_attr_name_pos(self, attr_target):
     """
     :param str attr_target: attr.i
     :rtype: tuple[str, int]
     :returns: attribute name + attribute position, i.e. (attr, i)
     """
+    if '.' not in attr_target:
+      # assume pos=0
+      return attr_target, 0
     assert '.' in attr_target
     attr_name, attr_pos = attr_target.split('.', 2)
     assert attr_name in self.attrs
@@ -136,7 +139,7 @@ class AttributeGrammar(Grammar):
     for prod, attr_rules in self.prod_attr_rules.items():
       assert isinstance(attr_rules, dict)
       for target, func in attr_rules.items():
-        attr_name, attr_pos = self._get_attr_func_name(target)
+        attr_name, attr_pos = self._split_attr_name_pos(target)
         assert 0 <= attr_pos <= len(prod.right)
         assert attr_name in self.attrs
         if attr_name in self.inh_attrs:
@@ -146,14 +149,17 @@ class AttributeGrammar(Grammar):
         else:
           assert False
         assert callable(func)
-        # In the future, we might also want to check the signature of func.
+        func_arg_names = func.__code__.co_varnames
+        assert all(from_attr_name in self.attrs for from_attr_name in func_arg_names), (
+          '%r: function arguments must be attributes, got %r but only have %r' % (target, func_arg_names, self.attrs))
     for terminal, attr_rules in self.terminal_attr_rules.items():
       assert isinstance(attr_rules, dict)
       for target, func in attr_rules.items():
-        attr_name, attr_pos = self._get_attr_func_name(target)
+        attr_name, attr_pos = self._split_attr_name_pos(target)
         assert attr_pos == 0
         assert attr_name in self.syn_attrs
         assert callable(func)
+        assert func.__code__.co_argcount == 1
 
   @property
   def attrs(self):
@@ -182,7 +188,7 @@ class AttributeGrammar(Grammar):
 
     attr_eval = {}  # type: Dict[str, Any]
     for attr_target, func in self.terminal_attr_rules[terminal].items():
-      attr_name, attr_pos = self._get_attr_func_name(attr_target)
+      attr_name, attr_pos = self._split_attr_name_pos(attr_target)
       if attr_name not in self.syn_attrs:
         continue
       assert attr_pos == 0
@@ -219,7 +225,7 @@ class AttributeGrammar(Grammar):
 
     attr_eval = {}  # type: Dict[str, Any]
     for attr_target, func in self.prod_attr_rules[prod].items():
-      attr_name, attr_pos = self._get_attr_func_name(attr_target)
+      attr_name, attr_pos = self._split_attr_name_pos(attr_target)
       if attr_name not in self.syn_attrs:
         continue
       assert attr_pos == 0
