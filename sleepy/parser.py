@@ -292,10 +292,10 @@ class ParserGenerator:
         state_stack.append(self._state_goto_table[state][action.symbol])
         attr_eval_stack.append(self.grammar.get_terminal_syn_attr_eval(shifted_token, shifted_word))
       elif isinstance(action, _ReduceAction):
-        right_attr_evals = []  # type: List[Dict[str, Any]]
+        right_attr_evals = attr_eval_stack[-len(action.prod.right):]  # type: List[Dict[str, Any]]
         for i in range(len(action.prod.right)):
           state_stack.pop()
-          right_attr_evals.append(attr_eval_stack.pop())
+          attr_eval_stack.pop()
         state_stack.append(self._state_goto_table[state_stack[-1]][action.prod.left])
         attr_eval_stack.append(self.grammar.get_prod_syn_attr_eval(action.prod, right_attr_evals))
         rev_analysis.append(action.prod)
