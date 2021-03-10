@@ -76,11 +76,13 @@ class DeterministicAutomaton:
 
   def get_next_state(self, state, char):
     """
-    :param int state:
+    :param int|None state:
     :param str|None char: char
     :returns: next state or `ERROR_STATE` if next state is not productive
     :rtype: str|None
     """
+    if state is ERROR_STATE:
+      return ERROR_STATE
     return self.state_transition_table[state].get(char, ERROR_STATE)
 
   def accepts(self, word):
