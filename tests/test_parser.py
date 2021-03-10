@@ -4,6 +4,7 @@ import unittest
 import better_exchook
 import nose.tools
 
+from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
 from sleepy.grammar import EPSILON, Production, Grammar, ParseError
 
@@ -131,6 +132,27 @@ def test_ParserGenerator_cfg():
   word = ['A', '->', 'B', 'c', '|', 'B', ';', 'B', '->', 'c', 'a']
   print('tokenized word:', word)
   analysis = parser.parse_analysis(word)
+  print('right-most analysis:', analysis)
+
+
+def test_ParserGenerator_cfg_with_lexer():
+  g = Grammar(
+    Production('Grammar', 'Decl'),
+    Production('Decl', 'Prod', ';', 'Decl'),
+    Production('Decl', 'Prod'),
+    Production('Prod', 'Symb', '->', 'Right'),
+    Production('Right', 'Symbs', '|', 'Symbs'),
+    Production('Right', 'Symbs'),
+    Production('Symbs', 'Symb', 'Symbs'),
+    Production('Symbs'),
+  )
+  lexer = LexerGenerator([';', '->', '|', 'Symb'], ['; *|[\n\r ]+', ' *\\-> *', ' *\\| *', '([a-z]|[A-Z])+'])
+  parser = ParserGenerator(g)
+  word = 'A->Bc|B; B->ca'
+  print('input word:', word)
+  tokens, decomposition = lexer.tokenize(word)
+  print('tokenized word:', tokens, 'with decomposition', decomposition)
+  analysis = parser.parse_analysis(tokens)
   print('right-most analysis:', analysis)
 
 
