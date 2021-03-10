@@ -43,31 +43,31 @@ def tokenize_regex(word):
   """
   :param str word:
   :raises: LexError
-  :returns: word tokens with attribute table
+  :returns: tokens with decomposition
   :rtype: tuple[tuple[str], tuple[str]]
   """
   escape_next = False
-  tokens, attribute_table = [], []
+  tokens, token_words = [], []
   for pos, c in enumerate(word):
     if escape_next:
       if c not in REGEX_SPECIAL_TOKENS:
         raise LexError(word, pos, 'Cannot escape character %r' % c)
       escape_next = False
       tokens.append(REGEX_LIT_TOKEN)
-      attribute_table.append(c)
+      token_words.append(c)
     elif c == '\\':
       escape_next = True
     elif c in REGEX_SPECIAL_TOKENS:
       tokens.append(c)
-      attribute_table.append(None)
+      token_words.append(None)
     else:  # default case
       tokens.append(REGEX_LIT_TOKEN)
-      attribute_table.append(c)
+      token_words.append(c)
 
   if escape_next:
     raise LexError(word, len(word), 'Cannot end word with escape character')
-  assert len(tokens) == len(attribute_table) <= len(word)
-  return tuple(tokens), tuple(attribute_table)
+  assert len(tokens) == len(token_words) <= len(word)
+  return tuple(tokens), tuple(token_words)
 
 
 def make_regex_nfa(regex):
@@ -75,9 +75,8 @@ def make_regex_nfa(regex):
   :param str regex:
   :rtype: NonDeterministicAutomaton
   """
-  tokens, token_attribute_table = tokenize_regex(regex)
-  analysis = REGEX_PARSER.parse_analysis(tokens)
-  REGEX_PARSER.parse_analysis(tokens)
+  tokens, token_words = tokenize_regex(regex)
+  analysis = REGEX_PARSER.parse_analysis(tokens, token_words)
 
   num_states = 0
   state_transition_table = []  # type: List[Dict[Optional[str], Set[int]]]
@@ -96,7 +95,7 @@ def make_regex_nfa(regex):
     nonlocal pos
     while tokens[pos] != REGEX_LIT_TOKEN:
       pos += 1
-    name = token_attribute_table[pos]
+    name = token_words[pos]
     pos += 1
     return name
 
