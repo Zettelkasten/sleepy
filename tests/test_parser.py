@@ -34,11 +34,17 @@ def test_AttributeGrammar_syn():
       {'res.0': lambda res: 0},
       {'res.0': lambda res: res(1)}
     ],
-    terminal_attr_rules={'digit': lambda word: int(word)}
+    terminal_attr_rules={
+      'digit': {'res.0': lambda word: int(word)}
+    }
   )
   assert_equal(g.attrs, {'res'})
   assert_equal(g.syn_attrs, {'res'})
   assert_equal(g.inh_attrs, set())
+  assert_equal(g.get_terminal_syn_attr_eval('digit', 6), {'res': 6})
+  assert_equal(g.get_terminal_syn_attr_eval('zero', 0), {})
+  assert_equal(g.get_prod_syn_attr_eval(g.prods[0], [{'res': 4}, {}, {'res': 7}]), {'res': 4 + 7})
+
 
 
 def test_make_first1_sets():
@@ -302,6 +308,37 @@ def test_ParserGenerator_regex():
   evaluate('([1-9][0-9]?|0)', {str(d) for d in range(0, 100)})
   evaluate('[0-9](\\.[1-9])?', {repr(d / 10) for d in range(0, 100) if not d % 10 == 0} | {str(d) for d in range(10)})
   evaluate('[4-2]', set())
+
+
+def test_ParserGenerator_attr_syn():
+  g = AttributeGrammar(prods=[
+      Production('A', 'S'),
+      Production('S', 'T', '+', 'S'),
+      Production('S', 'T'),
+      Production('T', 'zero'),
+      Production('T', 'digit')
+    ],
+    inh_attrs=set(),
+    syn_attrs={'res'},
+    prod_attr_rules=[
+      {'res.0': lambda res: res(1)},
+      {'res.0': lambda res: res(1) + res(3)},
+      {'res.0': lambda res: res(1)},
+      {'res.0': lambda res: 0},
+      {'res.0': lambda res: res(1)}
+    ],
+    terminal_attr_rules={
+      'digit': {'res.0': lambda word: int(word)}
+    }
+  )
+  assert_equal(g.attrs, {'res'})
+  assert_equal(g.syn_attrs, {'res'})
+  assert_equal(g.inh_attrs, set())
+
+  parser = ParserGenerator(g)
+  assert_equal(
+    parser.parse_attr_analysis(['digit', '+', 'digit'], ['5', '+', '7']),
+    ((g.prods[0], g.prods[1], g.prods[2], g.prods[4], g.prods[4]), {'res': 5 + 7}))
 
 
 if __name__ == "__main__":

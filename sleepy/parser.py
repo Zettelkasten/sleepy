@@ -1,6 +1,6 @@
 from typing import Optional, Dict, List, Set, FrozenSet
 
-from sleepy.grammar import EPSILON, ParseError, Production
+from sleepy.grammar import EPSILON, ParseError, Production, AttributeGrammar
 
 
 def make_first1_sets(grammar):
@@ -227,9 +227,11 @@ class ParserGenerator:
     :param None|list[str] token_words: words per token, used for error message
     :rtype: list[Production]:
     :raises: ParseError
-    :returns: a right-most analysis of `word` or raises ParseError
+    :returns: a right-most analysis of `tokens` or raises ParseError
     """
     assert EPSILON not in tokens
+    if token_words is not None:
+      assert len(token_words) == len(tokens)
 
     accepted = False
     pos = 0
@@ -260,3 +262,54 @@ class ParserGenerator:
 
     assert rev_analysis[-1] == self._start_prod
     return list(reversed(rev_analysis))
+
+  def parse_attr_analysis(self, tokens, token_words):
+    """
+    :param list[str] tokens:
+    :param None|list[str] token_words: words per token
+    :rtype: tuple[tuple[Production],dict[str,Any]:
+    :raises: ParseError
+    :returns: a right-most analysis of `tokens` + evaluation of attributes in start symbol
+    """
+    assert isinstance(self.grammar, AttributeGrammar)
+    assert self.grammar.is_s_attributed(), 'only s-attributed grammars supported'
+    assert EPSILON not in tokens
+    assert len(token_words) == len(tokens)
+
+    accepted = False
+    pos = 0
+    state_stack = [self._initial_state]
+    attr_eval_stack = []  # type: List[Dict[str, Any]]
+    rev_analysis = []  # type: List[Production]
+
+    while not accepted:
+      la = EPSILON if pos == len(tokens) else tokens[pos]
+      state = state_stack[-1]
+      action = self._state_action_table[state].get(la)
+      if isinstance(action, _ShiftAction) and action.symbol == la:
+        shifted_token, shifted_word = tokens[pos], token_words[pos]
+        pos += 1
+        state_stack.append(self._state_goto_table[state][action.symbol])
+        attr_eval_stack.append(self.grammar.get_terminal_syn_attr_eval(shifted_token, shifted_word))
+      elif isinstance(action, _ReduceAction):
+        right_attr_evals = []  # type: List[Dict[str, Any]]
+        for i in range(len(action.prod.right)):
+          state_stack.pop()
+          right_attr_evals.append(attr_eval_stack.pop())
+        state_stack.append(self._state_goto_table[state_stack[-1]][action.prod.left])
+        attr_eval_stack.append(self.grammar.get_prod_syn_attr_eval(action.prod, right_attr_evals))
+        rev_analysis.append(action.prod)
+      elif isinstance(action, _AcceptAction) and len(state_stack) == 2:
+        assert state_stack[0] == self._initial_state
+        assert len(attr_eval_stack) == 1
+        state_stack.clear()
+        rev_analysis.append(self._start_prod)
+        accepted = True
+      else:  # error
+        raise ParseError(
+          tokens, pos, 'No action in state %s (%s) with lookahead %r possible' % (state, self._state_descr[state], la),
+          token_words=token_words)
+
+    assert rev_analysis[-1] == self._start_prod
+    assert len(attr_eval_stack) == 1
+    return tuple(reversed(rev_analysis)), attr_eval_stack[0]

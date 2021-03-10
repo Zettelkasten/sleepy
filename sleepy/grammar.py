@@ -2,7 +2,7 @@
 The empty symbol (!= the empty word).
 Use empty tuple as empty word.
 """
-from typing import Tuple
+from typing import Tuple, Any, Dict
 
 EPSILON = None
 
@@ -90,21 +90,28 @@ class AttributeGrammar(Grammar):
     :param tuple[Production]|list[Production] prods:
     :param set[str] inh_attrs: names of inherited (top-down) attributes
     :param set[str] syn_attrs: names of synthesized (bottom-up) attributes
-    :param list[dict[str, function]] prod_attr_rules: functions that evaluate attributes for productions.
+    :param dict[Production, dict[str, function]]|list[dict[str, function]] prod_attr_rules:
+      functions that evaluate attributes for productions.
       For each production `A_0 -> A_1 ... A_n`, dict with keys `attr.i`
       (where `attr` is a name of attribute, and `i` a position in the productions symbols).
       If `attr` is synthesized, then `i` must be `0`.
       If `attr` is inherited, then `i` must be `>= 1`.
       For each attribute `attr`, the function is called with a argument of the same name `attr(j)`,
       which is a function giving previously computed attributes of the given symbol in the production.
-    :param dict[str, function] terminal_attr_rules: functions that evaluate attributes for terminals.
+    :param dict[str, dict[str, function]] terminal_attr_rules: functions that evaluate attributes for terminals.
+      Same format as `prod_attr_rules`, but with terminal name instead of productions.
     :param None|str start: start non-terminal, by default left of first production
     """
     super().__init__(*prods, start=start)
     assert inh_attrs & syn_attrs == set(), 'inherited and synthesized attributes must be disjoint'
     self.inh_attrs = inh_attrs
     self.syn_attrs = syn_attrs
-    assert len(prod_attr_rules) == len(self.prods), 'need one rule set for each production'
+    if isinstance(prod_attr_rules, (list, tuple)):
+      assert len(self.prods) == len(prod_attr_rules)
+      prod_attr_rules = dict(zip(self.prods, prod_attr_rules))
+    assert isinstance(prod_attr_rules, dict)
+    self.prod_attr_rules = prod_attr_rules  # type: dict[Production,dict[str,function]]
+    assert tuple(prod_attr_rules.keys()) == self.prods, 'need one rule set for each production'
     self.prod_attr_rules = prod_attr_rules
     self.terminal_attr_rules = terminal_attr_rules
     self._sanity_check()
@@ -126,7 +133,8 @@ class AttributeGrammar(Grammar):
     """
     Some asserts that attribute rules are well defined.
     """
-    for prod, attr_rules in zip(self.prods, self.prod_attr_rules):
+    for prod, attr_rules in self.prod_attr_rules.items():
+      assert isinstance(attr_rules, dict)
       for target, func in attr_rules.items():
         attr_name, attr_pos = self._get_attr_func_name(target)
         assert 0 <= attr_pos <= len(prod.right)
@@ -139,6 +147,13 @@ class AttributeGrammar(Grammar):
           assert False
         assert callable(func)
         # In the future, we might also want to check the signature of func.
+    for terminal, attr_rules in self.terminal_attr_rules.items():
+      assert isinstance(attr_rules, dict)
+      for target, func in attr_rules.items():
+        attr_name, attr_pos = self._get_attr_func_name(target)
+        assert attr_pos == 0
+        assert attr_name in self.syn_attrs
+        assert callable(func)
 
   @property
   def attrs(self):
@@ -154,6 +169,66 @@ class AttributeGrammar(Grammar):
     :rtype: bool
     """
     return len(self.inh_attrs) == 0
+
+  def get_terminal_syn_attr_eval(self, terminal, word):
+    """
+    :param str terminal: terminal
+    :param str word:
+    :rtype: dict[str,Any]
+    """
+    assert terminal in self.terminals
+    if terminal not in self.terminal_attr_rules:
+      return {}
+
+    attr_eval = {}  # type: Dict[str, Any]
+    for attr_target, func in self.terminal_attr_rules[terminal].items():
+      attr_name, attr_pos = self._get_attr_func_name(attr_target)
+      if attr_name not in self.syn_attrs:
+        continue
+      assert attr_pos == 0
+      attr_eval[attr_name] = func(word)
+    return attr_eval
+
+  def get_prod_syn_attr_eval(self, prod, right_attr_evals):
+    """
+    :param Production prod:
+    :param list[dict[str,Any]] right_attr_evals: evaluations of right side of production
+    :rtype: dict[str,Any]
+    """
+    assert len(right_attr_evals) == len(prod.right)
+    assert prod in self.prod_attr_rules
+
+    def make_attr_getter(get_attr_name):
+      """
+      :param str get_attr_name:
+      :rtype: function[int, Any]
+      """
+
+      def get(pos):
+        """
+        Receives attr.pos.
+        :param int pos:
+        :rtype: Any
+        """
+        assert 1 <= pos <= len(prod.right) + 1, '%s.%s: invalid for production %r' % (get_attr_name, pos, prod)
+        assert get_attr_name in right_attr_evals[pos - 1], '%s.%s: evaluation not available, only have %r' % (
+          get_attr_name, pos, right_attr_evals)
+        return right_attr_evals[pos - 1][get_attr_name]
+
+      return get
+
+    func_kwargs = {
+      attr_name: make_attr_getter(attr_name)
+      for attr_name in {attr_name for right_eval in right_attr_evals for attr_name in right_eval}}
+
+    attr_eval = {}  # type: Dict[str, Any]
+    for attr_target, func in self.prod_attr_rules[prod].items():
+      attr_name, attr_pos = self._get_attr_func_name(attr_target)
+      if attr_name not in self.syn_attrs:
+        continue
+      assert attr_pos == 0
+      attr_eval[attr_name] = func(**func_kwargs)
+    return attr_eval
 
 
 class LexError(Exception):
