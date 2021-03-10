@@ -3,11 +3,11 @@ import unittest
 import better_exchook
 from nose.tools import assert_equal, assert_raises
 
-from grammar import LexError
+from sleepy.grammar import LexError
 
 
 def test_tokenize_regex():
-  from regex import tokenize_regex
+  from sleepy.regex import tokenize_regex
   assert_equal(tokenize_regex('abcd'), (('a', 'a', 'a', 'a'), ('a', 'b', 'c', 'd')))
   assert_equal(tokenize_regex('[a-z]*'), (('[', 'a', '-', 'a', ']', '*'), (None, 'a', None, 'z', None, None)))
   assert_equal(tokenize_regex('\\\\\\?'), (('a', 'a'), ('\\', '?')))
@@ -19,8 +19,8 @@ def test_tokenize_regex():
 
 
 def test_make_regex_nfa_and_dfa():
-  from regex import make_regex_nfa
-  from automaton import make_dfa_from_nfa
+  from sleepy.regex import make_regex_nfa
+  from sleepy.automaton import make_dfa_from_nfa
 
   def test_nfa_dfa_equal(nfa, dfa, word, should_accept):
     """

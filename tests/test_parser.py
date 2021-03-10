@@ -1,11 +1,10 @@
 import sys
 import unittest
-from pprint import pprint
 import better_exchook
 import nose.tools
 
-from parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
-from grammar import EPSILON, Production, Grammar, ParseError
+from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
+from sleepy.grammar import EPSILON, Production, Grammar, ParseError
 
 
 def test_Grammar():
@@ -195,7 +194,7 @@ def test_ParserGenerator_arithmetic():
 
 
 def test_ParserGenerator_regex():
-  from regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_CHOICE_OP, REGEX_LITS_SINGLE_OP, \
+  from sleepy.regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_CHOICE_OP, REGEX_LITS_SINGLE_OP, \
     REGEX_LITS_MULTIPLE_OP, REGEX_CONCAT_OP, REGEX_OPTIONAL_OP, REGEX_RANGE_OP, REGEX_RANGE_LITS_OP, REGEX_REPEAT_OP, \
     REGEX_REPEAT_EXISTS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP, REGEX_LIT_TOKEN
   parser = REGEX_PARSER

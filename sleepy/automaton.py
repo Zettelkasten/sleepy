@@ -1,4 +1,4 @@
-from grammar import EPSILON
+from sleepy.grammar import EPSILON
 from typing import List, Dict, Set, FrozenSet
 
 

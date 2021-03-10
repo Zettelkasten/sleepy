@@ -1,6 +1,6 @@
-from automaton import NonDeterministicAutomaton, DeterministicAutomaton, make_dfa_from_nfa
-from grammar import Grammar, Production, LexError, EPSILON
-from parser import ParserGenerator
+from sleepy.automaton import NonDeterministicAutomaton, make_dfa_from_nfa
+from sleepy.grammar import Grammar, Production, LexError, EPSILON
+from sleepy.parser import ParserGenerator
 from typing import List, Dict, Set, Optional
 
 REGEX_LIT_TOKEN = 'a'

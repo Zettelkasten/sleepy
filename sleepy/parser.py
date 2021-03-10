@@ -1,4 +1,4 @@
-from grammar import EPSILON, ParseError
+from sleepy.grammar import EPSILON, ParseError
 
 
 def make_first1_sets(grammar):
