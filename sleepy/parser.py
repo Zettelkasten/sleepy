@@ -221,14 +221,15 @@ class ParserGenerator:
     self._state_goto_table = state_goto_table
     self._state_descr = ['{%s}' % ', '.join([repr(item) for item in state]) for state in states.keys()]
 
-  def parse_analysis(self, word):
+  def parse_analysis(self, tokens, token_words=None):
     """
-    :param list[str] word:
+    :param list[str] tokens:
+    :param None|list[str] token_words: words per token, used for error message
     :rtype: list[Production]:
     :raises: ParseError
     :returns: a right-most analysis of `word` or raises ParseError
     """
-    assert EPSILON not in word
+    assert EPSILON not in tokens
 
     accepted = False
     pos = 0
@@ -236,7 +237,7 @@ class ParserGenerator:
     rev_analysis = []  # type: List[Production]
 
     while not accepted:
-      la = EPSILON if pos == len(word) else word[pos]
+      la = EPSILON if pos == len(tokens) else tokens[pos]
       state = state_stack[-1]
       action = self._state_action_table[state].get(la)
       if isinstance(action, _ShiftAction) and action.symbol == la:
@@ -254,7 +255,8 @@ class ParserGenerator:
         accepted = True
       else:  # error
         raise ParseError(
-          word, pos, 'No action in state %s (%s) with lookahead %r possible' % (state, self._state_descr[state], la))
+          tokens, pos, 'No action in state %s (%s) with lookahead %r possible' % (state, self._state_descr[state], la),
+          token_words=token_words)
 
     assert rev_analysis[-1] == self._start_prod
     return list(reversed(rev_analysis))

@@ -162,6 +162,11 @@ class LexError(Exception):
   """
 
   def __init__(self, word, pos, message):
+    """
+    :param str word:
+    :param int pos:
+    :param str message:
+    """
     super().__init__(
       '%s: %s' % (' '.join([repr(s) for s in word[:pos]] + ['!'] + [repr(s) for s in word[pos:]]), message))
 
@@ -171,6 +176,13 @@ class ParseError(Exception):
   A parse error, when a word is not recognized by a context free grammar.
   """
 
-  def __init__(self, word, pos, message):
+  def __init__(self, tokens, pos, message, token_words=None):
+    """
+    :param list[str] tokens:
+    :param int pos: token position where error occurred
+    :param str message:
+    :param None|list[str] token_words: decomposition of entire word into tokens
+    """
+    output = token_words if token_words is not None else tokens
     super().__init__(
-      '%s: %s' % (' '.join([repr(s) for s in word[:pos]] + ['!'] + [repr(s) for s in word[pos:]]), message))
+      '%s: %s' % (' '.join([repr(s) for s in output[:pos]] + ['!'] + [repr(s) for s in output[pos:]]), message))
