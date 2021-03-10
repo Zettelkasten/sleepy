@@ -27,7 +27,6 @@ def test_AttributeGrammar_syn():
       Production('S', 'zero'),
       Production('S', 'digit')
     ],
-    inh_attrs=set(),
     syn_attrs={'res'},
     prod_attr_rules=[
       {'res.0': lambda res: res(1) + res(3)},
