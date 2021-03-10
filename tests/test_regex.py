@@ -91,6 +91,10 @@ def test_make_regex_nfa_and_dfa():
   test_nfa_dfa_equal(nfa8, dfa8, 'a', True)
   test_nfa_dfa_equal(nfa8, dfa8, '-', True)
   test_nfa_dfa_equal(nfa8, dfa8, '', False)
+  nfa9 = make_regex_nfa('(0|[1-9][0-9]*)(\\.[0-9]+)?')
+  dfa9 = make_dfa_from_nfa(nfa9)
+  test_nfa_dfa_equal(nfa9, dfa9, '1*2', False)
+  test_nfa_dfa_equal(nfa9, dfa9, '0', True)
 
 
 if __name__ == "__main__":

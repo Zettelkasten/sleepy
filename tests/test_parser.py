@@ -242,6 +242,68 @@ def test_ParserGenerator_arithmetic():
   evaluate('4/2-1')
 
 
+def test_ParserGenerator_arithmetic_syn():
+  import math
+  lexer = LexerGenerator(
+    token_names=['(', ')', '+', '-', '*', '**', '/', 'const', 'func'],
+    token_regex_table=[
+      '\\(', '\\)', '\\+', '\\-', '\\*', '\\*\\*', '/', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '([a-z]|[A-Z])+']
+  )
+  # left associative (except ** that is right associative), with operator precedence
+  g = AttributeGrammar(
+    prods=[
+      Production('Expr', 'Sum'),
+      Production('Sum', 'Sum', '+', 'Prod'),
+      Production('Sum', 'Sum', '-', 'Prod'),
+      Production('Sum', 'Prod'),
+      Production('Prod', 'Prod', '*', 'Pow'),
+      Production('Prod', 'Prod', '/', 'Pow'),
+      Production('Prod', 'Pow'),
+      Production('Pow', 'Term', '**', 'Pow'),
+      Production('Pow', 'Term'),
+      Production('Term', '(', 'Sum', ')'),
+      Production('Term', 'func', '(', 'Sum', ')'),
+      Production('Term', 'const')
+    ],
+    syn_attrs={'res', 'name'},
+    prod_attr_rules=[
+      {'res': lambda res: res(1)},
+      {'res': lambda res: res(1) + res(3)},
+      {'res': lambda res: res(1) - res(3)},
+      {'res': lambda res: res(1)},
+      {'res': lambda res: res(1) * res(3)},
+      {'res': lambda res: res(1) / res(3)},
+      {'res': lambda res: res(1)},
+      {'res': lambda res: res(1) ** res(3)},
+      {'res': lambda res: res(1)},
+      {'res': lambda res: res(2)},
+      {'res': lambda res, name: getattr(math, name(1))(res(3))},
+      {'res': lambda res: res(1)},
+    ],
+    terminal_attr_rules={
+      'const': {'res': lambda lit: float(lit)},
+      'func': {'name': lambda lit: lit}
+    }
+  )
+  parser = ParserGenerator(g)
+
+  def evaluate(word):
+    print('----')
+    print('input word:', word)
+    tokens, token_words = lexer.tokenize(word)
+    print('tokens:', tokens, 'with decomposition', token_words)
+    analysis, result = parser.parse_attr_analysis(tokens, token_words)
+    print('result:', result['res'])
+    # import common operator names for python eval()
+    sin, cos, tan, exp, sqrt = math.sin, math.cos, math.tan, math.exp  # noqa
+    assert_equal(result['res'], eval(word))
+
+  for word in [
+    '1*2+3', '5-3', '(1+2)*3', '1+2+3', '1+2-3', '1-2+3', '3-2-1', '1*2+3*4', '4/2-1', 'sin(3.1415)', '2**2**3',
+    '(2**2)**3', '(3**2+4**2)**0.5']:
+    evaluate(word)
+
+
 def test_ParserGenerator_regex():
   from sleepy.regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_LIT_ANY_OP, REGEX_CHOICE_OP, \
     REGEX_LITS_SINGLE_OP, REGEX_LITS_MULTIPLE_OP, REGEX_CONCAT_OP, REGEX_OPTIONAL_OP, REGEX_RANGE_OP, \
