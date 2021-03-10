@@ -195,9 +195,10 @@ def test_ParserGenerator_arithmetic():
 
 
 def test_ParserGenerator_regex():
-  from sleepy.regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_CHOICE_OP, REGEX_LITS_SINGLE_OP, \
-    REGEX_LITS_MULTIPLE_OP, REGEX_CONCAT_OP, REGEX_OPTIONAL_OP, REGEX_RANGE_OP, REGEX_RANGE_LITS_OP, REGEX_REPEAT_OP, \
-    REGEX_REPEAT_EXISTS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP, REGEX_LIT_TOKEN
+  from sleepy.regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_LIT_ANY_OP, REGEX_CHOICE_OP, \
+    REGEX_LITS_SINGLE_OP, REGEX_LITS_MULTIPLE_OP, REGEX_CONCAT_OP, REGEX_OPTIONAL_OP, REGEX_RANGE_OP, \
+    REGEX_RANGE_LITS_OP, REGEX_REPEAT_OP, REGEX_REPEAT_EXISTS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP, \
+    REGEX_LIT_TOKEN
   parser = REGEX_PARSER
 
   def evaluate(word, target_value):
@@ -243,7 +244,8 @@ def test_ParserGenerator_regex():
         stack.append({chr(c) for c in range(ord(a), ord(b) + 1)})
       elif prod == REGEX_RANGE_LITS_OP:
         pass  # already handled by REGEX_LITS_OP
-      elif prod in {REGEX_REPEAT_OP, REGEX_REPEAT_EXISTS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP}:
+      elif prod in {
+        REGEX_REPEAT_OP, REGEX_REPEAT_EXISTS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP, REGEX_LIT_ANY_OP}:
         assert False, 'here not supported'
     assert len(stack) == 1
     result_value = stack[0]
@@ -256,7 +258,7 @@ def test_ParserGenerator_regex():
   evaluate('regexp?', {'regex', 'regexp'})
   evaluate('hello (world|everybody|there)', {'hello world', 'hello everybody', 'hello there'})
   evaluate('([1-9][0-9]?|0)', {str(d) for d in range(0, 100)})
-  evaluate('[0-9](.[1-9])?', {repr(d / 10) for d in range(0, 100) if not d % 10 == 0} | {str(d) for d in range(10)})
+  evaluate('[0-9](\\.[1-9])?', {repr(d / 10) for d in range(0, 100) if not d % 10 == 0} | {str(d) for d in range(10)})
   evaluate('[4-2]', set())
 
 

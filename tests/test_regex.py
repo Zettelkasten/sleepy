@@ -45,7 +45,7 @@ def test_make_regex_nfa_and_dfa():
   test_nfa_dfa_equal(nfa1, dfa1, 'a', False)
   test_nfa_dfa_equal(nfa1, dfa1, 'b', False)
   test_nfa_dfa_equal(nfa1, dfa1, '', False)
-  nfa2 = make_regex_nfa('1(0|1)*(.(0|1)+)?')
+  nfa2 = make_regex_nfa('1(0|1)*(\\.(0|1)+)?')
   dfa2 = make_dfa_from_nfa(nfa2)
   test_nfa_dfa_equal(nfa2, dfa2, '01', False)
   test_nfa_dfa_equal(nfa2, dfa2, '1', True)
@@ -54,7 +54,7 @@ def test_make_regex_nfa_and_dfa():
   test_nfa_dfa_equal(nfa2, dfa2, '10000.1011', True)
   test_nfa_dfa_equal(nfa2, dfa2, '1.', False)
   test_nfa_dfa_equal(nfa2, dfa2, 'x', False)
-  nfa3 = make_regex_nfa('(file|https?)://(www.)?github.(com|de)?')
+  nfa3 = make_regex_nfa('(file|https?)://(www\\.)?github\\.(com|de)?')
   dfa3 = make_dfa_from_nfa(nfa3)
   test_nfa_dfa_equal(nfa3, dfa3, 'file://www.github.com', True)
   test_nfa_dfa_equal(nfa3, dfa3, 'http://www.github.com', True)
@@ -79,6 +79,12 @@ def test_make_regex_nfa_and_dfa():
   test_nfa_dfa_equal(nfa6, dfa6, 'bushof', False)
   test_nfa_dfa_equal(nfa6, dfa6, '42', False)
   test_nfa_dfa_equal(nfa6, dfa6, '   test', True)
+  nfa7 = make_regex_nfa('Char: .')
+  dfa7 = make_dfa_from_nfa(nfa7)
+  test_nfa_dfa_equal(nfa7, dfa7, 'Char: 1', True)
+  test_nfa_dfa_equal(nfa7, dfa7, 'Char:  ', True)
+  test_nfa_dfa_equal(nfa7, dfa7, 'Char: \\', True)
+  test_nfa_dfa_equal(nfa7, dfa7, 'Char: ', False)
 
 
 if __name__ == "__main__":

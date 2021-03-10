@@ -4,7 +4,7 @@ from sleepy.parser import ParserGenerator
 from typing import List, Dict, Set, Optional
 
 REGEX_LIT_TOKEN = 'a'
-REGEX_SPECIAL_TOKENS = frozenset({'(', ')', '\\', '-', '[', ']', '*', '+', '?', '|', '^'})
+REGEX_SPECIAL_TOKENS = frozenset({'(', ')', '\\', '-', '[', ']', '*', '+', '?', '|', '^', '.'})
 # Currently we only recognize 7-bit ASCII
 REGEX_RECOGNIZED_CHARS = frozenset({chr(c) for c in range(32, 128)})
 
@@ -17,7 +17,8 @@ REGEX_RANGE_OP = Production('Range', '[', 'a', '-', 'a', ']')
 REGEX_RANGE_LITS_OP = Production('Range', '[', 'Lits', ']')
 REGEX_INV_RANGE_OP = Production('Range', '[', '^', 'a', '-', 'a', ']')
 REGEX_INV_RANGE_LITS_OP = Production('Range', '[', '^', 'Lits', ']')
-REGEX_LIT_OP = Production('Range', 'Lit')
+REGEX_LIT_OP = Production('Lit', REGEX_LIT_TOKEN)
+REGEX_LIT_ANY_OP = Production('Lit', '.')
 REGEX_LITS_MULTIPLE_OP = Production('Lits', 'a', 'Lits')
 REGEX_LITS_SINGLE_OP = Production('Lits', 'a')
 
@@ -30,10 +31,10 @@ REGEX_GRAMMAR = Grammar(
   REGEX_REPEAT_OP, REGEX_REPEAT_EXISTS_OP, REGEX_OPTIONAL_OP,
   Production('Repeat', 'Range'),
   REGEX_RANGE_OP, REGEX_RANGE_LITS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP,
-  REGEX_LIT_OP,
+  Production('Range', 'Lit'),
   Production('Range', '(', 'Choice', ')'),
   REGEX_LITS_MULTIPLE_OP, REGEX_LITS_SINGLE_OP,
-  Production('Lit', REGEX_LIT_TOKEN)
+  REGEX_LIT_OP, REGEX_LIT_ANY_OP
 )
 REGEX_PARSER = ParserGenerator(REGEX_GRAMMAR)
 
@@ -105,6 +106,10 @@ def make_regex_nfa(regex):
       a = next_literal_name()
       # build DFA for a
       state_transition_table.append({a: {to_state}})
+      state_transition_table.append({})
+    elif prod == REGEX_LIT_ANY_OP:
+      # build DFA for .
+      state_transition_table.append({char: {to_state} for char in REGEX_RECOGNIZED_CHARS})
       state_transition_table.append({})
     elif prod == REGEX_CHOICE_OP:
       b_start, b_end, a_start, a_end = from_stack.pop(), to_stack.pop(), from_stack.pop(), to_stack.pop()
