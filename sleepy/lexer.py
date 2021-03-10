@@ -47,8 +47,8 @@ class LexerGenerator:
     Compute and set `_final_states`.
     """
     self._final_states.clear()
-    states_to_check = {self._initial_state}  # type: Set[Tuple[Union[int,LexerGenerator.ERROR_STATE]]]
-    visited_states = set()  # type: Set[Tuple[Union[int,LexerGenerator.ERROR_STATE]]]
+    states_to_check = {self._initial_state}  # type: Set[Tuple[Union[int,ERROR_STATE]]]
+    visited_states = set()  # type: Set[Tuple[Union[int,ERROR_STATE]]]
     while len(states_to_check) >= 1:
       state = states_to_check.pop()
       if state in visited_states:

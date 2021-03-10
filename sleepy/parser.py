@@ -1,4 +1,6 @@
-from sleepy.grammar import EPSILON, ParseError
+from typing import Optional, Dict, List, Set, FrozenSet
+
+from sleepy.grammar import EPSILON, ParseError, Production
 
 
 def make_first1_sets(grammar):
@@ -8,8 +10,8 @@ def make_first1_sets(grammar):
   """
   # fi(x) = {x} for all terminals, compute non-terminals iteratively
   first1_sets = {
-    symbol: set([symbol]) if symbol in grammar.terminals else set()
-    for symbol in grammar.symbols}  # type: dict[str, set[str|None]]
+    symbol: {symbol} if symbol in grammar.terminals else set()
+    for symbol in grammar.symbols}  # type: Dict[str, Set[Optional[str]]]
   changes = True
   while changes:
     changes = False
@@ -27,7 +29,7 @@ def make_first1_sets(grammar):
 
 def get_first1_set_for_word(first1_sets, word):
   """
-  :param dict[str, str[str|None]] first1_sets:
+  :param dict[str, set[str|None]] first1_sets:
   :param tuple[str] word:
   :rtype: set[str|None]
   """
@@ -83,7 +85,7 @@ class _AcceptAction(_Action):
 class _ReduceAction(_Action):
   def __init__(self, prod):
     """
-    :param grammar.Production prod:
+    :param Production prod:
     """
     self.prod = prod
 
@@ -93,6 +95,9 @@ class _ReduceAction(_Action):
 
 class _ShiftAction(_Action):
   def __init__(self, symbol):
+    """
+    :param str symbol:
+    """
     assert symbol is not EPSILON
     self.symbol = symbol
 
@@ -113,10 +118,10 @@ class ParserGenerator:
     self._start_prod = start_prods[0]
 
     self._initial_state = 0
-    self._num_states = None  # type: None|int
-    self._state_action_table = None  # type: None|list[dict[str, _Action]]
-    self._state_goto_table = None  # type: None|list[dict[str, int]]
-    self._state_descr = None  # type: None|list[str]
+    self._num_states = 0  # type: int
+    self._state_action_table = []  # type: List[Dict[str, _Action]]
+    self._state_goto_table = []  # type: List[Dict[str, int]]
+    self._state_descr = []  # type: List[str]
 
     self._make()
 
@@ -133,7 +138,7 @@ class ParserGenerator:
     add_item_queue = initial_items.copy()
 
     state = set()
-    actions = {}  # type: dict[str, _Action]
+    actions = {}  # type: Dict[str,_Action]
     next_symbols = set()
 
     while len(add_item_queue) >= 1:
@@ -172,9 +177,9 @@ class ParserGenerator:
     """
     Construct the automaton.
     """
-    states = {}  # type: dict[frozenset[_Item], int]
-    state_action_table = []  # type: list[dict[str, _Action]]
-    state_goto_table = []  # type: list[dict[str, int]]
+    states = {}  # type: Dict[FrozenSet[_Item], int]
+    state_action_table = []  # type: List[Dict[str, _Action]]
+    state_goto_table = []  # type: List[Dict[str, int]]
 
     def add_next_state(from_state, symbol):
       """
@@ -228,7 +233,7 @@ class ParserGenerator:
     accepted = False
     pos = 0
     state_stack = [self._initial_state]
-    rev_analysis = []  # type: list[Production]
+    rev_analysis = []  # type: List[Production]
 
     while not accepted:
       la = EPSILON if pos == len(word) else word[pos]

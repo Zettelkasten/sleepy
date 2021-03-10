@@ -2,7 +2,9 @@
 The empty symbol (!= the empty word).
 Use empty tuple as empty word.
 """
-EPSILON = None;
+from typing import Tuple
+
+EPSILON = None
 
 
 class Production:
@@ -18,7 +20,7 @@ class Production:
     self.left = left
     if isinstance(right, list):
       right = tuple(right)
-    self.right = right  # type: tuple[str]
+    self.right = right  # type: Tuple[str]
 
   def __repr__(self):
     return 'Production[%r -> %s]' % (self.left, ' '.join([repr(symbol) for symbol in self.right]))
@@ -38,17 +40,18 @@ class Grammar:
     :param None|str start: start non-terminal, by default left of first production
     """
     if not isinstance(prods, tuple):
+      assert isinstance(prods, list)
       prods = tuple(prods)
-    self.prods = prods
+    self.prods = prods  # type: Tuple[Production]
     if start is None:
-      start = prods[0].left
+      start = self.prods[0].left
     self.start = start
 
-    self.non_terminals = set(p.left for p in prods)
-    self.terminals = set(x for p in prods for x in p.right if x not in self.non_terminals)
+    self.non_terminals = set(p.left for p in self.prods)
+    self.terminals = set(x for p in self.prods for x in p.right if x not in self.non_terminals)
     self.non_terminals, self.terminals = tuple(sorted(self.non_terminals)), tuple(sorted(self.terminals))
     self.symbols = self.non_terminals + self.terminals
-    self._prods_by_left = {left: tuple([p for p in prods if p.left == left]) for left in self.non_terminals}
+    self._prods_by_left = {left: tuple([p for p in self.prods if p.left == left]) for left in self.non_terminals}
 
   def get_prods_for(self, left):
     """
