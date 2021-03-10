@@ -1,3 +1,4 @@
+import _setup_test_env  # noqa
 import sys
 import unittest
 import better_exchook
