@@ -263,11 +263,13 @@ class ParserGenerator:
     assert rev_analysis[-1] == self._start_prod
     return list(reversed(rev_analysis))
 
-  def parse_attr_analysis(self, tokens, token_words):
+  def parse_syn_attr_analysis(self, tokens, token_words):
     """
+    Integrates evaluating synthetic attributes into LR-parsing.
+    Does not work with inherited attributes, i.e. requires the grammar to be s-attributed.
     :param list[str] tokens:
     :param None|list[str] token_words: words per token
-    :rtype: tuple[tuple[Production],dict[str,Any]:
+    :rtype: (tuple[Production], dict[str,Any])
     :raises: ParseError
     :returns: a right-most analysis of `tokens` + evaluation of attributes in start symbol
     """

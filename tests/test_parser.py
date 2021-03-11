@@ -292,7 +292,7 @@ def test_ParserGenerator_arithmetic_syn():
     print('input word:', word)
     tokens, token_words = lexer.tokenize(word)
     print('tokens:', tokens, 'with decomposition', token_words)
-    analysis, result = parser.parse_attr_analysis(tokens, token_words)
+    analysis, result = parser.parse_syn_attr_analysis(tokens, token_words)
     print('result:', result['res'])
     # import common operator names for python eval()
     sin, cos, tan, exp, sqrt = math.sin, math.cos, math.tan, math.exp, math.sqrt  # noqa
@@ -399,7 +399,7 @@ def test_ParserGenerator_attr_syn():
 
   parser = ParserGenerator(g)
   assert_equal(
-    parser.parse_attr_analysis(['digit', '+', 'digit'], ['5', '+', '7']),
+    parser.parse_syn_attr_analysis(['digit', '+', 'digit'], ['5', '+', '7']),
     ((g.prods[0], g.prods[1], g.prods[2], g.prods[4], g.prods[4]), {'res': 5 + 7}))
 
 
