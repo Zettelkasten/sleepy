@@ -147,15 +147,18 @@ class AttributeGrammar(Grammar):
         assert 0 <= attr_pos <= len(prod.right)
         assert attr_name in self.attrs
         if attr_name in self.inh_attrs:
-          assert attr_pos >= 1, '%r: rules for inherited attributes only allowed for right side of production' % target
+          assert attr_pos >= 1, (
+              '%r for %r: rules for inherited attributes only allowed for right side of production' % (target, prod))
         elif attr_name in self.syn_attrs:
-          assert attr_pos == 0, '%r: rules for synthesized attributes only allowed for left side of production' % target
+          assert attr_pos == 0, (
+              '%r for %r: rules for synthesized attributes only allowed for left side of production' % (target, prod))
         else:
           assert False
         assert callable(func)
-        func_arg_names = func.__code__.co_varnames
+        func_arg_names = func.__code__.co_varnames[:func.__code__.co_argcount]
         assert all(from_attr_name in self.attrs for from_attr_name in func_arg_names), (
-          '%r: function arguments must be attributes, got %r but only have %r' % (target, func_arg_names, self.attrs))
+          '%r for %r: function arguments must be attributes, got %r but only have %r' %
+          (target, prod, func_arg_names, self.attrs))
     for terminal, attr_rules in self.terminal_attr_rules.items():
       assert isinstance(attr_rules, dict)
       for target, func in attr_rules.items():
@@ -234,7 +237,7 @@ class AttributeGrammar(Grammar):
         continue
       assert attr_pos == 0
 
-      func_arg_names = func.__code__.co_varnames
+      func_arg_names = func.__code__.co_varnames[:func.__code__.co_argcount]
       assert all(
         any(from_attr_name in right_eval for right_eval in right_attr_evals) for from_attr_name in func_arg_names)
       func_kwargs = {from_attr_name: make_attr_getter(from_attr_name) for from_attr_name in func_arg_names}
