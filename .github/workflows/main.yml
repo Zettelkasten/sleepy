@@ -15,6 +15,7 @@ jobs:
           - 3.8
         action:
           # just order by name
+          - TEST=lexer
           - TEST=parser
           - TEST=regex
 
