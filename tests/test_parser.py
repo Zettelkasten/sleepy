@@ -295,7 +295,7 @@ def test_ParserGenerator_arithmetic_syn():
     analysis, result = parser.parse_attr_analysis(tokens, token_words)
     print('result:', result['res'])
     # import common operator names for python eval()
-    sin, cos, tan, exp, sqrt = math.sin, math.cos, math.tan, math.exp  # noqa
+    sin, cos, tan, exp, sqrt = math.sin, math.cos, math.tan, math.exp, math.sqrt  # noqa
     assert_equal(result['res'], eval(word))
 
   for word in [
