@@ -245,6 +245,36 @@ class AttributeGrammar(Grammar):
     return attr_eval
 
 
+class SyntaxTree:
+  """
+  Simple abstract syntrax tree.
+  """
+  def __init__(self, prod, right=None):
+    """
+    :param Production prod: production
+    :param list[SyntaxTree|None]|None right: trees corresponding to prod.right
+    """
+    self.prod = prod
+    if right is None:
+      right = [None] * len(prod.right)
+    assert len(prod.right) == len(right)
+    self.right = right  # type: List[Optional[SyntaxTree]]
+
+  def get_left_analysis(self):
+    """
+    :rtype: tuple[Production]
+    """
+    return (self.prod,) + tuple(
+      prod for subtree in self.right if subtree is not None for prod in subtree.get_left_analysis())
+
+  def get_right_analysis(self):
+    """
+    :rtype: tuple[Production]
+    """
+    return (self.prod,) + tuple(
+      prod for subtree in reversed(self.right) if subtree is not None for prod in subtree.get_right_analysis())
+
+
 class LexError(Exception):
   """
   A lexical error, when a word is not recognized (does not have a first-longest-match analysis).
