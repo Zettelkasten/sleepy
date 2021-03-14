@@ -1,6 +1,6 @@
 from typing import Optional, Dict, List, Set, FrozenSet
 
-from sleepy.grammar import EPSILON, ParseError, Production, AttributeGrammar
+from sleepy.grammar import EPSILON, ParseError, Production, AttributeGrammar, SyntaxTree
 
 
 def make_first1_sets(grammar):
@@ -322,3 +322,32 @@ class ParserGenerator:
     assert rev_analysis[-1] == self._start_prod
     assert len(attr_eval_stack) == 1
     return tuple(reversed(rev_analysis)), attr_eval_stack[0]
+
+  def parse_tree(self, tokens, token_words):
+    """
+    :param list[str] tokens:
+    :param list[str] token_words:
+    :type: SyntaxTree
+    """
+
+    def make_prod_tree(prod, tree):
+      """
+      :param Production prod:
+      :param Callable[[int], SyntaxTree] tree:
+      :type: SyntaxTree
+      """
+      return SyntaxTree(prod, *[tree(pos) for pos in range(1, len(prod.right) + 1)])
+
+    from functools import partial
+    attr_g = AttributeGrammar(
+      self.grammar,
+      syn_attrs={'tree'},
+      prod_attr_rules={prod: {'tree.0': partial(make_prod_tree, prod)} for prod in self.grammar.prods},
+      terminal_attr_rules={terminal: {'tree.0': None} for terminal in self.grammar.terminals}
+    )
+    _, root_attr_eval = self.parse_syn_attr_analysis(attr_g, tokens, token_words)
+    assert 'tree' in root_attr_eval
+    root_tree = root_attr_eval['tree']
+    assert isinstance(root_tree, SyntaxTree)
+    assert root_tree.prod == self._start_prod
+    return root_tree

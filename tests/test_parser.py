@@ -6,7 +6,7 @@ from nose.tools import assert_equal, assert_raises, assert_equals
 
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
-from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar
+from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar, SyntaxTree
 
 
 def test_Grammar():
@@ -402,10 +402,20 @@ def test_ParserGenerator_attr_syn():
   assert_equal(attr_g.syn_attrs, {'res'})
   assert_equal(attr_g.inh_attrs, set())
 
+  tokens = ['digit', '+', 'digit']
+  token_words = ['5', '+', '7']
+  print('tokens:', tokens, 'with decomposition', token_words)
   parser = ParserGenerator(g)
+  right_analysis, attr_eval = parser.parse_syn_attr_analysis(attr_g, tokens, token_words)
+  print('right analysis:', right_analysis)
+  print('attribute eval:', attr_eval)
+  assert_equal(right_analysis, (g.prods[0], g.prods[1], g.prods[2], g.prods[4], g.prods[4]))
+  assert_equal(attr_eval, {'res': 5 + 7})
+  tree = parser.parse_tree(tokens, token_words)
+  print('parse tree:', tree)
   assert_equal(
-    parser.parse_syn_attr_analysis(attr_g, ['digit', '+', 'digit'], ['5', '+', '7']),
-    ((g.prods[0], g.prods[1], g.prods[2], g.prods[4], g.prods[4]), {'res': 5 + 7}))
+    tree, SyntaxTree(g.prods[0], SyntaxTree(
+      g.prods[1], SyntaxTree(g.prods[4], None), None, SyntaxTree(g.prods[2], SyntaxTree(g.prods[4], None)))))
 
 
 if __name__ == "__main__":
