@@ -141,6 +141,23 @@ class AttributeGrammar(Grammar):
     assert attr_pos >= 0
     return attr_name, attr_pos
 
+  def _get_attr_func_arg_names(self, func):
+    """
+    :param Callable[tuple[Any], Any] func:
+    :rtype: list[str]
+    """
+    assert callable(func)
+    if hasattr(func, '__code__'):
+      return func.__code__.co_varnames[:func.__code__.co_argcount]
+    if hasattr(func, 'func'):  # partial function
+      from functools import partial
+      assert isinstance(func, partial)
+      orig_func = func.func
+      return [
+        arg_name for arg_name in self._get_attr_func_arg_names(orig_func)[len(func.args):]
+        if arg_name not in func.keywords]
+    assert False
+
   def _sanity_check(self):
     """
     Some asserts that attribute rules are well defined.
@@ -160,7 +177,7 @@ class AttributeGrammar(Grammar):
         else:
           assert False
         if callable(func):
-          func_arg_names = func.__code__.co_varnames[:func.__code__.co_argcount]
+          func_arg_names = self._get_attr_func_arg_names(func)
           assert all(from_attr_name in self.attrs for from_attr_name in func_arg_names), (
             '%r for %r: function arguments must be attributes, got %r but only have %r' %
             (target, prod, func_arg_names, self.attrs))
@@ -171,7 +188,7 @@ class AttributeGrammar(Grammar):
         assert attr_pos == 0
         assert attr_name in self.syn_attrs
         if callable(func):
-          assert func.__code__.co_argcount == 1
+          assert len(self._get_attr_func_arg_names(func)) == 1
 
   @property
   def attrs(self):
@@ -247,7 +264,7 @@ class AttributeGrammar(Grammar):
       assert attr_pos == 0
 
       if callable(func):
-        func_arg_names = func.__code__.co_varnames[:func.__code__.co_argcount]
+        func_arg_names = self._get_attr_func_arg_names(func)
         assert all(
           any(from_attr_name in right_eval for right_eval in right_attr_evals) for from_attr_name in func_arg_names)
         func_kwargs = {from_attr_name: make_attr_getter(from_attr_name) for from_attr_name in func_arg_names}
@@ -285,7 +302,7 @@ class SyntaxTree:
     return hash((self.left, self.right))
 
   def __eq__(self, other):
-    if not isinstance(other, Production):
+    if not isinstance(other, SyntaxTree):
       return False
     return self.left == other.left and self.right == other.right
 
