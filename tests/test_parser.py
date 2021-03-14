@@ -44,9 +44,9 @@ def test_AttributeGrammar_syn():
   assert_equal(attr_g.inh_attrs, set())
   assert_equal(attr_g.get_terminal_syn_attr_eval('digit', 6), {'res': 6})
   assert_equal(attr_g.get_terminal_syn_attr_eval('zero', 0), {})
-  assert_equal(attr_g.get_prod_syn_attr_eval(g.prods[0], [{'res': 4}, {}, {'res': 7}]), {'res': 4 + 7})
-  assert_equal(attr_g.get_prod_syn_attr_eval(g.prods[2], [{'res': 8}]), {'res': 8})
-  assert_equal(attr_g.get_prod_syn_attr_eval(g.prods[1], [{}]), {'res': 0})
+  assert_equal(attr_g.eval_prod_syn_attr(g.prods[0], [{'res': 4}, {}, {'res': 7}]), {'res': 4 + 7})
+  assert_equal(attr_g.eval_prod_syn_attr(g.prods[2], [{'res': 8}]), {'res': 8})
+  assert_equal(attr_g.eval_prod_syn_attr(g.prods[1], [{}]), {'res': 0})
 
 
 def test_make_first1_sets():

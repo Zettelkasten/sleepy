@@ -76,7 +76,7 @@ class Grammar:
       all(self.start not in p.right for p in self.prods))
 
 
-class AttributeGrammar(Grammar):
+class AttributeGrammar:
   """
   A context-free attributed grammar with synthesized and inherited attributes.
 
@@ -227,15 +227,21 @@ class AttributeGrammar(Grammar):
         attr_eval[attr_name] = func
     return attr_eval
 
-  def get_prod_syn_attr_eval(self, prod, right_attr_evals):
+  def _eval_prod_attr(self, prod, eval_pos, eval_attrs, left_attr_eval, right_attr_evals):
     """
+    Evaluate attr.pos for all attributes attr.
+
     :param Production prod:
-    :param list[dict[str,Any]] right_attr_evals: evaluations of right side of production
-    :rtype: dict[str,Any]
+    :param int eval_pos:
+    :param set[str] eval_attrs: which attributes to evaluate
+    :param dict[str,Any] left_attr_eval: (partial) evaluation of production left
+    :param list[dict[str,Any]] right_attr_evals: (partial) evaluations of production right sides
+    :type: dict[str,Any]
     """
-    assert prod in self.grammar.prods
-    assert len(right_attr_evals) == len(prod.right)
     assert prod in self.prod_attr_rules
+    assert 0 <= eval_pos <= len(prod.right)
+    assert all(attr in self.attrs for attr in eval_attrs)
+    assert len(right_attr_evals) == len(prod.right)
 
     def make_attr_getter(get_attr_name):
       """
@@ -249,19 +255,36 @@ class AttributeGrammar(Grammar):
         :param int pos:
         :rtype: Any
         """
-        assert 1 <= pos <= len(prod.right) + 1, '%s.%s: invalid for production %r' % (get_attr_name, pos, prod)
-        assert get_attr_name in right_attr_evals[pos - 1], '%s.%s: evaluation not available, only have %r' % (
-          get_attr_name, pos, right_attr_evals)
-        return right_attr_evals[pos - 1][get_attr_name]
+        assert 0 <= pos <= len(prod.right), '%s.%s: invalid for production %r' % (get_attr_name, pos, prod)
+        if pos == 0:
+          assert get_attr_name in left_attr_eval, '%s.%s: evaluation not available, only have %r' % (
+            get_attr_name, pos, left_attr_eval)
+          return left_attr_eval[get_attr_name]
+        else:
+          assert 0 < pos <= len(prod.right)
+          assert get_attr_name in right_attr_evals[pos - 1], '%s.%s: evaluation not available, only have %r' % (
+            get_attr_name, pos, right_attr_evals)
+          return right_attr_evals[pos - 1][get_attr_name]
 
       return get
 
     attr_eval = {}  # type: Dict[str, Any]
+    if eval_pos == 0:
+      attr_eval.update(left_attr_eval)
+    else:
+      assert 0 < eval_pos <= len(prod.right)
+      attr_eval.update(right_attr_evals[eval_pos - 1])
+
     for attr_target, func in self.prod_attr_rules[prod].items():
       attr_name, attr_pos = self._split_attr_name_pos(attr_target)
-      if attr_name not in self.syn_attrs:
+      if attr_name not in eval_attrs:
         continue
-      assert attr_pos == 0
+      if attr_name in self.inh_attrs:
+        assert 0 < attr_pos <= len(prod.right)
+      else:
+        assert attr_name in self.syn_attrs
+        assert attr_pos == 0
+      assert attr_name not in attr_eval, 'already evaluated'
 
       if callable(func):
         func_arg_names = self._get_attr_func_arg_names(func)
@@ -272,6 +295,30 @@ class AttributeGrammar(Grammar):
       else:
         attr_eval[attr_name] = func
     return attr_eval
+
+  def eval_prod_syn_attr(self, prod, right_attr_evals):
+    """
+    Evaluates synthetic attributes bottom-up, i.e. computes value of syn.0.
+
+    :param Production prod:
+    :param list[dict[str,Any]] right_attr_evals: evaluations of right side of production
+    :rtype: dict[str,Any]
+    """
+    return self._eval_prod_attr(
+      prod, 0, eval_attrs=self.syn_attrs, left_attr_eval={}, right_attr_evals=right_attr_evals)
+
+  def eval_prod_inh_attr(self, prod, eval_pos, left_attr_eval, right_attr_evals):
+    """
+    Evaluates inherited attributes top-down, i.e. computes value of inh.pos
+
+    :param Production prod:
+    :param int eval_pos:
+    :param dict[str,Any] left_attr_eval: (partial) evaluation of production left
+    :param list[dict[str,Any]] right_attr_evals: (partial) evaluations of right side of production
+    :rtype: dict[str,Any]
+    """
+    return self._eval_prod_attr(
+      prod, eval_pos, eval_attrs=self.inh_attrs, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals)
 
 
 class SyntaxTree:

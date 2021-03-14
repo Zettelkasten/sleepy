@@ -303,7 +303,7 @@ class ParserGenerator:
           state_stack.pop()
           attr_eval_stack.pop()
         state_stack.append(self._state_goto_table[state_stack[-1]][action.prod.left])
-        attr_eval_stack.append(attr_grammar.get_prod_syn_attr_eval(action.prod, right_attr_evals))
+        attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(action.prod, right_attr_evals))
         rev_analysis.append(action.prod)
       elif isinstance(action, _AcceptAction) and len(state_stack) == 2:
         assert state_stack[0] == self._initial_state
@@ -311,7 +311,7 @@ class ParserGenerator:
         right_attr_evals = attr_eval_stack[-len(self._start_prod.right):]  # type: List[Dict[str, Any]]
         state_stack.clear()
         attr_eval_stack.clear()
-        attr_eval_stack.append(attr_grammar.get_prod_syn_attr_eval(self._start_prod, right_attr_evals))
+        attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(self._start_prod, right_attr_evals))
         rev_analysis.append(self._start_prod)
         accepted = True
       else:  # error
