@@ -85,9 +85,9 @@ class AttributeGrammar(Grammar):
   ``syn.0 = f(inh.0, inh.1, ..., inh.n,     syn.1, ..., syn.n)``
   """
 
-  def __init__(self, prods, prod_attr_rules, terminal_attr_rules, inh_attrs=None, syn_attrs=None, start=None):
+  def __init__(self, grammar, prod_attr_rules, terminal_attr_rules, inh_attrs=None, syn_attrs=None):
     """
-    :param tuple[Production]|list[Production] prods:
+    :param Grammar grammar:
     :param dict[Production, dict[str, function]]|list[dict[str, function]] prod_attr_rules:
       functions that evaluate attributes for productions.
       For each production `A_0 -> A_1 ... A_n`, dict with keys `attr.i`
@@ -102,7 +102,7 @@ class AttributeGrammar(Grammar):
     :param set[str]|None syn_attrs: names of synthesized (bottom-up) attributes
     :param None|str start: start non-terminal, by default left of first production
     """
-    super().__init__(*prods, start=start)
+    self.grammar = grammar
     if inh_attrs is None:
       inh_attrs = set()
     self.inh_attrs = inh_attrs  # type: Set[str]
@@ -111,11 +111,11 @@ class AttributeGrammar(Grammar):
     self.syn_attrs = syn_attrs  # type: Set[str]
     assert self.inh_attrs & self.syn_attrs == set(), 'inherited and synthesized attributes must be disjoint'
     if isinstance(prod_attr_rules, (list, tuple)):
-      assert len(self.prods) == len(prod_attr_rules)
-      prod_attr_rules = dict(zip(self.prods, prod_attr_rules))
+      assert len(self.grammar.prods) == len(prod_attr_rules)
+      prod_attr_rules = dict(zip(self.grammar.prods, prod_attr_rules))
     assert isinstance(prod_attr_rules, dict)
     self.prod_attr_rules = prod_attr_rules  # type: Dict[Production, Dict[str, Callable]]
-    assert tuple(prod_attr_rules.keys()) == self.prods, 'need one rule set for each production'
+    assert tuple(prod_attr_rules.keys()) == self.grammar.prods, 'need one rule set for each production'
     self.prod_attr_rules = prod_attr_rules
     self.terminal_attr_rules = terminal_attr_rules  # type: Dict[str, Dict[str, Callable]]
     self._sanity_check()
@@ -189,7 +189,7 @@ class AttributeGrammar(Grammar):
     :param str word:
     :rtype: dict[str,Any]
     """
-    assert terminal in self.terminals
+    assert terminal in self.grammar.terminals
     if terminal not in self.terminal_attr_rules:
       return {}
 
@@ -208,6 +208,7 @@ class AttributeGrammar(Grammar):
     :param list[dict[str,Any]] right_attr_evals: evaluations of right side of production
     :rtype: dict[str,Any]
     """
+    assert prod in self.grammar.prods
     assert len(right_attr_evals) == len(prod.right)
     assert prod in self.prod_attr_rules
 

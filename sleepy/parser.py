@@ -111,6 +111,9 @@ class ParserGenerator:
   """
 
   def __init__(self, grammar):
+    """
+    :param Grammar grammar:
+    """
     self.grammar = grammar
     assert self.grammar.is_start_separated()
     start_prods = self.grammar.get_prods_for(self.grammar.start)
@@ -263,18 +266,18 @@ class ParserGenerator:
     assert rev_analysis[-1] == self._start_prod
     return list(reversed(rev_analysis))
 
-  def parse_syn_attr_analysis(self, tokens, token_words):
+  def parse_syn_attr_analysis(self, attr_grammar, tokens, token_words):
     """
     Integrates evaluating synthetic attributes into LR-parsing.
     Does not work with inherited attributes, i.e. requires the grammar to be s-attributed.
+    :param AttributeGrammar attr_grammar:
     :param list[str] tokens:
-    :param None|list[str] token_words: words per token
+    :param list[str] token_words: words per token
     :rtype: (tuple[Production], dict[str,Any])
     :raises: ParseError
     :returns: a right-most analysis of `tokens` + evaluation of attributes in start symbol
     """
-    assert isinstance(self.grammar, AttributeGrammar)
-    assert self.grammar.is_s_attributed(), 'only s-attributed grammars supported'
+    assert attr_grammar.is_s_attributed(), 'only s-attributed grammars supported'
     assert EPSILON not in tokens
     assert len(token_words) == len(tokens)
 
@@ -292,14 +295,14 @@ class ParserGenerator:
         shifted_token, shifted_word = tokens[pos], token_words[pos]
         pos += 1
         state_stack.append(self._state_goto_table[state][action.symbol])
-        attr_eval_stack.append(self.grammar.get_terminal_syn_attr_eval(shifted_token, shifted_word))
+        attr_eval_stack.append(attr_grammar.get_terminal_syn_attr_eval(shifted_token, shifted_word))
       elif isinstance(action, _ReduceAction):
         right_attr_evals = attr_eval_stack[-len(action.prod.right):]  # type: List[Dict[str, Any]]
         for i in range(len(action.prod.right)):
           state_stack.pop()
           attr_eval_stack.pop()
         state_stack.append(self._state_goto_table[state_stack[-1]][action.prod.left])
-        attr_eval_stack.append(self.grammar.get_prod_syn_attr_eval(action.prod, right_attr_evals))
+        attr_eval_stack.append(attr_grammar.get_prod_syn_attr_eval(action.prod, right_attr_evals))
         rev_analysis.append(action.prod)
       elif isinstance(action, _AcceptAction) and len(state_stack) == 2:
         assert state_stack[0] == self._initial_state
