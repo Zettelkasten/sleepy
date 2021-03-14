@@ -93,7 +93,7 @@ class AttributeGrammar(Grammar):
   def __init__(self, grammar, prod_attr_rules, terminal_attr_rules, inh_attrs=None, syn_attrs=None):
     """
     :param Grammar grammar:
-    :param dict[Production, dict[str, function]]|list[dict[str, function]] prod_attr_rules:
+    :param dict[Production, dict[str, function|Any]]|list[dict[str, function|Any]] prod_attr_rules:
       functions that evaluate attributes for productions.
       For each production `A_0 -> A_1 ... A_n`, dict with keys `attr.i`
       (where `attr` is a name of attribute, and `i` a position in the productions symbols).
@@ -101,7 +101,7 @@ class AttributeGrammar(Grammar):
       If `attr` is inherited, then `i` must be `>= 1`.
       For each attribute `attr`, the function is called with a argument of the same name `attr(j)`,
       which is a function giving previously computed attributes of the given symbol in the production.
-    :param dict[str, dict[str, function]] terminal_attr_rules: functions that evaluate attributes for terminals.
+    :param dict[str, dict[str, function|Any]] terminal_attr_rules: functions that evaluate attributes for terminals.
       Same format as `prod_attr_rules`, but with terminal name instead of productions.
     :param set[str]|None inh_attrs: names of inherited (top-down) attributes
     :param set[str]|None syn_attrs: names of synthesized (bottom-up) attributes
@@ -159,19 +159,19 @@ class AttributeGrammar(Grammar):
               '%r for %r: rules for synthesized attributes only allowed for left side of production' % (target, prod))
         else:
           assert False
-        assert callable(func)
-        func_arg_names = func.__code__.co_varnames[:func.__code__.co_argcount]
-        assert all(from_attr_name in self.attrs for from_attr_name in func_arg_names), (
-          '%r for %r: function arguments must be attributes, got %r but only have %r' %
-          (target, prod, func_arg_names, self.attrs))
+        if callable(func):
+          func_arg_names = func.__code__.co_varnames[:func.__code__.co_argcount]
+          assert all(from_attr_name in self.attrs for from_attr_name in func_arg_names), (
+            '%r for %r: function arguments must be attributes, got %r but only have %r' %
+            (target, prod, func_arg_names, self.attrs))
     for terminal, attr_rules in self.terminal_attr_rules.items():
       assert isinstance(attr_rules, dict)
       for target, func in attr_rules.items():
         attr_name, attr_pos = self._split_attr_name_pos(target)
         assert attr_pos == 0
         assert attr_name in self.syn_attrs
-        assert callable(func)
-        assert func.__code__.co_argcount == 1
+        if callable(func):
+          assert func.__code__.co_argcount == 1
 
   @property
   def attrs(self):
@@ -204,7 +204,10 @@ class AttributeGrammar(Grammar):
       if attr_name not in self.syn_attrs:
         continue
       assert attr_pos == 0
-      attr_eval[attr_name] = func(word)
+      if callable(func):
+        attr_eval[attr_name] = func(word)
+      else:
+        attr_eval[attr_name] = func
     return attr_eval
 
   def get_prod_syn_attr_eval(self, prod, right_attr_evals):
@@ -243,11 +246,14 @@ class AttributeGrammar(Grammar):
         continue
       assert attr_pos == 0
 
-      func_arg_names = func.__code__.co_varnames[:func.__code__.co_argcount]
-      assert all(
-        any(from_attr_name in right_eval for right_eval in right_attr_evals) for from_attr_name in func_arg_names)
-      func_kwargs = {from_attr_name: make_attr_getter(from_attr_name) for from_attr_name in func_arg_names}
-      attr_eval[attr_name] = func(**func_kwargs)
+      if callable(func):
+        func_arg_names = func.__code__.co_varnames[:func.__code__.co_argcount]
+        assert all(
+          any(from_attr_name in right_eval for right_eval in right_attr_evals) for from_attr_name in func_arg_names)
+        func_kwargs = {from_attr_name: make_attr_getter(from_attr_name) for from_attr_name in func_arg_names}
+        attr_eval[attr_name] = func(**func_kwargs)
+      else:
+        attr_eval[attr_name] = func
     return attr_eval
 
 
