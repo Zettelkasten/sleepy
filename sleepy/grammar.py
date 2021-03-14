@@ -28,6 +28,11 @@ class Production:
   def __hash__(self):
     return hash((self.left, self.right))
 
+  def __eq__(self, other):
+    if not isinstance(other, Production):
+      return False
+    return self.left == other.left and self.right == other.right
+
 
 class Grammar:
   """
@@ -250,16 +255,33 @@ class SyntaxTree:
   """
   Simple abstract syntrax tree.
   """
-  def __init__(self, prod, right=None):
+  def __init__(self, prod, *right):
     """
     :param Production prod: production
-    :param list[SyntaxTree|None]|None right: trees corresponding to prod.right
+    :param list[SyntaxTree|None] right: trees corresponding to prod.right, or None for non-terminals
     """
-    self.prod = prod
-    if right is None:
-      right = [None] * len(prod.right)
     assert len(prod.right) == len(right)
+    assert all(subtree is None or subtree.left == symbol for subtree, symbol in zip(right, prod.right))
+    self.prod = prod
     self.right = right  # type: List[Optional[SyntaxTree]]
+
+  @property
+  def left(self):
+    """
+    :rtype: str
+    """
+    return self.prod.left
+
+  def __repr__(self):
+    return 'SyntaxTree[%r -> %s]' % (self.left, ' '.join([repr(subtree) for subtree in self.right]))
+
+  def __hash__(self):
+    return hash((self.left, self.right))
+
+  def __eq__(self, other):
+    if not isinstance(other, Production):
+      return False
+    return self.left == other.left and self.right == other.right
 
   def get_left_analysis(self):
     """
