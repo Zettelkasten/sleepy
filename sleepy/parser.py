@@ -270,6 +270,7 @@ class ParserGenerator:
     """
     Integrates evaluating synthetic attributes into LR-parsing.
     Does not work with inherited attributes, i.e. requires the grammar to be s-attributed.
+
     :param AttributeGrammar attr_grammar:
     :param list[str] tokens:
     :param list[str] token_words: words per token
@@ -306,8 +307,11 @@ class ParserGenerator:
         rev_analysis.append(action.prod)
       elif isinstance(action, _AcceptAction) and len(state_stack) == 2:
         assert state_stack[0] == self._initial_state
-        assert len(attr_eval_stack) == 1
+        assert len(attr_eval_stack) == len(self._start_prod.right) == 1
+        right_attr_evals = attr_eval_stack[-len(self._start_prod.right):]  # type: List[Dict[str, Any]]
         state_stack.clear()
+        attr_eval_stack.clear()
+        attr_eval_stack.append(attr_grammar.get_prod_syn_attr_eval(self._start_prod, right_attr_evals))
         rev_analysis.append(self._start_prod)
         accepted = True
       else:  # error
