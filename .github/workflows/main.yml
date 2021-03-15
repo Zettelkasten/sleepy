@@ -18,6 +18,7 @@ jobs:
           - TEST=lexer
           - TEST=parser
           - TEST=regex
+          - TEST=semantic
 
     steps:
     - uses: actions/checkout@v2
