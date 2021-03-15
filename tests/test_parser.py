@@ -7,6 +7,7 @@ from nose.tools import assert_equal, assert_raises, assert_equals
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
 from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar, SyntaxTree
+from sleepy.semantic import AttributeEvalGenerator
 
 
 def test_Grammar():
@@ -408,7 +409,7 @@ def test_ParserGenerator_attr_syn():
   parser = ParserGenerator(g)
   right_analysis, attr_eval = parser.parse_syn_attr_analysis(attr_g, tokens, token_words)
   print('right analysis:', right_analysis)
-  print('attribute eval:', attr_eval)
+  print('attribute eval (online):', attr_eval)
   assert_equal(right_analysis, (g.prods[0], g.prods[1], g.prods[2], g.prods[4], g.prods[4]))
   assert_equal(attr_eval, {'res': 5 + 7})
   tree = parser.parse_tree(tokens, token_words)
@@ -416,6 +417,10 @@ def test_ParserGenerator_attr_syn():
   assert_equal(
     tree, SyntaxTree(g.prods[0], SyntaxTree(
       g.prods[1], SyntaxTree(g.prods[4], None), None, SyntaxTree(g.prods[2], SyntaxTree(g.prods[4], None)))))
+  attr_eval_gen = AttributeEvalGenerator(attr_g)
+  tree_attr_eval = attr_eval_gen.eval_attrs(tree, token_words)
+  print('attribute eval (using tree):', tree_attr_eval)
+  assert_equal(tree_attr_eval, {'res': 5 + 7})
 
 
 if __name__ == "__main__":
