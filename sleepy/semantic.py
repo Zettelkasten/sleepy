@@ -63,7 +63,8 @@ class AttributeEvalGenerator:
       else:
         assert current_prod_pos == len(current_tree.right)
         # ascent into non-terminal parent tree
-        parent_tree_attr_eval = self.attr_grammar.eval_prod_syn_attr(current_tree.prod, current_right_attr_eval)
+        parent_tree_attr_eval = self.attr_grammar.eval_prod_syn_attr(
+          current_tree.prod, current_left_attr_eval, current_right_attr_eval)
         tree_stack.pop()
         prod_pos_stack.pop()
         left_attr_eval_stack.pop()

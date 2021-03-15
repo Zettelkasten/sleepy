@@ -243,9 +243,10 @@ class AttributeGrammar:
     assert all(attr in self.attrs for attr in eval_attrs)
     assert len(right_attr_evals) == len(prod.right)
 
-    def make_attr_getter(get_attr_name):
+    def make_attr_getter(get_attr_name, rule_attr_target):
       """
       :param str get_attr_name:
+      :param str rule_attr_target: caller
       :rtype: function[int, Any]
       """
 
@@ -257,13 +258,14 @@ class AttributeGrammar:
         """
         assert 0 <= pos <= len(prod.right), '%s.%s: invalid for production %r' % (get_attr_name, pos, prod)
         if pos == 0:
-          assert get_attr_name in left_attr_eval, '%s.%s: evaluation not available, only have %r' % (
-            get_attr_name, pos, left_attr_eval)
+          assert get_attr_name in left_attr_eval, '%r: evaluation of %s.%s for rule %s not available, only have %r' % (
+            prod, get_attr_name, pos, rule_attr_target, left_attr_eval)
           return left_attr_eval[get_attr_name]
         else:
           assert 0 < pos <= len(prod.right)
-          assert get_attr_name in right_attr_evals[pos - 1], '%s.%s: evaluation not available, only have %r' % (
-            get_attr_name, pos, right_attr_evals)
+          assert get_attr_name in right_attr_evals[pos - 1], (
+            '%r: evaluation of %s.%s for rule %s not available, only have %r' % (
+              prod, get_attr_name, pos, rule_attr_target, right_attr_evals))
           return right_attr_evals[pos - 1][get_attr_name]
 
       return get
@@ -279,6 +281,8 @@ class AttributeGrammar:
       attr_name, attr_pos = self._split_attr_name_pos(attr_target)
       if attr_name not in eval_attrs:
         continue
+      if attr_pos is not eval_pos:
+        continue
       if attr_name in self.inh_attrs:
         assert 0 < attr_pos <= len(prod.right)
       else:
@@ -286,26 +290,32 @@ class AttributeGrammar:
         assert attr_pos == 0
       assert attr_name not in attr_eval, 'already evaluated'
 
+      available_attr_names = left_attr_eval.keys() | {
+        attr_name for right_eval in right_attr_evals for attr_name in right_eval}
       if callable(func):
         func_arg_names = self._get_attr_func_arg_names(func)
-        assert all(
-          any(from_attr_name in right_eval for right_eval in right_attr_evals) for from_attr_name in func_arg_names)
-        func_kwargs = {from_attr_name: make_attr_getter(from_attr_name) for from_attr_name in func_arg_names}
+        assert all(from_attr_name in available_attr_names for from_attr_name in func_arg_names), (
+          '%r: evaluation for %r not available, only have evals %r -> %r' % (
+            prod, func_arg_names, left_attr_eval, right_attr_evals))
+        func_kwargs = {
+          from_attr_name: make_attr_getter(from_attr_name, rule_attr_target=attr_target)
+          for from_attr_name in func_arg_names}
         attr_eval[attr_name] = func(**func_kwargs)
       else:
         attr_eval[attr_name] = func
     return attr_eval
 
-  def eval_prod_syn_attr(self, prod, right_attr_evals):
+  def eval_prod_syn_attr(self, prod, left_attr_eval, right_attr_evals):
     """
     Evaluates synthetic attributes bottom-up, i.e. computes value of syn.0.
 
     :param Production prod:
+    :param dict[str,Any] left_attr_eval: (partial) evaluation of production left
     :param list[dict[str,Any]] right_attr_evals: evaluations of right side of production
     :rtype: dict[str,Any]
     """
     return self._eval_prod_attr(
-      prod, 0, eval_attrs=self.syn_attrs, left_attr_eval={}, right_attr_evals=right_attr_evals)
+      prod, 0, eval_attrs=self.syn_attrs, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals)
 
   def eval_prod_inh_attr(self, prod, eval_pos, left_attr_eval, right_attr_evals):
     """
