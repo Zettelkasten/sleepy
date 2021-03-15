@@ -50,6 +50,7 @@ def test_AttributeEvalGenerator_check_declaredness():
 
   def evaluate(word, target_eval):
     print('----')
+    print('input word:', word)
     tokens, token_words = lexer.tokenize(word)
     print('tokens:', tokens, 'with decomposition', token_words)
     tree = parser.parse_tree(tokens, token_words)
@@ -61,8 +62,6 @@ def test_AttributeEvalGenerator_check_declaredness():
   evaluate('alpha=5;beta=7;gamma=alpha', {'decl_s': {'alpha', 'beta', 'gamma'}, 'ok': True})
   evaluate('alpha=5;beta=alpha;gamma=alpha', {'decl_s': {'alpha', 'beta', 'gamma'}, 'ok': True})
   evaluate('alpha=1;beta=alpha;gamma=beta', {'decl_s': {'alpha', 'beta', 'gamma'}, 'ok': True})
-  evaluate('alpha=alpha', {'decl_s': {'alpha'}, 'ok': False})
-  evaluate('alpha=1.0;beta=gamma', {'decl_s': {'alpha', 'beta'}, 'ok': False})
   evaluate('alpha=alpha', {'decl_s': {'alpha'}, 'ok': False})
   evaluate('alpha=1.0;beta=gamma', {'decl_s': {'alpha', 'beta'}, 'ok': False})
   evaluate(
