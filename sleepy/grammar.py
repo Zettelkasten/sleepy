@@ -431,6 +431,8 @@ class ParseError(Exception):
     :param str message:
     :param None|list[str] token_words: decomposition of entire word into tokens
     """
+    if token_words is not None:
+      assert len(token_words) == len(tokens)
     output = token_words if token_words is not None else tokens
     super().__init__(
       '%s: %s' % (' '.join([repr(s) for s in output[:pos]] + ['!'] + [repr(s) for s in output[pos:]]), message))

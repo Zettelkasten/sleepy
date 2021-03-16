@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Set, Union, Optional
+from typing import Dict, Tuple, Set, Union, Optional, List
 
 from sleepy.automaton import ERROR_STATE
 from sleepy.grammar import LexError
@@ -10,9 +10,12 @@ class LexerGenerator:
   Implements a backtracking DFA.
   """
 
+  NORMAL_MODE = object()
+
   def __init__(self, token_names, token_regex_table):
     """
-    :param list[str] token_names: list of token names, sorted by priority.
+    :param list[str|None] token_names: list of token names, sorted by priority.
+      Tokens with name `None` will be removed entirely (e.g. for whitespace, comments, etc.).
     :param list[str] token_regex_table: corresponding regex's, not recognizing the empty word.
     """
     assert len(token_names) == len(token_regex_table)
@@ -72,7 +75,7 @@ class LexerGenerator:
     """
     pos = 0
     state = self._initial_state
-    backtrack_mode = None  # type: Optional[str]
+    backtrack_mode = self.NORMAL_MODE  # type: Union[str, LexerGenerator.NORMAL_MODE]
     backtrack_pos = None  # type: Optional[int]
     analysis = []  # type: List[str]
     decomposition = []  # type: List[str]
@@ -86,10 +89,13 @@ class LexerGenerator:
       assert backtrack_mode in self.token_names
       assert backtrack_pos is not None
       state = self._initial_state
-      analysis.append(backtrack_mode)
-      decomposition.append(word[token_begin_pos:pos])
+      if backtrack_mode is not None:
+        analysis.append(backtrack_mode)
+        decomposition.append(word[token_begin_pos:pos])
+      else:  # read token is None, i.e. ignored.
+        pass
       pos, token_begin_pos = backtrack_pos, backtrack_pos
-      backtrack_mode, backtrack_pos = None, None
+      backtrack_mode, backtrack_pos = self.NORMAL_MODE, None
       assert state not in self._final_states
 
     while pos <= len(word):
@@ -97,7 +103,7 @@ class LexerGenerator:
         if pos == token_begin_pos:
           break
         # unfinished word remaining
-        if backtrack_mode is None:  # normal mode
+        if backtrack_mode is self.NORMAL_MODE:  # normal mode
           raise LexError(word, pos, 'Missing more characters, so far read %r / %r' % (analysis, decomposition))
         else:  # backtracking mode
           do_backtrack()
@@ -106,7 +112,7 @@ class LexerGenerator:
       char = word[pos]
       state = self._get_next_state(state, char)
       if state is ERROR_STATE:
-        if backtrack_mode is None:  # normal mode, no backtracking yet
+        if backtrack_mode is self.NORMAL_MODE:  # normal mode, no backtracking yet
           raise LexError(word, pos, 'Unrecognized pattern')
         else:  # backtracking mode, needs to backtrack now
           do_backtrack()

@@ -27,6 +27,22 @@ def test_LexerGenerator_arithmetic():
   assert_equal(lexer.tokenize('index4/2'), (('Name', 'Op', 'Lit'), ('index4', '/', '2')))
 
 
+def test_LexerGenerator_deleted_tokens():
+  lexer = LexerGenerator(
+    ['keyword', '=', 'op', ';', '(', ')', '{', '}', 'name', 'const', None], [
+      'int|str|bool|if|for|while', '=', '<|>|==|<=|>=|!=', ';', '\\(', '\\)', '{', '}', '([a-z]|[A-Z]|_)+',
+      '[1-9][0-9]*(\\.[0-9]*)?', ' +']
+  )
+  assert_equal(
+    lexer.tokenize('int hello = 6; test = hello; while (hello >= 6) { print(hello); }'), ((
+      'keyword', 'name', '=', 'const', ';', 'name', '=', 'name', ';', 'keyword', '(', 'name', 'op', 'const', ')', '{',
+      'name', '(', 'name', ')', ';', '}'), (
+      'int', 'hello', '=', '6', ';', 'test', '=', 'hello', ';', 'while', '(', 'hello', '>=', '6', ')', '{', 'print',
+      '(', 'hello', ')', ';', '}')))
+  assert_equal(
+    lexer.tokenize('int my_int = 3;'), (('keyword', 'name', '=', 'const', ';'), ('int', 'my_int', '=', '3', ';')))
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
