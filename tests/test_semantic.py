@@ -64,7 +64,7 @@ def test_AttributeEvalGenerator_check_declaredness():
 
 
 def test_AttributeEvalGenerator_typed_arithmetic():
-  import math
+  import math, numpy as np
   lexer = LexerGenerator(
     token_names=['(', ')', '+', '-', '*', '**', '/', '[', ']', ',', 'const', 'name', None],
     token_regex_table=[
@@ -94,42 +94,22 @@ def test_AttributeEvalGenerator_typed_arithmetic():
 
   def op_plus_res(type, res):
     left, right, left_type, right_type = res(1), res(3), type(1), type(3)
-    if ERROR in [left, right]:
+    if left is ERROR or right is ERROR:
       return ERROR
-    if left_type == right_type == 'num':
-      assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+    if left_type == right_type in {'num', 'vec', 'mat'}:
+      if np.shape(left) != np.shape(right):
+        return ERROR
       return left + right
-    if left_type == right_type == 'vec':
-      assert isinstance(left, list) and isinstance(right, list)
-      if len(left) != len(right):
-        return ERROR
-      return [l + r for l, r in zip(left, right)]
-    if left_type == right_type == 'mat':
-      assert isinstance(left, list) and isinstance(right, list)
-      if len(left) != len(right):
-        return ERROR
-      if not all(len(a) == len(b) for a, b in zip(left, right)):
-        return ERROR
-      return [[l + r for l, r in zip(a, b)] for a, b in zip(left, right)]
     return ERROR
 
   def op_minus_res(type, res):
     left, right, left_type, right_type = res(1), res(3), type(1), type(3)
-    if ERROR in [left, right]:
+    if left is ERROR or right is ERROR:
       return ERROR
-    if left_type == right_type == 'num':
-      assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+    if left_type == right_type in {'num', 'vec', 'mat'}:
+      if np.shape(left) != np.shape(right):
+        return ERROR
       return left - right
-    if left_type == right_type == 'vec':
-      assert isinstance(left, list) and isinstance(right, list)
-      if len(left) != len(right):
-        return ERROR
-      return [l - r for l, r in zip(left, right)]
-    if left_type == right_type == 'mat':
-      assert isinstance(left, list) and isinstance(right, list)
-      if len(left) != len(right):
-        return ERROR
-      return [[l - r for l, r in zip(a, b)] for a, b in zip(left, right)]
     return ERROR
 
   def op_times_type(type):
@@ -138,52 +118,55 @@ def test_AttributeEvalGenerator_typed_arithmetic():
       return 'num'
     if (left_type == 'vec' and right_type == 'num') or (left_type == 'num' and right_type == 'vec'):
       return 'vec'
-    if (left_type == 'mat' and right_type == 'num') or (left_type == 'num' and right_type == 'mat'):
+    if left_type == 'mat' or right_type == 'mat':
       return 'mat'
     return ERROR
 
   def op_times_res(type, res):
     left, right, left_type, right_type = res(1), res(3), type(1), type(3)
-    if ERROR in [left, right]:
+    if left is ERROR or right is ERROR:
       return ERROR
-    if left_type == right_type == 'num':
-      assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+    if left_type not in {'num', 'vec', 'mat'} or right_type not in {'num', 'vec', 'mat'}:
+      return ERROR
+    if left_type == 'num' or right_type == 'num':
       return left * right
-    if (left_type == 'vec' and right_type == 'num') or (left_type == 'num' and right_type == 'vec'):
-      vec = left if left_type == 'vec' else right
-      num = left if left_type == 'num' else right
-      assert isinstance(vec, list) and isinstance(num, (float, int))
-      return [num * a for a in vec]
-    if (left_type == 'mat' and right_type == 'num') or (left_type == 'num' and right_type == 'mat'):
-      mat = left if left_type == 'mat' else right
-      num = left if left_type == 'num' else right
-      assert isinstance(mat, list) and isinstance(num, (float, int))
-      return [[num * a for a in vec] for vec in mat]
+    if left_type == 'mat' or right_type == 'mat':
+      if left_type == 'vec':
+        assert right_type == 'mat'
+        if np.shape(left)[0] != np.shape(right)[0]:
+          return ERROR
+        return left * right
+      if right_type == 'vec':
+        assert left_type == 'mat'
+        if np.shape(left)[1] != np.shape(right)[0]:
+          return ERROR
+        return left * right
+      assert left_type == right_type == 'mat'
+      if np.shape(left)[1] != np.shape(right)[0]:
+        return ERROR
+      return left * right
     return ERROR
 
   def op_divided_res(type, res):
     left, right, left_type, right_type = res(1), res(3), type(1), type(3)
-    if ERROR in [left, right]:
+    if left is ERROR or right is ERROR:
       return ERROR
-    if left_type == right_type == 'num':
-      assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+    if left_type not in {'num', 'vec', 'mat'} or right_type not in {'num', 'vec', 'mat'}:
+      return ERROR
+    if right_type == 'num':
       return left / right
-    if left_type == 'vec' and right_type == 'num':
-      assert isinstance(left, list) and isinstance(right, (float, int))
-      return [a / right for a in left]
-    if (left_type == 'mat' and right_type == 'num') or (left_type == 'num' and right_type == 'mat'):
-      mat = left if left_type == 'mat' else right
-      num = left if left_type == 'num' else right
-      assert isinstance(mat, list) and isinstance(num, (float, int))
-      return [[num / a for a in vec] for vec in mat]
     return ERROR
 
   def op_pow_res(type, res):
     left, right, left_type, right_type = res(1), res(3), type(1), type(3)
-    if ERROR in [left, right]:
+    if left is ERROR or right is ERROR:
       return ERROR
     if left_type == right_type == 'num':
       assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+      return left ** right
+    if left_type == 'mat' and right_type == 'num':
+      if np.shape(left)[0] != np.shape(right)[0]:
+        return ERROR
       return left ** right
     return ERROR
 
@@ -195,13 +178,13 @@ def test_AttributeEvalGenerator_typed_arithmetic():
 
   def op_func_res(type, res, name):
     arg, arg_type = res(3), type(3)
-    if arg == ERROR:
+    if arg is ERROR:
       return ERROR
     if name(1) in {'ones', 'zeros'}:
       if arg_type != 'num' or arg <= 1:
         return ERROR
       assert isinstance(arg, (float, int))
-      return [1 if name(1) == 'ones' else 0] * int(arg)
+      return (np.ones if name(1) == 'ones' else np.zeros)(int(arg))
     if arg_type == 'num':
       if not hasattr(math, name(1)):
         return ERROR
@@ -235,7 +218,7 @@ def test_AttributeEvalGenerator_typed_arithmetic():
         length = len(res_list_[0])
         if not all(len(vec) == length for vec in res_list_):
           return ERROR
-      return res_list_
+      return np.array(res_list_)
     return ERROR
 
   attr_g = AttributeGrammar(
@@ -274,12 +257,13 @@ def test_AttributeEvalGenerator_typed_arithmetic():
     tokens, token_words = lexer.tokenize(word)
     print('tokens:', tokens, 'with decomposition', token_words)
     analysis, result = parser.parse_syn_attr_analysis(attr_g, tokens, token_words)
-    print('result:', result['res'])
+    print('result:')
+    print(result['res'])
     if isinstance(expected_result, (float, int)):
       assert_almost_equal(result['res'], expected_result)
     else:
-      assert_equal(result['res'], expected_result)
-    if result['res'] != ERROR:
+      np.testing.assert_equal(result['res'], expected_result)
+    if result['res'] is not ERROR:
       print('result type:', result['type'])
       assert_equal(result['type'], expected_type)
 
