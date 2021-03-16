@@ -43,6 +43,31 @@ def test_LexerGenerator_deleted_tokens():
     lexer.tokenize('int my_int = 3;'), (('keyword', 'name', '=', 'const', ';'), ('int', 'my_int', '=', '3', ';')))
 
 
+def test_LexerGenerator_comments():
+  lexer = LexerGenerator(
+    [None, 'keyword', '=', ';', 'name', 'const', None], [
+      '(/\\*([^\\*]|\\*+[^/])*\\*+/)|(//[^\n]*\n?)', 'int', '=', ';', '([a-z]|[A-Z]|_)+', '[1-9][0-9]*(\\.[0-9]*)?',
+      '[ \n]+']
+  )
+  assert_equal(lexer.tokenize('// hello world\n'), ((), ()))
+  assert_equal(lexer.tokenize('// hello world\na = 6;'), (('name', '=', 'const', ';'), ('a', '=', '6', ';')))
+  assert_equal(lexer.tokenize('/*one*/'), ((), ()))
+  assert_equal(lexer.tokenize('/*one*//*two*/'), ((), ()))
+  assert_equal(lexer.tokenize('/* one line \n two lines */'), ((), ()))
+  assert_equal(lexer.tokenize('a = 5;\nb = 6;'), (
+    ('name', '=', 'const', ';', 'name', '=', 'const', ';'), ('a', '=', '5', ';', 'b', '=', '6', ';')))
+  assert_equal(lexer.tokenize('a = 5; /* set a to 5 */\na = 6;'),
+    (('name', '=', 'const', ';', 'name', '=', 'const', ';'), ('a', '=', '5', ';', 'a', '=', '6', ';')))
+  assert_equal(lexer.tokenize('a = 5; /* set a to 5 */\na = 6; /* and an extra comment */'),
+    (('name', '=', 'const', ';', 'name', '=', 'const', ';'), ('a', '=', '5', ';', 'a', '=', '6', ';')))
+  print(lexer.tokenize('a = 5; /* set a to 5 */\na = 6; // now set it to 6\n/* more\nand more */ b = 3;'))
+  assert_equal(
+    lexer.tokenize('a = 5; /* set a to 5 */\na = 6; // now set it to 6\n/* more\nand more */ b = 3;'),
+    (('name', '=', 'const', ';', 'name', '=', 'const', ';', 'name', '=', 'const', ';'),
+    ('a', '=', '5', ';', 'a', '=', '6', ';', 'b', '=', '3', ';'))
+  )
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
