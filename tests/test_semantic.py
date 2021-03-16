@@ -184,6 +184,8 @@ def test_AttributeEvalGenerator_typed_arithmetic():
     arg_type = type(3)
     if name(1) in {'ones', 'zeros'}:
       return 'vec'
+    if name(1) in {'len'}:
+      return 'num'
     return arg_type
 
   def op_func_res(type, res, name):
@@ -195,6 +197,10 @@ def test_AttributeEvalGenerator_typed_arithmetic():
         return ERROR
       assert isinstance(arg, (float, int))
       return (np.ones if name(1) == 'ones' else np.zeros)(int(arg))
+    if name(1) == 'len':
+      if arg_type != 'vec':
+        return ERROR
+      return np.linalg.norm(arg)
     if arg_type == 'num':
       if not hasattr(math, name(1)):
         return ERROR
@@ -308,6 +314,11 @@ def test_AttributeEvalGenerator_typed_arithmetic():
   evaluate('[[1,0],[0,1]] ** 5', [[1,0],[0,1]], 'mat')
   evaluate('[[0,2],[1,1]] + 3 * [[3,0],[1,1]]', [[9,2],[4,4]], 'mat')
   evaluate('[[1,0,3,-2],[3,2,1,0]] * [[2,1,0],[0,1,0],[-1,4,1],[3,2,-1]]', [[-7, 9, 5], [5, 9, 1]], 'mat')
+  evaluate('2**-3', 2 ** -3, 'num')
+  evaluate('2--3', 5, 'num')
+  evaluate('-[1,0]*4', [-4,0], 'vec')
+  evaluate('[1,2,3]*[1,2]', ERROR)
+  evaluate('len([3,4])', 5, 'num')
 
 
 if __name__ == "__main__":
