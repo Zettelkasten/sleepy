@@ -82,10 +82,12 @@ def test_AttributeEvalGenerator_typed_arithmetic():
     Production('Prod', 'Pow'),
     Production('Pow', 'Term', '**', 'Pow'),
     Production('Pow', 'Term'),
-    Production('Term', '(', 'Sum', ')'),
-    Production('Term', 'name', '(', 'Sum', ')'),
-    Production('Term', 'const'),
-    Production('Term', '[', 'ExprList', ']'),
+    Production('Term', '-', 'NegTerm'),
+    Production('Term', 'NegTerm'),
+    Production('NegTerm', '(', 'Sum', ')'),
+    Production('NegTerm', 'name', '(', 'Sum', ')'),
+    Production('NegTerm', 'const'),
+    Production('NegTerm', '[', 'ExprList', ']'),
     Production('ExprList', 'Sum'),
     Production('ExprList', 'ExprList', ',', 'Sum')
   )
@@ -135,16 +137,16 @@ def test_AttributeEvalGenerator_typed_arithmetic():
         assert right_type == 'mat'
         if np.shape(left)[0] != np.shape(right)[0]:
           return ERROR
-        return left * right
+        return np.matmul(left, right)
       if right_type == 'vec':
         assert left_type == 'mat'
         if np.shape(left)[1] != np.shape(right)[0]:
           return ERROR
-        return left * right
+        return np.matmul(left, right)
       assert left_type == right_type == 'mat'
       if np.shape(left)[1] != np.shape(right)[0]:
         return ERROR
-      return left * right
+      return np.matmul(left, right)
     return ERROR
 
   def op_divided_res(type, res):
@@ -165,9 +167,17 @@ def test_AttributeEvalGenerator_typed_arithmetic():
       assert isinstance(left, (float, int)) and isinstance(right, (float, int))
       return left ** right
     if left_type == 'mat' and right_type == 'num':
-      if np.shape(left)[0] != np.shape(right)[0]:
+      if np.shape(left)[0] != np.shape(left)[1]:
         return ERROR
       return left ** right
+    return ERROR
+
+  def op_neg_res(type, res):
+    type_, res_ = type(2), res(2)
+    if res_ is ERROR:
+      return ERROR
+    if type_ in {'num', 'vec', 'mat'}:
+      return -res_
     return ERROR
 
   def op_func_type(type, name):
@@ -232,7 +242,9 @@ def test_AttributeEvalGenerator_typed_arithmetic():
       {'type': op_times_type, 'res': op_times_res},
       {'type': op_times_type, 'res': op_divided_res},
       {'type': 'type.1', 'res': 'res.1'},
-      {'type': 'type.3', 'res': op_pow_res},
+      {'type': 'type.1', 'res': op_pow_res},
+      {'type': 'type.1', 'res': 'res.1'},
+      {'type': 'type.2', 'res': op_neg_res},
       {'type': 'type.1', 'res': 'res.1'},
       {'type': 'type.2', 'res': 'res.2'},
       {'type': op_func_type, 'res': op_func_res},
@@ -293,6 +305,9 @@ def test_AttributeEvalGenerator_typed_arithmetic():
   evaluate('[[1,0,0],[0,1,0],[0,0,1]]+[[0,1]]', ERROR)
   evaluate('[[1,0,0],[0,1,0],[0,0,1]]+[[1,0,0],[0,1,0],[0,0,1]]', [[2,0,0],[0,2,0],[0,0,2]], 'mat')
   evaluate('[[1,0,0],[0,1,0],[0,0,1]]+0*[[1,0,0],[0,1,0],[0,0,1]]', [[1,0,0],[0,1,0],[0,0,1]], 'mat')
+  evaluate('[[1,0],[0,1]] ** 5', [[1,0],[0,1]], 'mat')
+  evaluate('[[0,2],[1,1]] + 3 * [[3,0],[1,1]]', [[9,2],[4,4]], 'mat')
+  evaluate('[[1,0,3,-2],[3,2,1,0]] * [[2,1,0],[0,1,0],[-1,4,1],[3,2,-1]]', [[-7, 9, 5], [5, 9, 1]], 'mat')
 
 
 if __name__ == "__main__":
