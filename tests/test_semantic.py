@@ -29,16 +29,10 @@ def test_AttributeEvalGenerator_check_declaredness():
     inh_attrs={'decl_i'},
     syn_attrs={'decl_s', 'name', 'ok'},
     prod_attr_rules=[
-      {'decl_i.1': set(), 'decl_s.0': lambda decl_s: decl_s(1), 'ok': lambda ok: ok(1)},
-      {'decl_i.1': lambda decl_i: decl_i(0), 'decl_s.0': lambda decl_s: decl_s(1), 'ok': lambda ok: ok(1)},
-      {
-        'decl_i.1': lambda decl_i: decl_i(0), 'decl_i.3': lambda decl_s: decl_s(1),
-        'decl_s.0': lambda decl_s: decl_s(3), 'ok': lambda ok: ok(1) and ok(3)
-      },
-      {
-        'decl_i.3': lambda decl_i: decl_i(0), 'decl_s.0': lambda decl_i, name: decl_i(0) | {name(1)},
-        'ok.0': lambda ok: ok(3)
-      },
+      {'decl_i.1': set(), 'decl_s.0': 'decl_s.1', 'ok': 'ok.1'},
+      {'decl_i.1': 'decl_i.0', 'decl_s.0': 'decl_s.1', 'ok': 'ok.1'},
+      {'decl_i.1': 'decl_i.0', 'decl_i.3': 'decl_s.1', 'decl_s.0': 'decl_s.3', 'ok': lambda ok: ok(1) and ok(3)},
+      {'decl_i.3': 'decl_i.0', 'decl_s.0': lambda decl_i, name: decl_i(0) | {name(1)}, 'ok.0': 'ok.3'},
       {'ok.0': lambda decl_i, name: name(1) in decl_i(0)},
       {'ok.0': True}
     ],

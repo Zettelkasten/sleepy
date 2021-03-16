@@ -2,7 +2,7 @@
 The empty symbol (!= the empty word).
 Use empty tuple as empty word.
 """
-from typing import Tuple, Any, Dict, Set, Callable
+from typing import Tuple, Any, Dict, Set, Callable, Union
 
 EPSILON = None
 
@@ -93,7 +93,7 @@ class AttributeGrammar:
   def __init__(self, grammar, prod_attr_rules, terminal_attr_rules, inh_attrs=None, syn_attrs=None):
     """
     :param Grammar grammar:
-    :param dict[Production, dict[str, function|Any]]|list[dict[str, function|Any]] prod_attr_rules:
+    :param dict[Production, dict[str, function|str|Any]]|list[dict[str, function|str|Any]] prod_attr_rules:
       functions that evaluate attributes for productions.
       For each production `A_0 -> A_1 ... A_n`, dict with keys `attr.i`
       (where `attr` is a name of attribute, and `i` a position in the productions symbols).
@@ -119,10 +119,10 @@ class AttributeGrammar:
       assert len(self.grammar.prods) == len(prod_attr_rules)
       prod_attr_rules = dict(zip(self.grammar.prods, prod_attr_rules))
     assert isinstance(prod_attr_rules, dict)
-    self.prod_attr_rules = prod_attr_rules  # type: Dict[Production, Dict[str, Callable]]
+    self.prod_attr_rules = prod_attr_rules  # type: Dict[Production, Dict[str, Union[Callable, str, Any]]]
     assert tuple(prod_attr_rules.keys()) == self.grammar.prods, 'need one rule set for each production'
     self.prod_attr_rules = prod_attr_rules
-    self.terminal_attr_rules = terminal_attr_rules  # type: Dict[str, Dict[str, Callable]]
+    self.terminal_attr_rules = terminal_attr_rules  # type: Dict[str, Dict[str, Union[Callable, str]]]
     self._sanity_check()
 
   def _split_attr_name_pos(self, attr_target):
@@ -166,8 +166,8 @@ class AttributeGrammar:
       assert isinstance(attr_rules, dict)
       for target, func in attr_rules.items():
         attr_name, attr_pos = self._split_attr_name_pos(target)
-        assert 0 <= attr_pos <= len(prod.right)
         assert attr_name in self.attrs
+        assert 0 <= attr_pos <= len(prod.right)
         if attr_name in self.inh_attrs:
           assert attr_pos >= 1, (
               '%r for %r: rules for inherited attributes only allowed for right side of production' % (target, prod))
@@ -181,6 +181,20 @@ class AttributeGrammar:
           assert all(from_attr_name in self.attrs for from_attr_name in func_arg_names), (
             '%r for %r: function arguments must be attributes, got %r but only have %r' %
             (target, prod, func_arg_names, self.attrs))
+        elif isinstance(func, str):
+          from_attr_name, from_attr_pos = self._split_attr_name_pos(func)
+          assert from_attr_name in self.attrs
+          assert 0 <= from_attr_pos <= len(prod.right)
+          if from_attr_name in self.inh_attrs:
+            assert from_attr_pos == 0, (
+              '%r for %r: may not depend on %s.%s' % (target, prod, from_attr_name, from_attr_pos))
+          elif from_attr_name in self.syn_attrs:
+            assert from_attr_pos >= 1, (
+              '%r for %r: may not depend on %s.%s' % (target, prod, from_attr_name, from_attr_pos))
+          else:
+            assert False
+        else:  # func is a constant
+          pass
     for terminal, attr_rules in self.terminal_attr_rules.items():
       assert isinstance(attr_rules, dict)
       for target, func in attr_rules.items():
@@ -189,6 +203,10 @@ class AttributeGrammar:
         assert attr_name in self.syn_attrs
         if callable(func):
           assert len(self._get_attr_func_arg_names(func)) == 1
+        elif isinstance(func, str):
+          assert False, '%r for %r: terminal rules must not depend on other attributes' % (target, prod)
+        else:  # func is a constant
+          pass
 
   @property
   def attrs(self):
@@ -223,6 +241,8 @@ class AttributeGrammar:
       assert attr_pos == 0
       if callable(func):
         attr_eval[attr_name] = func(word)
+      elif isinstance(func, str):
+        assert False, 'terminal attribute rules may not depend on anything else'
       else:
         attr_eval[attr_name] = func
     return attr_eval
@@ -301,6 +321,12 @@ class AttributeGrammar:
           from_attr_name: make_attr_getter(from_attr_name, rule_attr_target=attr_target)
           for from_attr_name in func_arg_names}
         attr_eval[attr_name] = func(**func_kwargs)
+      elif isinstance(func, str):
+        from_attr_name, from_attr_pos = self._split_attr_name_pos(func)
+        assert from_attr_name in available_attr_names, (
+          '%r: evaluation for %s.%s not available, only have evals %r -> %r' % (
+            prod, from_attr_name, from_attr_pos, left_attr_eval, right_attr_evals))
+        attr_eval[attr_name] = make_attr_getter(from_attr_name, rule_attr_target=attr_target)(from_attr_pos)
       else:
         attr_eval[attr_name] = func
     return attr_eval
