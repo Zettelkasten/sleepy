@@ -2,7 +2,7 @@ import _setup_test_env  # noqa
 import sys
 import unittest
 import better_exchook
-from nose.tools import assert_equal, assert_raises, assert_equals
+from nose.tools import assert_equal, assert_raises, assert_equals, assert_almost_equal
 
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
@@ -61,6 +61,254 @@ def test_AttributeEvalGenerator_check_declaredness():
   evaluate(
     'alpha=1.0;beta=4.0;gamma=beta;delta=alpha;alpha=alpha',
     {'decl_s': {'alpha', 'beta', 'gamma', 'delta'}, 'ok': True})
+
+
+def test_AttributeEvalGenerator_typed_arithmetic():
+  import math
+  lexer = LexerGenerator(
+    token_names=['(', ')', '+', '-', '*', '**', '/', '[', ']', ',', 'const', 'name', None],
+    token_regex_table=[
+      '\\(', '\\)', '\\+', '\\-', '\\*', '\\*\\*', '/', '\\[', '\\]', ',', '(0|[1-9][0-9]*)(\\.[0-9]+)?',
+      '([a-z]|[A-Z])+', ' +']
+  )
+  # left associative (except ** that is right associative), with operator precedence
+  g = Grammar(
+    Production('Expr', 'Sum'),
+    Production('Sum', 'Sum', '+', 'Prod'),
+    Production('Sum', 'Sum', '-', 'Prod'),
+    Production('Sum', 'Prod'),
+    Production('Prod', 'Prod', '*', 'Pow'),
+    Production('Prod', 'Prod', '/', 'Pow'),
+    Production('Prod', 'Pow'),
+    Production('Pow', 'Term', '**', 'Pow'),
+    Production('Pow', 'Term'),
+    Production('Term', '(', 'Sum', ')'),
+    Production('Term', 'name', '(', 'Sum', ')'),
+    Production('Term', 'const'),
+    Production('Term', '[', 'ExprList', ']'),
+    Production('ExprList', 'Sum'),
+    Production('ExprList', 'ExprList', ',', 'Sum')
+  )
+
+  ERROR = None
+
+  def op_plus_res(type, res):
+    left, right, left_type, right_type = res(1), res(3), type(1), type(3)
+    if ERROR in [left, right]:
+      return ERROR
+    if left_type == right_type == 'num':
+      assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+      return left + right
+    if left_type == right_type == 'vec':
+      assert isinstance(left, list) and isinstance(right, list)
+      if len(left) != len(right):
+        return ERROR
+      return [l + r for l, r in zip(left, right)]
+    if left_type == right_type == 'mat':
+      assert isinstance(left, list) and isinstance(right, list)
+      if len(left) != len(right):
+        return ERROR
+      if not all(len(a) == len(b) for a, b in zip(left, right)):
+        return ERROR
+      return [[l + r for l, r in zip(a, b)] for a, b in zip(left, right)]
+    return ERROR
+
+  def op_minus_res(type, res):
+    left, right, left_type, right_type = res(1), res(3), type(1), type(3)
+    if ERROR in [left, right]:
+      return ERROR
+    if left_type == right_type == 'num':
+      assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+      return left - right
+    if left_type == right_type == 'vec':
+      assert isinstance(left, list) and isinstance(right, list)
+      if len(left) != len(right):
+        return ERROR
+      return [l - r for l, r in zip(left, right)]
+    if left_type == right_type == 'mat':
+      assert isinstance(left, list) and isinstance(right, list)
+      if len(left) != len(right):
+        return ERROR
+      return [[l - r for l, r in zip(a, b)] for a, b in zip(left, right)]
+    return ERROR
+
+  def op_times_type(type):
+    left_type, right_type = type(1), type(3)
+    if left_type == right_type == 'num':
+      return 'num'
+    if (left_type == 'vec' and right_type == 'num') or (left_type == 'num' and right_type == 'vec'):
+      return 'vec'
+    if (left_type == 'mat' and right_type == 'num') or (left_type == 'num' and right_type == 'mat'):
+      return 'mat'
+    return ERROR
+
+  def op_times_res(type, res):
+    left, right, left_type, right_type = res(1), res(3), type(1), type(3)
+    if ERROR in [left, right]:
+      return ERROR
+    if left_type == right_type == 'num':
+      assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+      return left * right
+    if (left_type == 'vec' and right_type == 'num') or (left_type == 'num' and right_type == 'vec'):
+      vec = left if left_type == 'vec' else right
+      num = left if left_type == 'num' else right
+      assert isinstance(vec, list) and isinstance(num, (float, int))
+      return [num * a for a in vec]
+    if (left_type == 'mat' and right_type == 'num') or (left_type == 'num' and right_type == 'mat'):
+      mat = left if left_type == 'mat' else right
+      num = left if left_type == 'num' else right
+      assert isinstance(mat, list) and isinstance(num, (float, int))
+      return [[num * a for a in vec] for vec in mat]
+    return ERROR
+
+  def op_divided_res(type, res):
+    left, right, left_type, right_type = res(1), res(3), type(1), type(3)
+    if ERROR in [left, right]:
+      return ERROR
+    if left_type == right_type == 'num':
+      assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+      return left / right
+    if left_type == 'vec' and right_type == 'num':
+      assert isinstance(left, list) and isinstance(right, (float, int))
+      return [a / right for a in left]
+    if (left_type == 'mat' and right_type == 'num') or (left_type == 'num' and right_type == 'mat'):
+      mat = left if left_type == 'mat' else right
+      num = left if left_type == 'num' else right
+      assert isinstance(mat, list) and isinstance(num, (float, int))
+      return [[num / a for a in vec] for vec in mat]
+    return ERROR
+
+  def op_pow_res(type, res):
+    left, right, left_type, right_type = res(1), res(3), type(1), type(3)
+    if ERROR in [left, right]:
+      return ERROR
+    if left_type == right_type == 'num':
+      assert isinstance(left, (float, int)) and isinstance(right, (float, int))
+      return left ** right
+    return ERROR
+
+  def op_func_type(type, name):
+    arg_type = type(3)
+    if name(1) in {'ones', 'zeros'}:
+      return 'vec'
+    return arg_type
+
+  def op_func_res(type, res, name):
+    arg, arg_type = res(3), type(3)
+    if arg == ERROR:
+      return ERROR
+    if name(1) in {'ones', 'zeros'}:
+      if arg_type != 'num' or arg <= 1:
+        return ERROR
+      assert isinstance(arg, (float, int))
+      return [1 if name(1) == 'ones' else 0] * int(arg)
+    if arg_type == 'num':
+      if not hasattr(math, name(1)):
+        return ERROR
+      return getattr(math, name(1))(arg)
+    return ERROR
+
+  def op_const_vec_type(type_list, res_list):
+    type_list_, res_list_ = type_list(2), res_list(2)
+    assert len(type_list_) == len(res_list_)
+    if len(type_list_) == 0:
+      return ERROR
+    type = type_list_[0]
+    if not all(t == type for t in type_list_):
+      return ERROR
+    if type == 'num':
+      return 'vec'
+    if type == 'vec':
+      return 'mat'
+    return ERROR
+
+  def op_const_vec_res(type_list, res_list):
+    type_list_, res_list_ = type_list(2), res_list(2)
+    assert len(type_list_) == len(res_list_)
+    if len(type_list_) == 0:
+      return ERROR
+    type = type_list_[0]
+    if not all(t == type for t in type_list_):
+      return ERROR
+    if type in {'num', 'vec'}:
+      if type == 'vec':
+        length = len(res_list_[0])
+        if not all(len(vec) == length for vec in res_list_):
+          return ERROR
+      return res_list_
+    return ERROR
+
+  attr_g = AttributeGrammar(
+    g,
+    syn_attrs={'type', 'res', 'name', 'type_list', 'res_list'},
+    prod_attr_rules=[
+      {'type': 'type.1', 'res': 'res.1'},
+      {'type': 'type.1', 'res': op_plus_res},
+      {'type': 'type.1', 'res': op_minus_res},
+      {'type': 'type.1', 'res': 'res.1'},
+      {'type': op_times_type, 'res': op_times_res},
+      {'type': op_times_type, 'res': op_divided_res},
+      {'type': 'type.1', 'res': 'res.1'},
+      {'type': 'type.3', 'res': op_pow_res},
+      {'type': 'type.1', 'res': 'res.1'},
+      {'type': 'type.2', 'res': 'res.2'},
+      {'type': op_func_type, 'res': op_func_res},
+      {'type': 'type.1', 'res': 'res.1'},
+      {'type': op_const_vec_type, 'res': op_const_vec_res},
+      {'type_list': lambda type: [type(1)], 'res_list': lambda res: [res(1)]},
+      {
+        'type_list': lambda type, type_list: type_list(1) + [type(3)],
+        'res_list': lambda res, res_list: res_list(1) + [res(3)]
+      }
+    ],
+    terminal_attr_rules={
+      'const': {'res': lambda lit: float(lit), 'type': lambda _: 'num'},
+      'name': {'name': lambda lit: lit}
+    }
+  )
+  parser = ParserGenerator(g)
+
+  def evaluate(word, expected_result, expected_type=None):
+    print('----')
+    print('input word:', word)
+    tokens, token_words = lexer.tokenize(word)
+    print('tokens:', tokens, 'with decomposition', token_words)
+    analysis, result = parser.parse_syn_attr_analysis(attr_g, tokens, token_words)
+    print('result:', result['res'])
+    if isinstance(expected_result, (float, int)):
+      assert_almost_equal(result['res'], expected_result)
+    else:
+      assert_equal(result['res'], expected_result)
+    if result['res'] != ERROR:
+      print('result type:', result['type'])
+      assert_equal(result['type'], expected_type)
+
+  evaluate('1*2+3', 5, 'num')
+  evaluate('5-3', 2, 'num')
+  evaluate('(1+2)*3', 9, 'num')
+  evaluate('1+2+3', 6, 'num')
+  evaluate('1-2+3', 2, 'num')
+  evaluate('3-2-1', 0, 'num')
+  evaluate('1*2+3*4', 14, 'num')
+  evaluate('4/2-1', 1, 'num')
+  evaluate('sin(3.1415)', 9.26535897e-5, 'num')
+  evaluate('2**2**3', 256, 'num')
+  evaluate('(2**2)**3', 64, 'num')
+  evaluate('(3**2+4**2)**0.5', 5, 'num')
+  evaluate('ones(4)', [1,1,1,1], 'vec')
+  evaluate('ones(4) * 5', [5,5,5,5], 'vec')
+  evaluate('ones(2) - ones(2) * 0', [1,1], 'vec')
+  evaluate('2 ** ones(2)', ERROR)
+  evaluate('[1 , 2 , 3]', [1,2,3], 'vec')
+  evaluate('[1, 2] + 2 * [3, 2]', [7,6], 'vec')
+  evaluate('[[1,2],[3,4]]', [[1,2],[3,4]], 'mat')
+  evaluate('[ones(2)]', [[1,1]], 'mat')
+  evaluate('[ones(3), ones(4)]', ERROR)
+  evaluate('zeros(0+2-2)', ERROR)
+  evaluate('[[1,0,0],[0,1,0],[0,0,1]]', [[1,0,0],[0,1,0],[0,0,1]], 'mat')
+  evaluate('[[1,0,0],[0,1,0],[0,0,1]]+[[0,1]]', ERROR)
+  evaluate('[[1,0,0],[0,1,0],[0,0,1]]+[[1,0,0],[0,1,0],[0,0,1]]', [[2,0,0],[0,2,0],[0,0,2]], 'mat')
+  evaluate('[[1,0,0],[0,1,0],[0,0,1]]+0*[[1,0,0],[0,1,0],[0,0,1]]', [[1,0,0],[0,1,0],[0,0,1]], 'mat')
 
 
 if __name__ == "__main__":
