@@ -6,7 +6,7 @@ from typing import List, Dict, Set, Optional
 REGEX_LIT_TOKEN = 'a'
 REGEX_SPECIAL_TOKENS = frozenset({'(', ')', '\\', '-', '[', ']', '*', '+', '?', '|', '^', '.'})
 # Currently we only recognize 7-bit ASCII
-REGEX_RECOGNIZED_CHARS = frozenset({chr(c) for c in range(32, 128)})
+REGEX_RECOGNIZED_CHARS = frozenset({'\n'} | {chr(c) for c in range(32, 128)})
 
 REGEX_CHOICE_OP = Production('Choice', 'Choice', '|', 'Concat')
 REGEX_CONCAT_OP = Production('Concat', 'Concat', 'Repeat')
