@@ -379,7 +379,9 @@ class SyntaxTree:
     return self.prod.left
 
   def __repr__(self):
-    return 'SyntaxTree[%r -> %s]' % (self.left, ' '.join([repr(subtree) for subtree in self.right]))
+    return 'SyntaxTree[%r -> %s]' % (
+      self.left, ' '.join([
+        repr(symbol if subtree is None else subtree) for symbol, subtree in zip(self.prod.right, self.right)]))
 
   def __hash__(self):
     return hash((self.left, self.right))
