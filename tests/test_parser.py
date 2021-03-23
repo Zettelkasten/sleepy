@@ -441,6 +441,21 @@ def test_ParserGenerator_parse_tree_epsilon():
       g.prods[3], None))))))
 
 
+def test_ParserGenerator_parse_tree_epsilon2():
+  g = Grammar(
+    Production('TopLevelExpr', 'ExprList'),
+    Production('ExprList'),
+    Production('ExprList', 'Expr', 'ExprList'),
+    Production('Expr', 'Val', ';'),
+    Production('Val', 'number')
+  )
+  parser = ParserGenerator(g)
+  tokens = ['number', ';']
+  token_words = ['42', ';']
+  print(parser.parse_analysis(tokens, token_words))
+  print(parser.parse_tree(tokens, token_words))
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
