@@ -1,4 +1,4 @@
-from typing import Optional, Dict, List, Set, FrozenSet
+from typing import Optional, Dict, List, Set, FrozenSet, Any
 
 from sleepy.grammar import EPSILON, ParseError, Production, AttributeGrammar, SyntaxTree
 
@@ -298,7 +298,7 @@ class ParserGenerator:
         state_stack.append(self._state_goto_table[state][action.symbol])
         attr_eval_stack.append(attr_grammar.get_terminal_syn_attr_eval(shifted_token, shifted_word))
       elif isinstance(action, _ReduceAction):
-        right_attr_evals = attr_eval_stack[-len(action.prod.right):]  # type: List[Dict[str, Any]]
+        right_attr_evals = attr_eval_stack[len(attr_eval_stack) - len(action.prod.right):]  # type: List[Dict[str, Any]]
         for i in range(len(action.prod.right)):
           state_stack.pop()
           attr_eval_stack.pop()
@@ -342,7 +342,9 @@ class ParserGenerator:
     attr_g = AttributeGrammar(
       self.grammar,
       syn_attrs={'tree'},
-      prod_attr_rules={prod: {'tree.0': partial(make_prod_tree, prod)} for prod in self.grammar.prods},
+      prod_attr_rules={
+        prod: {'tree.0': partial(make_prod_tree, prod) if len(prod.right) >= 1 else SyntaxTree(prod)}
+        for prod in self.grammar.prods},
       terminal_attr_rules={terminal: {'tree.0': None} for terminal in self.grammar.terminals}
     )
     _, root_attr_eval = self.parse_syn_attr_analysis(attr_g, tokens, token_words)
