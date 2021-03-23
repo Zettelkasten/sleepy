@@ -416,7 +416,7 @@ class LexError(Exception):
     :param str message:
     """
     super().__init__(
-      '%s: %s' % (' '.join([repr(s) for s in word[:pos]] + ['!'] + [repr(s) for s in word[pos:]]), message))
+      '%s ! %s: %s' % (word[:pos], word[pos:], message))
 
 
 class ParseError(Exception):
