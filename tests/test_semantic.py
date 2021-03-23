@@ -319,6 +319,9 @@ def test_AttributeEvalGenerator_typed_arithmetic():
   evaluate('-[1,0]*4', [-4,0], 'vec')
   evaluate('[1,2,3]*[1,2]', ERROR)
   evaluate('len([3,4])', 5, 'num')
+  evaluate('len(4)', ERROR)
+  evaluate('len([[2,3],[1,2]])', ERROR)
+  evaluate('(((((((((7)))))))))', 7, 'num')
 
 
 if __name__ == "__main__":
