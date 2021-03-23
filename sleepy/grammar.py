@@ -439,3 +439,15 @@ class ParseError(Exception):
     output = token_words if token_words is not None else tokens
     super().__init__(
       '%s: %s' % (' '.join([repr(s) for s in output[:pos]] + ['!'] + [repr(s) for s in output[pos:]]), message))
+
+
+class SemanticError(Exception):
+  """
+  A semantic error, during code generation.
+  """
+
+  def __init__(self, message):
+    """
+    :param str message:
+    """
+    super().__init__(message)
