@@ -19,6 +19,7 @@ jobs:
           - TEST=parser
           - TEST=regex
           - TEST=semantic
+          - TEST=sloppy
 
     steps:
     - uses: actions/checkout@v2
