@@ -1,6 +1,12 @@
 
 
-# Operator precendence: * / stronger than + - stronger than == != < <= > >=
+# Operator precedence: * / stronger than + - stronger than == != < <= > >=
+from typing import Union, Dict
+
+from llvmlite import ir
+
+from sleepy.grammar import SemanticError
+
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
 
@@ -11,7 +17,23 @@ class AbstractSyntaxTree:
   pass
 
 
-class TopLevelExpressionAst(AbstractSyntaxTree):
+class ExpressionAst(AbstractSyntaxTree):
+  """
+  Expr.
+  """
+  def __init__(self):
+    super().__init__()
+
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    """
+    raise NotImplementedError()
+
+
+class TopLevelExpressionAst(ExpressionAst):
   """
   TopLevelExpr.
   """
@@ -22,13 +44,14 @@ class TopLevelExpressionAst(AbstractSyntaxTree):
     super().__init__()
     self.expr_list = expr_list
 
-
-class ExpressionAst(AbstractSyntaxTree):
-  """
-  Expr.
-  """
-  def __init__(self):
-    super().__init__()
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    """
+    for expr in self.expr_list:
+      expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
 
 
 class FunctionDeclarationAst(ExpressionAst):
@@ -38,13 +61,37 @@ class FunctionDeclarationAst(ExpressionAst):
   def __init__(self, identifier, arg_identifiers, expr_list):
     """
     :param str identifier:
-    :param str arg_identifiers:
+    :param list[str] arg_identifiers:
     :param list[ExpressionAst] expr_list:
     """
     super().__init__()
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
     self.expr_list = expr_list
+
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    """
+    if self.identifier in symbol_table:
+      raise SemanticError('%r: cannot redefine function with name %r' % (self, self.identifier))
+    double = ir.DoubleType()
+    func_type = ir.FunctionType(double, (double,) * len(self.arg_identifiers))
+    ir_func = ir.Function(module, func_type, name=self.identifier)
+    symbol_table[self.identifier] = ir_func
+    body_symbol_table = symbol_table.copy()
+    for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
+      ir_arg.name = arg_identifier
+      body_symbol_table[arg_identifier] = ir_arg
+
+    block = ir_func.append_basic_block(name='entry')
+    body_builder = ir.IRBuilder(block)
+    for expr in self.expr_list:
+      expr.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
+    if not block.is_terminated:
+      body_builder.ret(ir.Constant(double, 0.0))
 
 
 class CallExpressionAst(ExpressionAst):
@@ -72,6 +119,14 @@ class ReturnExpressionAst(ExpressionAst):
     super().__init__()
     self.return_val = return_val
 
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    """
+    builder.ret(self.return_val.make_ir_value(builder=builder, symbol_table=symbol_table))
+
 
 class IfExpressionAst(ExpressionAst):
   """
@@ -96,6 +151,14 @@ class ValueAst(AbstractSyntaxTree):
   def __init__(self):
     super().__init__()
 
+  def make_ir_value(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.Function] symbol_table:
+    :rtype: ir.values.Value
+    """
+    raise NotImplementedError()
+
 
 class OperatorValueAst(ValueAst):
   """
@@ -112,6 +175,22 @@ class OperatorValueAst(ValueAst):
     self.op = op
     self.left_val, self.right_val = left_val, right_val
 
+  def make_ir_value(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.Function] symbol_table:
+    :rtype: ir.values.Value
+    """
+    if self.op == '*':
+      return builder.fmul(self.left_val, self.right_val, name='mul_tmp')
+    if self.op == '/':
+      return builder.fdiv(self.left_val, self.right_val, name='div_tmp')
+    if self.op == '+':
+      return builder.fadd(self.left_val, self.right_val, name='add_tmp')
+    if self.op == '-':
+      return builder.fsub(self.left_val, self.right_val, name='sub_tmp')
+    assert False, '%r: operator %s not handled!' % (self, self.op)
+
 
 class ConstantValueAst(ValueAst):
   """
@@ -123,6 +202,14 @@ class ConstantValueAst(ValueAst):
     """
     super().__init__()
     self.constant = constant
+
+  def make_ir_value(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.Function] symbol_table:
+    :rtype: ir.values.Value
+    """
+    return ir.Constant(ir.DoubleType(), self.constant)
 
 
 class VariableValueAst(ValueAst):
@@ -149,3 +236,19 @@ class CallValueAst(ValueAst):
     super().__init__()
     self.func_identifier = func_identifier
     self.func_arg_vals = func_arg_vals
+
+  def make_ir_value(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.Function] symbol_table:
+    :rtype: ir.values.Value
+    """
+    if self.func_identifier not in symbol_table:
+      raise SemanticError('Function name %r referenced before declaration' % self.func_identifier)
+    func = symbol_table[self.func_identifier]
+    assert isinstance(func, ir.Function)
+    if not len(func.args) == len(self.func_arg_vals):
+      raise SemanticError('Function %r called with %r arguments %r, but expected %r arguments %r' % (
+        self.func_identifier, len(self.func_arg_vals), self.func_arg_vals, len(func.args), func.args))
+    func_args_ir = [val.make_ir_value(builder=builder, symbol_table=symbol_table) for val in self.func_arg_vals]
+    return builder.call(func, func_args_ir, name='call')
