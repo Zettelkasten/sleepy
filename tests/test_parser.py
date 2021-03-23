@@ -423,6 +423,24 @@ def test_ParserGenerator_attr_syn():
   assert_equal(tree_attr_eval, {'res': 5 + 7})
 
 
+def test_ParserGenerator_parse_tree_epsilon():
+  g = Grammar(
+    Production('S', 'A'),
+    Production('A'),
+    Production('A', 'B'),
+    Production('B', 'a'),
+    Production('B', 'a', 'B')
+  )
+  parser = ParserGenerator(g)
+  tokens = ['a', 'a', 'a']
+  token_words = ['a', 'a', 'a']
+  assert_equal(parser.parse_analysis(tokens, token_words), [g.prods[0], g.prods[2], g.prods[4], g.prods[4], g.prods[3]])
+  assert_equal(
+    parser.parse_tree(tokens, token_words),
+    SyntaxTree(g.prods[0], SyntaxTree(g.prods[2], SyntaxTree(g.prods[4], None, SyntaxTree(g.prods[4], None, SyntaxTree(
+      g.prods[3], None))))))
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
