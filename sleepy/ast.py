@@ -1,5 +1,9 @@
 
 
+# Operator precendence: * / stronger than + - stronger than == != < <= > >=
+SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
+
+
 class SloppyTree:
   """
   Abstract syntax tree of a sloppy program.
