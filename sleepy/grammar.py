@@ -76,6 +76,16 @@ class Grammar:
       all(len(p.right) == 1 for p in self.get_prods_for(self.start)) and
       all(self.start not in p.right for p in self.prods))
 
+  def copy_with_start(self, start):
+    """
+    :param str start: new start non-terminal symbol
+    :rtype: Grammar
+    """
+    if start == self.start:
+      return self
+    assert start in self.non_terminals
+    return Grammar(*self.prods, start=start)
+
 
 class AttributeGrammar:
   """
@@ -356,6 +366,21 @@ class AttributeGrammar:
     """
     return self._eval_prod_attr(
       prod, eval_pos, eval_attrs=self.inh_attrs, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals)
+
+  def copy_with_start(self, start):
+    """
+    :param str start: new start non-terminal symbol for the underlying Grammar
+    :rtype: AttributeGrammar
+    """
+    if start == self.grammar.start:
+      return self
+    assert start in self.grammar.start
+    new_grammar = self.grammar.copy_with_start(start)
+    return AttributeGrammar(
+      grammar=new_grammar,
+      prod_attr_rules=self.prod_attr_rules.copy(),
+      terminal_attr_rules=self.terminal_attr_rules.copy(),
+      inh_attrs=self.inh_attrs.copy(), syn_attrs=self.syn_attrs.copy())
 
 
 class SyntaxTree:
