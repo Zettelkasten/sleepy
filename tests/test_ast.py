@@ -9,7 +9,7 @@ from sleepy.grammar import Grammar, Production, SyntaxTree, AttributeGrammar
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 
-SLOPPY_LEXER = LexerGenerator(
+SLEEPY_LEXER = LexerGenerator(
   [
     'func', 'if', 'else', 'return', '{', '}', ';', ',', '(', ')', 'bool_op', 'sum_op', 'prod_op', 'identifier',
     'number', None, None
@@ -18,7 +18,7 @@ SLOPPY_LEXER = LexerGenerator(
     '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '#[^\n]*\n', '[ \n]+'
   ])
 
-SLOPPY_GRAMMAR = Grammar(
+SEEPY_GRAMMAR = Grammar(
   Production('TopLevelExpr', 'ExprList'),
   Production('ExprList'),
   Production('ExprList', 'Expr', 'ExprList'),
@@ -45,8 +45,8 @@ SLOPPY_GRAMMAR = Grammar(
   Production('ValList+', 'Val'),
   Production('ValList+', 'Val', ',', 'ValList+')
 )
-SLOPPY_ATTR_GRAMMAR = AttributeGrammar(
-  SLOPPY_GRAMMAR,
+SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
+  SEEPY_GRAMMAR,
   syn_attrs={'ast', 'expr_list', 'identifier_list', 'val_list', 'identifier', 'op', 'number'},
   prod_attr_rules=[
     {'ast': lambda expr_list: TopLevelExpressionAst(expr_list(1))},
@@ -81,19 +81,19 @@ SLOPPY_ATTR_GRAMMAR = AttributeGrammar(
   }
 )
 
-SLOPPY_PARSER = ParserGenerator(SLOPPY_GRAMMAR)
+SLEEPY_PARSER = ParserGenerator(SEEPY_GRAMMAR)
 
 
-def _test_sloppy_make_ast(program):
+def _test_parse_ast(program):
   """
   :param str program:
   """
   print('---- input program:')
   print(program)
-  tokens, token_words = SLOPPY_LEXER.tokenize(program)
+  tokens, token_words = SLEEPY_LEXER.tokenize(program)
   print('---- tokens:')
   print(tokens)
-  analysis, eval = SLOPPY_PARSER.parse_syn_attr_analysis(SLOPPY_ATTR_GRAMMAR, tokens, token_words)
+  analysis, eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, tokens, token_words)
   ast = eval['ast']
   print('---- right-most analysis:')
   print(analysis)
@@ -102,16 +102,16 @@ def _test_sloppy_make_ast(program):
   assert isinstance(ast, TopLevelExpressionAst)
 
 
-def test_sloopy_parser():
+def test_ast_parser():
   program1 = 'hello_world(123);'
-  _test_sloppy_make_ast(program1)
+  _test_parse_ast(program1)
   program2 = """# This function will just return 4.
 func do_stuff(val) {
   return 4;
 }
 do_stuff(7.5);
 """
-  _test_sloppy_make_ast(program2)
+  _test_parse_ast(program2)
   program3 = """
   # Compute 0 + 1 + ... + n
   func sum_all(n) {
@@ -121,7 +121,7 @@ do_stuff(7.5);
   
   sum_all(12);
   """
-  _test_sloppy_make_ast(program3)
+  _test_parse_ast(program3)
 
 
 if __name__ == "__main__":

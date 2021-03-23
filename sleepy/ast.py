@@ -4,14 +4,14 @@
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
 
-class SloppyTree:
+class AbstractSyntaxTree:
   """
-  Abstract syntax tree of a sloppy program.
+  Abstract syntax tree of a sleepy program.
   """
   pass
 
 
-class TopLevelExpressionAst(SloppyTree):
+class TopLevelExpressionAst(AbstractSyntaxTree):
   """
   TopLevelExpr.
   """
@@ -23,7 +23,7 @@ class TopLevelExpressionAst(SloppyTree):
     self.expr_list = expr_list
 
 
-class ExpressionAst(SloppyTree):
+class ExpressionAst(AbstractSyntaxTree):
   """
   Expr.
   """
@@ -89,7 +89,7 @@ class IfExpressionAst(ExpressionAst):
     self.true_expr_list, self.false_expr_list = true_expr_list, false_expr_list
 
 
-class ValueAst(SloppyTree):
+class ValueAst(AbstractSyntaxTree):
   """
   Val, SumVal, ProdVal, PrimaryVal
   """
