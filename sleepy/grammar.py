@@ -2,7 +2,7 @@
 The empty symbol (!= the empty word).
 Use empty tuple as empty word.
 """
-from typing import Tuple, Any, Dict, Set, Callable, Union
+from typing import Tuple, Any, Dict, Set, Callable, Union, Optional, List
 
 EPSILON = None
 
@@ -15,7 +15,7 @@ class Production:
   def __init__(self, left, *right):
     """
     :param str left: A
-    :param list[str]|tuple[str] right: X_1 ... X_n
+    :param str right: X_1 ... X_n
     """
     self.left = left
     if isinstance(right, list):
@@ -42,7 +42,7 @@ class Grammar:
 
   def __init__(self, *prods, start=None):
     """
-    :param tuple[Production]|list[Production] prods:
+    :param Production prods:
     :param None|str start: start non-terminal, by default left of first production
     """
     if not isinstance(prods, tuple):
@@ -268,7 +268,7 @@ class AttributeGrammar:
       """
       :param str get_attr_name:
       :param str rule_attr_target: caller
-      :rtype: function[int, Any]
+      :rtype: Callable[tuple[int], Any]
       """
 
       def get(pos):
@@ -360,17 +360,17 @@ class AttributeGrammar:
 
 class SyntaxTree:
   """
-  Simple abstract syntrax tree.
+  Simple (non-abstract, i.e. for each Production right side one child) syntax tree.
   """
   def __init__(self, prod, *right):
     """
     :param Production prod: production
-    :param list[SyntaxTree|None] right: trees corresponding to prod.right, or None for non-terminals
+    :param SyntaxTree|None right: trees corresponding to prod.right, or None for non-terminals
     """
     assert len(prod.right) == len(right)
     assert all(subtree is None or subtree.left == symbol for subtree, symbol in zip(right, prod.right))
     self.prod = prod
-    self.right = right  # type: List[Optional[SyntaxTree]]
+    self.right = right  # type: Tuple[Optional[SyntaxTree]]
 
   @property
   def left(self):
