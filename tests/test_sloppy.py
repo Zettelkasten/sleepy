@@ -17,16 +17,14 @@ SLOPPY_LEXER = LexerGenerator(
   ])
 
 # Operator precendence: * / stronger than + - stronger than == != < <= > >=
+SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
+
 SLOPPY_GRAMMAR = Grammar(
   Production('TopLevelExpr', 'ExprList'),
   Production('ExprList'),
   Production('ExprList', 'Expr', 'ExprList'),
   Production('Expr', 'func', 'identifier', '(', 'IdentifierList', ')', '{', 'ExprList', '}'),
-  Production('IdentifierList', ''),
-  Production('IdentifierList', 'IdentifierList+'),
-  Production('IdentifierList+', 'identifier'),
-  Production('IdentifierList+', 'identifier', ',', 'IdentifierList+'),
-  Production('Expr', 'Val', ';'),
+  Production('Expr', 'identifier', '(', 'ValList', ')', ';'),
   Production('Expr', 'return', 'Val', ';'),
   Production('Expr', 'if', 'Val', '{', 'ExprList', '}'),
   Production('Expr', 'if', 'Val', '{', 'ExprList', '}', 'else', '{', 'ExprList', '}'),
@@ -39,7 +37,11 @@ SLOPPY_GRAMMAR = Grammar(
   Production('PrimaryVal', 'number'),
   Production('PrimaryVal', 'identifier'),
   Production('PrimaryVal', 'identifier', '(', 'ValList', ')'),
-  Production('ValList', ''),
+  Production('IdentifierList'),
+  Production('IdentifierList', 'IdentifierList+'),
+  Production('IdentifierList+', 'identifier'),
+  Production('IdentifierList+', 'identifier', ',', 'IdentifierList+'),
+  Production('ValList'),
   Production('ValList', 'ValList+'),
   Production('ValList+', 'Val'),
   Production('ValList+', 'Val', ',', 'ValList+'),
@@ -65,7 +67,7 @@ def _test_sloppy_make_ast(program):
 
 
 def test_sloopy_parser():
-  program1 = '1.3;'
+  program1 = 'hello_world(123);'
   _test_sloppy_make_ast(program1)
   program2 = """# This function will just return 4.
 func do_stuff(val) {

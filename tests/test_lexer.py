@@ -60,7 +60,6 @@ def test_LexerGenerator_comments():
     (('name', '=', 'const', ';', 'name', '=', 'const', ';'), ('a', '=', '5', ';', 'a', '=', '6', ';')))
   assert_equal(lexer.tokenize('a = 5; /* set a to 5 */\na = 6; /* and an extra comment */'),
     (('name', '=', 'const', ';', 'name', '=', 'const', ';'), ('a', '=', '5', ';', 'a', '=', '6', ';')))
-  print(lexer.tokenize('a = 5; /* set a to 5 */\na = 6; // now set it to 6\n/* more\nand more */ b = 3;'))
   assert_equal(
     lexer.tokenize('a = 5; /* set a to 5 */\na = 6; // now set it to 6\n/* more\nand more */ b = 3;'),
     (('name', '=', 'const', ';', 'name', '=', 'const', ';', 'name', '=', 'const', ';'),
