@@ -20,6 +20,7 @@ class Production:
     self.left = left
     if isinstance(right, list):
       right = tuple(right)
+    assert '' not in right
     self.right = right  # type: Tuple[str]
 
   def __repr__(self):
