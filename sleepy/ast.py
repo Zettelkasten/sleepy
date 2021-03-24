@@ -29,6 +29,7 @@ class ExpressionAst(AbstractSyntaxTree):
     :param ir.Module module:
     :param ir.IRBuilder builder:
     :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    :rtype: ir.IRBuilder
     """
     raise NotImplementedError()
 
@@ -49,9 +50,10 @@ class TopLevelExpressionAst(ExpressionAst):
     :param ir.Module module:
     :param ir.IRBuilder builder:
     :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    :rtype: ir.IRBuilder
     """
     for expr in self.expr_list:
-      expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
+      builder = expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
 
   def make_module_ir(self, module_name):
     """
@@ -66,7 +68,7 @@ class TopLevelExpressionAst(ExpressionAst):
     block = ir_io_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
     for expr in self.expr_list:
-      expr.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
+      body_builder = expr.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
     body_builder.ret_void()
 
     return module
@@ -92,6 +94,7 @@ class FunctionDeclarationAst(ExpressionAst):
     :param ir.Module module:
     :param ir.IRBuilder builder:
     :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    :rtype: ir.IRBuilder
     """
     if self.identifier in symbol_table:
       raise SemanticError('%r: cannot redefine function with name %r' % (self, self.identifier))
@@ -107,9 +110,10 @@ class FunctionDeclarationAst(ExpressionAst):
     block = ir_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
     for expr in self.expr_list:
-      expr.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
+      body_builder = expr.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
     if not block.is_terminated:
       body_builder.ret(ir.Constant(double, 0.0))
+    return builder
 
 
 class CallExpressionAst(ExpressionAst):
@@ -142,8 +146,10 @@ class ReturnExpressionAst(ExpressionAst):
     :param ir.Module module:
     :param ir.IRBuilder builder:
     :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    :rtype: ir.IRBuilder
     """
     builder.ret(self.return_val.make_ir_value(builder=builder, symbol_table=symbol_table))
+    return builder
 
 
 class AssignExpressionAst(ExpressionAst):
@@ -164,10 +170,12 @@ class AssignExpressionAst(ExpressionAst):
     :param ir.Module module:
     :param ir.IRBuilder builder:
     :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    :rtype: ir.IRBuilder
     """
     if self.var_identifier in symbol_table and not isinstance(symbol_table[self.var_identifier], ir.values.Value):
       raise SemanticError('%r: Cannot redefine non-value %r using a value' % (self, self.var_identifier))
     symbol_table[self.var_identifier] = self.var_val.make_ir_value(builder=builder, symbol_table=symbol_table)
+    return builder
 
 
 class IfExpressionAst(ExpressionAst):
