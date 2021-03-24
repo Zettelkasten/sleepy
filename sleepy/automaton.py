@@ -85,6 +85,16 @@ class DeterministicAutomaton:
       return ERROR_STATE
     return self.state_transition_table[state].get(char, ERROR_STATE)
 
+  def get_next_possible_chars(self, state):
+    """
+    :param int|None state:
+    :returns: all characters that transition to a productive state
+    :rtype: set[str]
+    """
+    if state is ERROR_STATE:
+      return set()
+    return set(self.state_transition_table[state].keys())
+
   def accepts(self, word):
     """
     :param str word:

@@ -45,6 +45,16 @@ class LexerGenerator:
     else:
       return next_state
 
+  def _get_next_possible_chars(self, state):
+    """
+    :param tuple[int|None]|None state:
+    :returns: all characters that transition to a productive state
+    :rtype: set[str]
+    """
+    if state is ERROR_STATE:
+      return set()
+    return {char for i, dfa in enumerate(self._automatons) for char in dfa.get_next_possible_chars(state[i])}
+
   def _make_final_states(self):
     """
     Compute and set `_final_states`.
@@ -104,16 +114,17 @@ class LexerGenerator:
           break
         # unfinished word remaining
         if backtrack_mode is self.NORMAL_MODE:  # normal mode
-          raise LexError(word, pos, 'Missing more characters, so far read %r / %r' % (analysis, decomposition))
+          raise LexError(word, pos, 'Missing more characters, expected %r' % self._get_next_possible_chars(state))
         else:  # backtracking mode
           do_backtrack()
         continue
       assert pos < len(word)
       char = word[pos]
+      prev_state = state
       state = self._get_next_state(state, char)
       if state is ERROR_STATE:
         if backtrack_mode is self.NORMAL_MODE:  # normal mode, no backtracking yet
-          raise LexError(word, pos, 'Unrecognized pattern')
+          raise LexError(word, pos, 'Unrecognized pattern, expected %r' % self._get_next_possible_chars(prev_state))
         else:  # backtracking mode, needs to backtrack now
           do_backtrack()
       else:
