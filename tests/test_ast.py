@@ -167,7 +167,7 @@ def test_FunctionDeclarationAst_build_expr_ir():
     assert_equal(func3(7.0, 3.0), 10.0)
 
 
-def _test_compile_program(engine, program, main_func_identifier='main'):
+def _test_compile_program(engine, program, main_func_identifier='main', main_func_num_args=0):
   """
   :param ExecutionEngine engine:
   :param str program:
@@ -180,28 +180,38 @@ def _test_compile_program(engine, program, main_func_identifier='main'):
   print(module_ir)
   compile_ir(engine, module_ir)
   main_func_ptr = engine.get_function_address(main_func_identifier)
-  py_func = CFUNCTYPE(c_double)(main_func_ptr)
+  py_func = CFUNCTYPE(*((c_double,) + (c_double,) * main_func_num_args))(main_func_ptr)
   assert callable(py_func)
   return py_func
 
 
 def test_simple_compile():
   with make_execution_engine() as engine:
-    program1 = """
+    program = """
     func main() {
       return 4.0 + 3.0;
     }
     """
-    func1 = _test_compile_program(engine, program1)
-    assert_equal(func1(), 4.0 + 3.0)
+    func = _test_compile_program(engine, program)
+    assert_equal(func(), 4.0 + 3.0)
   with make_execution_engine() as engine:
-    program2 = """
+    program = """
     func test() {
       return 2 * 4 - 3;
     }
     """
-    func2 = _test_compile_program(engine, program2, main_func_identifier='test')
-    assert_equal(func2(), 2.0 * 4.0 - 3.0)
+    func = _test_compile_program(engine, program, main_func_identifier='test')
+    assert_equal(func(), 2.0 * 4.0 - 3.0)
+  with make_execution_engine() as engine:
+    program = """
+    func sub(a, b) {
+      return a - b;
+    }
+    """
+    func = _test_compile_program(engine, program, main_func_identifier='sub', main_func_num_args=2)
+    assert_equal(func(0.0, 1.0), 0.0 - 1.0)
+    assert_equal(func(3.0, 5.0), 3.0 - 5.0)
+    assert_equal(func(2.5, 2.5), 2.5 - 2.5)
 
 
 if __name__ == "__main__":
