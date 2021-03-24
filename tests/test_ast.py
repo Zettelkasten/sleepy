@@ -3,9 +3,14 @@ from better_exchook import better_exchook
 import sys
 import unittest
 
+from llvmlite import ir
+from nose.tools import assert_equal
+from ctypes import CFUNCTYPE, c_double
+
 from sleepy.ast import TopLevelExpressionAst, FunctionDeclarationAst, CallExpressionAst, ReturnExpressionAst, \
   IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst
-from sleepy.grammar import Grammar, Production, SyntaxTree, AttributeGrammar
+from sleepy.grammar import Grammar, Production, AttributeGrammar
+from sleepy.jit import get_execution_engine, compile_ir
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 
@@ -18,7 +23,7 @@ SLEEPY_LEXER = LexerGenerator(
     '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '#[^\n]*\n', '[ \n]+'
   ])
 
-SEEPY_GRAMMAR = Grammar(
+SLEEPY_GRAMMAR = Grammar(
   Production('TopLevelExpr', 'ExprList'),
   Production('ExprList'),
   Production('ExprList', 'Expr', 'ExprList'),
@@ -46,7 +51,7 @@ SEEPY_GRAMMAR = Grammar(
   Production('ValList+', 'Val', ',', 'ValList+')
 )
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
-  SEEPY_GRAMMAR,
+  SLEEPY_GRAMMAR,
   syn_attrs={'ast', 'expr_list', 'identifier_list', 'val_list', 'identifier', 'op', 'number'},
   prod_attr_rules=[
     {'ast': lambda expr_list: TopLevelExpressionAst(expr_list(1))},
@@ -81,7 +86,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   }
 )
 
-SLEEPY_PARSER = ParserGenerator(SEEPY_GRAMMAR)
+SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
 
 
 def _test_parse_ast(program):
@@ -122,6 +127,34 @@ do_stuff(7.5);
   sum_all(12);
   """
   _test_parse_ast(program3)
+
+
+def _get_py_func_from_ast(ast):
+  """
+  :param FunctionDeclarationAst ast:
+  :rtype: Callable
+  """
+  assert isinstance(ast, FunctionDeclarationAst)
+  module = ir.Module(name='_test_last_declared_func')
+  symbol_table = {}
+  ast.build_expr_ir(module=module, builder=None, symbol_table=symbol_table)
+  assert ast.identifier in symbol_table
+  engine = get_execution_engine()
+  compile_ir(engine, module)
+  func_ptr = engine.get_function_address(ast.identifier)
+  return CFUNCTYPE(*((c_double,) + (c_double,) * len(ast.arg_identifiers)))(func_ptr)
+
+
+def test_FunctionDeclarationAst_build_expr_ir():
+  ast1 = FunctionDeclarationAst(
+    identifier='foo', arg_identifiers=[], expr_list=[ReturnExpressionAst(ConstantValueAst(42.0))])
+  func1 = _get_py_func_from_ast(ast1)
+  assert_equal(func1(), 42.0)
+  ast2 = FunctionDeclarationAst(
+    identifier='foo', arg_identifiers=[], expr_list=[
+      ReturnExpressionAst(OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0)))])
+  func2 = _get_py_func_from_ast(ast2)
+  assert_equal(func2(), 8.0)
 
 
 if __name__ == "__main__":
