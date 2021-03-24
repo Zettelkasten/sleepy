@@ -10,7 +10,7 @@ from ctypes import CFUNCTYPE, c_double
 from sleepy.ast import TopLevelExpressionAst, FunctionDeclarationAst, CallExpressionAst, ReturnExpressionAst, \
   IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst
 from sleepy.grammar import Grammar, Production, AttributeGrammar
-from sleepy.jit import get_execution_engine, compile_ir
+from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 
@@ -131,8 +131,9 @@ do_stuff(7.5);
   _test_parse_ast(program3)
 
 
-def _get_py_func_from_ast(ast):
+def _get_py_func_from_ast(engine, ast):
   """
+  :param ExecutionEngine engine:
   :param FunctionDeclarationAst ast:
   :rtype: Callable
   """
@@ -141,42 +142,42 @@ def _get_py_func_from_ast(ast):
   symbol_table = {}
   ast.build_expr_ir(module=module, builder=None, symbol_table=symbol_table)
   assert ast.identifier in symbol_table
-  engine = get_execution_engine()
   compile_ir(engine, module)
   func_ptr = engine.get_function_address(ast.identifier)
   return CFUNCTYPE(*((c_double,) + (c_double,) * len(ast.arg_identifiers)))(func_ptr)
 
 
 def test_FunctionDeclarationAst_build_expr_ir():
-  ast1 = FunctionDeclarationAst(
-    identifier='foo', arg_identifiers=[], expr_list=[ReturnExpressionAst(ConstantValueAst(42.0))])
-  func1 = _get_py_func_from_ast(ast1)
-  assert_equal(func1(), 42.0)
-  ast2 = FunctionDeclarationAst(
-    identifier='foo', arg_identifiers=[], expr_list=[
-      ReturnExpressionAst(OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0)))])
-  func2 = _get_py_func_from_ast(ast2)
-  assert_equal(func2(), 8.0)
-  ast3 = FunctionDeclarationAst(
-    identifier='sum', arg_identifiers=['a', 'b'], expr_list=[
-      ReturnExpressionAst(OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b')))])
-  func3 = _get_py_func_from_ast(ast3)
-  assert_equal(func3(7.0, 3.0), 10.0)
+  with make_execution_engine() as engine:
+    ast1 = FunctionDeclarationAst(
+      identifier='foo', arg_identifiers=[], expr_list=[ReturnExpressionAst(ConstantValueAst(42.0))])
+    func1 = _get_py_func_from_ast(engine, ast1)
+    assert_equal(func1(), 42.0)
+  with make_execution_engine() as engine:
+    ast2 = FunctionDeclarationAst(
+      identifier='foo', arg_identifiers=[], expr_list=[
+        ReturnExpressionAst(OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0)))])
+    func2 = _get_py_func_from_ast(engine, ast2)
+    assert_equal(func2(), 8.0)
+  with make_execution_engine() as engine:
+    ast3 = FunctionDeclarationAst(
+      identifier='sum', arg_identifiers=['a', 'b'], expr_list=[
+        ReturnExpressionAst(OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b')))])
+    func3 = _get_py_func_from_ast(engine, ast3)
+    assert_equal(func3(7.0, 3.0), 10.0)
 
 
-def _test_compile_program(program, main_func_identifier='main'):
+def _test_compile_program(engine, program, main_func_identifier='main'):
   """
+  :param ExecutionEngine engine:
   :param str program:
   :param str main_func_identifier:
   :rtype: Callable[[], float]
   """
   ast = _test_parse_ast(program)
-
   module_ir = ast.make_module_ir(module_name='test_parse_ast')
   print('---- module intermediate repr:')
   print(module_ir)
-
-  engine = get_execution_engine()
   compile_ir(engine, module_ir)
   main_func_ptr = engine.get_function_address(main_func_identifier)
   py_func = CFUNCTYPE(c_double)(main_func_ptr)
@@ -185,20 +186,22 @@ def _test_compile_program(program, main_func_identifier='main'):
 
 
 def test_simple_compile():
-  program1 = """
-  func main() {
-    return 4.0 + 3.0;
-  }
-  """
-  func1 = _test_compile_program(program1)
-  assert_equal(func1(), 4.0 + 3.0)
-  program2 = """
-  func test() {
-    return 2 * 4 - 3;
-  }
-  """
-  func2 = _test_compile_program(program2, main_func_identifier='test')
-  assert_equal(func2(), 2.0 * 4.0 - 3.0)
+  with make_execution_engine() as engine:
+    program1 = """
+    func main() {
+      return 4.0 + 3.0;
+    }
+    """
+    func1 = _test_compile_program(engine, program1)
+    assert_equal(func1(), 4.0 + 3.0)
+  with make_execution_engine() as engine:
+    program2 = """
+    func test() {
+      return 2 * 4 - 3;
+    }
+    """
+    func2 = _test_compile_program(engine, program2, main_func_identifier='test')
+    assert_equal(func2(), 2.0 * 4.0 - 3.0)
 
 
 if __name__ == "__main__":
