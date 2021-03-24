@@ -92,6 +92,7 @@ SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
 def _test_parse_ast(program):
   """
   :param str program:
+  :rtype: TopLevelExpressionAst
   """
   print('---- input program:')
   print(program)
@@ -105,6 +106,7 @@ def _test_parse_ast(program):
   print('---- abstract syntax tree:')
   print(ast)
   assert isinstance(ast, TopLevelExpressionAst)
+  return ast
 
 
 def test_ast_parser():
@@ -160,6 +162,43 @@ def test_FunctionDeclarationAst_build_expr_ir():
       ReturnExpressionAst(OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b')))])
   func3 = _get_py_func_from_ast(ast3)
   assert_equal(func3(7.0, 3.0), 10.0)
+
+
+def _test_compile_program(program, main_func_identifier='main'):
+  """
+  :param str program:
+  :param str main_func_identifier:
+  :rtype: Callable[[], float]
+  """
+  ast = _test_parse_ast(program)
+
+  module_ir = ast.make_module_ir(module_name='test_parse_ast')
+  print('---- module intermediate repr:')
+  print(module_ir)
+
+  engine = get_execution_engine()
+  compile_ir(engine, module_ir)
+  main_func_ptr = engine.get_function_address(main_func_identifier)
+  py_func = CFUNCTYPE(c_double)(main_func_ptr)
+  assert callable(py_func)
+  return py_func
+
+
+def test_simple_compile():
+  program1 = """
+  func main() {
+    return 4.0 + 3.0;
+  }
+  """
+  func1 = _test_compile_program(program1)
+  assert_equal(func1(), 4.0 + 3.0)
+  program2 = """
+  func test() {
+    return 2 * 4 - 3;
+  }
+  """
+  func2 = _test_compile_program(program2, main_func_identifier='test')
+  assert_equal(func2(), 2.0 * 4.0 - 3.0)
 
 
 if __name__ == "__main__":

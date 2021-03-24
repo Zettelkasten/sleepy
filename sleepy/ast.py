@@ -53,6 +53,24 @@ class TopLevelExpressionAst(ExpressionAst):
     for expr in self.expr_list:
       expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
 
+  def make_module_ir(self, module_name):
+    """
+    :param str module_name:
+    :rtype: ir.Module
+    """
+    module = ir.Module(name=module_name)
+    io_func_type = ir.FunctionType(ir.VoidType(), ())
+    ir_io_func = ir.Function(module, io_func_type, name='io')
+    symbol_table = {}
+
+    block = ir_io_func.append_basic_block(name='entry')
+    body_builder = ir.IRBuilder(block)
+    for expr in self.expr_list:
+      expr.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
+    body_builder.ret_void()
+
+    return module
+
 
 class FunctionDeclarationAst(ExpressionAst):
   """
