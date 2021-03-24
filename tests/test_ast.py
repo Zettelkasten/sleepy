@@ -8,7 +8,7 @@ from nose.tools import assert_equal
 from ctypes import CFUNCTYPE, c_double
 
 from sleepy.ast import TopLevelExpressionAst, FunctionDeclarationAst, CallExpressionAst, ReturnExpressionAst, \
-  IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst
+  IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst, AssignExpressionAst
 from sleepy.grammar import Grammar, Production, AttributeGrammar
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.lexer import LexerGenerator
@@ -16,10 +16,10 @@ from sleepy.parser import ParserGenerator
 
 SLEEPY_LEXER = LexerGenerator(
   [
-    'func', 'if', 'else', 'return', '{', '}', ';', ',', '(', ')', 'bool_op', 'sum_op', 'prod_op', 'identifier',
+    'func', 'if', 'else', 'return', '{', '}', ';', ',', '(', ')', 'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
     'number', None, None
   ], [
-    'func', 'if', 'else', 'return', '{', '}', ';', ',', '\\(', '\\)', '==|!=|<=?|>=?', '\\+|\\-', '\\*|\\\\',
+    'func', 'if', 'else', 'return', '{', '}', ';', ',', '\\(', '\\)', '==|!=|<=?|>=?', '\\+|\\-', '\\*|\\\\', '=',
     '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '#[^\n]*\n', '[ \n]+'
   ])
 
@@ -30,6 +30,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Expr', 'func', 'identifier', '(', 'IdentifierList', ')', '{', 'ExprList', '}'),
   Production('Expr', 'identifier', '(', 'ValList', ')', ';'),
   Production('Expr', 'return', 'Val', ';'),
+  Production('Expr', 'identifier', '=', 'Val', ';'),
   Production('Expr', 'if', 'Val', '{', 'ExprList', '}'),
   Production('Expr', 'if', 'Val', '{', 'ExprList', '}', 'else', '{', 'ExprList', '}'),
   Production('Val', 'Val', 'bool_op', 'SumVal'),
@@ -61,6 +62,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
       FunctionDeclarationAst(identifier(2), identifier_list(4), expr_list(7)))},
     {'ast': lambda identifier, val_list: CallExpressionAst(identifier(1), val_list(3))},
     {'ast': lambda ast: ReturnExpressionAst(ast(2))},
+    {'ast': lambda identifier, ast: AssignExpressionAst(identifier(1), ast(3))},
     {'ast': lambda ast, expr_list: IfExpressionAst(ast(2), expr_list(4), [])},
     {'ast': lambda ast, expr_list: IfExpressionAst(ast(2), expr_list(4), expr_list(8))}] + [
     {'ast': lambda ast, op: OperatorValueAst(op(2), ast(1), ast(3))},
@@ -219,6 +221,17 @@ def test_simple_compile():
     """
     nothing = _test_compile_program(engine, program, main_func_identifier='nothing')
     assert_equal(nothing(), 0.0)
+  with make_execution_engine() as engine:
+    program = """
+    func lerp(x1, x2, time) {
+      diff = x2 - x1;
+      return x1 + diff * time;
+    }
+    """
+    lerp = _test_compile_program(engine, program, main_func_identifier='lerp', main_func_num_args=3)
+    assert_equal(lerp(0.0, 1.0, 0.3), 0.3)
+    assert_equal(lerp(7.5, 3.2, 0.0), 7.5)
+    assert_equal(lerp(7.5, 3.2, 1.0), 3.2)
 
 
 if __name__ == "__main__":

@@ -146,6 +146,30 @@ class ReturnExpressionAst(ExpressionAst):
     builder.ret(self.return_val.make_ir_value(builder=builder, symbol_table=symbol_table))
 
 
+class AssignExpressionAst(ExpressionAst):
+  """
+  Expr -> identifier = Val ;
+  """
+  def __init__(self, var_identifier, var_val):
+    """
+    :param str var_identifier:
+    :param ValueAst var_val:
+    """
+    super().__init__()
+    self.var_identifier = var_identifier
+    self.var_val = var_val
+
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    """
+    if self.var_identifier in symbol_table and not isinstance(symbol_table[self.var_identifier], ir.values.Value):
+      raise SemanticError('%r: Cannot redefine non-value %r using a value' % (self, self.var_identifier))
+    symbol_table[self.var_identifier] = self.var_val.make_ir_value(builder=builder, symbol_table=symbol_table)
+
+
 class IfExpressionAst(ExpressionAst):
   """
   Expr -> if Val { ExprList }
