@@ -225,6 +225,16 @@ class VariableValueAst(ValueAst):
     super().__init__()
     self.var_identifier = var_identifier
 
+  def make_ir_value(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.Function] symbol_table:
+    :rtype: ir.values.Value
+    """
+    if self.var_identifier not in symbol_table:
+      raise SemanticError('%r: Variable %r referenced before declaring' % (self, self.var_identifier))
+    return symbol_table[self.var_identifier]
+
 
 class CallValueAst(ValueAst):
   """

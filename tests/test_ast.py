@@ -155,6 +155,11 @@ def test_FunctionDeclarationAst_build_expr_ir():
       ReturnExpressionAst(OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0)))])
   func2 = _get_py_func_from_ast(ast2)
   assert_equal(func2(), 8.0)
+  ast3 = FunctionDeclarationAst(
+    identifier='sum', arg_identifiers=['a', 'b'], expr_list=[
+      ReturnExpressionAst(OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b')))])
+  func3 = _get_py_func_from_ast(ast3)
+  assert_equal(func3(7.0, 3.0), 10.0)
 
 
 if __name__ == "__main__":
