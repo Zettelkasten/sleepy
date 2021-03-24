@@ -181,14 +181,16 @@ class OperatorValueAst(ValueAst):
     :param dict[str, ir.Function] symbol_table:
     :rtype: ir.values.Value
     """
+    left_ir = self.left_val.make_ir_value(builder=builder, symbol_table=symbol_table)
+    right_ir = self.right_val.make_ir_value(builder=builder, symbol_table=symbol_table)
     if self.op == '*':
-      return builder.fmul(self.left_val, self.right_val, name='mul_tmp')
+      return builder.fmul(left_ir, right_ir, name='mul_tmp')
     if self.op == '/':
-      return builder.fdiv(self.left_val, self.right_val, name='div_tmp')
+      return builder.fdiv(left_ir, right_ir, name='div_tmp')
     if self.op == '+':
-      return builder.fadd(self.left_val, self.right_val, name='add_tmp')
+      return builder.fadd(left_ir, right_ir, name='add_tmp')
     if self.op == '-':
-      return builder.fsub(self.left_val, self.right_val, name='sub_tmp')
+      return builder.fsub(left_ir, right_ir, name='sub_tmp')
     assert False, '%r: operator %s not handled!' % (self, self.op)
 
 
