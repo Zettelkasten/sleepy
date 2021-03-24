@@ -193,6 +193,52 @@ class IfExpressionAst(ExpressionAst):
     self.condition_val = condition_val
     self.true_expr_list, self.false_expr_list = true_expr_list, false_expr_list
 
+  @property
+  def has_true_branch(self):
+    """
+    :rtype: bool
+    """
+    return len(self.true_expr_list) >= 1
+
+  @property
+  def has_false_branch(self):
+    """
+    :rtype: bool
+    """
+    return len(self.false_expr_list) >= 1
+
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.FunctionType|ir.values.Value] symbol_table:
+    :rtype: ir.IRBuilder
+    """
+    cond_ir = self.condition_val.make_ir_value(builder=builder, symbol_table=symbol_table)
+    return_to = builder.append_basic_block('return_branch')  # type: ir.Block
+    true_to = builder.append_basic_block('true_branch') if self.has_true_branch else return_to  # type: ir.Block
+    false_to = builder.append_basic_block('false_branch') if self.has_false_branch else return_to  # type: ir.Block
+    builder.cbranch(cond_ir, true_to, false_to)
+
+    true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
+    if self.has_true_branch:
+      true_builder = ir.IRBuilder(true_to)
+      for expr in self.true_expr_list:
+        true_builder = expr.build_expr_ir(module=module, builder=true_builder, symbol_table=true_symbol_table)
+      if not true_to.is_terminated:
+        true_builder.branch(return_to)
+    if self.has_false_branch:
+      false_builder = ir.IRBuilder(true_to)
+      for expr in self.false_expr_list:
+        false_builder = expr.build_expr_ir(module=module, builder=false_builder, symbol_table=false_symbol_table)
+      if not false_to.is_terminated:
+        false_builder.branch(return_to)
+
+    # TODO: Need to modify symbol_table.
+    if true_symbol_table != symbol_table or false_symbol_table != symbol_table:
+      assert False, 'not implemented yet'
+    return ir.IRBuilder(return_to)
+
 
 class ValueAst(AbstractSyntaxTree):
   """
