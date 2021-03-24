@@ -4,11 +4,11 @@ import sys
 import unittest
 
 from llvmlite import ir
-from nose.tools import assert_equal
+from nose.tools import assert_equal, assert_almost_equal
 from ctypes import CFUNCTYPE, c_double
 
 from sleepy.ast import TopLevelExpressionAst, FunctionDeclarationAst, CallExpressionAst, ReturnExpressionAst, \
-  IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst, AssignExpressionAst
+  IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst, AssignExpressionAst, CallValueAst
 from sleepy.grammar import Grammar, Production, AttributeGrammar
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.lexer import LexerGenerator
@@ -19,7 +19,7 @@ SLEEPY_LEXER = LexerGenerator(
     'func', 'if', 'else', 'return', '{', '}', ';', ',', '(', ')', 'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
     'number', None, None
   ], [
-    'func', 'if', 'else', 'return', '{', '}', ';', ',', '\\(', '\\)', '==|!=|<=?|>=?', '\\+|\\-', '\\*|\\\\', '=',
+    'func', 'if', 'else', 'return', '{', '}', ';', ',', '\\(', '\\)', '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=',
     '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '#[^\n]*\n', '[ \n]+'
   ])
 
@@ -69,7 +69,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': 'ast.1'}] * 3 + [
     {'ast': lambda number: ConstantValueAst(number(1))},
     {'ast': lambda identifier: VariableValueAst(identifier(1))},
-    {'ast': lambda identifier, val_list: CallExpressionAst(identifier(1), val_list(3))},
+    {'ast': lambda identifier, val_list: CallValueAst(identifier(1), val_list(3))},
     {'identifier_list': []},
     {'identifier_list': 'identifier_list.1'},
     {'identifier_list': lambda identifier: [identifier(1)]},
@@ -232,6 +232,36 @@ def test_simple_compile():
     assert_equal(lerp(0.0, 1.0, 0.3), 0.3)
     assert_equal(lerp(7.5, 3.2, 0.0), 7.5)
     assert_equal(lerp(7.5, 3.2, 1.0), 3.2)
+
+
+def test_call_other_func():
+  with make_execution_engine() as engine:
+    program = """
+    func square(x) {
+      return x * x;
+    }
+    func dist_squared(x1, x2, y1, y2) {
+      return square(x1 - y1) + square(x2 - y2);
+    }
+    """
+    dist_squared = _test_compile_program(engine, program, main_func_identifier='dist_squared', main_func_num_args=4)
+    assert_almost_equal(dist_squared(0.0, 0.0, 1.0, 0.0), 1.0)
+    assert_almost_equal(dist_squared(3.0, 0.0, 0.0, 4.0), 25.0)
+    assert_almost_equal(dist_squared(1.0, 2.0, 3.0, 4.0), (1.0 - 3.0)**2 + (2.0 - 4.0)**2)
+
+
+def test_global_var():
+  with make_execution_engine() as engine:
+    program = """
+    PI = 3.1415;  # declare a global variable
+    func cube(x) { return x * x * x; }
+    func ball_volume(radius) {
+      return 4/3 * PI * cube(radius);
+    }
+    """
+    ball_volume = _test_compile_program(engine, program, main_func_identifier='ball_volume', main_func_num_args=1)
+    for radius in [0.0, 2.0, 3.0, 124.343]:
+      assert_almost_equal(ball_volume(radius), 4.0 / 3.0 * 3.1415 * radius ** 3.0)
 
 
 if __name__ == "__main__":

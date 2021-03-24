@@ -124,7 +124,8 @@ class LexerGenerator:
       state = self._get_next_state(state, char)
       if state is ERROR_STATE:
         if backtrack_mode is self.NORMAL_MODE:  # normal mode, no backtracking yet
-          raise LexError(word, pos, 'Unrecognized pattern, expected %r' % self._get_next_possible_chars(prev_state))
+          raise LexError(word, pos, 'Unrecognized pattern, expected %r to continue token %r' % (
+            self._get_next_possible_chars(prev_state), word[token_begin_pos:pos]))
         else:  # backtracking mode, needs to backtrack now
           do_backtrack()
       else:
