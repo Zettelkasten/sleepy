@@ -264,6 +264,29 @@ def test_global_var():
       assert_almost_equal(ball_volume(radius), 4.0 / 3.0 * 3.1415 * radius ** 3.0)
 
 
+def test_nested_func_call():
+  import numpy
+  with make_execution_engine() as engine:
+    program = """
+    PI = 3.1415;  # declare a global variable
+    func ball_volume(radius) {
+      func cube(x) { return x * x * x; }
+      return 4/3 * PI * cube(radius);
+    }
+    # Compute relative volume difference of two balls.
+    func main(radius1, radius2) {
+      volume1 = ball_volume(radius1);
+      volume2 = ball_volume(radius2);
+      return volume1 / volume2;
+    }
+    """
+    main = _test_compile_program(engine, program, main_func_num_args=2)
+    for radius1 in [0.0, 2.0, 3.0, 124.343]:
+      for radius2 in [0.0, 2.0, 3.0, 124.343]:
+        volume1, volume2 = 4.0 / 3.0 * 3.1415 * radius1 ** 3.0, 4.0 / 3.0 * 3.1415 * radius2 ** 3.0
+        numpy.testing.assert_almost_equal(main(radius1, radius2), numpy.divide(volume1, volume2))
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
