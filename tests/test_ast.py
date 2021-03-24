@@ -212,6 +212,13 @@ def test_simple_compile():
     assert_equal(func(0.0, 1.0), 0.0 - 1.0)
     assert_equal(func(3.0, 5.0), 3.0 - 5.0)
     assert_equal(func(2.5, 2.5), 2.5 - 2.5)
+  with make_execution_engine() as engine:
+    program = """
+    func nothing() {
+    }
+    """
+    nothing = _test_compile_program(engine, program, main_func_identifier='nothing')
+    assert_equal(nothing(), 0.0)
 
 
 if __name__ == "__main__":
