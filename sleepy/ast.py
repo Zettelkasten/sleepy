@@ -215,29 +215,34 @@ class IfExpressionAst(ExpressionAst):
     :rtype: ir.IRBuilder
     """
     cond_ir = self.condition_val.make_ir_value(builder=builder, symbol_table=symbol_table)
-    return_to = builder.append_basic_block('return_branch')  # type: ir.Block
-    true_to = builder.append_basic_block('true_branch') if self.has_true_branch else return_to  # type: ir.Block
-    false_to = builder.append_basic_block('false_branch') if self.has_false_branch else return_to  # type: ir.Block
-    builder.cbranch(cond_ir, true_to, false_to)
+    constant_one = ir.Constant(ir.DoubleType(), 0.0)
+    cond_ir = builder.fcmp_ordered('!=', cond_ir, constant_one, 'ifcond')
+
+    true_block = builder.append_basic_block('true_branch')  # type: ir.Block
+    false_block = builder.append_basic_block('false_branch')  # type: ir.Block
+    continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
+    builder.cbranch(cond_ir, true_block, false_block)
+
+    assert (
+      len(self.true_expr_list) == len(self.false_expr_list) == 1 and isinstance(self.true_expr_list[0],
+      ReturnExpressionAst) and isinstance(self.false_expr_list[0], ReturnExpressionAst)), (
+      'If-statements with branches that do not directly return not implemented yet.')
 
     true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
-    if self.has_true_branch:
-      true_builder = ir.IRBuilder(true_to)
-      for expr in self.true_expr_list:
-        true_builder = expr.build_expr_ir(module=module, builder=true_builder, symbol_table=true_symbol_table)
-      if not true_to.is_terminated:
-        true_builder.branch(return_to)
-    if self.has_false_branch:
-      false_builder = ir.IRBuilder(true_to)
-      for expr in self.false_expr_list:
-        false_builder = expr.build_expr_ir(module=module, builder=false_builder, symbol_table=false_symbol_table)
-      if not false_to.is_terminated:
-        false_builder.branch(return_to)
+    true_builder, false_builder = ir.IRBuilder(true_block), ir.IRBuilder(false_block)
+    true_val = self.true_expr_list[0].return_val  # type: ValueAst
+    true_ir = true_val.make_ir_value(builder=true_builder, symbol_table=true_symbol_table)
+    true_builder.branch(continue_block)
+    false_val = self.false_expr_list[0].return_val  # type: ValueAst
+    false_ir = false_val.make_ir_value(builder=false_builder, symbol_table=false_symbol_table)
+    false_builder.branch(continue_block)
 
-    # TODO: Need to modify symbol_table.
-    if true_symbol_table != symbol_table or false_symbol_table != symbol_table:
-      assert False, 'not implemented yet'
-    return ir.IRBuilder(return_to)
+    builder = ir.IRBuilder(continue_block)
+    phi = builder.phi(ir.DoubleType(), 'iftmp')
+    phi.add_incoming(true_ir, true_block)
+    phi.add_incoming(false_ir, false_block)
+    builder.ret(phi)
+    return builder
 
 
 class ValueAst(AbstractSyntaxTree):
@@ -250,7 +255,7 @@ class ValueAst(AbstractSyntaxTree):
   def make_ir_value(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function] symbol_table:
+    :param dict[str, Union[ir.Function,ir.Value]] symbol_table:
     :rtype: ir.values.Value
     """
     raise NotImplementedError()

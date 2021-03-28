@@ -287,6 +287,22 @@ def test_nested_func_call():
         numpy.testing.assert_almost_equal(main(radius1, radius2), numpy.divide(volume1, volume2))
 
 
+def test_simple_if():
+  with make_execution_engine() as engine:
+    program = """
+    func branch(cond, true_val, false_val) {
+      if cond {
+        return true_val;
+      } else {
+        return false_val;
+      }
+    }
+    """
+    branch = _test_compile_program(engine, program, main_func_identifier='branch', main_func_num_args=3)
+    assert_equal(branch(0, 42, -13), -13)
+    assert_equal(branch(1, 42, -13), 42)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
