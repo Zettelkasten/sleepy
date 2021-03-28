@@ -292,6 +292,9 @@ class OperatorValueAst(ValueAst):
       return builder.fadd(left_ir, right_ir, name='add_tmp')
     if self.op == '-':
       return builder.fsub(left_ir, right_ir, name='sub_tmp')
+    if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
+      ir_bool = builder.fcmp_ordered(self.op, left_ir, right_ir, name='cmp_tmp')
+      return builder.uitofp(ir_bool, ir.DoubleType())
     assert False, '%r: operator %s not handled!' % (self, self.op)
 
 

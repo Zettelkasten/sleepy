@@ -303,6 +303,24 @@ def test_simple_if():
     assert_equal(branch(1, 42, -13), 42)
 
 
+def test_simple_if_max():
+  with make_execution_engine() as engine:
+    program = """
+    func max(a, b) {
+      if a < b {
+        return b;
+      } else {
+        return a;
+      }
+    }
+    """
+    max_ = _test_compile_program(engine, program, main_func_identifier='max', main_func_num_args=2)
+    assert_equal(max_(13, 18), 18)
+    assert_equal(max_(-3, 4.23), 4.23)
+    assert_equal(max_(0, 0), 0)
+    assert_equal(max_(-4, -9), -4)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
