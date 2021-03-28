@@ -298,6 +298,35 @@ class OperatorValueAst(ValueAst):
     assert False, '%r: operator %s not handled!' % (self, self.op)
 
 
+class UnaryOperatorValueAst(ValueAst):
+  """
+  NegVal.
+  """
+  def __init__(self, op, val):
+    """
+    :param str op:
+    :param ValueAst val:
+    """
+    super().__init__()
+    assert op in {'+', '-'}
+    self.op = op
+    self.val = val
+
+  def make_ir_value(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.Function] symbol_table:
+    :rtype: ir.values.Value
+    """
+    val_ir = self.val.make_ir_value(builder=builder, symbol_table=symbol_table)
+    if self.op == '+':
+      return val_ir
+    if self.op == '-':
+      constant_minus_one = ir.Constant(ir.DoubleType(), -1.0)
+      return builder.fmul(constant_minus_one, val_ir, name='neg_tmp')
+    assert False, '%r: operator %s not handled!' % (self, self.op)
+
+
 class ConstantValueAst(ValueAst):
   """
   PrimaryVal -> number

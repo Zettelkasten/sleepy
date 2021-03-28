@@ -8,7 +8,8 @@ from nose.tools import assert_equal, assert_almost_equal
 from ctypes import CFUNCTYPE, c_double
 
 from sleepy.ast import TopLevelExpressionAst, FunctionDeclarationAst, CallExpressionAst, ReturnExpressionAst, \
-  IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst, AssignExpressionAst, CallValueAst
+  IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst, AssignExpressionAst, CallValueAst, \
+  UnaryOperatorValueAst
 from sleepy.grammar import Grammar, Production, AttributeGrammar
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.lexer import LexerGenerator
@@ -37,8 +38,10 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Val', 'SumVal'),
   Production('SumVal', 'SumVal', 'sum_op', 'ProdVal'),
   Production('SumVal', 'ProdVal'),
-  Production('ProdVal', 'ProdVal', 'prod_op', 'PrimaryVal'),
-  Production('ProdVal', 'PrimaryVal'),
+  Production('ProdVal', 'ProdVal', 'prod_op', 'NegVal'),
+  Production('ProdVal', 'NegVal'),
+  Production('NegVal', 'sum_op', 'PrimaryVal'),
+  Production('NegVal', 'PrimaryVal'),
   Production('PrimaryVal', 'number'),
   Production('PrimaryVal', 'identifier'),
   Production('PrimaryVal', 'identifier', '(', 'ValList', ')'),
@@ -68,6 +71,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda ast, expr_list: IfExpressionAst(ast(2), expr_list(4), expr_list(8))}] + [
     {'ast': lambda ast, op: OperatorValueAst(op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
+    {'ast': lambda ast, op: UnaryOperatorValueAst(op(1), ast(2))},
+    {'ast': 'ast.1'},
     {'ast': lambda number: ConstantValueAst(number(1))},
     {'ast': lambda identifier: VariableValueAst(identifier(1))},
     {'ast': lambda identifier, val_list: CallValueAst(identifier(1), val_list(3))},
