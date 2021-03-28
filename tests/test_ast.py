@@ -328,6 +328,15 @@ def test_simple_if_max():
     assert_equal(max_(-4, -9), -4)
 
 
+def test_simple_if_abs():
+  with make_execution_engine() as engine:
+    program = """ func abs(x) { if x < 0 { return -x; } else { return x; } } """
+    abs_ = _test_compile_program(engine, program, main_func_identifier='abs', main_func_num_args=1)
+    assert_equal(abs_(3.1415), 3.1415)
+    assert_equal(abs_(0.0), 0.0)
+    assert_equal(abs_(-5.1), 5.1)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
