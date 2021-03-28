@@ -337,6 +337,49 @@ def test_simple_if_abs():
     assert_equal(abs_(-5.1), 5.1)
 
 
+def test_simple_simple_recursion_factorial():
+  import math
+  with make_execution_engine() as engine:
+    program = """
+    func fac(x) {
+      if x <= 1 {
+        return x;
+      } else {
+        return x * fac(x-1);
+      }
+    }
+    """
+    fac = _test_compile_program(engine, program, main_func_identifier='fac', main_func_num_args=1)
+    assert_equal(fac(3), 3 * 2 * 1)
+    assert_equal(fac(9), math.prod(range(1, 9 + 1)))
+    assert_equal(fac(0), 0)
+
+
+def test_simple_simple_recursion_fibonacci():
+  with make_execution_engine() as engine:
+    program = """
+    func or(a, b) { if a { return a; } else { return b; } }
+    func fibonacci(n) {
+      # crashes if n <= 0 or if n is not integer :)
+      if or(n == 1, n == 2) {
+        return 1;
+      } else {
+        return fibonacci(n - 2) + fibonacci(n - 1);
+      }
+    }
+    """
+
+    def reference_fib(n):
+      if n == 1 or n == 2:
+        return 1
+      else:
+        return reference_fib(n - 2) + reference_fib(n - 1)
+
+    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', main_func_num_args=1)
+    for n in range(1, 15):
+      assert_equal(fib(n), reference_fib(n))
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
