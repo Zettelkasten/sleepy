@@ -27,7 +27,7 @@ def make_execution_engine():
   target_machine = target.create_target_machine()
   backing_mod = llvm.parse_assembly('')
   engine = llvm.create_mcjit_compiler(backing_mod, target_machine)
-  llvm.load_library_permanently('/home/frithjof/Documents/SleepyScript/sleepy/std/build/libstd.so')
+  llvm.load_library_permanently('sleepy/std/build/libstd.so')
   yield engine
   del engine
 
