@@ -263,6 +263,7 @@ def test_call_other_func():
     assert_almost_equal(dist_squared(1.0, 2.0, 3.0, 4.0), (1.0 - 3.0)**2 + (2.0 - 4.0)**2)
 
 
+@unittest.skip('global variables not yet implemented')
 def test_global_var():
   with make_execution_engine() as engine:
     program = """
@@ -277,14 +278,26 @@ def test_global_var():
       assert_almost_equal(ball_volume(radius), 4.0 / 3.0 * 3.1415 * radius ** 3.0)
 
 
+def test_simple_mutable_assign():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x) {
+      x = x + 1;
+      x = x + 1;
+      return x;
+    }
+    """
+    main = _test_compile_program(engine, program, main_func_num_args=1)
+    assert_equal(main(3), 3 + 2)
+
+
 def test_nested_func_call():
   import numpy
   with make_execution_engine() as engine:
     program = """
-    PI = 3.1415;  # declare a global variable
     func ball_volume(radius) {
       func cube(x) { return x * x * x; }
-      return 4/3 * PI * cube(radius);
+      return 4/3 * 3.1415 * cube(radius);
     }
     # Compute relative volume difference of two balls.
     func main(radius1, radius2) {
