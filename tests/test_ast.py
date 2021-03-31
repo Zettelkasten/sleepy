@@ -463,6 +463,75 @@ def test_extern_func_simple_alloc():
     assert_equal(main(), 42)
 
 
+def test_selection_sort():
+  with make_execution_engine() as engine:
+    program = """
+    func swap(ptr1, ptr2) {
+      tmp = load(ptr1);
+      store(ptr1, load(ptr2));
+      store(ptr2, tmp);
+    }
+    func print_array(array, size) {
+      if size <= 0 {
+        return 0;
+      }
+      print_double(load(array));
+      if size > 1 {
+        print_char(44);
+        print_char(32);
+      }
+      print_array(array + 1, size - 1);
+    }
+    func sort(array, size) {
+      func sort_i(last_sorted, array, size) {
+        if last_sorted == array + size {
+          return 0;
+        }
+        
+        func find_smallest(start_at, current_min_pos, array, size) {
+          if start_at >= array + size {
+            return current_min_pos;
+          }
+          current_min_val = load(current_min_pos);
+          current_val = load(start_at);
+          if current_val < current_min_val {
+            return find_smallest(start_at + 1, start_at, array, size);
+          } else {
+            return find_smallest(start_at + 1, current_min_pos, array, size);
+          }
+        }
+        
+        smallest_pos = find_smallest(last_sorted + 1, last_sorted + 1, array, size);
+        swap(smallest_pos, last_sorted + 1);
+        return sort_i(last_sorted + 1, array, size);
+      }
+      
+      sort_i(array - 1, array, size);
+    }
+    
+    func main() {
+      arr = allocate(10);
+      store(arr + 0, 5);
+      store(arr + 1, 1);
+      store(arr + 2, 4);
+      store(arr + 3, 8);
+      store(arr + 4, 7);
+      store(arr + 5, 5);
+      store(arr + 6, 6);
+      store(arr + 7, 8);
+      store(arr + 8, 19);
+      store(arr + 9, 23);
+      print_array(arr, 10);
+      print_char(10);
+      sort(arr, 10);
+      print_array(arr, 10);
+      print_char(10);
+    }
+    """
+
+    main = _test_compile_program(engine, program)
+    main()
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
