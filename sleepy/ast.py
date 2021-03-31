@@ -137,7 +137,7 @@ class FunctionDeclarationAst(ExpressionAst):
     """
     :rtype: list[str]
     """
-    return [self.identifier]
+    return []
 
   def get_body_declared_identifiers(self):
     """
