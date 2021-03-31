@@ -11,7 +11,7 @@ from sleepy.ast import TopLevelExpressionAst, FunctionDeclarationAst, CallExpres
   IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst, AssignExpressionAst, CallValueAst, \
   UnaryOperatorValueAst, ExternFunctionDeclarationAst
 from sleepy.grammar import Grammar, Production, AttributeGrammar
-from sleepy.jit import make_execution_engine, compile_ir
+from sleepy.jit import make_execution_engine, compile_ir, preamble
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 
@@ -186,6 +186,7 @@ def _test_compile_program(engine, program, main_func_identifier='main', main_fun
   :param str main_func_identifier:
   :rtype: Callable[[], float]
   """
+  program = preamble + program
   ast = _test_parse_ast(program)
   module_ir = ast.make_module_ir(module_name='test_parse_ast')
   print('---- module intermediate repr:')
@@ -445,6 +446,21 @@ def test_extern_func():
     cos_ = _test_compile_program(engine, program, main_func_num_args=1)
     for x in [0, 1,2, 3, math.pi]:
       assert_almost_equal(cos_(x), math.cos(x))
+
+
+def test_extern_func_simple_alloc():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      arr = allocate(3);
+      store(arr, 42);
+      res = load(arr);
+      return res;
+    }
+    """
+
+    main = _test_compile_program(engine, program)
+    print(main())
 
 
 if __name__ == "__main__":

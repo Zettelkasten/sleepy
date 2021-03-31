@@ -10,6 +10,25 @@ from sleepy.grammar import SemanticError
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
 
+def make_func_call_ir(func_identifier, func_arg_vals, builder, symbol_table):
+  """
+  :param str func_identifier:
+  :param list[ValueAst] func_arg_vals:
+  :param IRBuilder builder:
+  :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+  :rtype: ir.values.Value
+  """
+  if func_identifier not in symbol_table:
+    raise SemanticError('Function name %r referenced before declaration' % func_identifier)
+  func = symbol_table[func_identifier]
+  assert isinstance(func, ir.Function)
+  if not len(func.args) == len(func_arg_vals):
+    raise SemanticError('Function %r called with %r arguments %r, but expected %r arguments %r' % (
+      func_identifier, len(func_arg_vals), func_arg_vals, len(func.args), func.args))
+  func_args_ir = [val.make_ir_value(builder=builder, symbol_table=symbol_table) for val in func_arg_vals]
+  return builder.call(func, func_args_ir, name='call')
+
+
 class AbstractSyntaxTree:
   """
   Abstract syntax tree of a sleepy program.
@@ -197,6 +216,18 @@ class CallExpressionAst(ExpressionAst):
     super().__init__()
     self.func_identifier = func_identifier
     self.func_arg_vals = func_arg_vals
+
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :rtype: ir.IRBuilder
+    """
+    make_func_call_ir(
+      func_identifier=self.func_identifier, func_arg_vals=self.func_arg_vals, builder=builder,
+      symbol_table=symbol_table)
+    return builder
 
   def get_declared_identifiers(self):
     """
@@ -485,12 +516,6 @@ class CallValueAst(ValueAst):
     :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
     :rtype: ir.values.Value
     """
-    if self.func_identifier not in symbol_table:
-      raise SemanticError('Function name %r referenced before declaration' % self.func_identifier)
-    func = symbol_table[self.func_identifier]
-    assert isinstance(func, ir.Function)
-    if not len(func.args) == len(self.func_arg_vals):
-      raise SemanticError('Function %r called with %r arguments %r, but expected %r arguments %r' % (
-        self.func_identifier, len(self.func_arg_vals), self.func_arg_vals, len(func.args), func.args))
-    func_args_ir = [val.make_ir_value(builder=builder, symbol_table=symbol_table) for val in self.func_arg_vals]
-    return builder.call(func, func_args_ir, name='call')
+    return make_func_call_ir(
+      func_identifier=self.func_identifier, func_arg_vals=self.func_arg_vals, builder=builder,
+      symbol_table=symbol_table)
