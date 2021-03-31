@@ -460,7 +460,7 @@ def test_extern_func_simple_alloc():
     """
 
     main = _test_compile_program(engine, program)
-    print(main())
+    assert_equal(main(), 42)
 
 
 if __name__ == "__main__":
