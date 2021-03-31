@@ -194,7 +194,7 @@ def _test_compile_program(engine, program, main_func_identifier='main', main_fun
   return py_func
 
 
-def test_simple_compile():
+def test_simple_arithmetic():
   with make_execution_engine() as engine:
     program = """
     func main() {
@@ -221,6 +221,9 @@ def test_simple_compile():
     assert_equal(func(0.0, 1.0), 0.0 - 1.0)
     assert_equal(func(3.0, 5.0), 3.0 - 5.0)
     assert_equal(func(2.5, 2.5), 2.5 - 2.5)
+
+
+def test_empty_func():
   with make_execution_engine() as engine:
     program = """
     func nothing() {
@@ -228,6 +231,9 @@ def test_simple_compile():
     """
     nothing = _test_compile_program(engine, program, main_func_identifier='nothing')
     assert_equal(nothing(), 0.0)
+
+
+def test_lerp():
   with make_execution_engine() as engine:
     program = """
     func lerp(x1, x2, time) {
