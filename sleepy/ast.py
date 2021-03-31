@@ -118,10 +118,12 @@ class FunctionDeclarationAst(ExpressionAst):
     block = ir_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
 
+    for local_identifier in self.get_body_declared_identifiers():
+      ir_alloca = body_builder.alloca(double, name=local_identifier)
+      body_symbol_table[local_identifier] = ir_alloca
+
     for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
-      ir_arg.name = arg_identifier
-      ir_alloca = body_builder.alloca(double, name=arg_identifier)
-      body_symbol_table[arg_identifier] = ir_alloca
+      ir_alloca = body_symbol_table[arg_identifier]
       body_builder.store(ir_arg, ir_alloca)
 
     for expr in self.expr_list:
@@ -135,6 +137,14 @@ class FunctionDeclarationAst(ExpressionAst):
     :rtype: list[str]
     """
     return [self.identifier]
+
+  def get_body_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    local_identifiers = [identifier for expr in self.expr_list for identifier in expr.get_declared_identifiers()]
+    return self.arg_identifiers + [
+      identifier for identifier in local_identifiers if identifier not in local_identifiers]
 
 
 class CallExpressionAst(ExpressionAst):
