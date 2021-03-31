@@ -148,7 +148,7 @@ class FunctionDeclarationAst(ExpressionAst):
 
     for expr in self.expr_list:
       body_builder = expr.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
-    if not block.is_terminated:
+    if body_builder is not None and not body_builder.block.is_terminated:
       body_builder.ret(ir.Constant(double, 0.0))
     return builder
 
