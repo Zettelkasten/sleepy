@@ -18,10 +18,12 @@ from sleepy.parser import ParserGenerator
 SLEEPY_LEXER = LexerGenerator(
   [
     'func', 'extern_func', 'if', 'else', 'return', '{', '}', ';', ',', '(', ')', 'bool_op', 'sum_op',
-    'prod_op', '=', 'identifier', 'number', None, None
+    'prod_op', '=', 'identifier', 'number', 'char',
+    None, None
   ], [
     'func', 'extern_func', 'if', 'else', 'return', '{', '}', ';', ',', '\\(', '\\)', '==|!=|<=?|>=?', '\\+|\\-',
-    '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '#[^\n]*\n', '[ \n]+'
+    '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '\'[^\']\'',
+    '#[^\n]*\n', '[ \n]+'
   ])
 
 SLEEPY_GRAMMAR = Grammar(
@@ -44,6 +46,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('NegVal', 'sum_op', 'PrimaryVal'),
   Production('NegVal', 'PrimaryVal'),
   Production('PrimaryVal', 'number'),
+  Production('PrimaryVal', 'char'),
   Production('PrimaryVal', 'identifier'),
   Production('PrimaryVal', 'identifier', '(', 'ValList', ')'),
   Production('PrimaryVal', '(', 'Val', ')'),
@@ -77,6 +80,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda ast, op: UnaryOperatorValueAst(op(1), ast(2))},
     {'ast': 'ast.1'},
     {'ast': lambda number: ConstantValueAst(number(1))},
+    {'ast': lambda number: ConstantValueAst(number(1))},
     {'ast': lambda identifier: VariableValueAst(identifier(1))},
     {'ast': lambda identifier, val_list: CallValueAst(identifier(1), val_list(3))},
     {'ast': 'ast.2'},
@@ -94,7 +98,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'sum_op': {'op': lambda value: value},
     'prod_op': {'op': lambda value: value},
     'identifier': {'identifier': lambda value: value},
-    'number': {'number': lambda value: float(value)}
+    'number': {'number': lambda value: float(value)},
+    'char': {'number': lambda value: ord(value[1:-1])}
   }
 )
 
@@ -472,16 +477,15 @@ def test_selection_sort():
       store(ptr2, tmp);
     }
     func print_array(array, size) {
-      if size <= 0 {
-        return 0;
-      }
+      if size <= 0 { return 0; }
       print_double(load(array));
       if size > 1 {
-        print_char(44);
-        print_char(32);
+        print_char(',');
+        print_char(' ');
       }
       print_array(array + 1, size - 1);
     }
+
     func sort(array, size) {
       func sort_i(last_sorted, array, size) {
         if last_sorted == array + size {
@@ -509,8 +513,16 @@ def test_selection_sort():
       sort_i(array - 1, array, size);
     }
     
+    func init(array, size) {
+      if size <= 0 { return 0; }
+      store(array, 0);
+      init(array + 1, size - 1);
+    }
+    
     func main() {
-      arr = allocate(10);
+      size = 1000;
+      arr = allocate(size);
+      init(arr, size);
       store(arr + 0, 5);
       store(arr + 1, 1);
       store(arr + 2, 4);
@@ -521,16 +533,18 @@ def test_selection_sort():
       store(arr + 7, 8);
       store(arr + 8, 19);
       store(arr + 9, 23);
-      print_array(arr, 10);
-      print_char(10);
-      sort(arr, 10);
-      print_array(arr, 10);
-      print_char(10);
+      print_array(arr, size);
+      print_char('\n');
+      sort(arr, size);
+      print_array(arr, size);
+      print_char('\n');
+      deallocate(arr);
     }
     """
 
     main = _test_compile_program(engine, program)
     main()
+
 
 if __name__ == "__main__":
   try:
