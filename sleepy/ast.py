@@ -124,6 +124,7 @@ class FunctionDeclarationAst(ExpressionAst):
 
     for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
       ir_alloca = body_symbol_table[arg_identifier]
+      ir_arg.name = arg_identifier
       body_builder.store(ir_arg, ir_alloca)
 
     for expr in self.expr_list:
@@ -144,7 +145,7 @@ class FunctionDeclarationAst(ExpressionAst):
     """
     local_identifiers = [identifier for expr in self.expr_list for identifier in expr.get_declared_identifiers()]
     return self.arg_identifiers + [
-      identifier for identifier in local_identifiers if identifier not in local_identifiers]
+      identifier for identifier in local_identifiers if identifier not in self.arg_identifiers]
 
 
 class CallExpressionAst(ExpressionAst):
@@ -215,13 +216,10 @@ class AssignExpressionAst(ExpressionAst):
     :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
     :rtype: ir.IRBuilder
     """
-    if self.var_identifier in symbol_table:
-      ir_alloca = symbol_table[self.var_identifier]
-      if not isinstance(ir_alloca, ir.AllocaInstr):
-        raise SemanticError('%r: Cannot redefine non-value %r using a value' % (self, self.var_identifier))
-    else:
-      ir_alloca = builder.alloca(ir.DoubleType(), name=self.var_identifier)
-    assert isinstance(ir_alloca, ir.AllocaInstr)
+    assert self.var_identifier in symbol_table
+    ir_alloca = symbol_table[self.var_identifier]
+    if not isinstance(ir_alloca, ir.AllocaInstr):
+      raise SemanticError('%r: Cannot redefine non-value %r using a value' % (self, self.var_identifier))
     symbol_table[self.var_identifier] = ir_alloca
     ir_value = self.var_val.make_ir_value(builder=builder, symbol_table=symbol_table)
     assert isinstance(ir_value, ir.values.Value)
