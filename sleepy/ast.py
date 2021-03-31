@@ -33,6 +33,12 @@ class ExpressionAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
+  def get_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    raise NotImplementedError()
+
 
 class TopLevelExpressionAst(ExpressionAst):
   """
@@ -72,6 +78,12 @@ class TopLevelExpressionAst(ExpressionAst):
     body_builder.ret_void()
 
     return module
+
+  def get_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    return []
 
 
 class FunctionDeclarationAst(ExpressionAst):
@@ -118,6 +130,12 @@ class FunctionDeclarationAst(ExpressionAst):
       body_builder.ret(ir.Constant(double, 0.0))
     return builder
 
+  def get_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    return [self.identifier]
+
 
 class CallExpressionAst(ExpressionAst):
   """
@@ -131,6 +149,12 @@ class CallExpressionAst(ExpressionAst):
     super().__init__()
     self.func_identifier = func_identifier
     self.func_arg_vals = func_arg_vals
+
+  def get_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    return []
 
 
 class ReturnExpressionAst(ExpressionAst):
@@ -153,6 +177,12 @@ class ReturnExpressionAst(ExpressionAst):
     """
     builder.ret(self.return_val.make_ir_value(builder=builder, symbol_table=symbol_table))
     return builder
+
+  def get_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    return []
 
 
 class AssignExpressionAst(ExpressionAst):
@@ -187,6 +217,12 @@ class AssignExpressionAst(ExpressionAst):
     assert isinstance(ir_value, ir.values.Value)
     builder.store(ir_value, ir_alloca)
     return builder
+
+  def get_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    return [self.var_identifier]
 
 
 class IfExpressionAst(ExpressionAst):
@@ -254,6 +290,14 @@ class IfExpressionAst(ExpressionAst):
     phi.add_incoming(false_ir, false_block)
     builder.ret(phi)
     return builder
+
+  def get_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    true_declared = [identifier for expr in self.true_expr_list for identifier in expr.get_declared_identifiers()]
+    false_declared = [identifier for expr in self.true_expr_list for identifier in expr.get_declared_identifiers()]
+    return true_declared + [identifier for identifier in false_declared if identifier not in true_declared]
 
 
 class ValueAst(AbstractSyntaxTree):
