@@ -148,6 +148,43 @@ class FunctionDeclarationAst(ExpressionAst):
       identifier for identifier in local_identifiers if identifier not in self.arg_identifiers]
 
 
+class ExternFunctionDeclarationAst(ExpressionAst):
+  """
+  Expr -> extern_func identifier ( IdentifierList ) ;
+  """
+  def __init__(self, identifier, arg_identifiers):
+    """
+    :param str identifier:
+    :param list[str] arg_identifiers:
+    """
+    super().__init__()
+    self.identifier = identifier
+    self.arg_identifiers = arg_identifiers
+
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :rtype: ir.IRBuilder
+    """
+    if self.identifier in symbol_table:
+      raise SemanticError('%r: cannot redefine extern function with name %r' % (self, self.identifier))
+    double = ir.DoubleType()
+    func_type = ir.FunctionType(double, (double,) * len(self.arg_identifiers))
+    ir_func = ir.Function(module, func_type, name=self.identifier)
+    symbol_table[self.identifier] = ir_func
+    for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
+      ir_arg.name = arg_identifier
+    return builder
+
+  def get_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    return []
+
+
 class CallExpressionAst(ExpressionAst):
   """
   Expr -> identifier ( ValList )

@@ -9,7 +9,7 @@ from ctypes import CFUNCTYPE, c_double
 
 from sleepy.ast import TopLevelExpressionAst, FunctionDeclarationAst, CallExpressionAst, ReturnExpressionAst, \
   IfExpressionAst, OperatorValueAst, ConstantValueAst, VariableValueAst, AssignExpressionAst, CallValueAst, \
-  UnaryOperatorValueAst
+  UnaryOperatorValueAst, ExternFunctionDeclarationAst
 from sleepy.grammar import Grammar, Production, AttributeGrammar
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.lexer import LexerGenerator
@@ -17,11 +17,11 @@ from sleepy.parser import ParserGenerator
 
 SLEEPY_LEXER = LexerGenerator(
   [
-    'func', 'if', 'else', 'return', '{', '}', ';', ',', '(', ')', 'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
-    'number', None, None
+    'func', 'extern_func', 'if', 'else', 'return', '{', '}', ';', ',', '(', ')', 'bool_op', 'sum_op',
+    'prod_op', '=', 'identifier', 'number', None, None
   ], [
-    'func', 'if', 'else', 'return', '{', '}', ';', ',', '\\(', '\\)', '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=',
-    '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '#[^\n]*\n', '[ \n]+'
+    'func', 'extern_func', 'if', 'else', 'return', '{', '}', ';', ',', '\\(', '\\)', '==|!=|<=?|>=?', '\\+|\\-',
+    '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '#[^\n]*\n', '[ \n]+'
   ])
 
 SLEEPY_GRAMMAR = Grammar(
@@ -29,6 +29,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('ExprList'),
   Production('ExprList', 'Expr', 'ExprList'),
   Production('Expr', 'func', 'identifier', '(', 'IdentifierList', ')', '{', 'ExprList', '}'),
+  Production('Expr', 'extern_func', 'identifier', '(', 'IdentifierList', ')', ';'),
   Production('Expr', 'identifier', '(', 'ValList', ')', ';'),
   Production('Expr', 'return', 'Val', ';'),
   Production('Expr', 'identifier', '=', 'Val', ';'),
@@ -64,6 +65,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'expr_list': lambda ast, expr_list: [ast(1)] + expr_list(2)},
     {'ast': lambda identifier, identifier_list, expr_list: (
       FunctionDeclarationAst(identifier(2), identifier_list(4), expr_list(7)))},
+    {'ast': lambda identifier, identifier_list: (
+      ExternFunctionDeclarationAst(identifier(2), identifier_list(4)))},
     {'ast': lambda identifier, val_list: CallExpressionAst(identifier(1), val_list(3))},
     {'ast': lambda ast: ReturnExpressionAst(ast(2))},
     {'ast': lambda identifier, ast: AssignExpressionAst(identifier(1), ast(3))},
@@ -427,6 +430,21 @@ def test_simple_simple_recursion_fibonacci():
     fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', main_func_num_args=1)
     for n in range(1, 15):
       assert_equal(fib(n), reference_fib(n))
+
+
+def test_extern_func():
+  import math
+  with make_execution_engine() as engine:
+    program = """
+    extern_func cos(x);
+    func main(x) {
+      return cos(x);
+    }
+    """
+
+    cos_ = _test_compile_program(engine, program, main_func_num_args=1)
+    for x in [0, 1,2, 3, math.pi]:
+      assert_almost_equal(cos_(x), math.cos(x))
 
 
 if __name__ == "__main__":
