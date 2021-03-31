@@ -356,6 +356,36 @@ def test_simple_if_abs():
     assert_equal(abs_(-5.1), 5.1)
 
 
+def test_if_assign():
+  with make_execution_engine() as engine:
+    program = """
+    func main(mode, x, y) {
+      res = 0;
+      if mode == 0 {  # addition
+        res = x + y;
+      } if mode == 1 {  # subtraction
+        res = x - y;
+      } if mode == 2 {  # distance squared
+        a = x - y;
+        res = a * a;
+      }
+      return res;
+    }
+    """
+    ast = _test_parse_ast(program)
+    assert isinstance(ast, TopLevelExpressionAst)
+    assert_equal(ast.get_declared_identifiers(), [])
+    assert len(ast.expr_list) == 1
+    main_ast = ast.expr_list[0]
+    assert isinstance(main_ast, FunctionDeclarationAst)
+    assert_equal(main_ast.get_declared_identifiers(), [])
+    assert_equal(set(main_ast.get_body_declared_identifiers()), {'mode', 'x', 'y', 'res', 'a'})
+    main = _test_compile_program(engine, program, main_func_num_args=3)
+    assert_equal(main(0, 4, 6), 10)
+    assert_equal(main(1, 5, -3), 8)
+    assert_equal(main(2, 0, 1), 1)
+
+
 def test_simple_simple_recursion_factorial():
   import math
   with make_execution_engine() as engine:
