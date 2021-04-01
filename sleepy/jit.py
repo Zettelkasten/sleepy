@@ -10,10 +10,14 @@ llvm.initialize_all_asmprinters()
 
 
 std_func_identifiers = [
-  ('print_char', 1), ('print_double', 1), ('allocate', 1), ('deallocate', 1), ('load', 1), ('store', 2)]
+  ('print_char', 1), ('print_double', 1), ('allocate', 1), ('deallocate', 1), ('load', 1), ('store', 2), ('assert', 1)]
 preamble = ''.join([
   'extern_func %s(%s);\n' % (identifier, ', '.join(['var%s' % num for num in range(num_args)]))
-  for identifier, num_args in std_func_identifiers])
+  for identifier, num_args in std_func_identifiers]) + """
+func or(a, b) { if a { return a; } else { return b; } }
+func and(a, b) { if a { return b; } else { return 0; } }
+func not(a) { if (a) { return 0; } else { return 1; } }
+"""
 
 
 @contextmanager

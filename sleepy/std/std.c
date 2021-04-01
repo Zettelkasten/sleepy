@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 
 double print_char(double c) {
     printf("%c", (char) c);
@@ -11,15 +12,26 @@ double print_double(double d) {
     return 0;
 }
 
+double assert(double property) {
+    if (property != 1.0) {
+        printf("Assertion failed!\n");
+        raise(SIGABRT);
+    }
+    return 0;
+}
+
 double* double_to_ptr(double d) {
     return (double*) (size_t) (d * 8);
 }
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "bugprone-integer-division"
+
 double ptr_to_double(void* ptr) {
-    return (double)((size_t)ptr / 8);
+    assert((size_t) ptr % 8 == 0);
+    return (double) ((size_t) ptr / 8);
 }
+
 #pragma clang diagnostic pop
 
 
