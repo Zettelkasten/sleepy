@@ -416,7 +416,6 @@ def test_simple_simple_recursion_factorial():
 def test_simple_simple_recursion_fibonacci():
   with make_execution_engine() as engine:
     program = """
-    func or(a, b) { if a { return a; } else { return b; } }
     func fibonacci(n) {
       # crashes if n <= 0 or if n is not integer :)
       if or(n == 1, n == 2) {
@@ -513,16 +512,16 @@ def test_selection_sort():
       sort_i(array - 1, array, size);
     }
     
-    func init(array, size) {
-      if size <= 0 { return 0; }
-      store(array, 0);
-      init(array + 1, size - 1);
+    func is_sorted(array, size) {
+      if size <= 1 {
+        return 1;
+      }
+      return and(load(array) <= load(array + 1), is_sorted(array + 1, size - 1));
     }
-    
+
     func main() {
-      size = 1000;
+      size = 10;
       arr = allocate(size);
-      init(arr, size);
       store(arr + 0, 5);
       store(arr + 1, 1);
       store(arr + 2, 4);
@@ -535,9 +534,16 @@ def test_selection_sort():
       store(arr + 9, 23);
       print_array(arr, size);
       print_char('\n');
+      assert(not(is_sorted(arr, size)));
+
       sort(arr, size);
       print_array(arr, size);
       print_char('\n');
+
+      assert(load(arr + 0) == 1);
+      assert(load(arr + 1) == 4);
+      assert(is_sorted(arr, size));
+
       deallocate(arr);
     }
     """
