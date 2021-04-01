@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 
-from sleepy.grammar import AttributeGrammar, SyntaxTree
+from sleepy.grammar import AttributeGrammar, SyntaxTree, get_token_word_from_tokens_pos
 
 
 class AttributeEvalGenerator:
@@ -21,13 +21,17 @@ class AttributeEvalGenerator:
     """
     return self.attr_grammar.grammar
 
-  def eval_attrs(self, root_tree, token_words):
+  def eval_attrs(self, root_tree, word, tokens, tokens_pos):
     """
     :param SyntaxTree root_tree: parse tree of start symbol. Is assumed to not have any inherited attributes
+    :param str word:
+    :param list[str] tokens:
+    :param list[int] tokens_pos: start index of word for each token
     :return: evaluated attributes in start symbol
     :rtype: dict[str, Any]
     """
     assert root_tree.prod.left == self.grammar.start
+    assert len(tokens) == len(tokens_pos)
     token_pos = 0
     tree_stack = [root_tree]  # type: List[SyntaxTree]
     prod_pos_stack = [0]  # type: List[int]
@@ -53,9 +57,9 @@ class AttributeEvalGenerator:
           right_attr_eval_stack.append([{} for _ in range(len(next_subtree.right))])
         else:
           # scan terminal symbol
-          assert next_symbol in self.grammar.terminals
+          assert tokens[token_pos] is next_symbol in self.grammar.terminals
           assert next_subtree is None
-          next_token_word = token_words[token_pos]
+          next_token_word = get_token_word_from_tokens_pos(word, tokens_pos, token_pos)
           symbol_attr_eval = self.attr_grammar.get_terminal_syn_attr_eval(next_symbol, next_token_word)
           token_pos += 1
           prod_pos_stack[-1] = current_prod_pos + 1
@@ -78,7 +82,7 @@ class AttributeEvalGenerator:
           # done parsing
           root_eval = parent_tree_attr_eval
 
-    assert token_pos == len(token_words)
+    assert token_pos == len(tokens)
     assert len(tree_stack) == len(left_attr_eval_stack) == len(right_attr_eval_stack) == 0
     assert root_eval is not None
     assert len(root_eval) >= 1

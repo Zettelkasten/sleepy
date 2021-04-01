@@ -15,7 +15,7 @@ class LexerGenerator:
   def __init__(self, token_names, token_regex_table):
     """
     :param list[str|None] token_names: list of token names, sorted by priority.
-      Tokens with name `None` will be removed entirely (e.g. for whitespace, comments, etc.).
+      Tokens with name `IGNORE_TOKEN` will be ignored later (e.g. for whitespace, comments, etc.).
     :param list[str] token_regex_table: corresponding regex's, not recognizing the empty word.
     """
     assert len(token_names) == len(token_regex_table)
@@ -79,16 +79,16 @@ class LexerGenerator:
     """
     Find first longest matching analysis.
     :param str word:
-    :returns: token analysis + decomposition (i.e. token attribute table).
+    :returns: token analysis + decomposition (i.e. positions where tokens start).
     :raises: LexError
-    :rtype: tuple[tuple[str],tuple[str]]
+    :rtype: tuple[tuple[str],tuple[int]]
     """
     pos = 0
     state = self._initial_state
     backtrack_mode = self.NORMAL_MODE  # type: Union[str, LexerGenerator.NORMAL_MODE]
     backtrack_pos = None  # type: Optional[int]
     analysis = []  # type: List[str]
-    decomposition = []  # type: List[str]
+    decomposition = []  # type: List[int]
     token_begin_pos = 0
 
     def do_backtrack():
@@ -99,11 +99,8 @@ class LexerGenerator:
       assert backtrack_mode in self.token_names
       assert backtrack_pos is not None
       state = self._initial_state
-      if backtrack_mode is not None:
-        analysis.append(backtrack_mode)
-        decomposition.append(word[token_begin_pos:pos])
-      else:  # read token is None, i.e. ignored.
-        pass
+      analysis.append(backtrack_mode)
+      decomposition.append(token_begin_pos)
       pos, token_begin_pos = backtrack_pos, backtrack_pos
       backtrack_mode, backtrack_pos = self.NORMAL_MODE, None
       assert state not in self._final_states

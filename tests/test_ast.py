@@ -113,10 +113,10 @@ def _test_parse_ast(program):
   """
   print('---- input program:')
   print(program)
-  tokens, token_words = SLEEPY_LEXER.tokenize(program)
+  tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
   print('---- tokens:')
   print(tokens)
-  analysis, eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, tokens, token_words)
+  analysis, eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
   ast = eval['ast']
   print('---- right-most analysis:')
   print(analysis)

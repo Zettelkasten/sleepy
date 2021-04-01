@@ -4,17 +4,17 @@ import unittest
 import better_exchook
 from nose.tools import assert_equal, assert_raises
 
-from sleepy.grammar import LexError
+from sleepy.grammar import LexError, IGNORED_TOKEN
 
 
 def test_tokenize_regex():
   from sleepy.regex import tokenize_regex
-  assert_equal(tokenize_regex('abcd'), (('a', 'a', 'a', 'a'), ('a', 'b', 'c', 'd')))
-  assert_equal(tokenize_regex('[a-z]*'), (('[', 'a', '-', 'a', ']', '*'), (None, 'a', None, 'z', None, None)))
-  assert_equal(tokenize_regex('\\\\\\?'), (('a', 'a'), ('\\', '?')))
-  assert_equal(tokenize_regex('(b|c)+'), (('(', 'a', '|', 'a', ')', '+'), (None, 'b', None, 'c', None, None)))
+  assert_equal(tokenize_regex('abcd'), (('a', 'a', 'a', 'a'), (0, 1, 2, 3)))
+  assert_equal(tokenize_regex('[a-z]*'), (('[', 'a', '-', 'a', ']', '*'), (0, 1, 2, 3, 4, 5)))
+  assert_equal(tokenize_regex('\\\\\\?'), ((IGNORED_TOKEN, 'a', IGNORED_TOKEN, 'a'), (0, 1, 2, 3)))
+  assert_equal(tokenize_regex('(b|c)+'), (('(', 'a', '|', 'a', ')', '+'), (0, 1, 2, 3, 4, 5)))
   assert_equal(
-    tokenize_regex('[^a-z]*'), (('[', '^', 'a', '-', 'a', ']', '*'), (None, None, 'a', None, 'z', None, None)))
+    tokenize_regex('[^a-z]*'), (('[', '^', 'a', '-', 'a', ']', '*'), (0, 1, 2, 3, 4, 5, 6)))
   with assert_raises(LexError):
     tokenize_regex('never ending\\')
   with assert_raises(LexError):

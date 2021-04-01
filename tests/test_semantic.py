@@ -6,7 +6,7 @@ from nose.tools import assert_equal, assert_raises, assert_equals, assert_almost
 
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
-from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar, SyntaxTree
+from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar, SyntaxTree, IGNORED_TOKEN
 from sleepy.semantic import AttributeEvalGenerator
 
 
@@ -45,11 +45,11 @@ def test_AttributeEvalGenerator_check_declaredness():
   def evaluate(word, target_eval):
     print('----')
     print('input word:', word)
-    tokens, token_words = lexer.tokenize(word)
-    print('tokens:', tokens, 'with decomposition', token_words)
-    tree = parser.parse_tree(tokens, token_words)
+    tokens, tokens_pos = lexer.tokenize(word)
+    print('tokens:', tokens, 'with decomposition', tokens_pos)
+    tree = parser.parse_tree(word, tokens, tokens_pos)
     print('parsed tree:', tree)
-    tree_attr_eval = attr_eval_gen.eval_attrs(tree, token_words)
+    tree_attr_eval = attr_eval_gen.eval_attrs(tree, word, tokens, tokens_pos)
     print('attribute eval:', tree_attr_eval)
     assert_equal(tree_attr_eval, target_eval)
 
@@ -66,7 +66,7 @@ def test_AttributeEvalGenerator_check_declaredness():
 def test_AttributeEvalGenerator_typed_arithmetic():
   import math, numpy as np
   lexer = LexerGenerator(
-    token_names=['(', ')', '+', '-', '*', '**', '/', '[', ']', ',', 'const', 'name', None],
+    token_names=['(', ')', '+', '-', '*', '**', '/', '[', ']', ',', 'const', 'name', IGNORED_TOKEN],
     token_regex_table=[
       '\\(', '\\)', '\\+', '\\-', '\\*', '\\*\\*', '/', '\\[', '\\]', ',', '(0|[1-9][0-9]*)(\\.[0-9]+)?',
       '([a-z]|[A-Z])+', ' +']
@@ -272,9 +272,9 @@ def test_AttributeEvalGenerator_typed_arithmetic():
   def evaluate(word, expected_result, expected_type=None):
     print('----')
     print('input word:', word)
-    tokens, token_words = lexer.tokenize(word)
-    print('tokens:', tokens, 'with decomposition', token_words)
-    analysis, result = parser.parse_syn_attr_analysis(attr_g, tokens, token_words)
+    tokens, tokens_pos = lexer.tokenize(word)
+    print('tokens:', tokens, 'with decomposition', tokens_pos)
+    analysis, result = parser.parse_syn_attr_analysis(attr_g, word, tokens, tokens_pos)
     print('result:')
     print(result['res'])
     if isinstance(expected_result, (float, int)):

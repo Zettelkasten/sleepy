@@ -1,5 +1,5 @@
 from sleepy.automaton import NonDeterministicAutomaton, make_dfa_from_nfa
-from sleepy.grammar import Grammar, Production, LexError, EPSILON
+from sleepy.grammar import Grammar, Production, LexError, EPSILON, IGNORED_TOKEN, get_token_word_from_tokens_pos
 from sleepy.parser import ParserGenerator
 from typing import List, Dict, Set, Optional
 
@@ -44,30 +44,29 @@ def tokenize_regex(word):
   :param str word:
   :raises: LexError
   :returns: tokens with decomposition
-  :rtype: tuple[tuple[str], tuple[str]]
+  :rtype: tuple[tuple[str], tuple[int]]
   """
   escape_next = False
-  tokens, token_words = [], []
+  tokens, tokens_pos = [], []
   for pos, c in enumerate(word):
     if escape_next:
       if c not in REGEX_SPECIAL_TOKENS:
         raise LexError(word, pos, 'Cannot escape character %r' % c)
       escape_next = False
       tokens.append(REGEX_LIT_TOKEN)
-      token_words.append(c)
     elif c == '\\':
       escape_next = True
+      tokens.append(IGNORED_TOKEN)
     elif c in REGEX_SPECIAL_TOKENS:
       tokens.append(c)
-      token_words.append(None)
     else:  # default case
       tokens.append(REGEX_LIT_TOKEN)
-      token_words.append(c)
+    tokens_pos.append(pos)
 
   if escape_next:
     raise LexError(word, len(word), 'Cannot end word with escape character')
-  assert len(tokens) == len(token_words) <= len(word)
-  return tuple(tokens), tuple(token_words)
+  assert len(tokens) == len(tokens_pos) == len(word)
+  return tuple(tokens), tuple(tokens_pos)
 
 
 def make_regex_nfa(regex):
@@ -75,8 +74,8 @@ def make_regex_nfa(regex):
   :param str regex:
   :rtype: NonDeterministicAutomaton
   """
-  tokens, token_words = tokenize_regex(regex)
-  analysis = REGEX_PARSER.parse_analysis(tokens, token_words)
+  tokens, tokens_pos = tokenize_regex(regex)
+  analysis = REGEX_PARSER.parse_analysis(regex, tokens, tokens_pos)
 
   num_states = 0
   state_transition_table = []  # type: List[Dict[Optional[str], Set[int]]]
@@ -95,7 +94,7 @@ def make_regex_nfa(regex):
     nonlocal pos
     while tokens[pos] != REGEX_LIT_TOKEN:
       pos += 1
-    name = token_words[pos]
+    name = get_token_word_from_tokens_pos(regex, tokens_pos, pos)
     pos += 1
     return name
 

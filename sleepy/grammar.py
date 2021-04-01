@@ -2,9 +2,29 @@
 The empty symbol (!= the empty word).
 Use empty tuple as empty word.
 """
-from typing import Tuple, Any, Dict, Set, Callable, Union, Optional, List
+from typing import Tuple, Any, Dict, Set, Callable, Union, Optional
 
 EPSILON = None
+
+IGNORED_TOKEN = None
+
+
+def get_token_word_from_tokens_pos(word, tokens_pos, pos):
+  """
+  :param str word:
+  :param tuple[int]|list[int] tokens_pos:
+  :param int pos: index of token
+  :rtype: str
+  """
+  assert 0 <= pos < len(tokens_pos)
+  from_pos = tokens_pos[pos]
+  assert 0 <= from_pos < len(word)
+  if pos == len(tokens_pos) - 1:
+    return word[from_pos:]
+  else:
+    to_pos = tokens_pos[pos + 1]
+    assert from_pos < to_pos < len(word)
+    return word[from_pos:to_pos]
 
 
 class Production:

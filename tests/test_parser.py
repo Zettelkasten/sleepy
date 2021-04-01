@@ -6,7 +6,8 @@ from nose.tools import assert_equal, assert_raises, assert_equals
 
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
-from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar, SyntaxTree
+from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar, SyntaxTree, \
+  get_token_word_from_tokens_pos
 from sleepy.semantic import AttributeEvalGenerator
 
 
@@ -91,13 +92,13 @@ def test_ParserGenerator_simple():
     Production('A', 'a', 'a')
   )
   parser = ParserGenerator(g)
-  assert_equal(parser.parse_analysis(['a', 'a', 'b']), [g.prods[0], g.prods[1], g.prods[2]])
+  assert_equal(parser.parse_analysis('aab', ['a', 'a', 'b'], [0, 1, 2]), (g.prods[0], g.prods[1], g.prods[2]))
   with assert_raises(ParseError):
-    parser.parse_analysis(['a', 'a', 'a', 'b'])
+    parser.parse_analysis('aaab', ['a', 'a', 'a', 'b'], [0, 1, 2, 3])
   with assert_raises(ParseError):
-    parser.parse_analysis(['a', 'a', 'b', 'b'])
+    parser.parse_analysis('aabb', ['a', 'a', 'b', 'b'], [0, 1, 2, 3])
   with assert_raises(ParseError):
-    parser.parse_analysis(['a', 'a'])
+    parser.parse_analysis('aa', ['a', 'a'], [0, 1])
 
 
 def test_ParserGenerator_simple_left_recursive():
@@ -109,9 +110,10 @@ def test_ParserGenerator_simple_left_recursive():
   parser = ParserGenerator(g)
   for count in [1, 2, 3, 20, 100, 10000]:
     assert_equal(
-      parser.parse_analysis(['a'] * count), [g.prods[0]] + (count-1) * [g.prods[1]] + [g.prods[2]])
+      parser.parse_analysis(
+        'a' * count, ['a'] * count, list(range(count))), (g.prods[0],) + (count-1) * (g.prods[1],) + (g.prods[2],))
   with assert_raises(ParseError):
-    parser.parse_analysis([])
+    parser.parse_analysis('', [], [])
 
 
 def test_ParserGenerator_simple_left_recursive_epsilon():
@@ -123,7 +125,8 @@ def test_ParserGenerator_simple_left_recursive_epsilon():
   parser = ParserGenerator(g)
   for count in [0, 1, 2, 3, 20, 100, 10000]:
     assert_equal(
-      parser.parse_analysis(['a'] * count), [g.prods[0]] + count * [g.prods[1]] + [g.prods[2]])
+      parser.parse_analysis(
+        'a' * count, ['a'] * count, list(range(count))), (g.prods[0],) + count * (g.prods[1],) + (g.prods[2],))
 
 
 def test_ParserGenerator_simple_lookahead():
@@ -133,10 +136,10 @@ def test_ParserGenerator_simple_lookahead():
     Production('S', 'a', 'b')
   )
   parser = ParserGenerator(g)
-  assert_equal(parser.parse_analysis(['b', 'b']), [g.prods[0], g.prods[1]])
-  assert_equal(parser.parse_analysis(['a', 'b']), [g.prods[0], g.prods[2]])
+  assert_equal(parser.parse_analysis('bb', ['b', 'b'], [0, 1]), (g.prods[0], g.prods[1]))
+  assert_equal(parser.parse_analysis('ab', ['a', 'b'], [0, 1]), (g.prods[0], g.prods[2]))
   with assert_raises(ParseError):
-    parser.parse_analysis(['b', 'a'])
+    parser.parse_analysis('ba', ['b', 'a'], [0, 1])
 
 
 def test_ParserGenerator_cfg():
@@ -158,9 +161,9 @@ def test_ParserGenerator_cfg():
     Production('Symb', 'c')
   )
   parser = ParserGenerator(g)
-  word = ['A', '->', 'B', 'c', '|', 'B', ';', 'B', '->', 'c', 'a']
-  print('tokenized word:', word)
-  analysis = parser.parse_analysis(word)
+  tokens = ['A', '->', 'B', 'c', '|', 'B', ';', 'B', '->', 'c', 'a']
+  print('tokenized word:', tokens)
+  analysis = parser.parse_analysis(''.join(tokens), tokens, list(range(len(tokens))))
   print('right-most analysis:', analysis)
 
 
@@ -179,9 +182,9 @@ def test_ParserGenerator_cfg_with_lexer():
   parser = ParserGenerator(g)
   word = 'A->Bc|B; B->ca'
   print('input word:', word)
-  tokens, decomposition = lexer.tokenize(word)
-  print('tokenized word:', tokens, 'with decomposition', decomposition)
-  analysis = parser.parse_analysis(tokens)
+  tokens, tokens_pos = lexer.tokenize(word)
+  print('tokenized word:', tokens, 'with decomposition', tokens_pos)
+  analysis = parser.parse_analysis(word, tokens, tokens_pos)
   print('right-most analysis:', analysis)
 
 
@@ -203,14 +206,15 @@ def test_ParserGenerator_arithmetic():
   )
   parser = ParserGenerator(g)
 
-  def evaluate(raw_word):
+  def evaluate(word):
     """
-    :param str raw_word:
+    :param str word:
     """
-    assert isinstance(raw_word, str)
-    word = list(raw_word)
-    print('input word:', raw_word)
-    analysis = parser.parse_analysis(word)
+    assert isinstance(word, str)
+    tokens = list(word)
+    tokens_pos = list(range(len(tokens)))
+    print('input word:', word)
+    analysis = parser.parse_analysis(word, tokens, tokens_pos)
     print('analysis:', analysis)
 
     stack = []
@@ -232,7 +236,7 @@ def test_ParserGenerator_arithmetic():
     assert len(stack) == 1
     result_value = stack[0]
     print('result:', result_value)
-    assert result_value == eval(raw_word)
+    assert result_value == eval(word)
 
   evaluate('1*2+3')
   evaluate('1+2*3')
@@ -294,9 +298,9 @@ def test_ParserGenerator_arithmetic_syn():
   def evaluate(word):
     print('----')
     print('input word:', word)
-    tokens, token_words = lexer.tokenize(word)
-    print('tokens:', tokens, 'with decomposition', token_words)
-    analysis, result = parser.parse_syn_attr_analysis(attr_g, tokens, token_words)
+    tokens, tokens_pos = lexer.tokenize(word)
+    print('tokens:', tokens, 'with decomposition', tokens_pos)
+    analysis, result = parser.parse_syn_attr_analysis(attr_g, word, tokens, tokens_pos)
     print('result:', result['res'])
     # import common operator names for python eval()
     sin, cos, tan, exp, sqrt = math.sin, math.cos, math.tan, math.exp, math.sqrt  # noqa
@@ -321,10 +325,10 @@ def test_ParserGenerator_regex():
     :param set[str] target_value:
     """
     assert isinstance(word, str)
-    tokens, token_attribute_table = tokenize_regex(word)
+    tokens, tokens_pos = tokenize_regex(word)
     print('word:', word)
     print('tokens:', tokens)
-    analysis = parser.parse_analysis(tokens)
+    analysis = parser.parse_analysis(word, tokens, tokens_pos)
     print('right-most analysis:', analysis)
 
     stack = []
@@ -334,7 +338,7 @@ def test_ParserGenerator_regex():
       nonlocal pos
       while tokens[pos] != REGEX_LIT_TOKEN:
         pos += 1
-      name = token_attribute_table[pos]
+      name = get_token_word_from_tokens_pos(word, tokens_pos, pos)
       pos += 1
       return name
 
@@ -403,22 +407,23 @@ def test_ParserGenerator_attr_syn():
   assert_equal(attr_g.syn_attrs, {'res'})
   assert_equal(attr_g.inh_attrs, set())
 
+  word = '5+7'
   tokens = ['digit', '+', 'digit']
-  token_words = ['5', '+', '7']
-  print('tokens:', tokens, 'with decomposition', token_words)
+  tokens_pos = [0, 1, 2]
+  print('tokens:', tokens, 'with decomposition', tokens_pos)
   parser = ParserGenerator(g)
-  right_analysis, attr_eval = parser.parse_syn_attr_analysis(attr_g, tokens, token_words)
+  right_analysis, attr_eval = parser.parse_syn_attr_analysis(attr_g, word, tokens, tokens_pos)
   print('right analysis:', right_analysis)
   print('attribute eval (online):', attr_eval)
   assert_equal(right_analysis, (g.prods[0], g.prods[1], g.prods[2], g.prods[4], g.prods[4]))
   assert_equal(attr_eval, {'res': 5 + 7})
-  tree = parser.parse_tree(tokens, token_words)
+  tree = parser.parse_tree(word, tokens, tokens_pos)
   print('parse tree:', tree)
   assert_equal(
     tree, SyntaxTree(g.prods[0], SyntaxTree(
       g.prods[1], SyntaxTree(g.prods[4], None), None, SyntaxTree(g.prods[2], SyntaxTree(g.prods[4], None)))))
   attr_eval_gen = AttributeEvalGenerator(attr_g)
-  tree_attr_eval = attr_eval_gen.eval_attrs(tree, token_words)
+  tree_attr_eval = attr_eval_gen.eval_attrs(tree, word, tokens, tokens_pos)
   print('attribute eval (using tree):', tree_attr_eval)
   assert_equal(tree_attr_eval, {'res': 5 + 7})
 
@@ -432,11 +437,13 @@ def test_ParserGenerator_parse_tree_epsilon():
     Production('B', 'a', 'B')
   )
   parser = ParserGenerator(g)
+  word = 'aaa'
   tokens = ['a', 'a', 'a']
-  token_words = ['a', 'a', 'a']
-  assert_equal(parser.parse_analysis(tokens, token_words), [g.prods[0], g.prods[2], g.prods[4], g.prods[4], g.prods[3]])
+  tokens_pos = [0, 1, 2]
   assert_equal(
-    parser.parse_tree(tokens, token_words),
+    parser.parse_analysis(word, tokens, tokens_pos), (g.prods[0], g.prods[2], g.prods[4], g.prods[4], g.prods[3]))
+  assert_equal(
+    parser.parse_tree(word, tokens, tokens_pos),
     SyntaxTree(g.prods[0], SyntaxTree(g.prods[2], SyntaxTree(g.prods[4], None, SyntaxTree(g.prods[4], None, SyntaxTree(
       g.prods[3], None))))))
 
@@ -450,10 +457,11 @@ def test_ParserGenerator_parse_tree_epsilon2():
     Production('Val', 'number')
   )
   parser = ParserGenerator(g)
+  word = '42;'
   tokens = ['number', ';']
-  token_words = ['42', ';']
-  print(parser.parse_analysis(tokens, token_words))
-  print(parser.parse_tree(tokens, token_words))
+  tokens_pos = [0, 2]
+  print(parser.parse_analysis(word, tokens, tokens_pos))
+  print(parser.parse_tree(word, tokens, tokens_pos))
 
 
 if __name__ == "__main__":
