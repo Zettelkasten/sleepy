@@ -51,6 +51,27 @@ def test_AttributeGrammar_syn():
   assert_equal(attr_g.eval_prod_syn_attr(g.prods[1], {}, [{}]), {'res': 0})
 
 
+def test_get_line_col_from_pos():
+  from sleepy.grammar import get_line_col_from_pos
+  assert_equal(
+    get_line_col_from_pos('oh, X marks the error.', error_pos=4, num_before_context_lines=1, num_after_context_lines=1),
+    (1, 5, {1: 'oh, X marks the error.'}))
+
+  word, pos = 'fine\nbad X bad\nfine2', 9
+  line, col, context_lines = get_line_col_from_pos(
+    word, error_pos=pos, num_before_context_lines=1, num_after_context_lines=1)
+  error = ParseError(word, pos, 'Sample error message')
+  print(error)
+  assert_equal((line, col, context_lines), (2, 5, {1: 'fine', 2: 'bad X bad', 3: 'fine2'}))
+
+  word, pos = '\n'.join(['line%s' % l for l in range(1, 13)]), 6 * 3 + 2
+  line, col, context_lines = get_line_col_from_pos(
+    word, error_pos=pos, num_before_context_lines=1, num_after_context_lines=1)
+  error = ParseError(word, pos, 'Another sample error message')
+  print(error)
+  assert_equal((line, col, context_lines), (4, 3, {l: 'line%s' % l for l in range(3, 6)}))
+
+
 def test_make_first1_sets():
   g = Grammar(
     Production('S', 'S', 'O', 'S'),

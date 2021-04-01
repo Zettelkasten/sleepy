@@ -452,6 +452,53 @@ class SyntaxTree:
       prod for subtree in reversed(self.right) if subtree is not None for prod in subtree.get_right_analysis())
 
 
+def get_line_col_from_pos(word, error_pos, num_before_context_lines=1, num_after_context_lines=1):
+  """
+  :param str word:
+  :param int error_pos:
+  :param int num_before_context_lines:
+  :param int num_after_context_lines:
+  :return: line + column, both starting counting at 1, as well as dict with context lines
+  :rtype: tuple[int,int,dict[int,str]]
+  """
+  assert 0 <= error_pos <= len(word)
+  if len(word) == 0:
+    return 0, 1, {0: '\n'}
+  char_pos = 0
+  word_lines = word.splitlines()
+  for line_num, line in enumerate(word_lines):
+    assert char_pos <= error_pos
+    if error_pos <= char_pos + len(line):
+      col_num = error_pos - char_pos
+      assert 0 <= col_num <= len(line)
+      context_lines = {
+        context_line_num + 1: word_lines[context_line_num]
+        for context_line_num in range(
+          max(0, line_num - num_before_context_lines), min(len(word_lines), line_num + num_after_context_lines + 1))}
+      return line_num + 1, col_num + 1, context_lines
+    char_pos += len(line) + 1  # consider end-of-line symbol
+  assert False
+
+
+def make_error_message(word, pos, error_name, message):
+  """
+  :param str word:
+  :param int pos:
+  :param str error_name:
+  :param str message:
+  :rtype: str
+  """
+  line_num_pad_size = 3
+  line, col, context_lines = get_line_col_from_pos(word, pos, num_before_context_lines=3, num_after_context_lines=3)
+  print(context_lines)
+  return '%s on line %s:%s\n\n' % (error_name, line, col) + '\n'.join([
+    ('%0' + str(line_num_pad_size) + 'i: %s%s') % (
+      context_line_num, context_line,
+      ('\n' + (' ' * (col - 1 + line_num_pad_size + 2)) + '^') if context_line_num == line else '')
+    for context_line_num, context_line in context_lines.items()]
+  ) + '\n\n' + message
+
+
 class LexError(Exception):
   """
   A lexical error, when a word is not recognized (does not have a first-longest-match analysis).
@@ -463,8 +510,7 @@ class LexError(Exception):
     :param int pos:
     :param str message:
     """
-    super().__init__(
-      '%s ! %s: %s' % (word[:pos], word[pos:], message))
+    super().__init__(make_error_message(word, pos, error_name='Lexical error', message=message))
 
 
 class ParseError(Exception):
@@ -472,18 +518,13 @@ class ParseError(Exception):
   A parse error, when a word is not recognized by a context free grammar.
   """
 
-  def __init__(self, tokens, pos, message, token_words=None):
+  def __init__(self, word, pos, message):
     """
-    :param list[str] tokens:
-    :param int pos: token position where error occurred
+    :param str word:
+    :param int pos: word position where error occurred
     :param str message:
-    :param None|list[str] token_words: decomposition of entire word into tokens
     """
-    if token_words is not None:
-      assert len(token_words) == len(tokens)
-    output = token_words if token_words is not None else tokens
-    super().__init__(
-      '%s: %s' % (' '.join([repr(s) for s in output[:pos]] + ['!'] + [repr(s) for s in output[pos:]]), message))
+    super().__init__(make_error_message(word, pos, error_name='Parse error', message=message))
 
 
 class SemanticError(Exception):
