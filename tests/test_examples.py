@@ -7,9 +7,8 @@ import unittest
 
 from ctypes import CFUNCTYPE, c_double
 
-from sleepy.ast import TopLevelExpressionAst
-from sleepy.jit import make_execution_engine, compile_ir, preamble
-from tests.test_ast import SLEEPY_LEXER, SLEEPY_PARSER, SLEEPY_ATTR_GRAMMAR
+from sleepy.ast import TopLevelExpressionAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER
+from sleepy.jit import make_execution_engine, compile_ir, preamble_program
 
 
 def _test_compile_example(code_file_name):
@@ -17,7 +16,7 @@ def _test_compile_example(code_file_name):
   with make_execution_engine() as engine:
     with open(code_file_name, 'r') as file:
       program = file.read()
-    program = preamble + program
+    program = preamble_program + program
     tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
     _, root_eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
     ast = root_eval['ast']
