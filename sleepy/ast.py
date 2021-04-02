@@ -375,6 +375,60 @@ class IfExpressionAst(ExpressionAst):
     return true_declared + [identifier for identifier in false_declared if identifier not in true_declared]
 
 
+class WhileExpressionAst(ExpressionAst):
+  """
+  Expr -> while Val { ExprList }
+  """
+  def __init__(self, condition_val, expr_list):
+    """
+    :param ValueAst condition_val:
+    :param list[ExpressionAst] expr_list:
+    """
+    super().__init__()
+    self.condition_val = condition_val
+    self.expr_list = expr_list
+
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :rtype: ir.IRBuilder|None
+    """
+    def make_condition_ir(builder_, symbol_table_):
+      """
+      :param ir.IRBuilder builder_:
+      :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+      :rtype: FCMPInstr
+      """
+      cond_ir = self.condition_val.make_ir_value(builder=builder_, symbol_table=symbol_table_)
+      return builder_.fcmp_ordered('!=', cond_ir, ir.Constant(ir.DoubleType(), 0.0), 'whilecond')
+
+    cond_ir = make_condition_ir(builder_=builder, symbol_table_=symbol_table)
+    body_block = builder.append_basic_block('while_body')  # type: ir.Block
+    continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
+    builder.cbranch(cond_ir, body_block, continue_block)
+    body_builder = ir.IRBuilder(body_block)
+
+    body_symbol_table = symbol_table.copy()
+
+    for expr in self.expr_list:
+      body_builder = expr.build_expr_ir(module, builder=body_builder, symbol_table=body_symbol_table)
+    if not body_block.is_terminated:
+      assert body_builder is not None
+      body_cond_ir = make_condition_ir(builder_=body_builder, symbol_table_=body_symbol_table)
+      body_builder.cbranch(body_cond_ir, body_block, continue_block)
+
+    continue_builder = ir.IRBuilder(continue_block)
+    return continue_builder
+
+  def get_declared_identifiers(self):
+    """
+    :rtype: list[str]
+    """
+    return [identifier for expr in self.expr_list for identifier in expr.get_declared_identifiers()]
+
+
 class ValueAst(AbstractSyntaxTree):
   """
   Val, SumVal, ProdVal, PrimaryVal
@@ -539,12 +593,14 @@ def parse_char(value):
 
 SLEEPY_LEXER = LexerGenerator(
   [
-    'func', 'extern_func', 'if', 'else', 'return', '{', '}', ';', ',', '(', ')', 'bool_op', 'sum_op',
-    'prod_op', '=', 'identifier', 'number', 'char',
+    'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '(', ')',
+    'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
+    'number', 'char',
     None, None
   ], [
-    'func', 'extern_func', 'if', 'else', 'return', '{', '}', ';', ',', '\\(', '\\)', '==|!=|<=?|>=?', '\\+|\\-',
-    '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', "'([^\']|\\\\[nrt'\"])'",
+    'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\(', '\\)',
+    '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
+    '(0|[1-9][0-9]*)(\\.[0-9]+)?', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n]+'
   ])
 SLEEPY_GRAMMAR = Grammar(
@@ -558,6 +614,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Expr', 'identifier', '=', 'Val', ';'),
   Production('Expr', 'if', 'Val', '{', 'ExprList', '}'),
   Production('Expr', 'if', 'Val', '{', 'ExprList', '}', 'else', '{', 'ExprList', '}'),
+  Production('Expr', 'while', 'Val', '{', 'ExprList', '}'),
   Production('Val', 'Val', 'bool_op', 'SumVal'),
   Production('Val', 'SumVal'),
   Production('SumVal', 'SumVal', 'sum_op', 'ProdVal'),
@@ -595,7 +652,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda ast: ReturnExpressionAst(ast(2))},
     {'ast': lambda identifier, ast: AssignExpressionAst(identifier(1), ast(3))},
     {'ast': lambda ast, expr_list: IfExpressionAst(ast(2), expr_list(4), [])},
-    {'ast': lambda ast, expr_list: IfExpressionAst(ast(2), expr_list(4), expr_list(8))}] + [
+    {'ast': lambda ast, expr_list: IfExpressionAst(ast(2), expr_list(4), expr_list(8))},
+    {'ast': lambda ast, expr_list: WhileExpressionAst(ast(2), expr_list(4))}] + [
     {'ast': lambda ast, op: OperatorValueAst(op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
     {'ast': lambda ast, op: UnaryOperatorValueAst(op(1), ast(2))},
