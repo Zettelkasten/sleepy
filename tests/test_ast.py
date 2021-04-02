@@ -7,7 +7,7 @@ from llvmlite import ir
 from nose.tools import assert_equal, assert_almost_equal
 from ctypes import CFUNCTYPE, c_double
 
-from sleepy.ast import TopLevelExpressionAst, FunctionDeclarationAst, ReturnExpressionAst, \
+from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnStatementAst, \
   OperatorValueAst, ConstantValueAst, VariableValueAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
   add_preamble_to_ast
 from sleepy.jit import make_execution_engine, compile_ir
@@ -16,7 +16,7 @@ from sleepy.jit import make_execution_engine, compile_ir
 def _test_parse_ast(program):
   """
   :param str program:
-  :rtype: TopLevelExpressionAst
+  :rtype: TopLevelStatementAst
   """
   print('---- input program:')
   print(program)
@@ -29,9 +29,9 @@ def _test_parse_ast(program):
   print(analysis)
   print('---- abstract syntax tree (without preamble):')
   print(ast)
-  assert isinstance(ast, TopLevelExpressionAst)
+  assert isinstance(ast, TopLevelStatementAst)
   ast = add_preamble_to_ast(ast)
-  assert isinstance(ast, TopLevelExpressionAst)
+  assert isinstance(ast, TopLevelStatementAst)
   return ast
 
 
@@ -76,19 +76,19 @@ def _get_py_func_from_ast(engine, ast):
 def test_FunctionDeclarationAst_build_expr_ir():
   with make_execution_engine() as engine:
     ast1 = FunctionDeclarationAst(
-      identifier='foo', arg_identifiers=[], expr_list=[ReturnExpressionAst(ConstantValueAst(42.0))])
+      identifier='foo', arg_identifiers=[], expr_list=[ReturnStatementAst(ConstantValueAst(42.0))])
     func1 = _get_py_func_from_ast(engine, ast1)
     assert_equal(func1(), 42.0)
   with make_execution_engine() as engine:
     ast2 = FunctionDeclarationAst(
       identifier='foo', arg_identifiers=[], expr_list=[
-        ReturnExpressionAst(OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0)))])
+        ReturnStatementAst(OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0)))])
     func2 = _get_py_func_from_ast(engine, ast2)
     assert_equal(func2(), 8.0)
   with make_execution_engine() as engine:
     ast3 = FunctionDeclarationAst(
       identifier='sum', arg_identifiers=['a', 'b'], expr_list=[
-        ReturnExpressionAst(OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b')))])
+        ReturnStatementAst(OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b')))])
     func3 = _get_py_func_from_ast(engine, ast3)
     assert_equal(func3(7.0, 3.0), 10.0)
 
@@ -290,7 +290,7 @@ def test_if_assign():
     }
     """
     ast = _test_parse_ast(program)
-    assert isinstance(ast, TopLevelExpressionAst)
+    assert isinstance(ast, TopLevelStatementAst)
     assert_equal(ast.get_declared_identifiers(), [])
     main_ast = ast.expr_list[-1]
     assert isinstance(main_ast, FunctionDeclarationAst)

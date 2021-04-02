@@ -15,7 +15,7 @@ SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 def make_func_call_ir(func_identifier, func_arg_vals, builder, symbol_table):
   """
   :param str func_identifier:
-  :param list[ValueAst] func_arg_vals:
+  :param list[ExpressionAst] func_arg_vals:
   :param IRBuilder builder:
   :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
   :rtype: ir.values.Value
@@ -38,7 +38,7 @@ class AbstractSyntaxTree:
   pass
 
 
-class ExpressionAst(AbstractSyntaxTree):
+class StatementAst(AbstractSyntaxTree):
   """
   Expr.
   """
@@ -61,13 +61,13 @@ class ExpressionAst(AbstractSyntaxTree):
     raise NotImplementedError()
 
 
-class TopLevelExpressionAst(ExpressionAst):
+class TopLevelStatementAst(StatementAst):
   """
   TopLevelExpr.
   """
   def __init__(self, expr_list):
     """
-    :param list[ExpressionAst] expr_list:
+    :param list[StatementAst] expr_list:
     """
     super().__init__()
     self.expr_list = expr_list
@@ -107,15 +107,15 @@ class TopLevelExpressionAst(ExpressionAst):
     return []
 
 
-class FunctionDeclarationAst(ExpressionAst):
+class FunctionDeclarationAst(StatementAst):
   """
-  Expr -> func identifier ( IdentifierList ) { ExprList }
+  Stmt -> func identifier ( IdentifierList ) { StmtList }
   """
   def __init__(self, identifier, arg_identifiers, expr_list):
     """
     :param str identifier:
     :param list[str] arg_identifiers:
-    :param list[ExpressionAst] expr_list:
+    :param list[StatementAst] expr_list:
     """
     super().__init__()
     self.identifier = identifier
@@ -169,9 +169,9 @@ class FunctionDeclarationAst(ExpressionAst):
       identifier for identifier in local_identifiers if identifier not in self.arg_identifiers]
 
 
-class ExternFunctionDeclarationAst(ExpressionAst):
+class ExternFunctionDeclarationAst(StatementAst):
   """
-  Expr -> extern_func identifier ( IdentifierList ) ;
+  Stmt -> extern_func identifier ( IdentifierList ) ;
   """
   def __init__(self, identifier, arg_identifiers):
     """
@@ -206,14 +206,14 @@ class ExternFunctionDeclarationAst(ExpressionAst):
     return []
 
 
-class CallExpressionAst(ExpressionAst):
+class CallStatementAst(StatementAst):
   """
-  Expr -> identifier ( ValList )
+  Stmt -> identifier ( ExprList )
   """
   def __init__(self, func_identifier, func_arg_vals):
     """
     :param str func_identifier:
-    :param list[ValueAst] func_arg_vals:
+    :param list[ExpressionAst] func_arg_vals:
     """
     super().__init__()
     self.func_identifier = func_identifier
@@ -238,13 +238,13 @@ class CallExpressionAst(ExpressionAst):
     return []
 
 
-class ReturnExpressionAst(ExpressionAst):
+class ReturnStatementAst(StatementAst):
   """
-  Expr -> return val ;
+  Stmt -> return val ;
   """
   def __init__(self, return_val):
     """
-    :param ValueAst return_val:
+    :param ExpressionAst return_val:
     """
     super().__init__()
     self.return_val = return_val
@@ -266,14 +266,14 @@ class ReturnExpressionAst(ExpressionAst):
     return []
 
 
-class AssignExpressionAst(ExpressionAst):
+class AssignStatementAst(StatementAst):
   """
-  Expr -> identifier = Val ;
+  Stmt -> identifier = Expr ;
   """
   def __init__(self, var_identifier, var_val):
     """
     :param str var_identifier:
-    :param ValueAst var_val:
+    :param ExpressionAst var_val:
     """
     super().__init__()
     self.var_identifier = var_identifier
@@ -303,16 +303,16 @@ class AssignExpressionAst(ExpressionAst):
     return [self.var_identifier]
 
 
-class IfExpressionAst(ExpressionAst):
+class IfStatementAst(StatementAst):
   """
-  Expr -> if Val { ExprList }
-        | if Val { ExprList } else { ExprList }
+  Stmt -> if Expr { StmtList }
+        | if Expr { StmtList } else { StmtList }
   """
   def __init__(self, condition_val, true_expr_list, false_expr_list):
     """
-    :param ValueAst condition_val:
-    :param list[ExpressionAst] true_expr_list:
-    :param list[ExpressionAst] false_expr_list:
+    :param ExpressionAst condition_val:
+    :param list[StatementAst] true_expr_list:
+    :param list[StatementAst] false_expr_list:
     """
     super().__init__()
     self.condition_val = condition_val
@@ -375,14 +375,14 @@ class IfExpressionAst(ExpressionAst):
     return true_declared + [identifier for identifier in false_declared if identifier not in true_declared]
 
 
-class WhileExpressionAst(ExpressionAst):
+class WhileStatementAst(StatementAst):
   """
-  Expr -> while Val { ExprList }
+  Stmt -> while Expr { StmtList }
   """
   def __init__(self, condition_val, expr_list):
     """
-    :param ValueAst condition_val:
-    :param list[ExpressionAst] expr_list:
+    :param ExpressionAst condition_val:
+    :param list[StatementAst] expr_list:
     """
     super().__init__()
     self.condition_val = condition_val
@@ -429,9 +429,9 @@ class WhileExpressionAst(ExpressionAst):
     return [identifier for expr in self.expr_list for identifier in expr.get_declared_identifiers()]
 
 
-class ValueAst(AbstractSyntaxTree):
+class ExpressionAst(AbstractSyntaxTree):
   """
-  Val, SumVal, ProdVal, PrimaryVal
+  Val, SumVal, ProdVal, PrimaryExpr
   """
   def __init__(self):
     super().__init__()
@@ -445,15 +445,15 @@ class ValueAst(AbstractSyntaxTree):
     raise NotImplementedError()
 
 
-class OperatorValueAst(ValueAst):
+class OperatorValueAst(ExpressionAst):
   """
   Val, SumVal, ProdVal.
   """
   def __init__(self, op, left_val, right_val):
     """
     :param str op:
-    :param ValueAst left_val:
-    :param ValueAst right_val:
+    :param ExpressionAst left_val:
+    :param ExpressionAst right_val:
     """
     super().__init__()
     assert op in SLOPPY_OP_TYPES
@@ -482,14 +482,14 @@ class OperatorValueAst(ValueAst):
     assert False, '%r: operator %s not handled!' % (self, self.op)
 
 
-class UnaryOperatorValueAst(ValueAst):
+class UnaryOperatorValueAst(ExpressionAst):
   """
   NegVal.
   """
   def __init__(self, op, val):
     """
     :param str op:
-    :param ValueAst val:
+    :param ExpressionAst val:
     """
     super().__init__()
     assert op in {'+', '-'}
@@ -511,9 +511,9 @@ class UnaryOperatorValueAst(ValueAst):
     assert False, '%r: operator %s not handled!' % (self, self.op)
 
 
-class ConstantValueAst(ValueAst):
+class ConstantValueAst(ExpressionAst):
   """
-  PrimaryVal -> number
+  PrimaryExpr -> number
   """
   def __init__(self, constant):
     """
@@ -531,9 +531,9 @@ class ConstantValueAst(ValueAst):
     return ir.Constant(ir.DoubleType(), self.constant)
 
 
-class VariableValueAst(ValueAst):
+class VariableValueAst(ExpressionAst):
   """
-  PrimaryVal -> identifier
+  PrimaryExpr -> identifier
   """
   def __init__(self, var_identifier):
     """
@@ -553,14 +553,14 @@ class VariableValueAst(ValueAst):
     return builder.load(symbol_table[self.var_identifier], self.var_identifier)
 
 
-class CallValueAst(ValueAst):
+class CallValueAst(ExpressionAst):
   """
-  PrimaryVal -> identifier ( ValList )
+  PrimaryExpr -> identifier ( ExprList )
   """
   def __init__(self, func_identifier, func_arg_vals):
     """
     :param str func_identifier:
-    :param list[ValueAst] func_arg_vals:
+    :param list[ExpressionAst] func_arg_vals:
     """
     super().__init__()
     self.func_identifier = func_identifier
@@ -604,56 +604,56 @@ SLEEPY_LEXER = LexerGenerator(
     '#[^\n]*\n', '[ \n]+'
   ])
 SLEEPY_GRAMMAR = Grammar(
-  Production('TopLevelExpr', 'ExprList'),
-  Production('ExprList'),
-  Production('ExprList', 'Expr', 'ExprList'),
-  Production('Expr', 'func', 'identifier', '(', 'IdentifierList', ')', '{', 'ExprList', '}'),
-  Production('Expr', 'extern_func', 'identifier', '(', 'IdentifierList', ')', ';'),
-  Production('Expr', 'identifier', '(', 'ValList', ')', ';'),
-  Production('Expr', 'return', 'Val', ';'),
-  Production('Expr', 'identifier', '=', 'Val', ';'),
-  Production('Expr', 'if', 'Val', '{', 'ExprList', '}'),
-  Production('Expr', 'if', 'Val', '{', 'ExprList', '}', 'else', '{', 'ExprList', '}'),
-  Production('Expr', 'while', 'Val', '{', 'ExprList', '}'),
-  Production('Val', 'Val', 'bool_op', 'SumVal'),
-  Production('Val', 'SumVal'),
-  Production('SumVal', 'SumVal', 'sum_op', 'ProdVal'),
-  Production('SumVal', 'ProdVal'),
-  Production('ProdVal', 'ProdVal', 'prod_op', 'NegVal'),
-  Production('ProdVal', 'NegVal'),
-  Production('NegVal', 'sum_op', 'PrimaryVal'),
-  Production('NegVal', 'PrimaryVal'),
-  Production('PrimaryVal', 'number'),
-  Production('PrimaryVal', 'char'),
-  Production('PrimaryVal', 'identifier'),
-  Production('PrimaryVal', 'identifier', '(', 'ValList', ')'),
-  Production('PrimaryVal', '(', 'Val', ')'),
+  Production('TopLevelStmt', 'StmtList'),
+  Production('StmtList'),
+  Production('StmtList', 'Stmt', 'StmtList'),
+  Production('Stmt', 'func', 'identifier', '(', 'IdentifierList', ')', '{', 'StmtList', '}'),
+  Production('Stmt', 'extern_func', 'identifier', '(', 'IdentifierList', ')', ';'),
+  Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
+  Production('Stmt', 'return', 'Expr', ';'),
+  Production('Stmt', 'identifier', '=', 'Expr', ';'),
+  Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}'),
+  Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}', 'else', '{', 'StmtList', '}'),
+  Production('Stmt', 'while', 'Expr', '{', 'StmtList', '}'),
+  Production('Expr', 'Expr', 'bool_op', 'SumExpr'),
+  Production('Expr', 'SumExpr'),
+  Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'),
+  Production('SumExpr', 'ProdExpr'),
+  Production('ProdExpr', 'ProdExpr', 'prod_op', 'NegExpr'),
+  Production('ProdExpr', 'NegExpr'),
+  Production('NegExpr', 'sum_op', 'PrimaryExpr'),
+  Production('NegExpr', 'PrimaryExpr'),
+  Production('PrimaryExpr', 'number'),
+  Production('PrimaryExpr', 'char'),
+  Production('PrimaryExpr', 'identifier'),
+  Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'),
+  Production('PrimaryExpr', '(', 'Expr', ')'),
   Production('IdentifierList'),
   Production('IdentifierList', 'IdentifierList+'),
   Production('IdentifierList+', 'identifier'),
   Production('IdentifierList+', 'identifier', ',', 'IdentifierList+'),
-  Production('ValList'),
-  Production('ValList', 'ValList+'),
-  Production('ValList+', 'Val'),
-  Production('ValList+', 'Val', ',', 'ValList+')
+  Production('ExprList'),
+  Production('ExprList', 'ExprList+'),
+  Production('ExprList+', 'Expr'),
+  Production('ExprList+', 'Expr', ',', 'ExprList+')
 )
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
   syn_attrs={'ast', 'expr_list', 'identifier_list', 'val_list', 'identifier', 'op', 'number'},
   prod_attr_rules=[
-    {'ast': lambda expr_list: TopLevelExpressionAst(expr_list(1))},
+    {'ast': lambda expr_list: TopLevelStatementAst(expr_list(1))},
     {'expr_list': []},
     {'expr_list': lambda ast, expr_list: [ast(1)] + expr_list(2)},
     {'ast': lambda identifier, identifier_list, expr_list: (
       FunctionDeclarationAst(identifier(2), identifier_list(4), expr_list(7)))},
     {'ast': lambda identifier, identifier_list: (
       ExternFunctionDeclarationAst(identifier(2), identifier_list(4)))},
-    {'ast': lambda identifier, val_list: CallExpressionAst(identifier(1), val_list(3))},
-    {'ast': lambda ast: ReturnExpressionAst(ast(2))},
-    {'ast': lambda identifier, ast: AssignExpressionAst(identifier(1), ast(3))},
-    {'ast': lambda ast, expr_list: IfExpressionAst(ast(2), expr_list(4), [])},
-    {'ast': lambda ast, expr_list: IfExpressionAst(ast(2), expr_list(4), expr_list(8))},
-    {'ast': lambda ast, expr_list: WhileExpressionAst(ast(2), expr_list(4))}] + [
+    {'ast': lambda identifier, val_list: CallStatementAst(identifier(1), val_list(3))},
+    {'ast': lambda ast: ReturnStatementAst(ast(2))},
+    {'ast': lambda identifier, ast: AssignStatementAst(identifier(1), ast(3))},
+    {'ast': lambda ast, expr_list: IfStatementAst(ast(2), expr_list(4), [])},
+    {'ast': lambda ast, expr_list: IfStatementAst(ast(2), expr_list(4), expr_list(8))},
+    {'ast': lambda ast, expr_list: WhileStatementAst(ast(2), expr_list(4))}] + [
     {'ast': lambda ast, op: OperatorValueAst(op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
     {'ast': lambda ast, op: UnaryOperatorValueAst(op(1), ast(2))},
@@ -688,12 +688,12 @@ def make_program_ast(program, add_preamble=True):
   """
   :param str program:
   :param bool add_preamble:
-  :rtype: TopLevelExpressionAst
+  :rtype: TopLevelStatementAst
   """
   tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
   _, root_eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
   program_ast = root_eval['ast']
-  assert isinstance(program_ast, TopLevelExpressionAst)
+  assert isinstance(program_ast, TopLevelStatementAst)
   if add_preamble:
     program_ast = add_preamble_to_ast(program_ast)
   return program_ast
@@ -701,7 +701,7 @@ def make_program_ast(program, add_preamble=True):
 
 def make_preamble_ast():
   """
-  :rtype: TopLevelExpressionAst
+  :rtype: TopLevelStatementAst
   """
   std_func_identifiers = [
     ('print_char', 1), ('print_double', 1), ('allocate', 1), ('deallocate', 1), ('load', 1), ('store', 2),
@@ -718,9 +718,9 @@ def make_preamble_ast():
 
 def add_preamble_to_ast(program_ast):
   """
-  :param TopLevelExpressionAst program_ast:
-  :rtype: TopLevelExpressionAst
+  :param TopLevelStatementAst program_ast:
+  :rtype: TopLevelStatementAst
   """
   preamble_ast = make_preamble_ast()
-  assert isinstance(preamble_ast, TopLevelExpressionAst)
-  return TopLevelExpressionAst(preamble_ast.expr_list + program_ast.expr_list)
+  assert isinstance(preamble_ast, TopLevelStatementAst)
+  return TopLevelStatementAst(preamble_ast.expr_list + program_ast.expr_list)
