@@ -15,6 +15,21 @@ from sleepy.jit import make_execution_engine, compile_ir, preamble
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 
+
+def parse_char(value):
+  """
+  :param str value: e.g. 'a', '\n', ...
+  :rtype: str
+  """
+  assert 3 <= len(value) <= 4
+  assert value[0] == value[-1] == "'"
+  value = value[1:-1]
+  if len(value) == 1:
+    return value
+  assert value[0] == '\\'
+  return {'n': '\n', 'r': '\r', 't': '\t', "'": "'", '"': '"'}[value[1]]
+
+
 SLEEPY_LEXER = LexerGenerator(
   [
     'func', 'extern_func', 'if', 'else', 'return', '{', '}', ';', ',', '(', ')', 'bool_op', 'sum_op',
@@ -22,7 +37,7 @@ SLEEPY_LEXER = LexerGenerator(
     None, None
   ], [
     'func', 'extern_func', 'if', 'else', 'return', '{', '}', ';', ',', '\\(', '\\)', '==|!=|<=?|>=?', '\\+|\\-',
-    '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', '\'[^\']\'',
+    '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', '(0|[1-9][0-9]*)(\\.[0-9]+)?', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n]+'
   ])
 
@@ -99,7 +114,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'prod_op': {'op': lambda value: value},
     'identifier': {'identifier': lambda value: value},
     'number': {'number': lambda value: float(value)},
-    'char': {'number': lambda value: ord(value[1:-1])}
+    'char': {'number': lambda value: float(ord(parse_char(value)))}
   }
 )
 
@@ -448,7 +463,7 @@ def test_extern_func():
     """
 
     cos_ = _test_compile_program(engine, program, main_func_num_args=1)
-    for x in [0, 1,2, 3, math.pi]:
+    for x in [0, 1, 2, 3, math.pi]:
       assert_almost_equal(cos_(x), math.cos(x))
 
 
