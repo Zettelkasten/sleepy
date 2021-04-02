@@ -14,12 +14,12 @@ jobs:
         python-version:
           - 3.8
         action:
-          # just order by name
           - TEST=lexer
           - TEST=parser
           - TEST=regex
           - TEST=semantic
           - TEST=ast
+          - TEST=examples
 
     steps:
     - uses: actions/checkout@v2

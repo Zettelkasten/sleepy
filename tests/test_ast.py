@@ -482,14 +482,6 @@ def test_extern_func_simple_alloc():
     assert_equal(main(), 42)
 
 
-def test_selection_sort():
-  with make_execution_engine() as engine:
-    with open('tests/code/selection_sort.slp', 'r') as file:
-      program = file.read()
-    main = _test_compile_program(engine, program)
-    main()
-
-
 if __name__ == "__main__":
   try:
     better_exchook.install()
