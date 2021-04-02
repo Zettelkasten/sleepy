@@ -65,12 +65,12 @@ class TopLevelStatementAst(StatementAst):
   """
   TopLevelExpr.
   """
-  def __init__(self, expr_list):
+  def __init__(self, stmt_list):
     """
-    :param list[StatementAst] expr_list:
+    :param list[StatementAst] stmt_list:
     """
     super().__init__()
-    self.expr_list = expr_list
+    self.stmt_list = stmt_list
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -79,7 +79,7 @@ class TopLevelStatementAst(StatementAst):
     :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
     :rtype: ir.IRBuilder
     """
-    for expr in self.expr_list:
+    for expr in self.stmt_list:
       builder = expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
 
   def make_module_ir(self, module_name):
@@ -94,7 +94,7 @@ class TopLevelStatementAst(StatementAst):
 
     block = ir_io_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
-    for expr in self.expr_list:
+    for expr in self.stmt_list:
       body_builder = expr.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
     body_builder.ret_void()
 
@@ -111,16 +111,16 @@ class FunctionDeclarationAst(StatementAst):
   """
   Stmt -> func identifier ( IdentifierList ) { StmtList }
   """
-  def __init__(self, identifier, arg_identifiers, expr_list):
+  def __init__(self, identifier, arg_identifiers, stmt_list):
     """
     :param str identifier:
     :param list[str] arg_identifiers:
-    :param list[StatementAst] expr_list:
+    :param list[StatementAst] stmt_list:
     """
     super().__init__()
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
-    self.expr_list = expr_list
+    self.stmt_list = stmt_list
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -148,8 +148,8 @@ class FunctionDeclarationAst(StatementAst):
       ir_arg.name = arg_identifier
       body_builder.store(ir_arg, ir_alloca)
 
-    for expr in self.expr_list:
-      body_builder = expr.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
+    for stmt in self.stmt_list:
+      body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
     if body_builder is not None and not body_builder.block.is_terminated:
       body_builder.ret(ir.Constant(double, 0.0))
     return builder
@@ -164,7 +164,7 @@ class FunctionDeclarationAst(StatementAst):
     """
     :rtype: list[str]
     """
-    local_identifiers = [identifier for expr in self.expr_list for identifier in expr.get_declared_identifiers()]
+    local_identifiers = [identifier for stmt in self.stmt_list for identifier in stmt.get_declared_identifiers()]
     return self.arg_identifiers + [
       identifier for identifier in local_identifiers if identifier not in self.arg_identifiers]
 
@@ -210,14 +210,14 @@ class CallStatementAst(StatementAst):
   """
   Stmt -> identifier ( ExprList )
   """
-  def __init__(self, func_identifier, func_arg_vals):
+  def __init__(self, func_identifier, func_arg_exprs):
     """
     :param str func_identifier:
-    :param list[ExpressionAst] func_arg_vals:
+    :param list[ExpressionAst] func_arg_exprs:
     """
     super().__init__()
     self.func_identifier = func_identifier
-    self.func_arg_vals = func_arg_vals
+    self.func_arg_exprs = func_arg_exprs
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -227,7 +227,7 @@ class CallStatementAst(StatementAst):
     :rtype: ir.IRBuilder
     """
     make_func_call_ir(
-      func_identifier=self.func_identifier, func_arg_vals=self.func_arg_vals, builder=builder,
+      func_identifier=self.func_identifier, func_arg_vals=self.func_arg_exprs, builder=builder,
       symbol_table=symbol_table)
     return builder
 
@@ -242,13 +242,13 @@ class ReturnStatementAst(StatementAst):
   """
   Stmt -> return ExprList ;
   """
-  def __init__(self, return_expr_list):
+  def __init__(self, return_exprs):
     """
-    :param list[ExpressionAst] return_expr_list:
+    :param list[ExpressionAst] return_exprs:
     """
     super().__init__()
-    self.return_expr_list = return_expr_list
-    assert len(return_expr_list) <= 1, 'returning of multiple values is not support yet'
+    self.return_exprs = return_exprs
+    assert len(return_exprs) <= 1, 'returning of multiple values is not support yet'
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -257,10 +257,10 @@ class ReturnStatementAst(StatementAst):
     :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
     :rtype: ir.IRBuilder
     """
-    if len(self.return_expr_list) == 1:
-      builder.ret(self.return_expr_list[0].make_ir_value(builder=builder, symbol_table=symbol_table))
+    if len(self.return_exprs) == 1:
+      builder.ret(self.return_exprs[0].make_ir_value(builder=builder, symbol_table=symbol_table))
     else:
-      assert len(self.return_expr_list) == 0
+      assert len(self.return_exprs) == 0
       builder.ret(ir.Constant(ir.DoubleType(), 0.0))
     return builder
 
@@ -313,29 +313,29 @@ class IfStatementAst(StatementAst):
   Stmt -> if Expr { StmtList }
         | if Expr { StmtList } else { StmtList }
   """
-  def __init__(self, condition_val, true_expr_list, false_expr_list):
+  def __init__(self, condition_val, true_stmt_list, false_stmt_list):
     """
     :param ExpressionAst condition_val:
-    :param list[StatementAst] true_expr_list:
-    :param list[StatementAst] false_expr_list:
+    :param list[StatementAst] true_stmt_list:
+    :param list[StatementAst] false_stmt_list:
     """
     super().__init__()
     self.condition_val = condition_val
-    self.true_expr_list, self.false_expr_list = true_expr_list, false_expr_list
+    self.true_stmt_list, self.false_stmt_list = true_stmt_list, false_stmt_list
 
   @property
   def has_true_branch(self):
     """
     :rtype: bool
     """
-    return len(self.true_expr_list) >= 1
+    return len(self.true_stmt_list) >= 1
 
   @property
   def has_false_branch(self):
     """
     :rtype: bool
     """
-    return len(self.false_expr_list) >= 1
+    return len(self.false_stmt_list) >= 1
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -355,9 +355,9 @@ class IfStatementAst(StatementAst):
 
     true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
 
-    for expr in self.true_expr_list:
+    for expr in self.true_stmt_list:
       expr.build_expr_ir(module, builder=true_builder, symbol_table=true_symbol_table)
-    for expr in self.false_expr_list:
+    for expr in self.false_stmt_list:
       expr.build_expr_ir(module, builder=false_builder, symbol_table=false_symbol_table)
 
     if not true_block.is_terminated or not false_block.is_terminated:
@@ -375,8 +375,8 @@ class IfStatementAst(StatementAst):
     """
     :rtype: list[str]
     """
-    true_declared = [identifier for expr in self.true_expr_list for identifier in expr.get_declared_identifiers()]
-    false_declared = [identifier for expr in self.true_expr_list for identifier in expr.get_declared_identifiers()]
+    true_declared = [identifier for expr in self.true_stmt_list for identifier in expr.get_declared_identifiers()]
+    false_declared = [identifier for expr in self.true_stmt_list for identifier in expr.get_declared_identifiers()]
     return true_declared + [identifier for identifier in false_declared if identifier not in true_declared]
 
 
@@ -384,14 +384,14 @@ class WhileStatementAst(StatementAst):
   """
   Stmt -> while Expr { StmtList }
   """
-  def __init__(self, condition_val, expr_list):
+  def __init__(self, condition_val, stmt_list):
     """
     :param ExpressionAst condition_val:
-    :param list[StatementAst] expr_list:
+    :param list[StatementAst] stmt_list:
     """
     super().__init__()
     self.condition_val = condition_val
-    self.expr_list = expr_list
+    self.stmt_list = stmt_list
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -417,8 +417,8 @@ class WhileStatementAst(StatementAst):
 
     body_symbol_table = symbol_table.copy()
 
-    for expr in self.expr_list:
-      body_builder = expr.build_expr_ir(module, builder=body_builder, symbol_table=body_symbol_table)
+    for stmt in self.stmt_list:
+      body_builder = stmt.build_expr_ir(module, builder=body_builder, symbol_table=body_symbol_table)
     if not body_block.is_terminated:
       assert body_builder is not None
       body_cond_ir = make_condition_ir(builder_=body_builder, symbol_table_=body_symbol_table)
@@ -431,7 +431,7 @@ class WhileStatementAst(StatementAst):
     """
     :rtype: list[str]
     """
-    return [identifier for expr in self.expr_list for identifier in expr.get_declared_identifiers()]
+    return [identifier for expr in self.stmt_list for identifier in expr.get_declared_identifiers()]
 
 
 class ExpressionAst(AbstractSyntaxTree):
@@ -454,16 +454,16 @@ class OperatorValueAst(ExpressionAst):
   """
   Val, SumVal, ProdVal.
   """
-  def __init__(self, op, left_val, right_val):
+  def __init__(self, op, left_expr, right_expr):
     """
     :param str op:
-    :param ExpressionAst left_val:
-    :param ExpressionAst right_val:
+    :param ExpressionAst left_expr:
+    :param ExpressionAst right_expr:
     """
     super().__init__()
     assert op in SLOPPY_OP_TYPES
     self.op = op
-    self.left_val, self.right_val = left_val, right_val
+    self.left_expr, self.right_expr = left_expr, right_expr
 
   def make_ir_value(self, builder, symbol_table):
     """
@@ -471,8 +471,8 @@ class OperatorValueAst(ExpressionAst):
     :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
     :rtype: ir.values.Value
     """
-    left_ir = self.left_val.make_ir_value(builder=builder, symbol_table=symbol_table)
-    right_ir = self.right_val.make_ir_value(builder=builder, symbol_table=symbol_table)
+    left_ir = self.left_expr.make_ir_value(builder=builder, symbol_table=symbol_table)
+    right_ir = self.right_expr.make_ir_value(builder=builder, symbol_table=symbol_table)
     if self.op == '*':
       return builder.fmul(left_ir, right_ir, name='mul_tmp')
     if self.op == '/':
@@ -491,15 +491,15 @@ class UnaryOperatorValueAst(ExpressionAst):
   """
   NegVal.
   """
-  def __init__(self, op, val):
+  def __init__(self, op, expr):
     """
     :param str op:
-    :param ExpressionAst val:
+    :param ExpressionAst expr:
     """
     super().__init__()
     assert op in {'+', '-'}
     self.op = op
-    self.val = val
+    self.expr = expr
 
   def make_ir_value(self, builder, symbol_table):
     """
@@ -507,12 +507,12 @@ class UnaryOperatorValueAst(ExpressionAst):
     :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
     :rtype: ir.values.Value
     """
-    val_ir = self.val.make_ir_value(builder=builder, symbol_table=symbol_table)
+    expr_ir = self.expr.make_ir_value(builder=builder, symbol_table=symbol_table)
     if self.op == '+':
-      return val_ir
+      return expr_ir
     if self.op == '-':
       constant_minus_one = ir.Constant(ir.DoubleType(), -1.0)
-      return builder.fmul(constant_minus_one, val_ir, name='neg_tmp')
+      return builder.fmul(constant_minus_one, expr_ir, name='neg_tmp')
     assert False, '%r: operator %s not handled!' % (self, self.op)
 
 
@@ -644,21 +644,21 @@ SLEEPY_GRAMMAR = Grammar(
 )
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
-  syn_attrs={'ast', 'expr_list', 'identifier_list', 'val_list', 'identifier', 'op', 'number'},
+  syn_attrs={'ast', 'stmt_list', 'identifier_list', 'val_list', 'identifier', 'op', 'number'},
   prod_attr_rules=[
-    {'ast': lambda expr_list: TopLevelStatementAst(expr_list(1))},
-    {'expr_list': []},
-    {'expr_list': lambda ast, expr_list: [ast(1)] + expr_list(2)},
-    {'ast': lambda identifier, identifier_list, expr_list: (
-      FunctionDeclarationAst(identifier(2), identifier_list(4), expr_list(7)))},
+    {'ast': lambda stmt_list: TopLevelStatementAst(stmt_list(1))},
+    {'stmt_list': []},
+    {'stmt_list': lambda ast, stmt_list: [ast(1)] + stmt_list(2)},
+    {'ast': lambda identifier, identifier_list, stmt_list: (
+      FunctionDeclarationAst(identifier(2), identifier_list(4), stmt_list(7)))},
     {'ast': lambda identifier, identifier_list: (
       ExternFunctionDeclarationAst(identifier(2), identifier_list(4)))},
     {'ast': lambda identifier, val_list: CallStatementAst(identifier(1), val_list(3))},
     {'ast': lambda val_list: ReturnStatementAst(val_list(2))},
     {'ast': lambda identifier, ast: AssignStatementAst(identifier(1), ast(3))},
-    {'ast': lambda ast, expr_list: IfStatementAst(ast(2), expr_list(4), [])},
-    {'ast': lambda ast, expr_list: IfStatementAst(ast(2), expr_list(4), expr_list(8))},
-    {'ast': lambda ast, expr_list: WhileStatementAst(ast(2), expr_list(4))}] + [
+    {'ast': lambda ast, stmt_list: IfStatementAst(ast(2), stmt_list(4), [])},
+    {'ast': lambda ast, stmt_list: IfStatementAst(ast(2), stmt_list(4), stmt_list(8))},
+    {'ast': lambda ast, stmt_list: WhileStatementAst(ast(2), stmt_list(4))}] + [
     {'ast': lambda ast, op: OperatorValueAst(op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
     {'ast': lambda ast, op: UnaryOperatorValueAst(op(1), ast(2))},
@@ -728,4 +728,4 @@ def add_preamble_to_ast(program_ast):
   """
   preamble_ast = make_preamble_ast()
   assert isinstance(preamble_ast, TopLevelStatementAst)
-  return TopLevelStatementAst(preamble_ast.expr_list + program_ast.expr_list)
+  return TopLevelStatementAst(preamble_ast.stmt_list + program_ast.stmt_list)

@@ -76,19 +76,19 @@ def _get_py_func_from_ast(engine, ast):
 def test_FunctionDeclarationAst_build_expr_ir():
   with make_execution_engine() as engine:
     ast1 = FunctionDeclarationAst(
-      identifier='foo', arg_identifiers=[], expr_list=[ReturnStatementAst(ConstantValueAst(42.0))])
+      identifier='foo', arg_identifiers=[], stmt_list=[ReturnStatementAst([ConstantValueAst(42.0)])])
     func1 = _get_py_func_from_ast(engine, ast1)
     assert_equal(func1(), 42.0)
   with make_execution_engine() as engine:
     ast2 = FunctionDeclarationAst(
-      identifier='foo', arg_identifiers=[], expr_list=[
-        ReturnStatementAst(OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0)))])
+      identifier='foo', arg_identifiers=[], stmt_list=[
+        ReturnStatementAst([OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0))])])
     func2 = _get_py_func_from_ast(engine, ast2)
     assert_equal(func2(), 8.0)
   with make_execution_engine() as engine:
     ast3 = FunctionDeclarationAst(
-      identifier='sum', arg_identifiers=['a', 'b'], expr_list=[
-        ReturnStatementAst(OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b')))])
+      identifier='sum', arg_identifiers=['a', 'b'], stmt_list=[
+        ReturnStatementAst([OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b'))])])
     func3 = _get_py_func_from_ast(engine, ast3)
     assert_equal(func3(7.0, 3.0), 10.0)
 
@@ -292,7 +292,7 @@ def test_if_assign():
     ast = _test_parse_ast(program)
     assert isinstance(ast, TopLevelStatementAst)
     assert_equal(ast.get_declared_identifiers(), [])
-    main_ast = ast.expr_list[-1]
+    main_ast = ast.stmt_list[-1]
     assert isinstance(main_ast, FunctionDeclarationAst)
     assert_equal(main_ast.get_declared_identifiers(), [])
     assert_equal(set(main_ast.get_body_declared_identifiers()), {'mode', 'x', 'y', 'res', 'a'})
