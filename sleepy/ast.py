@@ -240,14 +240,15 @@ class CallStatementAst(StatementAst):
 
 class ReturnStatementAst(StatementAst):
   """
-  Stmt -> return val ;
+  Stmt -> return ExprList ;
   """
-  def __init__(self, return_val):
+  def __init__(self, return_expr_list):
     """
-    :param ExpressionAst return_val:
+    :param list[ExpressionAst] return_expr_list:
     """
     super().__init__()
-    self.return_val = return_val
+    self.return_expr_list = return_expr_list
+    assert len(return_expr_list) <= 1, 'returning of multiple values is not support yet'
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -256,7 +257,11 @@ class ReturnStatementAst(StatementAst):
     :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
     :rtype: ir.IRBuilder
     """
-    builder.ret(self.return_val.make_ir_value(builder=builder, symbol_table=symbol_table))
+    if len(self.return_expr_list) == 1:
+      builder.ret(self.return_expr_list[0].make_ir_value(builder=builder, symbol_table=symbol_table))
+    else:
+      assert len(self.return_expr_list) == 0
+      builder.ret(ir.Constant(ir.DoubleType(), 0.0))
     return builder
 
   def get_declared_identifiers(self):
@@ -610,7 +615,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'func', 'identifier', '(', 'IdentifierList', ')', '{', 'StmtList', '}'),
   Production('Stmt', 'extern_func', 'identifier', '(', 'IdentifierList', ')', ';'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
-  Production('Stmt', 'return', 'Expr', ';'),
+  Production('Stmt', 'return', 'ExprList', ';'),
   Production('Stmt', 'identifier', '=', 'Expr', ';'),
   Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}'),
   Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}', 'else', '{', 'StmtList', '}'),
@@ -649,7 +654,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda identifier, identifier_list: (
       ExternFunctionDeclarationAst(identifier(2), identifier_list(4)))},
     {'ast': lambda identifier, val_list: CallStatementAst(identifier(1), val_list(3))},
-    {'ast': lambda ast: ReturnStatementAst(ast(2))},
+    {'ast': lambda val_list: ReturnStatementAst(val_list(2))},
     {'ast': lambda identifier, ast: AssignStatementAst(identifier(1), ast(3))},
     {'ast': lambda ast, expr_list: IfStatementAst(ast(2), expr_list(4), [])},
     {'ast': lambda ast, expr_list: IfStatementAst(ast(2), expr_list(4), expr_list(8))},
