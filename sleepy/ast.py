@@ -624,3 +624,45 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   }
 )
 SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
+
+
+def make_program_ast(program, add_preamble=True):
+  """
+  :param str program:
+  :param bool add_preamble:
+  :rtype: TopLevelExpressionAst
+  """
+  tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
+  _, root_eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
+  program_ast = root_eval['ast']
+  assert isinstance(program_ast, TopLevelExpressionAst)
+  if add_preamble:
+    program_ast = add_preamble_to_ast(program_ast)
+  return program_ast
+
+
+def make_preamble_ast():
+  """
+  :rtype: TopLevelExpressionAst
+  """
+  std_func_identifiers = [
+    ('print_char', 1), ('print_double', 1), ('allocate', 1), ('deallocate', 1), ('load', 1), ('store', 2),
+    ('assert', 1)]
+  preamble_program = ''.join([
+    'extern_func %s(%s);\n' % (identifier, ', '.join(['var%s' % num for num in range(num_args)]))
+    for identifier, num_args in std_func_identifiers]) + """
+  func or(a, b) { if a { return a; } else { return b; } }
+  func and(a, b) { if a { return b; } else { return 0; } }
+  func not(a) { if (a) { return 0; } else { return 1; } }
+  """
+  return make_program_ast(preamble_program, add_preamble=False)
+
+
+def add_preamble_to_ast(program_ast):
+  """
+  :param TopLevelExpressionAst program_ast:
+  :rtype: TopLevelExpressionAst
+  """
+  preamble_ast = make_preamble_ast()
+  assert isinstance(preamble_ast, TopLevelExpressionAst)
+  return TopLevelExpressionAst(preamble_ast.expr_list + program_ast.expr_list)

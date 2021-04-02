@@ -8,8 +8,9 @@ from nose.tools import assert_equal, assert_almost_equal
 from ctypes import CFUNCTYPE, c_double
 
 from sleepy.ast import TopLevelExpressionAst, FunctionDeclarationAst, ReturnExpressionAst, \
-  OperatorValueAst, ConstantValueAst, VariableValueAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER
-from sleepy.jit import make_execution_engine, compile_ir, preamble
+  OperatorValueAst, ConstantValueAst, VariableValueAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
+  add_preamble_to_ast
+from sleepy.jit import make_execution_engine, compile_ir
 
 
 def _test_parse_ast(program):
@@ -26,8 +27,10 @@ def _test_parse_ast(program):
   ast = eval['ast']
   print('---- right-most analysis:')
   print(analysis)
-  print('---- abstract syntax tree:')
+  print('---- abstract syntax tree (without preamble):')
   print(ast)
+  assert isinstance(ast, TopLevelExpressionAst)
+  ast = add_preamble_to_ast(ast)
   assert isinstance(ast, TopLevelExpressionAst)
   return ast
 
@@ -97,7 +100,6 @@ def _test_compile_program(engine, program, main_func_identifier='main', main_fun
   :param str main_func_identifier:
   :rtype: Callable[[], float]
   """
-  program = preamble + program
   ast = _test_parse_ast(program)
   module_ir = ast.make_module_ir(module_name='test_parse_ast')
   print('---- module intermediate repr:')
