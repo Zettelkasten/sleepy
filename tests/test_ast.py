@@ -292,8 +292,7 @@ def test_if_assign():
     ast = _test_parse_ast(program)
     assert isinstance(ast, TopLevelExpressionAst)
     assert_equal(ast.get_declared_identifiers(), [])
-    assert len(ast.expr_list) == 1
-    main_ast = ast.expr_list[0]
+    main_ast = ast.expr_list[-1]
     assert isinstance(main_ast, FunctionDeclarationAst)
     assert_equal(main_ast.get_declared_identifiers(), [])
     assert_equal(set(main_ast.get_body_declared_identifiers()), {'mode', 'x', 'y', 'res', 'a'})
