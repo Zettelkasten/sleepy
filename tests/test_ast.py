@@ -320,6 +320,13 @@ def test_simple_simple_recursion_factorial():
     assert_equal(fac(0), 0)
 
 
+def _reference_fibonacci(n):
+  prev_fib, curr_fib = 0, 1
+  for i in range(1, n):
+    prev_fib, curr_fib = curr_fib, prev_fib + curr_fib
+  return curr_fib
+
+
 def test_simple_simple_recursion_fibonacci():
   with make_execution_engine() as engine:
     program = """
@@ -332,16 +339,30 @@ def test_simple_simple_recursion_fibonacci():
       }
     }
     """
-
-    def reference_fib(n):
-      if n == 1 or n == 2:
-        return 1
-      else:
-        return reference_fib(n - 2) + reference_fib(n - 1)
-
     fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', main_func_num_args=1)
     for n in range(1, 15):
-      assert_equal(fib(n), reference_fib(n))
+      assert_equal(fib(n), _reference_fibonacci(n))
+
+
+def test_simple_simple_iterative_fibonacci():
+  with make_execution_engine() as engine:
+    program = """
+    func fibonacci(n) {
+      prev_fib = 0;
+      current_fib = 1;
+      i = 2;
+      while i <= n {
+        i = i + 1;
+        next_fib = prev_fib + current_fib;
+        prev_fib = current_fib;
+        current_fib = next_fib;
+      }
+      return current_fib;
+    }
+    """
+    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', main_func_num_args=1)
+    for n in list(range(1, 15)) + [50]:
+      assert_equal(fib(n), _reference_fibonacci(n))
 
 
 def test_extern_func():
