@@ -1,13 +1,14 @@
 
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
-from typing import Union, Dict
+from typing import Dict
 
 from llvmlite import ir
 
 from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
+from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -17,18 +18,20 @@ def make_func_call_ir(func_identifier, func_arg_vals, builder, symbol_table):
   :param str func_identifier:
   :param list[ExpressionAst] func_arg_vals:
   :param IRBuilder builder:
-  :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+  :param dict[str,Symbol] symbol_table:
   :rtype: ir.values.Value
   """
   if func_identifier not in symbol_table:
     raise SemanticError('Function name %r referenced before declaration' % func_identifier)
-  func = symbol_table[func_identifier]
-  assert isinstance(func, ir.Function)
-  if not len(func.args) == len(func_arg_vals):
+  func_symbol = symbol_table[func_identifier]
+  if not isinstance(func_symbol, FunctionSymbol):
+    raise SemanticError('Referenced name %r is not a function, but a %r' % (func_identifier, type(func_symbol)))
+  ir_func = func_symbol.ir_func
+  if not len(ir_func.args) == len(func_arg_vals):
     raise SemanticError('Function %r called with %r arguments %r, but expected %r arguments %r' % (
-      func_identifier, len(func_arg_vals), func_arg_vals, len(func.args), func.args))
+      func_identifier, len(func_arg_vals), func_arg_vals, len(ir_func.args), ir_func.args))
   func_args_ir = [val.make_ir_value(builder=builder, symbol_table=symbol_table) for val in func_arg_vals]
-  return builder.call(func, func_args_ir, name='call')
+  return builder.call(ir_func, func_args_ir, name='call')
 
 
 class AbstractSyntaxTree:
@@ -49,7 +52,7 @@ class StatementAst(AbstractSyntaxTree):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder
     """
     raise NotImplementedError()
@@ -76,7 +79,7 @@ class TopLevelStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder
     """
     for expr in self.stmt_list:
@@ -90,7 +93,7 @@ class TopLevelStatementAst(StatementAst):
     module = ir.Module(name=module_name)
     io_func_type = ir.FunctionType(ir.VoidType(), ())
     ir_io_func = ir.Function(module, io_func_type, name='io')
-    symbol_table = {}
+    symbol_table = {}  # type: Dict[str, Symbol]
 
     block = ir_io_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
@@ -126,27 +129,28 @@ class FunctionDeclarationAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder
     """
     if self.identifier in symbol_table:
       raise SemanticError('%r: cannot redefine function with name %r' % (self, self.identifier))
     double = ir.DoubleType()
-    func_type = ir.FunctionType(double, (double,) * len(self.arg_identifiers))
-    ir_func = ir.Function(module, func_type, name=self.identifier)
-    symbol_table[self.identifier] = ir_func
-    body_symbol_table = symbol_table.copy()
+    ir_func_type = ir.FunctionType(double, (double,) * len(self.arg_identifiers))
+    ir_func = ir.Function(module, ir_func_type, name=self.identifier)
+    symbol_table[self.identifier] = FunctionSymbol(ir_func)
+    body_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
     block = ir_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
 
     for local_identifier in self.get_body_declared_identifiers():
       ir_alloca = body_builder.alloca(double, name=local_identifier)
-      body_symbol_table[local_identifier] = ir_alloca
+      body_symbol_table[local_identifier] = VariableSymbol(ir_alloca, SLEEPY_DOUBLE)
 
     for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
-      ir_alloca = body_symbol_table[arg_identifier]
+      arg_symbol = body_symbol_table[arg_identifier]
+      assert isinstance(arg_symbol, VariableSymbol)
       ir_arg.name = arg_identifier
-      body_builder.store(ir_arg, ir_alloca)
+      body_builder.store(ir_arg, arg_symbol.ir_alloca)
 
     for stmt in self.stmt_list:
       body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
@@ -186,7 +190,7 @@ class ExternFunctionDeclarationAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder
     """
     if self.identifier in symbol_table:
@@ -194,7 +198,7 @@ class ExternFunctionDeclarationAst(StatementAst):
     double = ir.DoubleType()
     func_type = ir.FunctionType(double, (double,) * len(self.arg_identifiers))
     ir_func = ir.Function(module, func_type, name=self.identifier)
-    symbol_table[self.identifier] = ir_func
+    symbol_table[self.identifier] = FunctionSymbol(ir_func)
     for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
       ir_arg.name = arg_identifier
     return builder
@@ -223,7 +227,7 @@ class CallStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder
     """
     make_func_call_ir(
@@ -254,7 +258,7 @@ class ReturnStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder
     """
     if len(self.return_exprs) == 1:
@@ -288,17 +292,17 @@ class AssignStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder
     """
     assert self.var_identifier in symbol_table
-    ir_alloca = symbol_table[self.var_identifier]
-    if not isinstance(ir_alloca, ir.AllocaInstr):
-      raise SemanticError('%r: Cannot redefine non-value %r using a value' % (self, self.var_identifier))
-    symbol_table[self.var_identifier] = ir_alloca
+    symbol = symbol_table[self.var_identifier]
+    if not isinstance(symbol, VariableSymbol):
+      raise SemanticError('%r: Cannot redefine non-variable %r using a variable' % (self, self.var_identifier))
+    symbol_table[self.var_identifier] = symbol
     ir_value = self.var_val.make_ir_value(builder=builder, symbol_table=symbol_table)
     assert isinstance(ir_value, ir.values.Value)
-    builder.store(ir_value, ir_alloca)
+    builder.store(ir_value, symbol.ir_alloca)
     return builder
 
   def get_declared_identifiers(self):
@@ -341,7 +345,7 @@ class IfStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder|None
     """
     cond_ir = self.condition_val.make_ir_value(builder=builder, symbol_table=symbol_table)
@@ -353,7 +357,8 @@ class IfStatementAst(StatementAst):
     builder.cbranch(cond_ir, true_block, false_block)
     true_builder, false_builder = ir.IRBuilder(true_block), ir.IRBuilder(false_block)
 
-    true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
+    true_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
+    false_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
 
     for expr in self.true_stmt_list:
       expr.build_expr_ir(module, builder=true_builder, symbol_table=true_symbol_table)
@@ -397,13 +402,13 @@ class WhileStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder|None
     """
     def make_condition_ir(builder_, symbol_table_):
       """
       :param ir.IRBuilder builder_:
-      :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+      :param dict[str,Symbol] symbol_table_:
       :rtype: FCMPInstr
       """
       cond_ir = self.condition_val.make_ir_value(builder=builder_, symbol_table=symbol_table_)
@@ -415,7 +420,7 @@ class WhileStatementAst(StatementAst):
     builder.cbranch(cond_ir, body_block, continue_block)
     body_builder = ir.IRBuilder(body_block)
 
-    body_symbol_table = symbol_table.copy()
+    body_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
 
     for stmt in self.stmt_list:
       body_builder = stmt.build_expr_ir(module, builder=body_builder, symbol_table=body_symbol_table)
@@ -444,7 +449,7 @@ class ExpressionAst(AbstractSyntaxTree):
   def make_ir_value(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.values.Value
     """
     raise NotImplementedError()
@@ -468,7 +473,7 @@ class OperatorValueAst(ExpressionAst):
   def make_ir_value(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.values.Value
     """
     left_ir = self.left_expr.make_ir_value(builder=builder, symbol_table=symbol_table)
@@ -504,7 +509,7 @@ class UnaryOperatorValueAst(ExpressionAst):
   def make_ir_value(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.values.Value
     """
     expr_ir = self.expr.make_ir_value(builder=builder, symbol_table=symbol_table)
@@ -530,7 +535,7 @@ class ConstantValueAst(ExpressionAst):
   def make_ir_value(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.values.Value
     """
     return ir.Constant(ir.DoubleType(), self.constant)
@@ -550,12 +555,15 @@ class VariableValueAst(ExpressionAst):
   def make_ir_value(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.values.Value
     """
     if self.var_identifier not in symbol_table:
       raise SemanticError('%r: Variable %r referenced before declaring' % (self, self.var_identifier))
-    return builder.load(symbol_table[self.var_identifier], self.var_identifier)
+    symbol = symbol_table[self.var_identifier]
+    if not isinstance(symbol, VariableSymbol):
+      raise SemanticError('%r: Cannot reference a non-variable %r' % (self, self.var_identifier))
+    return builder.load(symbol.ir_alloca, self.var_identifier)
 
 
 class CallValueAst(ExpressionAst):
@@ -574,7 +582,7 @@ class CallValueAst(ExpressionAst):
   def make_ir_value(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str, ir.Function|ir.AllocaInstr] symbol_table:
+    :param dict[str,Symbol] symbol_table:
     :rtype: ir.values.Value
     """
     return make_func_call_ir(
