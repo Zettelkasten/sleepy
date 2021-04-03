@@ -8,7 +8,7 @@ from llvmlite import ir
 from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
-from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE
+from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, join_declared_var_types
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -57,11 +57,24 @@ class StatementAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
-  def get_declared_identifiers(self):
+  def get_declared_var_types(self, symbol_table):
     """
-    :rtype: list[str]
+    :param dict[str,Symbol] symbol_table:
+    :rtype: dict[str,Type|None]
     """
     raise NotImplementedError()
+
+  def make_type(self, type_identifier, symbol_table):
+    """
+    :param str|None type_identifier:
+    :param dict[str,Symbol] symbol_table:
+    :rtype: Type|None
+    """
+    if type_identifier is None:
+      return None
+    if type_identifier == 'Double':
+      return SLEEPY_DOUBLE
+    raise SemanticError('%r: Unknown type identifier %r' % (self, type_identifier))
 
 
 class TopLevelStatementAst(StatementAst):
@@ -97,33 +110,57 @@ class TopLevelStatementAst(StatementAst):
 
     block = ir_io_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
-    for expr in self.stmt_list:
-      body_builder = expr.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
+    for stmt in self.stmt_list:
+      body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
+    assert not block.is_terminated
     body_builder.ret_void()
 
     return module
 
-  def get_declared_identifiers(self):
+  def get_declared_var_types(self, symbol_table):
     """
-    :rtype: list[str]
+    :param dict[str, Symbol] symbol_table:
+    :rtype: dict[str,Type|None]
     """
-    return []
+    return {}
 
 
 class FunctionDeclarationAst(StatementAst):
   """
-  Stmt -> func identifier ( IdentifierList ) { StmtList }
+  Stmt -> func identifier ( TypedIdentifierList ) { StmtList }
   """
-  def __init__(self, identifier, arg_identifiers, stmt_list):
+  def __init__(self, identifier, arg_identifiers, arg_type_identifiers, return_type_identifier, stmt_list):
     """
     :param str identifier:
-    :param list[str] arg_identifiers:
-    :param list[StatementAst] stmt_list:
+    :param list[str|None] arg_identifiers:
+    :param list[str|None] arg_type_identifiers:
+    :param str|None return_type_identifier:
+    :param list[StatementAst]|None stmt_list: body, or None if extern function.
     """
     super().__init__()
+    assert len(arg_identifiers) == len(arg_type_identifiers)
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
+    self.arg_type_identifiers = arg_type_identifiers
+    self.return_type_identifier = return_type_identifier
     self.stmt_list = stmt_list
+
+  @property
+  def is_extern(self):
+    """
+    :rtype: bool
+    """
+    return self.stmt_list is None
+
+  def make_arg_types(self, symbol_table):
+    """
+    :param dict[str,Symbol] symbol_table:
+    :rtype: list[Type]
+    """
+    arg_types = [self.make_type(identifier, symbol_table=symbol_table) for identifier in self.arg_type_identifiers]
+    if any(arg_type is None for arg_type in arg_types):
+      raise SemanticError('%r: need to specify all parameter types of function %r' % (self, self.identifier))
+    return arg_types
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -134,80 +171,59 @@ class FunctionDeclarationAst(StatementAst):
     """
     if self.identifier in symbol_table:
       raise SemanticError('%r: cannot redefine function with name %r' % (self, self.identifier))
-    double = ir.DoubleType()
-    ir_func_type = ir.FunctionType(double, (double,) * len(self.arg_identifiers))
+    arg_types = self.make_arg_types(symbol_table=symbol_table)
+    return_type = self.make_type(self.return_type_identifier, symbol_table=symbol_table)
+    if return_type is None:
+      raise SemanticError('%r: need to specify return type of function %r' % (self, self.identifier))
+    ir_func_type = ir.FunctionType(
+      return_type.ir_type, [arg_type.ir_type for arg_type in arg_types])
     ir_func = ir.Function(module, ir_func_type, name=self.identifier)
     symbol_table[self.identifier] = FunctionSymbol(ir_func)
-    body_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
-    block = ir_func.append_basic_block(name='entry')
-    body_builder = ir.IRBuilder(block)
 
-    for local_identifier in self.get_body_declared_identifiers():
-      ir_alloca = body_builder.alloca(double, name=local_identifier)
-      body_symbol_table[local_identifier] = VariableSymbol(ir_alloca, SLEEPY_DOUBLE)
+    if not self.is_extern:
+      body_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
+      block = ir_func.append_basic_block(name='entry')
+      body_builder = ir.IRBuilder(block)
 
-    for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
-      arg_symbol = body_symbol_table[arg_identifier]
-      assert isinstance(arg_symbol, VariableSymbol)
-      ir_arg.name = arg_identifier
-      body_builder.store(ir_arg, arg_symbol.ir_alloca)
+      for identifier_name, identifier_type in self.get_body_var_types(
+          symbol_table=symbol_table, body_symbol_table=body_symbol_table).items():
+        ir_alloca = body_builder.alloca(identifier_type.ir_type, name=identifier_name)
+        body_symbol_table[identifier_name] = VariableSymbol(ir_alloca, SLEEPY_DOUBLE)
 
-    for stmt in self.stmt_list:
-      body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
-    if body_builder is not None and not body_builder.block.is_terminated:
-      body_builder.ret(ir.Constant(double, 0.0))
+      for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
+        arg_symbol = body_symbol_table[arg_identifier]
+        assert isinstance(arg_symbol, VariableSymbol)
+        ir_arg.name = arg_identifier
+        body_builder.store(ir_arg, arg_symbol.ir_alloca)
+
+      for stmt in self.stmt_list:
+        body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
+      if body_builder is not None and not body_builder.block.is_terminated:
+        ReturnStatementAst([]).build_expr_ir(
+          module=module, builder=body_builder, symbol_table=body_symbol_table)
     return builder
 
-  def get_declared_identifiers(self):
+  def get_declared_var_types(self, symbol_table):
     """
-    :rtype: list[str]
+    :param dict[str, Symbol] symbol_table:
+    :rtype: dict[str,Type|None]
     """
-    return []
+    return {}
 
-  def get_body_declared_identifiers(self):
+  def get_body_var_types(self, symbol_table, body_symbol_table):
     """
-    :rtype: list[str]
-    """
-    local_identifiers = [identifier for stmt in self.stmt_list for identifier in stmt.get_declared_identifiers()]
-    return self.arg_identifiers + [
-      identifier for identifier in local_identifiers if identifier not in self.arg_identifiers]
-
-
-class ExternFunctionDeclarationAst(StatementAst):
-  """
-  Stmt -> extern_func identifier ( IdentifierList ) ;
-  """
-  def __init__(self, identifier, arg_identifiers):
-    """
-    :param str identifier:
-    :param list[str] arg_identifiers:
-    """
-    super().__init__()
-    self.identifier = identifier
-    self.arg_identifiers = arg_identifiers
-
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
     :param dict[str,Symbol] symbol_table:
-    :rtype: ir.IRBuilder
+    :param dict[str,Symbol] body_symbol_table:
+    :rtype: dict[str,Type]
     """
-    if self.identifier in symbol_table:
-      raise SemanticError('%r: cannot redefine extern function with name %r' % (self, self.identifier))
-    double = ir.DoubleType()
-    func_type = ir.FunctionType(double, (double,) * len(self.arg_identifiers))
-    ir_func = ir.Function(module, func_type, name=self.identifier)
-    symbol_table[self.identifier] = FunctionSymbol(ir_func)
-    for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
-      ir_arg.name = arg_identifier
-    return builder
-
-  def get_declared_identifiers(self):
-    """
-    :rtype: list[str]
-    """
-    return []
+    declared_arg_var_types = dict(zip(self.arg_identifiers, self.make_arg_types(symbol_table=symbol_table)))
+    if self.is_extern:
+      return join_declared_var_types([declared_arg_var_types], [self])
+    else:
+      return join_declared_var_types(
+        [declared_arg_var_types]
+        + [stmt.get_declared_var_types(symbol_table=body_symbol_table) for stmt in self.stmt_list],
+        [self] + self.stmt_list)
 
 
 class CallStatementAst(StatementAst):
@@ -235,11 +251,12 @@ class CallStatementAst(StatementAst):
       symbol_table=symbol_table)
     return builder
 
-  def get_declared_identifiers(self):
+  def get_declared_var_types(self, symbol_table):
     """
-    :rtype: list[str]
+    :param dict[str, Symbol] symbol_table:
+    :rtype: dict[str,Type|None]
     """
-    return []
+    return {}
 
 
 class ReturnStatementAst(StatementAst):
@@ -268,25 +285,41 @@ class ReturnStatementAst(StatementAst):
       builder.ret(ir.Constant(ir.DoubleType(), 0.0))
     return builder
 
-  def get_declared_identifiers(self):
+  def get_declared_var_types(self, symbol_table):
     """
-    :rtype: list[str]
+    :param dict[str, Symbol] symbol_table:
+    :rtype: dict[str,Type|None]
     """
-    return []
+    return {}
 
 
 class AssignStatementAst(StatementAst):
   """
   Stmt -> identifier = Expr ;
   """
-  def __init__(self, var_identifier, var_val):
+  def __init__(self, var_identifier, var_val, var_type_identifier):
     """
     :param str var_identifier:
     :param ExpressionAst var_val:
+    :param str|None var_type_identifier:
     """
     super().__init__()
     self.var_identifier = var_identifier
     self.var_val = var_val
+    self.var_type_identifier = var_type_identifier
+
+  def make_var_type(self, symbol_table):
+    """
+    :param dict[str, Symbol] symbol_table:
+    :rtype: Type
+    """
+    if self.var_identifier in symbol_table:
+      existing_symbol = symbol_table[self.var_identifier]
+      assert isinstance(existing_symbol, VariableSymbol)
+      return existing_symbol.var_type
+    if self.var_type_identifier is None:
+      return SLEEPY_DOUBLE  # assume double for now
+    return self.make_type(self.var_type_identifier, symbol_table=symbol_table)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -298,18 +331,22 @@ class AssignStatementAst(StatementAst):
     assert self.var_identifier in symbol_table
     symbol = symbol_table[self.var_identifier]
     if not isinstance(symbol, VariableSymbol):
-      raise SemanticError('%r: Cannot redefine non-variable %r using a variable' % (self, self.var_identifier))
-    symbol_table[self.var_identifier] = symbol
+      raise SemanticError('%r: Cannot assign non-variable %r to a variable' % (self, self.var_identifier))
+    if self.var_type_identifier is not None and symbol.var_type != self.var_type_identifier:
+      raise SemanticError('%r: Cannot redefine variable %r of type %r with different type %r' % (
+        self, self.var_identifier, symbol.var_type, self.var_type_identifier))
     ir_value = self.var_val.make_ir_value(builder=builder, symbol_table=symbol_table)
     assert isinstance(ir_value, ir.values.Value)
+    # TODO: Check that the type actually matches the type of ir_value.
     builder.store(ir_value, symbol.ir_alloca)
     return builder
 
-  def get_declared_identifiers(self):
+  def get_declared_var_types(self, symbol_table):
     """
-    :rtype: list[str]
+    :param dict[str, Symbol] symbol_table:
+    :rtype: dict[str,Type|None]
     """
-    return [self.var_identifier]
+    return {self.var_identifier: self.make_var_type(symbol_table=symbol_table)}
 
 
 class IfStatementAst(StatementAst):
@@ -376,13 +413,14 @@ class IfStatementAst(StatementAst):
     else:
       return None
 
-  def get_declared_identifiers(self):
+  def get_declared_var_types(self, symbol_table):
     """
-    :rtype: list[str]
+    :param dict[str, Symbol] symbol_table:
+    :rtype: dict[str,Type|None]
     """
-    true_declared = [identifier for expr in self.true_stmt_list for identifier in expr.get_declared_identifiers()]
-    false_declared = [identifier for expr in self.true_stmt_list for identifier in expr.get_declared_identifiers()]
-    return true_declared + [identifier for identifier in false_declared if identifier not in true_declared]
+    return join_declared_var_types(
+      [stmt.get_declared_var_types(symbol_table=symbol_table) for stmt in self.true_stmt_list + self.false_stmt_list],
+      self.true_stmt_list + self.false_stmt_list)
 
 
 class WhileStatementAst(StatementAst):
@@ -432,11 +470,13 @@ class WhileStatementAst(StatementAst):
     continue_builder = ir.IRBuilder(continue_block)
     return continue_builder
 
-  def get_declared_identifiers(self):
+  def get_declared_var_types(self, symbol_table):
     """
-    :rtype: list[str]
+    :param dict[str, Symbol] symbol_table:
+    :rtype: dict[str,Type|None]
     """
-    return [identifier for expr in self.stmt_list for identifier in expr.get_declared_identifiers()]
+    return join_declared_var_types(
+      [stmt.get_declared_var_types(symbol_table=symbol_table) for stmt in self.stmt_list], self.stmt_list)
 
 
 class ExpressionAst(AbstractSyntaxTree):
@@ -624,6 +664,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'extern_func', 'identifier', '(', 'IdentifierList', ')', ';'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
   Production('Stmt', 'return', 'ExprList', ';'),
+  Production('Stmt', 'Type', 'identifier', '=', 'Expr', ';'),
   Production('Stmt', 'identifier', '=', 'Expr', ';'),
   Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}'),
   Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}', 'else', '{', 'StmtList', '}'),
@@ -648,22 +689,24 @@ SLEEPY_GRAMMAR = Grammar(
   Production('ExprList'),
   Production('ExprList', 'ExprList+'),
   Production('ExprList+', 'Expr'),
-  Production('ExprList+', 'Expr', ',', 'ExprList+')
+  Production('ExprList+', 'Expr', ',', 'ExprList+'),
+  Production('Type', 'identifier')
 )
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
-  syn_attrs={'ast', 'stmt_list', 'identifier_list', 'val_list', 'identifier', 'op', 'number'},
+  syn_attrs={'ast', 'stmt_list', 'identifier_list', 'val_list', 'identifier', 'type_identifier', 'op', 'number'},
   prod_attr_rules=[
     {'ast': lambda stmt_list: TopLevelStatementAst(stmt_list(1))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, stmt_list: [ast(1)] + stmt_list(2)},
     {'ast': lambda identifier, identifier_list, stmt_list: (
-      FunctionDeclarationAst(identifier(2), identifier_list(4), stmt_list(7)))},
+      FunctionDeclarationAst(identifier(2), identifier_list(4), ['Double'] * len(identifier_list(4)), 'Double', stmt_list(7)))},  # noqa
     {'ast': lambda identifier, identifier_list: (
-      ExternFunctionDeclarationAst(identifier(2), identifier_list(4)))},
+      FunctionDeclarationAst(identifier(2), identifier_list(4), ['Double'] * len(identifier_list(4)), 'Double', None))},
     {'ast': lambda identifier, val_list: CallStatementAst(identifier(1), val_list(3))},
     {'ast': lambda val_list: ReturnStatementAst(val_list(2))},
-    {'ast': lambda identifier, ast: AssignStatementAst(identifier(1), ast(3))},
+    {'ast': lambda identifier, ast, type_identifier: AssignStatementAst(identifier(2), ast(4), type_identifier(1))},
+    {'ast': lambda identifier, ast: AssignStatementAst(identifier(1), ast(3), None)},
     {'ast': lambda ast, stmt_list: IfStatementAst(ast(2), stmt_list(4), [])},
     {'ast': lambda ast, stmt_list: IfStatementAst(ast(2), stmt_list(4), stmt_list(8))},
     {'ast': lambda ast, stmt_list: WhileStatementAst(ast(2), stmt_list(4))}] + [
@@ -683,7 +726,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'val_list': []},
     {'val_list': 'val_list.1'},
     {'val_list': lambda ast: [ast(1)]},
-    {'val_list': lambda ast, val_list: [ast(1)] + val_list(3)}
+    {'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
+    {'type_identifier': 'identifier.1'}
   ],
   terminal_attr_rules={
     'bool_op': {'op': lambda value: value},

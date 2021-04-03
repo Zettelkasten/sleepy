@@ -11,6 +11,7 @@ from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnState
   OperatorValueAst, ConstantValueAst, VariableValueAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
   add_preamble_to_ast
 from sleepy.jit import make_execution_engine, compile_ir
+from sleepy.symbols import SLEEPY_DOUBLE
 
 
 def _test_parse_ast(program):
@@ -76,18 +77,20 @@ def _get_py_func_from_ast(engine, ast):
 def test_FunctionDeclarationAst_build_expr_ir():
   with make_execution_engine() as engine:
     ast1 = FunctionDeclarationAst(
-      identifier='foo', arg_identifiers=[], stmt_list=[ReturnStatementAst([ConstantValueAst(42.0)])])
+      identifier='foo', arg_identifiers=[], arg_type_identifiers=[], return_type_identifier='Double',
+      stmt_list=[ReturnStatementAst([ConstantValueAst(42.0)])])
     func1 = _get_py_func_from_ast(engine, ast1)
     assert_equal(func1(), 42.0)
   with make_execution_engine() as engine:
     ast2 = FunctionDeclarationAst(
-      identifier='foo', arg_identifiers=[], stmt_list=[
+      identifier='foo', arg_identifiers=[], arg_type_identifiers=[], return_type_identifier='Double', stmt_list=[
         ReturnStatementAst([OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0))])])
     func2 = _get_py_func_from_ast(engine, ast2)
     assert_equal(func2(), 8.0)
   with make_execution_engine() as engine:
     ast3 = FunctionDeclarationAst(
-      identifier='sum', arg_identifiers=['a', 'b'], stmt_list=[
+      identifier='sum', arg_identifiers=['a', 'b'], arg_type_identifiers=['Double', 'Double'],
+      return_type_identifier='Double', stmt_list=[
         ReturnStatementAst([OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b'))])])
     func3 = _get_py_func_from_ast(engine, ast3)
     assert_equal(func3(7.0, 3.0), 10.0)
@@ -291,11 +294,12 @@ def test_if_assign():
     """
     ast = _test_parse_ast(program)
     assert isinstance(ast, TopLevelStatementAst)
-    assert_equal(ast.get_declared_identifiers(), [])
+    assert_equal(ast.get_declared_var_types(symbol_table={}), {})
     main_ast = ast.stmt_list[-1]
     assert isinstance(main_ast, FunctionDeclarationAst)
-    assert_equal(main_ast.get_declared_identifiers(), [])
-    assert_equal(set(main_ast.get_body_declared_identifiers()), {'mode', 'x', 'y', 'res', 'a'})
+    assert_equal(main_ast.get_declared_var_types(symbol_table={}), {})
+    assert_equal(main_ast.get_body_var_types(symbol_table={}, body_symbol_table={}), {
+      'mode': SLEEPY_DOUBLE, 'x': SLEEPY_DOUBLE, 'y': SLEEPY_DOUBLE, 'res': SLEEPY_DOUBLE, 'a': SLEEPY_DOUBLE})
     main = _test_compile_program(engine, program, main_func_num_args=3)
     assert_equal(main(0, 4, 6), 10)
     assert_equal(main(1, 5, -3), 8)
@@ -393,6 +397,26 @@ def test_extern_func_simple_alloc():
 
     main = _test_compile_program(engine, program)
     assert_equal(main(), 42)
+
+
+def test_typed_assignments():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      Double x = 2.3;
+      x = 5.0;
+      y = x * 2;
+    }
+    """
+    ast = _test_parse_ast(program)
+    assert isinstance(ast, TopLevelStatementAst)
+    main_ast = ast.stmt_list[-1]  # ignore preamble.
+    assert isinstance(main_ast, FunctionDeclarationAst)
+    assert len(main_ast.stmt_list) == 3
+    assert_equal(
+      main_ast.get_body_var_types(symbol_table={}, body_symbol_table={}), {'x': SLEEPY_DOUBLE, 'y': SLEEPY_DOUBLE})
+    assert_equal(main_ast.make_arg_types(symbol_table={}), [])
+    assert_equal(main_ast.get_declared_var_types(symbol_table={}), {})
 
 
 if __name__ == "__main__":
