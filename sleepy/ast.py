@@ -8,7 +8,8 @@ from llvmlite import ir
 from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
-from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, join_declared_var_types
+from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, join_declared_var_types, \
+  SLEEPY_TYPES, SLEEPY_INT, SLEEPY_CHAR
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -72,9 +73,10 @@ class StatementAst(AbstractSyntaxTree):
     """
     if type_identifier is None:
       return None
-    if type_identifier == 'Double':
-      return SLEEPY_DOUBLE
-    raise SemanticError('%r: Unknown type identifier %r' % (self, type_identifier))
+    if type_identifier in SLEEPY_TYPES:
+      return SLEEPY_TYPES[type_identifier]
+    raise SemanticError('%r: Unknown type identifier %r. Available: %r' % (
+      self, type_identifier, ', '.join('%r' % type_identifier for type_identifier in SLEEPY_TYPES.keys())))
 
 
 class TopLevelStatementAst(StatementAst):
@@ -564,14 +566,16 @@ class UnaryOperatorValueAst(ExpressionAst):
 
 class ConstantValueAst(ExpressionAst):
   """
-  PrimaryExpr -> number
+  PrimaryExpr -> double | int | char
   """
-  def __init__(self, constant):
+  def __init__(self, constant_val, constant_type):
     """
-    :param float constant:
+    :param Any constant_val:
+    :param Type constant_type:
     """
     super().__init__()
-    self.constant = constant
+    self.constant_val = constant_val
+    self.constant_type = constant_type
 
   def make_ir_value(self, builder, symbol_table):
     """
@@ -579,7 +583,7 @@ class ConstantValueAst(ExpressionAst):
     :param dict[str,Symbol] symbol_table:
     :rtype: ir.values.Value
     """
-    return ir.Constant(ir.DoubleType(), self.constant)
+    return ir.Constant(self.constant_type.ir_type, self.constant_val)
 
 
 class VariableValueAst(ExpressionAst):
@@ -649,12 +653,12 @@ SLEEPY_LEXER = LexerGenerator(
   [
     'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '(', ')',
     'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
-    'number', 'char',
+    'int', 'double', 'char',
     None, None
   ], [
     'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\(', '\\)',
     '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
-    '(0|[1-9][0-9]*)(\\.[0-9]+)?', "'([^\']|\\\\[nrt'\"])'",
+    '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n]+'
   ])
 SLEEPY_GRAMMAR = Grammar(
@@ -678,7 +682,8 @@ SLEEPY_GRAMMAR = Grammar(
   Production('ProdExpr', 'NegExpr'),
   Production('NegExpr', 'sum_op', 'PrimaryExpr'),
   Production('NegExpr', 'PrimaryExpr'),
-  Production('PrimaryExpr', 'number'),
+  Production('PrimaryExpr', 'int'),
+  Production('PrimaryExpr', 'double'),
   Production('PrimaryExpr', 'char'),
   Production('PrimaryExpr', 'identifier'),
   Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'),
@@ -715,8 +720,9 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': 'ast.1'}] * 3 + [
     {'ast': lambda ast, op: UnaryOperatorValueAst(op(1), ast(2))},
     {'ast': 'ast.1'},
-    {'ast': lambda number: ConstantValueAst(number(1))},
-    {'ast': lambda number: ConstantValueAst(number(1))},
+    {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_INT)},
+    {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_DOUBLE)},
+    {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_CHAR)},
     {'ast': lambda identifier: VariableValueAst(identifier(1))},
     {'ast': lambda identifier, val_list: CallValueAst(identifier(1), val_list(3))},
     {'ast': 'ast.2'},
@@ -735,7 +741,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'sum_op': {'op': lambda value: value},
     'prod_op': {'op': lambda value: value},
     'identifier': {'identifier': lambda value: value},
-    'number': {'number': lambda value: float(value)},
+    'int': {'number': lambda value: int(value)},
+    'double': {'number': lambda value: float(value)},
     'char': {'number': lambda value: float(ord(parse_char(value)))}
   }
 )
@@ -768,8 +775,8 @@ def make_preamble_ast():
     'extern_func %s(%s);\n' % (identifier, ', '.join(['var%s' % num for num in range(num_args)]))
     for identifier, num_args in std_func_identifiers]) + """
   func or(a, b) { if a { return a; } else { return b; } }
-  func and(a, b) { if a { return b; } else { return 0; } }
-  func not(a) { if (a) { return 0; } else { return 1; } }
+  func and(a, b) { if a { return b; } else { return 0.0; } }
+  func not(a) { if (a) { return 0.0; } else { return 1.0; } }
   """
   return make_program_ast(preamble_program, add_preamble=False)
 
