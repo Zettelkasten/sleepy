@@ -7,7 +7,7 @@ In particular, this will compile and execute all files in `tests/examples/`, whe
 To just run tests for files in this directory, run `nosetests -s tests/test_examples.py`
 
 For example, this Sleepy program prints numbers from `-3` to `5` (very impressive!):
-```
+```c++
 func main() {
   func count_from_to(from, to) {
     if from > to { return 0; }
