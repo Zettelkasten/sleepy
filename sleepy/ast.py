@@ -188,7 +188,7 @@ class FunctionDeclarationAst(StatementAst):
       for identifier_name, identifier_type in self.get_body_var_types(
           symbol_table=symbol_table, body_symbol_table=body_symbol_table).items():
         ir_alloca = body_builder.alloca(identifier_type.ir_type, name=identifier_name)
-        body_symbol_table[identifier_name] = VariableSymbol(ir_alloca, SLEEPY_DOUBLE)
+        body_symbol_table[identifier_name] = VariableSymbol(ir_alloca, identifier_type)
 
       for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func.args):
         arg_symbol = body_symbol_table[arg_identifier]
@@ -332,9 +332,10 @@ class AssignStatementAst(StatementAst):
     symbol = symbol_table[self.var_identifier]
     if not isinstance(symbol, VariableSymbol):
       raise SemanticError('%r: Cannot assign non-variable %r to a variable' % (self, self.var_identifier))
-    if self.var_type_identifier is not None and symbol.var_type != self.var_type_identifier:
+    var_type = self.make_var_type(symbol_table=symbol_table)
+    if self.var_type_identifier is not None and symbol.var_type != var_type:
       raise SemanticError('%r: Cannot redefine variable %r of type %r with different type %r' % (
-        self, self.var_identifier, symbol.var_type, self.var_type_identifier))
+        self, self.var_identifier, symbol.var_type, var_type))
     ir_value = self.var_val.make_ir_value(builder=builder, symbol_table=symbol_table)
     assert isinstance(ir_value, ir.values.Value)
     # TODO: Check that the type actually matches the type of ir_value.
