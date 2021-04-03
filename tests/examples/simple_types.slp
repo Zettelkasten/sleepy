@@ -1,0 +1,4 @@
+func main() {
+  Int my_int = 3;
+  Double my_double = 4.0;
+}

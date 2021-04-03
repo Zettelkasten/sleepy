@@ -37,7 +37,36 @@ class DoubleType(Type):
     super().__init__(ir.DoubleType())
 
 
+class IntType(Type):
+  """
+  An 32-bit integer.
+  """
+  def __init__(self):
+    super().__init__(ir.IntType(bits=32))
+
+
+class LongType(Type):
+  """
+  A 64-bit integer.
+  """
+  def __init__(self):
+    super().__init__(ir.IntType(bits=64))
+
+
+class CharType(Type):
+  """
+  An 32-bit character.
+  """
+  def __init__(self):
+    super().__init__(ir.IntType(bits=32))
+
+
 SLEEPY_DOUBLE = DoubleType()
+SLEEPY_INT = IntType()
+SLEEPY_LONG = LongType()
+SLEEPY_CHAR = CharType()
+
+SLEEPY_TYPES = {'Double': SLEEPY_DOUBLE, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR}
 
 
 class VariableSymbol(Symbol):

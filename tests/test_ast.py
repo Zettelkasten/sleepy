@@ -419,6 +419,17 @@ def test_typed_assignments():
     assert_equal(main_ast.get_declared_var_types(symbol_table={}), {})
 
 
+def test_types_simple():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      Int my_int = 3;
+      Double my_double = 4.0;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main()
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
