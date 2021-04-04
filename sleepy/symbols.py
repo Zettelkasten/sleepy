@@ -75,14 +75,24 @@ class CharType(Type):
     super().__init__(ir.IntType(bits=32), ctypes.c_char)
 
 
+class DoublePtrType(Type):
+  """
+  A double pointer.
+  """
+  def __init__(self):
+    super().__init__(ir.PointerType(ir.DoubleType()), ctypes.pointer(ctypes.c_double()))
+
+
 SLEEPY_VOID = VoidType()
 SLEEPY_DOUBLE = DoubleType()
 SLEEPY_INT = IntType()
 SLEEPY_LONG = LongType()
 SLEEPY_CHAR = CharType()
+SLEEPY_DOUBLE_PTR = DoublePtrType()
 
 SLEEPY_TYPES = {
-  'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR}
+  'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR,
+  'DoublePtr': SLEEPY_DOUBLE_PTR}
 SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG}
 
 
