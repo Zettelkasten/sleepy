@@ -294,6 +294,8 @@ class ReturnStatementAst(StatementAst):
     :param dict[str, Symbol] symbol_table:
     :param list[str] declared_variables:
     """
+    # TODO: Check that the return type is correct.
+    # TODO: Infer return type if not specified.
     pass
 
   def build_expr_ir(self, module, builder, symbol_table):
@@ -307,7 +309,7 @@ class ReturnStatementAst(StatementAst):
       builder.ret(self.return_exprs[0].make_ir_val(builder=builder, symbol_table=symbol_table))
     else:
       assert len(self.return_exprs) == 0
-      builder.ret(ir.Constant(ir.DoubleType(), 0.0))
+      builder.ret_void()
     return builder
 
 
