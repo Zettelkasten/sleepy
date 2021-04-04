@@ -28,6 +28,9 @@ class Type:
     """
     self.ir_type = ir_type
 
+  def __repr__(self):
+    return self.__class__.__name__
+
 
 class DoubleType(Type):
   """
