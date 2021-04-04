@@ -2,14 +2,12 @@
 #include <stdlib.h>
 #include <signal.h>
 
-double print_char(double c) {
+void print_char(double c) {
     printf("%c", (char) c);
-    return 0;
 }
 
-double print_double(double d) {
+void print_double(double d) {
     printf("%f", d);
-    return 0;
 }
 
 double assert(double property) {
@@ -20,36 +18,34 @@ double assert(double property) {
     return 0;
 }
 
-double* double_to_ptr(double d) {
+double* double_to_ptr(int d) {
     return (double*) (size_t) (d * 8);
 }
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "bugprone-integer-division"
 
-double ptr_to_double(void* ptr) {
+int ptr_to_double(void* ptr) {
     assert((size_t) ptr % 8 == 0);
-    return (double) ((size_t) ptr / 8);
+    return (int) ((size_t) ptr / 8);
 }
 
 #pragma clang diagnostic pop
 
 
-double allocate(double size) {
-    void* array = malloc((size_t) size * sizeof(double));
+int allocate(int size) {
+    void* array = malloc(size * sizeof(double));
     return ptr_to_double(array);
 }
 
-double deallocate(double d_ptr) {
+void deallocate(int d_ptr) {
     free(double_to_ptr(d_ptr));
-    return 0;
 }
 
-double store(double ptr, double value) {
+void store(int ptr, double value) {
     *double_to_ptr(ptr) = value;
-    return value;
 }
 
-double load(double ptr) {
+double load(int ptr) {
     return *double_to_ptr(ptr);
 }

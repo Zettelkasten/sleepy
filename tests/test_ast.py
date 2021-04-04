@@ -387,9 +387,9 @@ def test_extern_func():
 def test_extern_func_simple_alloc():
   with make_execution_engine() as engine:
     program = """
-    func main() {
+    func main() -> Double {
       arr = allocate(3);
-      store(arr, 42);
+      store(arr, 42.0);
       res = load(arr);
       return res;
     }

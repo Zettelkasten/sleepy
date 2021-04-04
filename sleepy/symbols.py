@@ -32,6 +32,14 @@ class Type:
     return self.__class__.__name__
 
 
+class VoidType(Type):
+  """
+  Typ returned when nothing is returned.
+  """
+  def __init__(self):
+    super().__init__(ir.VoidType())
+
+
 class DoubleType(Type):
   """
   A double.
@@ -64,12 +72,14 @@ class CharType(Type):
     super().__init__(ir.IntType(bits=32))
 
 
+SLEEPY_VOID = VoidType()
 SLEEPY_DOUBLE = DoubleType()
 SLEEPY_INT = IntType()
 SLEEPY_LONG = LongType()
 SLEEPY_CHAR = CharType()
 
-SLEEPY_TYPES = {'Double': SLEEPY_DOUBLE, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR}
+SLEEPY_TYPES = {
+  'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR}
 SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG}
 
 class VariableSymbol(Symbol):
