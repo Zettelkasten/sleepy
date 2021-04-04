@@ -597,7 +597,7 @@ class ExpressionAst(AbstractSyntaxTree):
     return 'ExpressionAst'
 
 
-class OperatorValueAst(ExpressionAst):
+class BinaryOperatorExpressionAst(ExpressionAst):
   """
   Val, SumVal, ProdVal.
   """
@@ -685,8 +685,15 @@ class OperatorValueAst(ExpressionAst):
       return builder.uitofp(ir_bool, ir.DoubleType(), name='cmp_cast')
     assert False, '%r: operator %s not handled!' % (self, self.op)
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'BinaryOperatorExpressionAst(op=%r, left_expr=%r, right_expr=%r)' % (
+      self.op, self.left_expr, self.right_expr)
 
-class UnaryOperatorValueAst(ExpressionAst):
+
+class UnaryOperatorExpressionAst(ExpressionAst):
   """
   NegVal.
   """
@@ -726,8 +733,14 @@ class UnaryOperatorValueAst(ExpressionAst):
     raise SemanticError('%r: Cannot apply unary operator %r to type %r' % (
       self, self.op, val_type))
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'UnaryOperatorExpressionAst(op=%r, expr=%r)' % (self.op, self.expr)
 
-class ConstantValueAst(ExpressionAst):
+
+class ConstantExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> double | int | char
   """
@@ -755,8 +768,14 @@ class ConstantValueAst(ExpressionAst):
     """
     return ir.Constant(self.constant_type.ir_type, self.constant_val)
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'ConstantExpressionAst(constant_val=%r, constant_type=%r)' % (self.constant_val, self.constant_type)
 
-class VariableValueAst(ExpressionAst):
+
+class VariableExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> identifier
   """
@@ -795,8 +814,14 @@ class VariableValueAst(ExpressionAst):
     symbol = self.get_var_symbol(symbol_table=symbol_table)
     return builder.load(symbol.ir_alloca, self.var_identifier)
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'VariableExpressionAst(var_identifier=%r)' % self.var_identifier
 
-class CallValueAst(ExpressionAst):
+
+class CallExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> identifier ( ExprList )
   """
@@ -837,6 +862,12 @@ class CallValueAst(ExpressionAst):
     return make_func_call_ir(
       func_identifier=self.func_identifier, func_arg_vals=self.func_arg_vals, builder=builder,
       symbol_table=symbol_table)
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'CallExpressionAst(func_identifier=%r, func_arg_vals=%r)' % (self.func_identifier, self.func_arg_vals)
 
 
 def parse_char(value):
@@ -928,15 +959,15 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda ast, stmt_list: IfStatementAst(ast(2), stmt_list(4), [])},
     {'ast': lambda ast, stmt_list: IfStatementAst(ast(2), stmt_list(4), stmt_list(8))},
     {'ast': lambda ast, stmt_list: WhileStatementAst(ast(2), stmt_list(4))}] + [
-    {'ast': lambda ast, op: OperatorValueAst(op(2), ast(1), ast(3))},
+    {'ast': lambda ast, op: BinaryOperatorExpressionAst(op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
-    {'ast': lambda ast, op: UnaryOperatorValueAst(op(1), ast(2))},
+    {'ast': lambda ast, op: UnaryOperatorExpressionAst(op(1), ast(2))},
     {'ast': 'ast.1'},
-    {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_INT)},
-    {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_DOUBLE)},
-    {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_DOUBLE)},  # TODO: actually should be SLEEPY_CHAR
-    {'ast': lambda identifier: VariableValueAst(identifier(1))},
-    {'ast': lambda identifier, val_list: CallValueAst(identifier(1), val_list(3))},
+    {'ast': lambda number: ConstantExpressionAst(number(1), SLEEPY_INT)},
+    {'ast': lambda number: ConstantExpressionAst(number(1), SLEEPY_DOUBLE)},
+    {'ast': lambda number: ConstantExpressionAst(number(1), SLEEPY_DOUBLE)},  # TODO: actually should be SLEEPY_CHAR
+    {'ast': lambda identifier: VariableExpressionAst(identifier(1))},
+    {'ast': lambda identifier, val_list: CallExpressionAst(identifier(1), val_list(3))},
     {'ast': 'ast.2'},
     {'identifier_list': []},
     {'identifier_list': 'identifier_list.1'},

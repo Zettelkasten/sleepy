@@ -10,7 +10,7 @@ from nose.tools import assert_equal, assert_almost_equal
 from ctypes import CFUNCTYPE, c_double
 
 from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnStatementAst, \
-  OperatorValueAst, ConstantValueAst, VariableValueAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
+  BinaryOperatorExpressionAst, ConstantExpressionAst, VariableExpressionAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
   add_preamble_to_ast
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, Symbol
@@ -83,21 +83,21 @@ def test_FunctionDeclarationAst_build_expr_ir():
   with make_execution_engine() as engine:
     ast1 = FunctionDeclarationAst(
       identifier='foo', arg_identifiers=[], arg_type_identifiers=[], return_type_identifier='Double',
-      stmt_list=[ReturnStatementAst([ConstantValueAst(42.0, SLEEPY_DOUBLE)])])
+      stmt_list=[ReturnStatementAst([ConstantExpressionAst(42.0, SLEEPY_DOUBLE)])])
     func1 = _get_py_func_from_ast(engine, ast1)
     assert_equal(func1(), 42.0)
   with make_execution_engine() as engine:
     ast2 = FunctionDeclarationAst(
       identifier='foo', arg_identifiers=[], arg_type_identifiers=[], return_type_identifier='Double', stmt_list=[
         ReturnStatementAst([
-          OperatorValueAst('+', ConstantValueAst(3.0, SLEEPY_DOUBLE), ConstantValueAst(5.0, SLEEPY_DOUBLE))])])
+          BinaryOperatorExpressionAst('+', ConstantExpressionAst(3.0, SLEEPY_DOUBLE), ConstantExpressionAst(5.0, SLEEPY_DOUBLE))])])
     func2 = _get_py_func_from_ast(engine, ast2)
     assert_equal(func2(), 8.0)
   with make_execution_engine() as engine:
     ast3 = FunctionDeclarationAst(
       identifier='sum', arg_identifiers=['a', 'b'], arg_type_identifiers=['Double', 'Double'],
       return_type_identifier='Double', stmt_list=[
-        ReturnStatementAst([OperatorValueAst('+', VariableValueAst('a'), VariableValueAst('b'))])])
+        ReturnStatementAst([BinaryOperatorExpressionAst('+', VariableExpressionAst('a'), VariableExpressionAst('b'))])])
     func3 = _get_py_func_from_ast(engine, ast3)
     assert_equal(func3(7.0, 3.0), 10.0)
 
