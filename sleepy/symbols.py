@@ -106,7 +106,7 @@ class FunctionSymbol(Symbol):
     :param ir.Function|None ir_func:
     :param list[str] arg_identifiers:
     :param list[Type] arg_types:
-    :param Type return_type:
+    :param Type|None return_type:
     """
     super().__init__()
     assert ir_func is None or isinstance(ir_func, ir.Function)

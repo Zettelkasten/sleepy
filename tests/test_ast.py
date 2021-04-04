@@ -351,7 +351,7 @@ def test_simple_simple_recursion_fibonacci():
 def test_simple_simple_iterative_fibonacci():
   with make_execution_engine() as engine:
     program = """
-    func fibonacci(Int n) {
+    func fibonacci(Int n) -> Int {
       prev_fib = 0;
       current_fib = 1;
       i = 2;
@@ -373,8 +373,8 @@ def test_extern_func():
   import math
   with make_execution_engine() as engine:
     program = """
-    extern_func cos(Double x);
-    func main(Double x) {
+    extern_func cos(Double x) -> Double;
+    func main(Double x) -> Double {
       return cos(x);
     }
     """
