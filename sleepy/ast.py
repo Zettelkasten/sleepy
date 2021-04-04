@@ -557,7 +557,11 @@ class OperatorValueAst(ExpressionAst):
     if left_type != right_type:
       raise SemanticError('%r: Cannot apply binary operator %r on different types %r and %r' % (
         self, self.op, left_type, right_type))
-    return left_type
+    if self.op in {'*', '/', '+', '-'}:
+      return left_type
+    if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
+      return SLEEPY_DOUBLE
+    assert False, 'unknown op %r' % self.op
 
   def make_ir_val(self, builder, symbol_table):
     """
@@ -596,8 +600,11 @@ class OperatorValueAst(ExpressionAst):
       return make_op(
         {SLEEPY_DOUBLE: builder.fsub, SLEEPY_INT: builder.sub, SLEEPY_LONG: builder.mul}, instr_name='sub_tmp')
     if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
-      ir_bool = builder.fcmp_ordered(self.op, left_val, right_val, name='cmp_tmp')
-      return builder.uitofp(ir_bool, ir.DoubleType())
+      from functools import partial
+      ir_bool = make_op({
+        SLEEPY_DOUBLE: partial(builder.fcmp_ordered, self.op), SLEEPY_INT: partial(builder.icmp_signed, self.op),
+        SLEEPY_LONG: partial(builder.icmp_signed, self.op)}, instr_name='cmp_tmp')
+      return builder.uitofp(ir_bool, ir.DoubleType(), name='cmp_cast')
     assert False, '%r: operator %s not handled!' % (self, self.op)
 
 
