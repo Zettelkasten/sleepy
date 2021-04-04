@@ -9,7 +9,7 @@ from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_TYPES, SLEEPY_INT, \
-  SLEEPY_CHAR, SLEEPY_LONG
+  SLEEPY_CHAR, SLEEPY_LONG, SLEEPY_VOID
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -176,7 +176,10 @@ class FunctionDeclarationAst(StatementAst):
     if self.identifier in symbol_table:
       raise SemanticError('%r: cannot redefine function with name %r' % (self, self.identifier))
     arg_types = self.make_arg_types(symbol_table=symbol_table)
-    return_type = self.make_type(self.return_type_identifier, symbol_table=symbol_table)
+    if self.return_type_identifier is None:
+      return_type = SLEEPY_VOID
+    else:
+      return_type = self.make_type(self.return_type_identifier, symbol_table=symbol_table)
     if return_type is None:
       raise SemanticError('%r: need to specify return type of function %r' % (self, self.identifier))
     symbol_table[self.identifier] = FunctionSymbol(
@@ -346,6 +349,7 @@ class AssignStatementAst(StatementAst):
         raise SemanticError('%r: Cannot redefine variable %r of type %r with new type %r' % (
           self, self.var_identifier, symbol.var_type, declared_type))
     else:
+      assert self.var_identifier not in declared_variables
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
       symbol = VariableSymbol(None, var_type=val_type)
       symbol_table[self.var_identifier] = symbol
@@ -764,12 +768,12 @@ def parse_char(value):
 
 SLEEPY_LEXER = LexerGenerator(
   [
-    'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '(', ')',
+    'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '(', ')', '->',
     'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
     'int', 'double', 'char',
     None, None
   ], [
-    'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\(', '\\)',
+    'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\(', '\\)', '\\->',
     '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n]+'
@@ -778,8 +782,8 @@ SLEEPY_GRAMMAR = Grammar(
   Production('TopLevelStmt', 'StmtList'),
   Production('StmtList'),
   Production('StmtList', 'Stmt', 'StmtList'),
-  Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', '{', 'StmtList', '}'),
-  Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', ';'),
+  Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
+  Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
   Production('Stmt', 'return', 'ExprList', ';'),
   Production('Stmt', 'Type', 'identifier', '=', 'Expr', ';'),
@@ -813,7 +817,9 @@ SLEEPY_GRAMMAR = Grammar(
   Production('ExprList', 'ExprList+'),
   Production('ExprList+', 'Expr'),
   Production('ExprList+', 'Expr', ',', 'ExprList+'),
-  Production('Type', 'identifier')
+  Production('Type', 'identifier'),
+  Production('ReturnType'),
+  Production('ReturnType', '->', 'Type')
 )
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
@@ -824,10 +830,10 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda stmt_list: TopLevelStatementAst(stmt_list(1))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, stmt_list: [ast(1)] + stmt_list(2)},
-    {'ast': lambda identifier, identifier_list, type_list, stmt_list: (
-      FunctionDeclarationAst(identifier(2), identifier_list(4), type_list(4), 'Double', stmt_list(7)))},  # noqa
-    {'ast': lambda identifier, identifier_list, type_list: (
-      FunctionDeclarationAst(identifier(2), identifier_list(4), type_list(4), 'Double', None))},
+    {'ast': lambda identifier, identifier_list, type_list, type_identifier, stmt_list: (
+      FunctionDeclarationAst(identifier(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},  # noqa
+    {'ast': lambda identifier, identifier_list, type_list, type_identifier: (
+      FunctionDeclarationAst(identifier(2), identifier_list(4), type_list(4), type_identifier(6), None))},
     {'ast': lambda identifier, val_list: CallStatementAst(identifier(1), val_list(3))},
     {'ast': lambda val_list: ReturnStatementAst(val_list(2))},
     {'ast': lambda identifier, ast, type_identifier: AssignStatementAst(identifier(2), ast(4), type_identifier(1))},
@@ -860,7 +866,9 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'val_list': 'val_list.1'},
     {'val_list': lambda ast: [ast(1)]},
     {'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
-    {'type_identifier': 'identifier.1'}
+    {'type_identifier': 'identifier.1'},
+    {'type_identifier': None},
+    {'type_identifier': 'type_identifier.2'}
   ],
   terminal_attr_rules={
     'bool_op': {'op': lambda value: value},
@@ -894,15 +902,17 @@ def make_preamble_ast():
   """
   :rtype: TopLevelStatementAst
   """
-  std_func_identifiers = [
-    ('print_char', 1), ('print_double', 1), ('allocate', 1), ('deallocate', 1), ('load', 1), ('store', 2),
-    ('assert', 1)]
-  preamble_program = ''.join([
-    'extern_func %s(%s);\n' % (identifier, ', '.join(['Double var%s' % num for num in range(num_args)]))
-    for identifier, num_args in std_func_identifiers]) + """
-  func or(Double a, Double b) { if a { return a; } else { return b; } }
-  func and(Double a, Double b) { if a { return b; } else { return 0.0; } }
-  func not(Double a) { if (a) { return 0.0; } else { return 1.0; } }
+  preamble_program = """\
+  extern_func print_char(Double char);
+  extern_func print_double(Double d);
+  extern_func allocate(Int size) -> Int;
+  extern_func deallocate(Int ptr);
+  extern_func load(Int ptr) -> Double;
+  extern_func store(Int prt, Double value);
+  extern_func assert(Double condition);
+  func or(Double a, Double b) -> Double { if a { return a; } else { return b; } }
+  func and(Double a, Double b) -> Double { if a { return b; } else { return 0.0; } }
+  func not(Double a) -> Double { if (a) { return 0.0; } else { return 1.0; } }
   """
   return make_program_ast(preamble_program, add_preamble=False)
 
