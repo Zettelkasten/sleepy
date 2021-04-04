@@ -7,7 +7,7 @@ import unittest
 
 from ctypes import CFUNCTYPE, c_double
 
-from sleepy.ast import TopLevelStatementAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, make_program_ast
+from sleepy.ast import TopLevelStatementAst, make_program_ast
 from sleepy.jit import make_execution_engine, compile_ir
 
 
@@ -18,7 +18,7 @@ def _test_compile_example(code_file_name):
       program = file.read()
     ast = make_program_ast(program)
     assert isinstance(ast, TopLevelStatementAst)
-    module_ir = ast.make_module_ir(module_name='test_parse_ast')
+    module_ir, _ = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast')
     compile_ir(engine, module_ir)
     main_func_ptr = engine.get_function_address('main')
     py_func = CFUNCTYPE(c_double)(main_func_ptr)

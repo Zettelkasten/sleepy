@@ -107,10 +107,10 @@ class TopLevelStatementAst(StatementAst):
     for expr in self.stmt_list:
       builder = expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
 
-  def make_module_ir(self, module_name):
+  def make_module_ir_and_symbol_table(self, module_name):
     """
     :param str module_name:
-    :rtype: ir.Module
+    :rtype: (ir.Module,Dict[str, Symbol])
     """
     module = ir.Module(name=module_name)
     io_func_type = ir.FunctionType(ir.VoidType(), ())
@@ -128,7 +128,7 @@ class TopLevelStatementAst(StatementAst):
     assert not block.is_terminated
     body_builder.ret_void()
 
-    return module
+    return module, symbol_table
 
 
 class FunctionDeclarationAst(StatementAst):
