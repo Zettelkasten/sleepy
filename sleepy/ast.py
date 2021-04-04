@@ -765,8 +765,8 @@ SLEEPY_GRAMMAR = Grammar(
   Production('TopLevelStmt', 'StmtList'),
   Production('StmtList'),
   Production('StmtList', 'Stmt', 'StmtList'),
-  Production('Stmt', 'func', 'identifier', '(', 'IdentifierList', ')', '{', 'StmtList', '}'),
-  Production('Stmt', 'extern_func', 'identifier', '(', 'IdentifierList', ')', ';'),
+  Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', '{', 'StmtList', '}'),
+  Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', ';'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
   Production('Stmt', 'return', 'ExprList', ';'),
   Production('Stmt', 'Type', 'identifier', '=', 'Expr', ';'),
@@ -792,6 +792,10 @@ SLEEPY_GRAMMAR = Grammar(
   Production('IdentifierList', 'IdentifierList+'),
   Production('IdentifierList+', 'identifier'),
   Production('IdentifierList+', 'identifier', ',', 'IdentifierList+'),
+  Production('TypedIdentifierList'),
+  Production('TypedIdentifierList', 'TypedIdentifierList+'),
+  Production('TypedIdentifierList+', 'Type', 'identifier'),
+  Production('TypedIdentifierList+', 'Type', 'identifier', ',', 'TypedIdentifierList+'),
   Production('ExprList'),
   Production('ExprList', 'ExprList+'),
   Production('ExprList+', 'Expr'),
@@ -800,15 +804,17 @@ SLEEPY_GRAMMAR = Grammar(
 )
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
-  syn_attrs={'ast', 'stmt_list', 'identifier_list', 'val_list', 'identifier', 'type_identifier', 'op', 'number'},
+  syn_attrs={
+    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'type_identifier', 'op',
+    'number'},
   prod_attr_rules=[
     {'ast': lambda stmt_list: TopLevelStatementAst(stmt_list(1))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, stmt_list: [ast(1)] + stmt_list(2)},
-    {'ast': lambda identifier, identifier_list, stmt_list: (
-      FunctionDeclarationAst(identifier(2), identifier_list(4), ['Double'] * len(identifier_list(4)), 'Double', stmt_list(7)))},  # noqa
-    {'ast': lambda identifier, identifier_list: (
-      FunctionDeclarationAst(identifier(2), identifier_list(4), ['Double'] * len(identifier_list(4)), 'Double', None))},
+    {'ast': lambda identifier, identifier_list, type_list, stmt_list: (
+      FunctionDeclarationAst(identifier(2), identifier_list(4), type_list(4), 'Double', stmt_list(7)))},  # noqa
+    {'ast': lambda identifier, identifier_list, type_list: (
+      FunctionDeclarationAst(identifier(2), identifier_list(4), type_list(4), 'Double', None))},
     {'ast': lambda identifier, val_list: CallStatementAst(identifier(1), val_list(3))},
     {'ast': lambda val_list: ReturnStatementAst(val_list(2))},
     {'ast': lambda identifier, ast, type_identifier: AssignStatementAst(identifier(2), ast(4), type_identifier(1))},
@@ -830,6 +836,13 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'identifier_list': 'identifier_list.1'},
     {'identifier_list': lambda identifier: [identifier(1)]},
     {'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(3)},
+    {'identifier_list': [], 'type_list': []},
+    {'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1'},
+    {'identifier_list': lambda identifier: [identifier(2)], 'type_list': lambda type_identifier: [type_identifier(1)]},
+    {
+      'identifier_list': lambda identifier, identifier_list: [identifier(2)] + identifier_list(4),
+      'type_list': lambda type_identifier, type_list: [type_identifier(1)] + type_list(4)
+    },
     {'val_list': []},
     {'val_list': 'val_list.1'},
     {'val_list': lambda ast: [ast(1)]},
@@ -872,11 +885,11 @@ def make_preamble_ast():
     ('print_char', 1), ('print_double', 1), ('allocate', 1), ('deallocate', 1), ('load', 1), ('store', 2),
     ('assert', 1)]
   preamble_program = ''.join([
-    'extern_func %s(%s);\n' % (identifier, ', '.join(['var%s' % num for num in range(num_args)]))
+    'extern_func %s(%s);\n' % (identifier, ', '.join(['Double var%s' % num for num in range(num_args)]))
     for identifier, num_args in std_func_identifiers]) + """
-  func or(a, b) { if a { return a; } else { return b; } }
-  func and(a, b) { if a { return b; } else { return 0.0; } }
-  func not(a) { if (a) { return 0.0; } else { return 1.0; } }
+  func or(Double a, Double b) { if a { return a; } else { return b; } }
+  func and(Double a, Double b) { if a { return b; } else { return 0.0; } }
+  func not(Double a) { if (a) { return 0.0; } else { return 1.0; } }
   """
   return make_program_ast(preamble_program, add_preamble=False)
 

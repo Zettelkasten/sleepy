@@ -133,7 +133,7 @@ def test_simple_arithmetic():
     assert_equal(func(), 2.0 * 4.0 - 3.0)
   with make_execution_engine() as engine:
     program = """
-    func sub(a, b) {
+    func sub(Double a, Double b) {
       return a - b;
     }
     """
@@ -156,7 +156,7 @@ def test_empty_func():
 def test_lerp():
   with make_execution_engine() as engine:
     program = """
-    func lerp(x1, x2, time) {
+    func lerp(Double x1, Double x2, Double time) {
       diff = x2 - x1;
       return x1 + diff * time;
     }
@@ -170,10 +170,10 @@ def test_lerp():
 def test_call_other_func():
   with make_execution_engine() as engine:
     program = """
-    func square(x) {
+    func square(Double x) {
       return x * x;
     }
-    func dist_squared(x1, x2, y1, y2) {
+    func dist_squared(Double x1, Double x2, Double y1, Double y2) {
       return square(x1 - y1) + square(x2 - y2);
     }
     """
@@ -188,8 +188,8 @@ def test_global_var():
   with make_execution_engine() as engine:
     program = """
     PI = 3.1415;  # declare a global variable
-    func cube(x) { return x * x * x; }
-    func ball_volume(radius) {
+    func cube(Double x) { return x * x * x; }
+    func ball_volume(Double radius) {
       return 4/3 * PI * cube(radius);
     }
     """
@@ -201,7 +201,7 @@ def test_global_var():
 def test_simple_mutable_assign():
   with make_execution_engine() as engine:
     program = """
-    func main(x) {
+    func main(Double x) {
       x = x + 1;
       x = x + 1;
       return x;
@@ -215,12 +215,12 @@ def test_nested_func_call():
   import numpy
   with make_execution_engine() as engine:
     program = """
-    func ball_volume(radius) {
+    func ball_volume(Double radius) {
       func cube(x) { return x * x * x; }
       return 4/3 * 3.1415 * cube(radius);
     }
     # Compute relative volume difference of two balls.
-    func main(radius1, radius2) {
+    func main(Double radius1, Double radius2) {
       volume1 = ball_volume(radius1);
       volume2 = ball_volume(radius2);
       return volume1 / volume2;
@@ -236,7 +236,7 @@ def test_nested_func_call():
 def test_simple_if():
   with make_execution_engine() as engine:
     program = """
-    func branch(cond, true_val, false_val) {
+    func branch(Double cond, Double true_val, Double false_val) {
       if cond {
         return true_val;
       } else {
@@ -252,7 +252,7 @@ def test_simple_if():
 def test_simple_if_max():
   with make_execution_engine() as engine:
     program = """
-    func max(a, b) {
+    func max(Double a, Double b) {
       if a < b {
         return b;
       } else {
@@ -279,7 +279,7 @@ def test_simple_if_abs():
 def test_if_assign():
   with make_execution_engine() as engine:
     program = """
-    func main(mode, x, y) {
+    func main(Int mode, Double x, Double y) {
       res = 0;
       if mode == 0 {  # addition
         res = x + y;
@@ -310,7 +310,7 @@ def test_simple_simple_recursion_factorial():
   import math
   with make_execution_engine() as engine:
     program = """
-    func fac(x) {
+    func fac(Int x) {
       if x <= 1 {
         return x;
       } else {
@@ -334,7 +334,7 @@ def _reference_fibonacci(n):
 def test_simple_simple_recursion_fibonacci():
   with make_execution_engine() as engine:
     program = """
-    func fibonacci(n) {
+    func fibonacci(Int n) {
       # crashes if n <= 0 or if n is not integer :)
       if or(n == 1, n == 2) {
         return 1;
@@ -351,7 +351,7 @@ def test_simple_simple_recursion_fibonacci():
 def test_simple_simple_iterative_fibonacci():
   with make_execution_engine() as engine:
     program = """
-    func fibonacci(n) {
+    func fibonacci(Int n) {
       prev_fib = 0;
       current_fib = 1;
       i = 2;
@@ -373,8 +373,8 @@ def test_extern_func():
   import math
   with make_execution_engine() as engine:
     program = """
-    extern_func cos(x);
-    func main(x) {
+    extern_func cos(Double x);
+    func main(Double x) {
       return cos(x);
     }
     """
