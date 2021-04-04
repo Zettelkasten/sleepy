@@ -9,9 +9,9 @@ To just run tests for files in this directory, run `nosetests -s tests/test_exam
 For example, this Sleepy program prints numbers from `-3` to `5` (very impressive!):
 ```c++
 func main() {
-  func count_from_to(from, to) {
-    if from > to { return 0; }
-    print_double(from);
+  func count_from_to(Int from, Int to) {
+    if from > to { return; }
+    print_int(from);
     if from != to { print_char(','); print_char(' '); }
     count_from_to(from + 1, to);
   }
