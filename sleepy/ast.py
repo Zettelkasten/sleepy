@@ -722,7 +722,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': 'ast.1'},
     {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_INT)},
     {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_DOUBLE)},
-    {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_CHAR)},
+    {'ast': lambda number: ConstantValueAst(number(1), SLEEPY_DOUBLE)},  # TODO: actually should be SLEEPY_CHAR
     {'ast': lambda identifier: VariableValueAst(identifier(1))},
     {'ast': lambda identifier, val_list: CallValueAst(identifier(1), val_list(3))},
     {'ast': 'ast.2'},
