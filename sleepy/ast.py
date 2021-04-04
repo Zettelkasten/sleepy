@@ -41,6 +41,12 @@ class AbstractSyntaxTree:
   """
   pass
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'AbstractSyntaxTree'
+
 
 class StatementAst(AbstractSyntaxTree):
   """
@@ -77,6 +83,12 @@ class StatementAst(AbstractSyntaxTree):
       return SLEEPY_TYPES[type_identifier]
     raise SemanticError('%r: Unknown type identifier %r. Available: %r' % (
       self, type_identifier, ', '.join('%r' % type_identifier for type_identifier in SLEEPY_TYPES.keys())))
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'StatementAst'
 
 
 class TopLevelStatementAst(StatementAst):
@@ -129,6 +141,12 @@ class TopLevelStatementAst(StatementAst):
     body_builder.ret_void()
 
     return module, symbol_table
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'TopLevelStatementAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
 
 
 class FunctionDeclarationAst(StatementAst):
@@ -230,6 +248,15 @@ class FunctionDeclarationAst(StatementAst):
           module=module, builder=body_builder, symbol_table=body_symbol_table)
     return builder
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return (
+        'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_type_identifiers=%r, '
+        'return_type_identifier=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_type_identifiers,
+    self.return_type_identifier, 'extern' if self.is_extern else ', '.join([repr(stmt) for stmt in self.stmt_list])))
+
 
 class CallStatementAst(StatementAst):
   """
@@ -276,6 +303,12 @@ class CallStatementAst(StatementAst):
       symbol_table=symbol_table)
     return builder
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'CallStatementAst(func_identifier=%r, func_arg_exprs=%r)' % (self.func_identifier, self.func_arg_exprs)
+
 
 class ReturnStatementAst(StatementAst):
   """
@@ -311,6 +344,12 @@ class ReturnStatementAst(StatementAst):
       assert len(self.return_exprs) == 0
       builder.ret_void()
     return builder
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'ReturnStatementAst(return_exprs=%r)' % self.return_exprs
 
 
 class AssignStatementAst(StatementAst):
@@ -371,6 +410,13 @@ class AssignStatementAst(StatementAst):
     ir_val = self.var_val.make_ir_val(builder=builder, symbol_table=symbol_table)
     builder.store(ir_val, symbol.ir_alloca)
     return builder
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'AssignStatementAst(var_identifier=%r, var_val=%r, var_type_identifier=%r)' % (
+      self.var_identifier, self.var_val, self.var_type_identifier)
 
 
 class IfStatementAst(StatementAst):
@@ -450,6 +496,13 @@ class IfStatementAst(StatementAst):
     else:
       return None
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'IfStatementAst(condition_val=%r, true_stmt_list=%r, false_stmt_list=%r)' % (
+      self.condition_val, self.true_stmt_list, self.false_stmt_list)
+
 
 class WhileStatementAst(StatementAst):
   """
@@ -508,6 +561,12 @@ class WhileStatementAst(StatementAst):
     continue_builder = ir.IRBuilder(continue_block)
     return continue_builder
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'WhileStatementAst(condition_val=%r, stmt_list=%r)' % (self.condition_val, self.stmt_list)
+
 
 class ExpressionAst(AbstractSyntaxTree):
   """
@@ -530,6 +589,12 @@ class ExpressionAst(AbstractSyntaxTree):
     :rtype: ir.values.Value
     """
     raise NotImplementedError()
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'ExpressionAst'
 
 
 class OperatorValueAst(ExpressionAst):
