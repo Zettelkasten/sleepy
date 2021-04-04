@@ -535,7 +535,9 @@ class OperatorValueAst(ExpressionAst):
     """
     left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
     right_type = self.right_expr.make_val_type(symbol_table=symbol_table)
-    assert left_type == right_type == SLEEPY_DOUBLE, 'other type ops not implemented yet'
+    if left_type != right_type:
+      raise SemanticError('%r: Cannot apply binary operator %r on different types %r and %r' % (
+        self, self.op, left_type, right_type))
     return left_type
 
   def make_ir_val(self, builder, symbol_table):
@@ -546,17 +548,31 @@ class OperatorValueAst(ExpressionAst):
     """
     left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
     right_type = self.right_expr.make_val_type(symbol_table=symbol_table)
-    assert left_type == right_type == SLEEPY_DOUBLE, 'other type ops not implemented yet'
+    if left_type != right_type:
+      raise SemanticError('%r: Cannot apply binary operator %r on different types %r and %r' % (
+        self, self.op, left_type, right_type))
+    var_type = left_type
     left_val = self.left_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
     right_val = self.right_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
+
+    def make_op(type_instr, instr_name):
+      """
+      :param Dict[Type,Callable] type_instr:
+      :param str instr_name:
+      :rtype: ir.values.Value
+      """
+      if var_type not in type_instr:
+        raise SemanticError('%r: Cannot apply binary operator %r on types %r' % (self, self.op, var_type))
+      return type_instr[var_type](left_val, right_val, name=instr_name)
+
     if self.op == '*':
-      return builder.fmul(left_val, right_val, name='mul_tmp')
+      return make_op({SLEEPY_DOUBLE: builder.fmul}, instr_name='mul_tmp')
     if self.op == '/':
-      return builder.fdiv(left_val, right_val, name='div_tmp')
+      return make_op({SLEEPY_DOUBLE: builder.fdiv}, instr_name='mul_tmp')
     if self.op == '+':
-      return builder.fadd(left_val, right_val, name='add_tmp')
+      return make_op({SLEEPY_DOUBLE: builder.fadd}, instr_name='mul_tmp')
     if self.op == '-':
-      return builder.fsub(left_val, right_val, name='sub_tmp')
+      return make_op({SLEEPY_DOUBLE: builder.fsub}, instr_name='mul_tmp')
     if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
       ir_bool = builder.fcmp_ordered(self.op, left_val, right_val, name='cmp_tmp')
       return builder.uitofp(ir_bool, ir.DoubleType())
