@@ -70,8 +70,8 @@ func main() {
   print_array(arr, size);
   print_char('\n');
 
-  assert(load(arr + 0) == 1);
-  assert(load(arr + 1) == 4);
+  assert(load(arr + 0) == 1.0);
+  assert(load(arr + 1) == 4.0);
   assert(is_sorted(arr, size));
 
   deallocate(arr);
