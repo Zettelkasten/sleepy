@@ -246,7 +246,20 @@ class CallStatementAst(StatementAst):
     :param dict[str, Symbol] symbol_table:
     :param list[str] declared_variables:
     """
-    pass
+    # just verify that the argument types are correctly specified, but do not alter symbol_table
+    if self.func_identifier not in symbol_table:
+      raise SemanticError('%r: Function %r called before declared' % (self, self.func_identifier))
+    symbol = symbol_table[self.func_identifier]
+    if not isinstance(symbol, FunctionSymbol):
+      raise SemanticError('%r: Cannot call non-function %r' % (self, self.func_identifier))
+    if len(self.func_arg_exprs) != len(symbol.arg_identifiers):
+      raise SemanticError('%r: Cannot call function %r with %r arguments, expected %r arguments %r' % (
+        self, self.func_identifier, len(self.func_arg_exprs), len(symbol.arg_identifiers), symbol.arg_identifiers))
+    called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in self.func_arg_exprs]
+    for arg_identifier, called_type, declared_type in zip(symbol.arg_identifiers, called_types, symbol.arg_types):
+      if called_type != declared_type:
+        raise SemanticError('%r: Cannot call function %r with parameter of type %r, expected %r' % (
+          self, self.func_identifier, called_type, declared_type))
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
