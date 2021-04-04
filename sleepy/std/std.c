@@ -10,6 +10,10 @@ void print_double(double d) {
     printf("%f", d);
 }
 
+void print_int(int i) {
+    printf("%d", i);
+}
+
 double assert(double property) {
     if (property != 1.0) {
         printf("Assertion failed!\n");
