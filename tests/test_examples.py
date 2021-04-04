@@ -5,10 +5,11 @@ from better_exchook import better_exchook
 import sys
 import unittest
 
-from ctypes import CFUNCTYPE, c_double
+from ctypes import CFUNCTYPE
 
-from sleepy.ast import TopLevelStatementAst, make_program_ast
+from sleepy.ast import make_program_ast
 from sleepy.jit import make_execution_engine, compile_ir
+from sleepy.symbols import FunctionSymbol
 
 
 def _test_compile_example(code_file_name):
@@ -17,11 +18,14 @@ def _test_compile_example(code_file_name):
     with open(code_file_name, 'r') as file:
       program = file.read()
     ast = make_program_ast(program)
-    assert isinstance(ast, TopLevelStatementAst)
-    module_ir, _ = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast')
+    module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast')
     compile_ir(engine, module_ir)
+    assert 'main' in symbol_table, 'Need to declare a main function'
+    main_func_symbol = symbol_table['main']
+    assert isinstance(main_func_symbol, FunctionSymbol), 'main needs to be a function'
     main_func_ptr = engine.get_function_address('main')
-    py_func = CFUNCTYPE(c_double)(main_func_ptr)
+    py_func = CFUNCTYPE(
+      main_func_symbol.return_type.c_type, *[arg_type.c_type for arg_type in main_func_symbol.arg_types])(main_func_ptr)
     assert callable(py_func)
     print('Now execution:')
     return_val = py_func()
