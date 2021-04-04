@@ -566,13 +566,16 @@ class OperatorValueAst(ExpressionAst):
       return type_instr[var_type](left_val, right_val, name=instr_name)
 
     if self.op == '*':
-      return make_op({SLEEPY_DOUBLE: builder.fmul}, instr_name='mul_tmp')
+      return make_op(
+        {SLEEPY_DOUBLE: builder.fmul, SLEEPY_INT: builder.mul, SLEEPY_LONG: builder.mul}, instr_name='mul_tmp')
     if self.op == '/':
-      return make_op({SLEEPY_DOUBLE: builder.fdiv}, instr_name='mul_tmp')
+      return make_op({SLEEPY_DOUBLE: builder.fdiv}, instr_name='div_tmp')
     if self.op == '+':
-      return make_op({SLEEPY_DOUBLE: builder.fadd}, instr_name='mul_tmp')
+      return make_op(
+        {SLEEPY_DOUBLE: builder.fadd, SLEEPY_INT: builder.add, SLEEPY_LONG: builder.mul}, instr_name='add_tmp')
     if self.op == '-':
-      return make_op({SLEEPY_DOUBLE: builder.fsub}, instr_name='mul_tmp')
+      return make_op(
+        {SLEEPY_DOUBLE: builder.fsub, SLEEPY_INT: builder.sub, SLEEPY_LONG: builder.mul}, instr_name='sub_tmp')
     if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
       ir_bool = builder.fcmp_ordered(self.op, left_val, right_val, name='cmp_tmp')
       return builder.uitofp(ir_bool, ir.DoubleType())

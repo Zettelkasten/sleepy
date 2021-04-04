@@ -7,4 +7,5 @@ func main() {
   sum = my_double + my_double;  # also implicitly a Double
   print_double(sum);
   print_char('\n');
+  int_calc = my_int * 34;
 }
