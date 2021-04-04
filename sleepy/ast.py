@@ -347,9 +347,9 @@ class AssignStatementAst(StatementAst):
       symbol = symbol_table[self.var_identifier]
       if not isinstance(symbol, VariableSymbol):
         raise SemanticError('%r: Cannot assign non-variable %r to a variable' % (self, self.var_identifier))
-      if declared_type is not None and symbol.var_type != declared_type:
+      if symbol.var_type != val_type:
         raise SemanticError('%r: Cannot redefine variable %r of type %r with new type %r' % (
-          self, self.var_identifier, symbol.var_type, declared_type))
+          self, self.var_identifier, symbol.var_type, val_type))
     else:
       assert self.var_identifier not in declared_variables
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
