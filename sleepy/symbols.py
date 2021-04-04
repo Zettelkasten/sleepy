@@ -26,7 +26,7 @@ class Type:
   def __init__(self, ir_type, c_type):
     """
     :param ir_type:
-    :param Callable c_type:
+    :param Callable|None c_type:
     """
     self.ir_type = ir_type
     self.c_type = c_type
@@ -40,7 +40,7 @@ class VoidType(Type):
   Typ returned when nothing is returned.
   """
   def __init__(self):
-    super().__init__(ir.VoidType(), ctypes.c_void_p)
+    super().__init__(ir.VoidType(), None)
 
 
 class DoubleType(Type):

@@ -29,7 +29,7 @@ def _test_compile_example(code_file_name):
     assert callable(py_func)
     print('Now execution:')
     return_val = py_func()
-    print('Returned value: %r' % return_val)
+    print('Returned value: %r of type %r' % (return_val, main_func_symbol.return_type))
 
 
 def test_compile_examples():
