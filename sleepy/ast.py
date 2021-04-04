@@ -633,7 +633,7 @@ class UnaryOperatorValueAst(ExpressionAst):
     if self.op == '+':
       return ir_val
     if self.op == '-':
-      constant_minus_one = ir.Constant(val_type.ir_type, -1.0)
+      constant_minus_one = ir.Constant(val_type.ir_type, -1)
       if val_type == SLEEPY_DOUBLE:
         return builder.fmul(constant_minus_one, ir_val, name='neg_tmp')
       if val_type in {SLEEPY_INT, SLEEPY_LONG}:
@@ -907,6 +907,7 @@ def make_preamble_ast():
   preamble_program = """\
   extern_func print_char(Double char);
   extern_func print_double(Double d);
+  extern_func print_int(Int i);
   extern_func allocate(Int size) -> Int;
   extern_func deallocate(Int ptr);
   extern_func load(Int ptr) -> Double;
