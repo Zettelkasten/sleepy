@@ -258,8 +258,8 @@ class CallStatementAst(StatementAst):
     called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in self.func_arg_exprs]
     for arg_identifier, called_type, declared_type in zip(symbol.arg_identifiers, called_types, symbol.arg_types):
       if called_type != declared_type:
-        raise SemanticError('%r: Cannot call function %r with parameter of type %r, expected %r' % (
-          self, self.func_identifier, called_type, declared_type))
+        raise SemanticError('%r: Cannot call function %r with parameter %r of type %r, expected %r' % (
+          self, self.func_identifier, arg_identifier, called_type, declared_type))
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
