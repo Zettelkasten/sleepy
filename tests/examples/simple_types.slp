@@ -1,4 +1,10 @@
 func main() {
-  Int my_int = 3;
+  Int my_int = 21;
   Double my_double = 4.0;
+  Double prod = my_double * my_double;
+  print_double(prod);
+  print_char('\n');
+  sum = my_double + my_double;  # also implicitly a Double
+  print_double(sum);
+  print_char('\n');
 }
