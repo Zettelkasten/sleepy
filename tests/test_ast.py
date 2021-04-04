@@ -1,3 +1,5 @@
+from typing import Dict, List
+
 import _setup_test_env  # noqa
 from better_exchook import better_exchook
 import sys
@@ -11,7 +13,7 @@ from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnState
   OperatorValueAst, ConstantValueAst, VariableValueAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
   add_preamble_to_ast
 from sleepy.jit import make_execution_engine, compile_ir
-from sleepy.symbols import SLEEPY_DOUBLE
+from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, Symbol
 
 
 def _test_parse_ast(program):
@@ -40,7 +42,7 @@ def test_ast_parser():
   program1 = 'hello_world(123);'
   _test_parse_ast(program1)
   program2 = """# This function will just return 4.
-func do_stuff(val) {
+func do_stuff(Double val) -> Int {
   return 4;
 }
 do_stuff(7.5);
@@ -48,7 +50,7 @@ do_stuff(7.5);
   _test_parse_ast(program2)
   program3 = """
   # Compute 0 + 1 + ... + n
-  func sum_all(n) {
+  func sum_all(Int n) -> Int {
     if n <= 0 { return 0; }
     else { return sum_all(n-1) + n; }
   }
@@ -64,9 +66,12 @@ def _get_py_func_from_ast(engine, ast):
   :param FunctionDeclarationAst ast:
   :rtype: Callable
   """
+
   assert isinstance(ast, FunctionDeclarationAst)
   module = ir.Module(name='_test_last_declared_func')
-  symbol_table = {}
+  symbol_table = {}  # type: Dict[str, Symbol]
+  declared_variables = []  # type: List[str]
+  ast.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
   ast.build_expr_ir(module=module, builder=None, symbol_table=symbol_table)
   assert ast.identifier in symbol_table
   compile_ir(engine, module)
@@ -78,13 +83,14 @@ def test_FunctionDeclarationAst_build_expr_ir():
   with make_execution_engine() as engine:
     ast1 = FunctionDeclarationAst(
       identifier='foo', arg_identifiers=[], arg_type_identifiers=[], return_type_identifier='Double',
-      stmt_list=[ReturnStatementAst([ConstantValueAst(42.0)])])
+      stmt_list=[ReturnStatementAst([ConstantValueAst(42.0, SLEEPY_DOUBLE)])])
     func1 = _get_py_func_from_ast(engine, ast1)
     assert_equal(func1(), 42.0)
   with make_execution_engine() as engine:
     ast2 = FunctionDeclarationAst(
       identifier='foo', arg_identifiers=[], arg_type_identifiers=[], return_type_identifier='Double', stmt_list=[
-        ReturnStatementAst([OperatorValueAst('+', ConstantValueAst(3.0), ConstantValueAst(5.0))])])
+        ReturnStatementAst([
+          OperatorValueAst('+', ConstantValueAst(3.0, SLEEPY_DOUBLE), ConstantValueAst(5.0, SLEEPY_DOUBLE))])])
     func2 = _get_py_func_from_ast(engine, ast2)
     assert_equal(func2(), 8.0)
   with make_execution_engine() as engine:
@@ -96,7 +102,7 @@ def test_FunctionDeclarationAst_build_expr_ir():
     assert_equal(func3(7.0, 3.0), 10.0)
 
 
-def _test_compile_program(engine, program, main_func_identifier='main', main_func_num_args=0):
+def _test_compile_program(engine, program, main_func_identifier='main'):
   """
   :param ExecutionEngine engine:
   :param str program:
@@ -104,12 +110,19 @@ def _test_compile_program(engine, program, main_func_identifier='main', main_fun
   :rtype: Callable[[], float]
   """
   ast = _test_parse_ast(program)
-  module_ir = ast.make_module_ir(module_name='test_parse_ast')
+  module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast')
+  print('---- symbol table:')
+  print(symbol_table)
   print('---- module intermediate repr:')
   print(module_ir)
   compile_ir(engine, module_ir)
   main_func_ptr = engine.get_function_address(main_func_identifier)
-  py_func = CFUNCTYPE(*((c_double,) + (c_double,) * main_func_num_args))(main_func_ptr)
+
+  assert main_func_identifier in symbol_table
+  main_func_symbol = symbol_table[main_func_identifier]
+  assert isinstance(main_func_symbol, FunctionSymbol)
+  py_func = CFUNCTYPE(
+    main_func_symbol.return_type.c_type, *[arg_type.c_type for arg_type in main_func_symbol.arg_types])(main_func_ptr)
   assert callable(py_func)
   return py_func
 
@@ -125,19 +138,19 @@ def test_simple_arithmetic():
     assert_equal(func(), 4.0 + 3.0)
   with make_execution_engine() as engine:
     program = """
-    func test() -> Double {
+    func test() -> Int {
       return 2 * 4 - 3;
     }
     """
     func = _test_compile_program(engine, program, main_func_identifier='test')
-    assert_equal(func(), 2.0 * 4.0 - 3.0)
+    assert_equal(func(), 2 * 4 - 3)
   with make_execution_engine() as engine:
     program = """
     func sub(Double a, Double b) -> Double {
       return a - b;
     }
     """
-    func = _test_compile_program(engine, program, main_func_identifier='sub', main_func_num_args=2)
+    func = _test_compile_program(engine, program, main_func_identifier='sub')
     assert_equal(func(0.0, 1.0), 0.0 - 1.0)
     assert_equal(func(3.0, 5.0), 3.0 - 5.0)
     assert_equal(func(2.5, 2.5), 2.5 - 2.5)
@@ -150,7 +163,7 @@ def test_empty_func():
     }
     """
     nothing = _test_compile_program(engine, program, main_func_identifier='nothing')
-    assert_equal(nothing(), 0.0)
+    assert_equal(nothing(), None)
 
 
 def test_lerp():
@@ -161,7 +174,7 @@ def test_lerp():
       return x1 + diff * time;
     }
     """
-    lerp = _test_compile_program(engine, program, main_func_identifier='lerp', main_func_num_args=3)
+    lerp = _test_compile_program(engine, program, main_func_identifier='lerp')
     assert_equal(lerp(0.0, 1.0, 0.3), 0.3)
     assert_equal(lerp(7.5, 3.2, 0.0), 7.5)
     assert_equal(lerp(7.5, 3.2, 1.0), 3.2)
@@ -177,7 +190,7 @@ def test_call_other_func():
       return square(x1 - y1) + square(x2 - y2);
     }
     """
-    dist_squared = _test_compile_program(engine, program, main_func_identifier='dist_squared', main_func_num_args=4)
+    dist_squared = _test_compile_program(engine, program, main_func_identifier='dist_squared')
     assert_almost_equal(dist_squared(0.0, 0.0, 1.0, 0.0), 1.0)
     assert_almost_equal(dist_squared(3.0, 0.0, 0.0, 4.0), 25.0)
     assert_almost_equal(dist_squared(1.0, 2.0, 3.0, 4.0), (1.0 - 3.0)**2 + (2.0 - 4.0)**2)
@@ -193,7 +206,7 @@ def test_global_var():
       return 4/3 * PI * cube(radius);
     }
     """
-    ball_volume = _test_compile_program(engine, program, main_func_identifier='ball_volume', main_func_num_args=1)
+    ball_volume = _test_compile_program(engine, program, main_func_identifier='ball_volume')
     for radius in [0.0, 2.0, 3.0, 124.343]:
       assert_almost_equal(ball_volume(radius), 4.0 / 3.0 * 3.1415 * radius ** 3.0)
 
@@ -201,13 +214,13 @@ def test_global_var():
 def test_simple_mutable_assign():
   with make_execution_engine() as engine:
     program = """
-    func main(Double x) {
+    func main(Int x) -> Int {
       x = x + 1;
       x = x + 1;
       return x;
     }
     """
-    main = _test_compile_program(engine, program, main_func_num_args=1)
+    main = _test_compile_program(engine, program)
     assert_equal(main(3), 3 + 2)
 
 
@@ -217,7 +230,7 @@ def test_nested_func_call():
     program = """
     func ball_volume(Double radius) -> Double {
       func cube(Double x) -> Double { return x * x * x; }
-      return 4/3 * 3.1415 * cube(radius);
+      return 4.0/3.0 * 3.1415 * cube(radius);
     }
     # Compute relative volume difference of two balls.
     func main(Double radius1, Double radius2) -> Double {
@@ -226,7 +239,7 @@ def test_nested_func_call():
       return volume1 / volume2;
     }
     """
-    main = _test_compile_program(engine, program, main_func_num_args=2)
+    main = _test_compile_program(engine, program)
     for radius1 in [0.0, 2.0, 3.0, 124.343]:
       for radius2 in [0.0, 2.0, 3.0, 124.343]:
         volume1, volume2 = 4.0 / 3.0 * 3.1415 * radius1 ** 3.0, 4.0 / 3.0 * 3.1415 * radius2 ** 3.0
@@ -244,7 +257,7 @@ def test_simple_if():
       }
     }
     """
-    branch = _test_compile_program(engine, program, main_func_identifier='branch', main_func_num_args=3)
+    branch = _test_compile_program(engine, program, main_func_identifier='branch')
     assert_equal(branch(0, 42, -13), -13)
     assert_equal(branch(1, 42, -13), 42)
 
@@ -260,7 +273,7 @@ def test_simple_if_max():
       }
     }
     """
-    max_ = _test_compile_program(engine, program, main_func_identifier='max', main_func_num_args=2)
+    max_ = _test_compile_program(engine, program, main_func_identifier='max')
     assert_equal(max_(13, 18), 18)
     assert_equal(max_(-3, 4.23), 4.23)
     assert_equal(max_(0, 0), 0)
@@ -269,8 +282,8 @@ def test_simple_if_max():
 
 def test_simple_if_abs():
   with make_execution_engine() as engine:
-    program = """ func abs(Double x) -> Double { if x < 0 { return -x; } else { return x; } } """
-    abs_ = _test_compile_program(engine, program, main_func_identifier='abs', main_func_num_args=1)
+    program = """ func abs(Double x) -> Double { if x < 0.0 { return -x; } else { return x; } } """
+    abs_ = _test_compile_program(engine, program, main_func_identifier='abs')
     assert_equal(abs_(3.1415), 3.1415)
     assert_equal(abs_(0.0), 0.0)
     assert_equal(abs_(-5.1), 5.1)
@@ -280,7 +293,7 @@ def test_if_assign():
   with make_execution_engine() as engine:
     program = """
     func main(Int mode, Double x, Double y) -> Double {
-      res = 0;
+      res = 0.0;
       if mode == 0 {  # addition
         res = x + y;
       } if mode == 1 {  # subtraction
@@ -292,15 +305,7 @@ def test_if_assign():
       return res;
     }
     """
-    ast = _test_parse_ast(program)
-    assert isinstance(ast, TopLevelStatementAst)
-    assert_equal(ast.get_declared_var_types(symbol_table={}), {})
-    main_ast = ast.stmt_list[-1]
-    assert isinstance(main_ast, FunctionDeclarationAst)
-    assert_equal(main_ast.get_declared_var_types(symbol_table={}), {})
-    assert_equal(main_ast.get_body_var_types(symbol_table={}, body_symbol_table={}), {
-      'mode': SLEEPY_DOUBLE, 'x': SLEEPY_DOUBLE, 'y': SLEEPY_DOUBLE, 'res': SLEEPY_DOUBLE, 'a': SLEEPY_DOUBLE})
-    main = _test_compile_program(engine, program, main_func_num_args=3)
+    main = _test_compile_program(engine, program)
     assert_equal(main(0, 4, 6), 10)
     assert_equal(main(1, 5, -3), 8)
     assert_equal(main(2, 0, 1), 1)
@@ -318,7 +323,7 @@ def test_simple_simple_recursion_factorial():
       }
     }
     """
-    fac = _test_compile_program(engine, program, main_func_identifier='fac', main_func_num_args=1)
+    fac = _test_compile_program(engine, program, main_func_identifier='fac')
     assert_equal(fac(3), 3 * 2 * 1)
     assert_equal(fac(9), math.prod(range(1, 9 + 1)))
     assert_equal(fac(0), 0)
@@ -343,7 +348,7 @@ def test_simple_simple_recursion_fibonacci():
       }
     }
     """
-    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', main_func_num_args=1)
+    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci')
     for n in range(1, 15):
       assert_equal(fib(n), _reference_fibonacci(n))
 
@@ -364,8 +369,8 @@ def test_simple_simple_iterative_fibonacci():
       return current_fib;
     }
     """
-    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', main_func_num_args=1)
-    for n in list(range(1, 15)) + [50]:
+    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci')
+    for n in list(range(1, 15)) + [20]:
       assert_equal(fib(n), _reference_fibonacci(n))
 
 
@@ -379,7 +384,7 @@ def test_extern_func():
     }
     """
 
-    cos_ = _test_compile_program(engine, program, main_func_num_args=1)
+    cos_ = _test_compile_program(engine, program)
     for x in [0, 1, 2, 3, math.pi]:
       assert_almost_equal(cos_(x), math.cos(x))
 
@@ -397,26 +402,6 @@ def test_extern_func_simple_alloc():
 
     main = _test_compile_program(engine, program)
     assert_equal(main(), 42)
-
-
-def test_typed_assignments():
-  with make_execution_engine() as engine:
-    program = """
-    func main() {
-      Double x = 2.3;
-      x = 5.0;
-      y = x * 2;
-    }
-    """
-    ast = _test_parse_ast(program)
-    assert isinstance(ast, TopLevelStatementAst)
-    main_ast = ast.stmt_list[-1]  # ignore preamble.
-    assert isinstance(main_ast, FunctionDeclarationAst)
-    assert len(main_ast.stmt_list) == 3
-    assert_equal(
-      main_ast.get_body_var_types(symbol_table={}, body_symbol_table={}), {'x': SLEEPY_DOUBLE, 'y': SLEEPY_DOUBLE})
-    assert_equal(main_ast.make_arg_types(symbol_table={}), [])
-    assert_equal(main_ast.get_declared_var_types(symbol_table={}), {})
 
 
 def test_types_simple():
