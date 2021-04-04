@@ -9,7 +9,7 @@ from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_TYPES, SLEEPY_INT, \
-  SLEEPY_CHAR, SLEEPY_LONG, SLEEPY_VOID
+  SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -554,13 +554,23 @@ class OperatorValueAst(ExpressionAst):
     """
     left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
     right_type = self.right_expr.make_val_type(symbol_table=symbol_table)
+    if left_type == SLEEPY_DOUBLE_PTR:
+      if self.op == '+' and right_type == SLEEPY_INT:
+        return SLEEPY_DOUBLE_PTR
+      if right_type == SLEEPY_DOUBLE_PTR:
+        if self.op not in {'==', '!=', '<', '>', '<=', '>', '>='}:
+          raise SemanticError('%r: Cannot apply binary operator %r on types %r and %r' % (
+            self, self.op, left_type, right_type))
+        return SLEEPY_DOUBLE  # TODO: actually a bool.
+      raise SemanticError('%r: Cannot apply binary operator %r on types %r and %r' % (
+        self, self.op, left_type, right_type))
     if left_type != right_type:
       raise SemanticError('%r: Cannot apply binary operator %r on different types %r and %r' % (
         self, self.op, left_type, right_type))
     if self.op in {'*', '/', '+', '-'}:
       return left_type
     if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
-      return SLEEPY_DOUBLE
+      return SLEEPY_DOUBLE  # TODO: actually a bool.
     assert False, 'unknown op %r' % self.op
 
   def make_ir_val(self, builder, symbol_table):
@@ -571,7 +581,7 @@ class OperatorValueAst(ExpressionAst):
     """
     left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
     right_type = self.right_expr.make_val_type(symbol_table=symbol_table)
-    if left_type != right_type:
+    if left_type != right_type and not (left_type == SLEEPY_DOUBLE_PTR and right_type == SLEEPY_INT):
       raise SemanticError('%r: Cannot apply binary operator %r on different types %r and %r' % (
         self, self.op, left_type, right_type))
     var_type = left_type
@@ -594,6 +604,8 @@ class OperatorValueAst(ExpressionAst):
     if self.op == '/':
       return make_op({SLEEPY_DOUBLE: builder.fdiv}, instr_name='div_tmp')
     if self.op == '+':
+      if left_type == SLEEPY_DOUBLE_PTR and right_type == SLEEPY_INT:
+        return builder.gep(left_val, (right_val,), name='incr_ptr_tmp')
       return make_op(
         {SLEEPY_DOUBLE: builder.fadd, SLEEPY_INT: builder.add, SLEEPY_LONG: builder.mul}, instr_name='add_tmp')
     if self.op == '-':
@@ -603,7 +615,8 @@ class OperatorValueAst(ExpressionAst):
       from functools import partial
       ir_bool = make_op({
         SLEEPY_DOUBLE: partial(builder.fcmp_ordered, self.op), SLEEPY_INT: partial(builder.icmp_signed, self.op),
-        SLEEPY_LONG: partial(builder.icmp_signed, self.op)}, instr_name='cmp_tmp')
+        SLEEPY_LONG: partial(builder.icmp_signed, self.op), SLEEPY_DOUBLE_PTR: partial(builder.icmp_unsigned, self.op)},
+        instr_name='cmp_tmp')
       return builder.uitofp(ir_bool, ir.DoubleType(), name='cmp_cast')
     assert False, '%r: operator %s not handled!' % (self, self.op)
 
@@ -915,10 +928,10 @@ def make_preamble_ast():
   extern_func print_char(Double char);
   extern_func print_double(Double d);
   extern_func print_int(Int i);
-  extern_func allocate(Int size) -> Int;
-  extern_func deallocate(Int ptr);
-  extern_func load(Int ptr) -> Double;
-  extern_func store(Int prt, Double value);
+  extern_func allocate(Int size) -> DoublePtr;
+  extern_func deallocate(DoublePtr ptr);
+  extern_func load(DoublePtr ptr) -> Double;
+  extern_func store(DoublePtr prt, Double value);
   extern_func assert(Double condition);
   func or(Double a, Double b) -> Double { if a { return a; } else { return b; } }
   func and(Double a, Double b) -> Double { if a { return b; } else { return 0.0; } }

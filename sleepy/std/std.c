@@ -22,34 +22,18 @@ double assert(double property) {
     return 0;
 }
 
-double* double_to_ptr(int d) {
-    return (double*) (size_t) (d * 8);
+double* allocate(int size) {
+    return malloc((size_t) size * sizeof(double));
 }
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "bugprone-integer-division"
-
-int ptr_to_double(void* ptr) {
-    assert((size_t) ptr % 8 == 0);
-    return (int) ((size_t) ptr / 8);
+void deallocate(double* ptr) {
+    free(ptr);
 }
 
-#pragma clang diagnostic pop
-
-
-int allocate(int size) {
-    void* array = malloc(size * sizeof(double));
-    return ptr_to_double(array);
+void store(double* ptr, double value) {
+    *ptr = value;
 }
 
-void deallocate(int d_ptr) {
-    free(double_to_ptr(d_ptr));
-}
-
-void store(int ptr, double value) {
-    *double_to_ptr(ptr) = value;
-}
-
-double load(int ptr) {
-    return *double_to_ptr(ptr);
+double load(double* ptr) {
+    return *ptr;
 }
