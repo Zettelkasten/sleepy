@@ -539,21 +539,31 @@ def get_line_col_from_pos(word, error_pos, num_before_context_lines=1, num_after
   assert False
 
 
-def make_error_message(word, pos, error_name, message):
+def make_error_message(word, from_pos, error_name, message, to_pos=None):
   """
   :param str word:
-  :param int pos:
+  :param int from_pos:
   :param str error_name:
   :param str message:
+  :param int|None to_pos:
   :rtype: str
   """
   line_num_pad_size = 3
-  line, col, context_lines = get_line_col_from_pos(word, pos, num_before_context_lines=3, num_after_context_lines=3)
-  print(context_lines)
-  return '%s on line %s:%s\n\n' % (error_name, line, col) + '\n'.join([
+  line, from_col, context_lines = get_line_col_from_pos(
+    word, from_pos, num_before_context_lines=3, num_after_context_lines=3)
+  assert line in context_lines
+  if to_pos is not None:
+    assert from_pos <= to_pos
+    to_line, to_col, _ = get_line_col_from_pos(word, to_pos, num_before_context_lines=0, num_after_context_lines=0)
+    if line != to_line:  # multi-line errors will only show the first line.
+      to_col = len(context_lines[line])
+  else:
+    to_col = from_col
+  return '%s on line %s:%s\n\n' % (error_name, line, from_col) + '\n'.join([
     ('%0' + str(line_num_pad_size) + 'i: %s%s') % (
       context_line_num, context_line,
-      ('\n' + (' ' * (col - 1 + line_num_pad_size + 2)) + '^') if context_line_num == line else '')
+      ('\n' + (' ' * (from_col - 1 + line_num_pad_size + 2)) + '^' * (to_col - from_col))
+      if context_line_num == line else '')
     for context_line_num, context_line in context_lines.items()]
   ) + '\n\n' + message
 
@@ -591,10 +601,11 @@ class SemanticError(Exception):
   A semantic error, during code generation.
   """
 
-  def __init__(self, word, pos, message):
+  def __init__(self, word, from_pos, to_pos, message):
     """
     :param str word:
-    :param int pos: word position where error occurred
+    :param int from_pos: word position where error occurred
+    :param int to_pos: up to which position
     :param str message:
     """
-    super().__init__(make_error_message(word, pos, error_name='Semantic error', message=message))
+    super().__init__(make_error_message(word, from_pos, error_name='Semantic error', message=message, to_pos=to_pos))

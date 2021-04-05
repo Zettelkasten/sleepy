@@ -34,7 +34,7 @@ class AbstractSyntaxTree:
     """
     :param str message:
     """
-    raise SemanticError(self.pos.word, self.pos.from_pos, message)
+    raise SemanticError(self.pos.word, self.pos.from_pos, self.pos.to_pos, message)
 
   def _make_func_call_ir(self, func_identifier, func_arg_vals, builder, symbol_table):
     """
