@@ -496,6 +496,20 @@ class TreePosition:
       return False
     return self.word == other.word and self.from_pos == other.from_pos and self.to_pos == other.to_pos
 
+  @classmethod
+  def from_token_pos(cls, word, tokens_pos, from_token_pos, to_token_pos):
+    """
+    :param str word:
+    :param list[int] tokens_pos:
+    :param int from_token_pos:
+    :param int to_token_pos:
+    :rtype: TreePosition
+    """
+    assert 0 <= from_token_pos <= to_token_pos <= len(tokens_pos)
+    from_pos = tokens_pos[from_token_pos] if from_token_pos < len(tokens_pos) else len(word)
+    to_pos = tokens_pos[to_token_pos] if to_token_pos < len(tokens_pos) else len(word)
+    return TreePosition(word, from_pos, to_pos)
+
 
 def get_line_col_from_pos(word, error_pos, num_before_context_lines=1, num_after_context_lines=1):
   """
@@ -577,8 +591,10 @@ class SemanticError(Exception):
   A semantic error, during code generation.
   """
 
-  def __init__(self, message):
+  def __init__(self, word, pos, message):
     """
+    :param str word:
+    :param int pos: word position where error occurred
     :param str message:
     """
-    super().__init__(message)
+    super().__init__(make_error_message(word, pos, error_name='Semantic error', message=message))

@@ -14,34 +14,13 @@ from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
 
-def make_func_call_ir(func_identifier, func_arg_vals, builder, symbol_table):
-  """
-  :param str func_identifier:
-  :param list[ExpressionAst] func_arg_vals:
-  :param IRBuilder builder:
-  :param dict[str,Symbol] symbol_table:
-  :rtype: ir.values.Value
-  """
-  if func_identifier not in symbol_table:
-    raise SemanticError('Function name %r referenced before declaration' % func_identifier)
-  func_symbol = symbol_table[func_identifier]
-  if not isinstance(func_symbol, FunctionSymbol):
-    raise SemanticError('Referenced name %r is not a function, but a %r' % (func_identifier, type(func_symbol)))
-  ir_func = func_symbol.ir_func
-  if not len(ir_func.args) == len(func_arg_vals):
-    raise SemanticError('Function %r called with %r arguments %r, but expected %r arguments %r' % (
-      func_identifier, len(func_arg_vals), func_arg_vals, len(ir_func.args), ir_func.args))
-  ir_func_args = [val.make_ir_val(builder=builder, symbol_table=symbol_table) for val in func_arg_vals]
-  return builder.call(ir_func, ir_func_args, name='call')
-
-
 class AbstractSyntaxTree:
   """
   Abstract syntax tree of a sleepy program.
   """
   def __init__(self, pos):
     """
-    :param ProgramPos pos: position where this AST starts
+    :param TreePosition pos: position where this AST starts
     """
     self.pos = pos
 
@@ -51,6 +30,32 @@ class AbstractSyntaxTree:
     """
     return 'AbstractSyntaxTree'
 
+  def raise_error(self, message):
+    """
+    :param str message:
+    """
+    raise SemanticError(self.pos.word, self.pos.from_pos, message)
+
+  def _make_func_call_ir(self, func_identifier, func_arg_vals, builder, symbol_table):
+    """
+    :param str func_identifier:
+    :param list[ExpressionAst] func_arg_vals:
+    :param IRBuilder builder:
+    :param dict[str,Symbol] symbol_table:
+    :rtype: ir.values.Value
+    """
+    if func_identifier not in symbol_table:
+      self.raise_error('Function name %r referenced before declaration' % func_identifier)
+    func_symbol = symbol_table[func_identifier]
+    if not isinstance(func_symbol, FunctionSymbol):
+      self.raise_error('Referenced name %r is not a function, but a %r' % (func_identifier, type(func_symbol)))
+    ir_func = func_symbol.ir_func
+    if not len(ir_func.args) == len(func_arg_vals):
+      self.raise_error('Function %r called with %r arguments %r, but expected %r arguments %r' % (
+        func_identifier, len(func_arg_vals), func_arg_vals, len(ir_func.args), ir_func.args))
+    ir_func_args = [val.make_ir_val(builder=builder, symbol_table=symbol_table) for val in func_arg_vals]
+    return builder.call(ir_func, ir_func_args, name='call')
+
 
 class StatementAst(AbstractSyntaxTree):
   """
@@ -58,7 +63,7 @@ class StatementAst(AbstractSyntaxTree):
   """
   def __init__(self, pos):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     """
     super().__init__(pos)
 
@@ -88,7 +93,7 @@ class StatementAst(AbstractSyntaxTree):
     assert type_identifier is not None
     if type_identifier in SLEEPY_TYPES:
       return SLEEPY_TYPES[type_identifier]
-    raise SemanticError('%r: Unknown type identifier %r. Available: %r' % (
+    self.raise_error('%r: Unknown type identifier %r. Available: %r' % (
       self, type_identifier, ', '.join('%r' % type_identifier for type_identifier in SLEEPY_TYPES.keys())))
 
   def __repr__(self):
@@ -104,7 +109,7 @@ class TopLevelStatementAst(StatementAst):
   """
   def __init__(self, pos, stmt_list):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param list[StatementAst] stmt_list:
     """
     super().__init__(pos)
@@ -163,7 +168,7 @@ class FunctionDeclarationAst(StatementAst):
   """
   def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, return_type_identifier, stmt_list):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param str identifier:
     :param list[str|None] arg_identifiers:
     :param list[str|None] arg_type_identifiers:
@@ -192,7 +197,7 @@ class FunctionDeclarationAst(StatementAst):
     """
     arg_types = [self.make_type(identifier, symbol_table=symbol_table) for identifier in self.arg_type_identifiers]
     if any(arg_type is None for arg_type in arg_types):
-      raise SemanticError('%r: need to specify all parameter types of function %r' % (self, self.identifier))
+      self.raise_error('%r: need to specify all parameter types of function %r' % (self, self.identifier))
     return arg_types
 
   def build_symbol_table(self, symbol_table, declared_variables):
@@ -201,14 +206,14 @@ class FunctionDeclarationAst(StatementAst):
     :param list[str] declared_variables:
     """
     if self.identifier in symbol_table:
-      raise SemanticError('%r: cannot redefine function with name %r' % (self, self.identifier))
+      self.raise_error('%r: cannot redefine function with name %r' % (self, self.identifier))
     arg_types = self.make_arg_types(symbol_table=symbol_table)
     if self.return_type_identifier is None:
       return_type = SLEEPY_VOID
     else:
       return_type = self.make_type(self.return_type_identifier, symbol_table=symbol_table)
     if return_type is None:
-      raise SemanticError('%r: need to specify return type of function %r' % (self, self.identifier))
+      self.raise_error('%r: need to specify return type of function %r' % (self, self.identifier))
     symbol_table[self.identifier] = FunctionSymbol(
       None, arg_identifiers=self.arg_identifiers, arg_types=arg_types, return_type=return_type)
 
@@ -274,7 +279,7 @@ class CallStatementAst(StatementAst):
   """
   def __init__(self, pos, func_identifier, func_arg_exprs):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param str func_identifier:
     :param list[ExpressionAst] func_arg_exprs:
     """
@@ -289,17 +294,17 @@ class CallStatementAst(StatementAst):
     """
     # just verify that the argument types are correctly specified, but do not alter symbol_table
     if self.func_identifier not in symbol_table:
-      raise SemanticError('%r: Function %r called before declared' % (self, self.func_identifier))
+      self.raise_error('%r: Function %r called before declared' % (self, self.func_identifier))
     symbol = symbol_table[self.func_identifier]
     if not isinstance(symbol, FunctionSymbol):
-      raise SemanticError('%r: Cannot call non-function %r' % (self, self.func_identifier))
+      self.raise_error('%r: Cannot call non-function %r' % (self, self.func_identifier))
     if len(self.func_arg_exprs) != len(symbol.arg_identifiers):
-      raise SemanticError('%r: Cannot call function %r with %r arguments, expected %r arguments %r' % (
+      self.raise_error('%r: Cannot call function %r with %r arguments, expected %r arguments %r' % (
         self, self.func_identifier, len(self.func_arg_exprs), len(symbol.arg_identifiers), symbol.arg_identifiers))
     called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in self.func_arg_exprs]
     for arg_identifier, called_type, declared_type in zip(symbol.arg_identifiers, called_types, symbol.arg_types):
       if called_type != declared_type:
-        raise SemanticError('%r: Cannot call function %r with parameter %r of type %r, expected %r' % (
+        self.raise_error('%r: Cannot call function %r with parameter %r of type %r, expected %r' % (
           self, self.func_identifier, arg_identifier, called_type, declared_type))
 
   def build_expr_ir(self, module, builder, symbol_table):
@@ -309,7 +314,7 @@ class CallStatementAst(StatementAst):
     :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder
     """
-    make_func_call_ir(
+    self._make_func_call_ir(
       func_identifier=self.func_identifier, func_arg_vals=self.func_arg_exprs, builder=builder,
       symbol_table=symbol_table)
     return builder
@@ -327,7 +332,7 @@ class ReturnStatementAst(StatementAst):
   """
   def __init__(self, pos, return_exprs):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param list[ExpressionAst] return_exprs:
     """
     super().__init__(pos)
@@ -370,7 +375,7 @@ class AssignStatementAst(StatementAst):
   """
   def __init__(self, pos, var_identifier, var_val, var_type_identifier):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param str var_identifier:
     :param ExpressionAst var_val:
     :param str|None var_type_identifier:
@@ -391,16 +396,16 @@ class AssignStatementAst(StatementAst):
       declared_type = None
     val_type = self.var_val.make_val_type(symbol_table=symbol_table)
     if declared_type is not None and declared_type != val_type:
-      raise SemanticError('%r: Cannot assign variable %r with declared type %r a value of type %r' % (
+      self.raise_error('%r: Cannot assign variable %r with declared type %r a value of type %r' % (
         self, self.var_identifier, declared_type, val_type))
     if self.var_identifier in declared_variables:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
       assert self.var_identifier in symbol_table
       symbol = symbol_table[self.var_identifier]
       if not isinstance(symbol, VariableSymbol):
-        raise SemanticError('%r: Cannot assign non-variable %r to a variable' % (self, self.var_identifier))
+        self.raise_error('%r: Cannot assign non-variable %r to a variable' % (self, self.var_identifier))
       if symbol.var_type != val_type:
-        raise SemanticError('%r: Cannot redefine variable %r of type %r with new type %r' % (
+        self.raise_error('%r: Cannot redefine variable %r of type %r with new type %r' % (
           self, self.var_identifier, symbol.var_type, val_type))
     else:
       assert self.var_identifier not in declared_variables
@@ -439,7 +444,7 @@ class IfStatementAst(StatementAst):
   """
   def __init__(self, pos, condition_val, true_stmt_list, false_stmt_list):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param ExpressionAst condition_val:
     :param list[StatementAst] true_stmt_list:
     :param list[StatementAst] false_stmt_list:
@@ -524,7 +529,7 @@ class WhileStatementAst(StatementAst):
   """
   def __init__(self, pos, condition_val, stmt_list):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param ExpressionAst condition_val:
     :param list[StatementAst] stmt_list:
     """
@@ -589,7 +594,7 @@ class ExpressionAst(AbstractSyntaxTree):
   """
   def __init__(self, pos):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     """
     super().__init__(pos)
 
@@ -621,7 +626,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
   """
   def __init__(self, pos, op, left_expr, right_expr):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param str op:
     :param ExpressionAst left_expr:
     :param ExpressionAst right_expr:
@@ -643,13 +648,13 @@ class BinaryOperatorExpressionAst(ExpressionAst):
         return SLEEPY_DOUBLE_PTR
       if right_type == SLEEPY_DOUBLE_PTR:
         if self.op not in {'==', '!=', '<', '>', '<=', '>', '>='}:
-          raise SemanticError('%r: Cannot apply binary operator %r on types %r and %r' % (
+          self.raise_error('%r: Cannot apply binary operator %r on types %r and %r' % (
             self, self.op, left_type, right_type))
         return SLEEPY_DOUBLE  # TODO: actually a bool.
-      raise SemanticError('%r: Cannot apply binary operator %r on types %r and %r' % (
+      self.raise_error('%r: Cannot apply binary operator %r on types %r and %r' % (
         self, self.op, left_type, right_type))
     if left_type != right_type:
-      raise SemanticError('%r: Cannot apply binary operator %r on different types %r and %r' % (
+      self.raise_error('%r: Cannot apply binary operator %r on different types %r and %r' % (
         self, self.op, left_type, right_type))
     if self.op in {'*', '/', '+', '-'}:
       return left_type
@@ -666,7 +671,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
     right_type = self.right_expr.make_val_type(symbol_table=symbol_table)
     if left_type != right_type and not (left_type == SLEEPY_DOUBLE_PTR and right_type == SLEEPY_INT):
-      raise SemanticError('%r: Cannot apply binary operator %r on different types %r and %r' % (
+      self.raise_error('%r: Cannot apply binary operator %r on different types %r and %r' % (
         self, self.op, left_type, right_type))
     var_type = left_type
     left_val = self.left_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
@@ -679,7 +684,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       :rtype: ir.values.Value
       """
       if var_type not in type_instr:
-        raise SemanticError('%r: Cannot apply binary operator %r on types %r' % (self, self.op, var_type))
+        self.raise_error('%r: Cannot apply binary operator %r on types %r' % (self, self.op, var_type))
       return type_instr[var_type](left_val, right_val, name=instr_name)
 
     if self.op == '*':
@@ -718,7 +723,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
   """
   def __init__(self, pos, op, expr):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param str op:
     :param ExpressionAst expr:
     """
@@ -750,7 +755,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
         return builder.fmul(constant_minus_one, ir_val, name='neg_tmp')
       if val_type in {SLEEPY_INT, SLEEPY_LONG}:
         return builder.mul(constant_minus_one, ir_val, name='neg_tmp')
-    raise SemanticError('%r: Cannot apply unary operator %r to type %r' % (
+    self.raise_error('%r: Cannot apply unary operator %r to type %r' % (
       self, self.op, val_type))
 
   def __repr__(self):
@@ -766,7 +771,7 @@ class ConstantExpressionAst(ExpressionAst):
   """
   def __init__(self, pos, constant_val, constant_type):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param Any constant_val:
     :param Type constant_type:
     """
@@ -802,7 +807,7 @@ class VariableExpressionAst(ExpressionAst):
   """
   def __init__(self, pos, var_identifier):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param str var_identifier:
     """
     super().__init__(pos)
@@ -814,10 +819,10 @@ class VariableExpressionAst(ExpressionAst):
     :rtype: VariableSymbol
     """
     if self.var_identifier not in symbol_table:
-      raise SemanticError('%r: Variable %r referenced before declaring' % (self, self.var_identifier))
+      self.raise_error('%r: Variable %r referenced before declaring' % (self, self.var_identifier))
     symbol = symbol_table[self.var_identifier]
     if not isinstance(symbol, VariableSymbol):
-      raise SemanticError('%r: Cannot reference a non-variable %r' % (self, self.var_identifier))
+      self.raise_error('%r: Cannot reference a non-variable %r' % (self, self.var_identifier))
     return symbol
 
   def make_val_type(self, symbol_table):
@@ -849,7 +854,7 @@ class CallExpressionAst(ExpressionAst):
   """
   def __init__(self, pos, func_identifier, func_arg_vals):
     """
-    :param sleepy.grammar.TreePosition pos:
+    :param TreePosition pos:
     :param str func_identifier:
     :param list[ExpressionAst] func_arg_vals:
     """
@@ -863,10 +868,10 @@ class CallExpressionAst(ExpressionAst):
     :rtype: FunctionSymbol
     """
     if self.func_identifier not in symbol_table:
-      raise SemanticError('%r: Cannot call function %r before its declaration' % (self, self.func_identifier))
+      self.raise_error('%r: Cannot call function %r before its declaration' % (self, self.func_identifier))
     symbol = symbol_table[self.func_identifier]
     if not isinstance(symbol, FunctionSymbol):
-      raise SemanticError('%r: Cannot call non-function %r' % (self, self.func_identifier))
+      self.raise_error('%r: Cannot call non-function %r' % (self, self.func_identifier))
     return symbol
 
   def make_val_type(self, symbol_table):
@@ -882,7 +887,7 @@ class CallExpressionAst(ExpressionAst):
     :param dict[str,Symbol] symbol_table:
     :rtype: ir.values.Value
     """
-    return make_func_call_ir(
+    return self._make_func_call_ir(
       func_identifier=self.func_identifier, func_arg_vals=self.func_arg_vals, builder=builder,
       symbol_table=symbol_table)
 

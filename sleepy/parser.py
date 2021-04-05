@@ -287,8 +287,9 @@ class ParserGenerator:
           start_pos_stack.pop()
         assert len(right_attr_evals) == len(action.prod.right)
         state_stack.append(self._state_goto_table[state_stack[-1]][action.prod.left])
+        tree_pos = TreePosition.from_token_pos(word, tokens_pos, prod_start_pos, pos)
         attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(
-          action.prod, {}, right_attr_evals, helper_values={'_pos': TreePosition(word, prod_start_pos, pos)}))
+          action.prod, {}, right_attr_evals, helper_values={'_pos': tree_pos}))
         start_pos_stack.append(prod_start_pos)
         rev_analysis.append(action.prod)
       elif isinstance(action, _AcceptAction) and len(state_stack) == 2:
@@ -300,8 +301,9 @@ class ParserGenerator:
         state_stack.clear()
         attr_eval_stack.clear()
         start_pos_stack.clear()
+        tree_pos = TreePosition.from_token_pos(word, tokens_pos, prod_start_pos, pos)
         attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(
-          self._start_prod, {}, right_attr_evals, helper_values={'_pos': TreePosition(word, prod_start_pos, pos)}))
+          self._start_prod, {}, right_attr_evals, helper_values={'_pos': tree_pos}))
         rev_analysis.append(self._start_prod)
         start_pos_stack.append(prod_start_pos)
         accepted = True
