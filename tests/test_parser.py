@@ -7,7 +7,7 @@ from nose.tools import assert_equal, assert_raises, assert_equals
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
 from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar, SyntaxTree, \
-  get_token_word_from_tokens_pos
+  get_token_word_from_tokens_pos, TreePosition
 from sleepy.semantic import AttributeEvalGenerator
 
 
@@ -483,6 +483,72 @@ def test_ParserGenerator_parse_tree_epsilon2():
   tokens_pos = [0, 2]
   print(parser.parse_analysis(word, tokens, tokens_pos))
   print(parser.parse_tree(word, tokens, tokens_pos))
+
+
+def test_ParserGenerator_simple_ast():
+  class Ast:
+    def __init__(self, pos):
+      """
+      :param TreePosition pos:
+      """
+      self.pos = pos
+
+  class ConstantAst(Ast):
+    def __init__(self, pos, num):
+      super().__init__(pos)
+      self.num = num
+
+  class SumAst(Ast):
+    def __init__(self, pos, ast, num):
+      super().__init__(pos)
+      self.ast = ast
+      self.num = num
+
+  g = Grammar(
+    Production('A', 'B'),
+    Production('B', 'num'),
+    Production('B', 'B', '+', 'num')
+  )
+  attr_g = AttributeGrammar(
+    g,
+    inh_attrs=set(),
+    syn_attrs={'ast', 'num'},
+    prod_attr_rules=[
+      {'ast': 'ast.1'},
+      {'ast': lambda _pos, num: ConstantAst(_pos, num(1))},
+      {'ast': lambda _pos, ast, num: SumAst(_pos, ast(1), num(3))}
+    ],
+    terminal_attr_rules={
+      'num': {'num': lambda val: int(val)}
+    }
+  )
+  assert_equal(set(g.terminals), {'num', '+'})
+  assert_equal(attr_g.attrs, {'ast', 'num'})
+  assert_equal(attr_g.syn_attrs, {'ast', 'num'})
+  assert_equal(attr_g.inh_attrs, set())
+
+  word = '1+2+3'
+  tokens = ['num', '+', 'num', '+', 'num']
+  tokens_pos = [0, 1, 2, 3, 4]
+  print('tokens:', tokens, 'with decomposition', tokens_pos)
+  parser = ParserGenerator(g)
+  right_analysis, attr_eval = parser.parse_syn_attr_analysis(attr_g, word, tokens, tokens_pos)
+  print('right analysis:', right_analysis)
+  print('attribute eval:', attr_eval)
+  assert 'ast' in attr_eval
+  ast3 = attr_eval['ast']
+  assert isinstance(ast3, SumAst)
+  assert ast3.pos == TreePosition(word, 0, 5)
+  assert ast3.num == 3
+  ast2 = ast3.ast
+  assert isinstance(ast2, SumAst)
+  assert ast2.pos == TreePosition(word, 0, 3)
+  assert ast2.num == 2
+  ast1 = ast2.ast
+  assert isinstance(ast1, ConstantAst)
+  assert ast1.pos == TreePosition(word, 0, 1)
+  assert ast1.num == 1
+
 
 
 if __name__ == "__main__":
