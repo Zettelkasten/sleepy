@@ -5,7 +5,7 @@ from typing import Dict, List
 
 from llvmlite import ir
 
-from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar
+from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar, TreePosition
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_TYPES, SLEEPY_INT, \
@@ -39,7 +39,11 @@ class AbstractSyntaxTree:
   """
   Abstract syntax tree of a sleepy program.
   """
-  pass
+  def __init__(self, pos):
+    """
+    :param ProgramPos pos: position where this AST starts
+    """
+    self.pos = pos
 
   def __repr__(self):
     """
@@ -52,8 +56,11 @@ class StatementAst(AbstractSyntaxTree):
   """
   Expr.
   """
-  def __init__(self):
-    super().__init__()
+  def __init__(self, pos):
+    """
+    :param sleepy.grammar.TreePosition pos:
+    """
+    super().__init__(pos)
 
   def build_symbol_table(self, symbol_table, declared_variables):
     """
@@ -95,11 +102,12 @@ class TopLevelStatementAst(StatementAst):
   """
   TopLevelExpr.
   """
-  def __init__(self, stmt_list):
+  def __init__(self, pos, stmt_list):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param list[StatementAst] stmt_list:
     """
-    super().__init__()
+    super().__init__(pos)
     self.stmt_list = stmt_list
 
   def build_symbol_table(self, symbol_table, declared_variables):
@@ -153,15 +161,16 @@ class FunctionDeclarationAst(StatementAst):
   """
   Stmt -> func identifier ( TypedIdentifierList ) { StmtList }
   """
-  def __init__(self, identifier, arg_identifiers, arg_type_identifiers, return_type_identifier, stmt_list):
+  def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, return_type_identifier, stmt_list):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param str identifier:
     :param list[str|None] arg_identifiers:
     :param list[str|None] arg_type_identifiers:
     :param str|None return_type_identifier:
     :param list[StatementAst]|None stmt_list: body, or None if extern function.
     """
-    super().__init__()
+    super().__init__(pos)
     assert len(arg_identifiers) == len(arg_type_identifiers)
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
@@ -244,7 +253,8 @@ class FunctionDeclarationAst(StatementAst):
       for stmt in self.stmt_list:
         body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
       if body_builder is not None and not body_builder.block.is_terminated:
-        ReturnStatementAst([]).build_expr_ir(
+        return_pos = TreePosition(self.pos.word, self.pos.to_pos, self.pos.to_pos)
+        ReturnStatementAst(return_pos, []).build_expr_ir(
           module=module, builder=body_builder, symbol_table=body_symbol_table)
     return builder
 
@@ -262,12 +272,13 @@ class CallStatementAst(StatementAst):
   """
   Stmt -> identifier ( ExprList )
   """
-  def __init__(self, func_identifier, func_arg_exprs):
+  def __init__(self, pos, func_identifier, func_arg_exprs):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param str func_identifier:
     :param list[ExpressionAst] func_arg_exprs:
     """
-    super().__init__()
+    super().__init__(pos)
     self.func_identifier = func_identifier
     self.func_arg_exprs = func_arg_exprs
 
@@ -314,11 +325,12 @@ class ReturnStatementAst(StatementAst):
   """
   Stmt -> return ExprList ;
   """
-  def __init__(self, return_exprs):
+  def __init__(self, pos, return_exprs):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param list[ExpressionAst] return_exprs:
     """
-    super().__init__()
+    super().__init__(pos)
     self.return_exprs = return_exprs
     assert len(return_exprs) <= 1, 'returning of multiple values is not support yet'
 
@@ -356,13 +368,14 @@ class AssignStatementAst(StatementAst):
   """
   Stmt -> identifier = Expr ;
   """
-  def __init__(self, var_identifier, var_val, var_type_identifier):
+  def __init__(self, pos, var_identifier, var_val, var_type_identifier):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param str var_identifier:
     :param ExpressionAst var_val:
     :param str|None var_type_identifier:
     """
-    super().__init__()
+    super().__init__(pos)
     self.var_identifier = var_identifier
     self.var_val = var_val
     self.var_type_identifier = var_type_identifier
@@ -424,13 +437,14 @@ class IfStatementAst(StatementAst):
   Stmt -> if Expr { StmtList }
         | if Expr { StmtList } else { StmtList }
   """
-  def __init__(self, condition_val, true_stmt_list, false_stmt_list):
+  def __init__(self, pos, condition_val, true_stmt_list, false_stmt_list):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param ExpressionAst condition_val:
     :param list[StatementAst] true_stmt_list:
     :param list[StatementAst] false_stmt_list:
     """
-    super().__init__()
+    super().__init__(pos)
     self.condition_val = condition_val
     self.true_stmt_list, self.false_stmt_list = true_stmt_list, false_stmt_list
 
@@ -508,12 +522,13 @@ class WhileStatementAst(StatementAst):
   """
   Stmt -> while Expr { StmtList }
   """
-  def __init__(self, condition_val, stmt_list):
+  def __init__(self, pos, condition_val, stmt_list):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param ExpressionAst condition_val:
     :param list[StatementAst] stmt_list:
     """
-    super().__init__()
+    super().__init__(pos)
     self.condition_val = condition_val
     self.stmt_list = stmt_list
 
@@ -572,8 +587,11 @@ class ExpressionAst(AbstractSyntaxTree):
   """
   Val, SumVal, ProdVal, PrimaryExpr
   """
-  def __init__(self):
-    super().__init__()
+  def __init__(self, pos):
+    """
+    :param sleepy.grammar.TreePosition pos:
+    """
+    super().__init__(pos)
 
   def make_val_type(self, symbol_table):
     """
@@ -601,13 +619,14 @@ class BinaryOperatorExpressionAst(ExpressionAst):
   """
   Val, SumVal, ProdVal.
   """
-  def __init__(self, op, left_expr, right_expr):
+  def __init__(self, pos, op, left_expr, right_expr):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param str op:
     :param ExpressionAst left_expr:
     :param ExpressionAst right_expr:
     """
-    super().__init__()
+    super().__init__(pos)
     assert op in SLOPPY_OP_TYPES
     self.op = op
     self.left_expr, self.right_expr = left_expr, right_expr
@@ -697,12 +716,13 @@ class UnaryOperatorExpressionAst(ExpressionAst):
   """
   NegVal.
   """
-  def __init__(self, op, expr):
+  def __init__(self, pos, op, expr):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param str op:
     :param ExpressionAst expr:
     """
-    super().__init__()
+    super().__init__(pos)
     assert op in {'+', '-'}
     self.op = op
     self.expr = expr
@@ -744,12 +764,13 @@ class ConstantExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> double | int | char
   """
-  def __init__(self, constant_val, constant_type):
+  def __init__(self, pos, constant_val, constant_type):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param Any constant_val:
     :param Type constant_type:
     """
-    super().__init__()
+    super().__init__(pos)
     self.constant_val = constant_val
     self.constant_type = constant_type
 
@@ -779,11 +800,12 @@ class VariableExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> identifier
   """
-  def __init__(self, var_identifier):
+  def __init__(self, pos, var_identifier):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param str var_identifier:
     """
-    super().__init__()
+    super().__init__(pos)
     self.var_identifier = var_identifier
 
   def get_var_symbol(self, symbol_table):
@@ -825,12 +847,13 @@ class CallExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> identifier ( ExprList )
   """
-  def __init__(self, func_identifier, func_arg_vals):
+  def __init__(self, pos, func_identifier, func_arg_vals):
     """
+    :param sleepy.grammar.TreePosition pos:
     :param str func_identifier:
     :param list[ExpressionAst] func_arg_vals:
     """
-    super().__init__()
+    super().__init__(pos)
     self.func_identifier = func_identifier
     self.func_arg_vals = func_arg_vals
 
@@ -945,29 +968,29 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'type_identifier', 'op',
     'number'},
   prod_attr_rules=[
-    {'ast': lambda stmt_list: TopLevelStatementAst(stmt_list(1))},
+    {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, stmt_list(1))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, stmt_list: [ast(1)] + stmt_list(2)},
-    {'ast': lambda identifier, identifier_list, type_list, type_identifier, stmt_list: (
-      FunctionDeclarationAst(identifier(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},  # noqa
-    {'ast': lambda identifier, identifier_list, type_list, type_identifier: (
-      FunctionDeclarationAst(identifier(2), identifier_list(4), type_list(4), type_identifier(6), None))},
-    {'ast': lambda identifier, val_list: CallStatementAst(identifier(1), val_list(3))},
-    {'ast': lambda val_list: ReturnStatementAst(val_list(2))},
-    {'ast': lambda identifier, ast, type_identifier: AssignStatementAst(identifier(2), ast(4), type_identifier(1))},
-    {'ast': lambda identifier, ast: AssignStatementAst(identifier(1), ast(3), None)},
-    {'ast': lambda ast, stmt_list: IfStatementAst(ast(2), stmt_list(4), [])},
-    {'ast': lambda ast, stmt_list: IfStatementAst(ast(2), stmt_list(4), stmt_list(8))},
-    {'ast': lambda ast, stmt_list: WhileStatementAst(ast(2), stmt_list(4))}] + [
-    {'ast': lambda ast, op: BinaryOperatorExpressionAst(op(2), ast(1), ast(3))},
+    {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier, stmt_list: (
+      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},  # noqa
+    {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier: (
+      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), None))},
+    {'ast': lambda _pos, identifier, val_list: CallStatementAst(_pos, identifier(1), val_list(3))},
+    {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
+    {'ast': lambda _pos, identifier, ast, type_identifier: AssignStatementAst(_pos, identifier(2), ast(4), type_identifier(1))},  # noqa
+    {'ast': lambda _pos, identifier, ast: AssignStatementAst(_pos, identifier(1), ast(3), None)},
+    {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), [])},
+    {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), stmt_list(8))},
+    {'ast': lambda _pos, ast, stmt_list: WhileStatementAst(_pos, ast(2), stmt_list(4))}] + [
+    {'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
-    {'ast': lambda ast, op: UnaryOperatorExpressionAst(op(1), ast(2))},
+    {'ast': lambda _pos, ast, op: UnaryOperatorExpressionAst(_pos, op(1), ast(2))},
     {'ast': 'ast.1'},
-    {'ast': lambda number: ConstantExpressionAst(number(1), SLEEPY_INT)},
-    {'ast': lambda number: ConstantExpressionAst(number(1), SLEEPY_DOUBLE)},
-    {'ast': lambda number: ConstantExpressionAst(number(1), SLEEPY_DOUBLE)},  # TODO: actually should be SLEEPY_CHAR
-    {'ast': lambda identifier: VariableExpressionAst(identifier(1))},
-    {'ast': lambda identifier, val_list: CallExpressionAst(identifier(1), val_list(3))},
+    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
+    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_DOUBLE)},
+    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_DOUBLE)},  # TODO: actually should be SLEEPY_CHAR  # noqa
+    {'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
+    {'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
     {'ast': 'ast.2'},
     {'identifier_list': []},
     {'identifier_list': 'identifier_list.1'},
@@ -1043,4 +1066,5 @@ def add_preamble_to_ast(program_ast):
   """
   preamble_ast = make_preamble_ast()
   assert isinstance(preamble_ast, TopLevelStatementAst)
-  return TopLevelStatementAst(preamble_ast.stmt_list + program_ast.stmt_list)
+  preamble_pos = TreePosition(program_ast.pos.word, 0, 0)
+  return TopLevelStatementAst(preamble_pos, preamble_ast.stmt_list + program_ast.stmt_list)
