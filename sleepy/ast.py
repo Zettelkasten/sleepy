@@ -93,8 +93,8 @@ class StatementAst(AbstractSyntaxTree):
     assert type_identifier is not None
     if type_identifier in SLEEPY_TYPES:
       return SLEEPY_TYPES[type_identifier]
-    self.raise_error('%r: Unknown type identifier %r. Available: %r' % (
-      self, type_identifier, ', '.join('%r' % type_identifier for type_identifier in SLEEPY_TYPES.keys())))
+    self.raise_error('Unknown type identifier %r. Available: %r' % (
+      type_identifier, ', '.join('%r' % type_identifier for type_identifier in SLEEPY_TYPES.keys())))
 
   def __repr__(self):
     """
@@ -197,7 +197,7 @@ class FunctionDeclarationAst(StatementAst):
     """
     arg_types = [self.make_type(identifier, symbol_table=symbol_table) for identifier in self.arg_type_identifiers]
     if any(arg_type is None for arg_type in arg_types):
-      self.raise_error('%r: need to specify all parameter types of function %r' % (self, self.identifier))
+      self.raise_error('need to specify all parameter types of function %r' % self.identifier)
     return arg_types
 
   def build_symbol_table(self, symbol_table, declared_variables):
@@ -206,14 +206,14 @@ class FunctionDeclarationAst(StatementAst):
     :param list[str] declared_variables:
     """
     if self.identifier in symbol_table:
-      self.raise_error('%r: cannot redefine function with name %r' % (self, self.identifier))
+      self.raise_error('Cannot redefine function with name %r' % self.identifier)
     arg_types = self.make_arg_types(symbol_table=symbol_table)
     if self.return_type_identifier is None:
       return_type = SLEEPY_VOID
     else:
       return_type = self.make_type(self.return_type_identifier, symbol_table=symbol_table)
     if return_type is None:
-      self.raise_error('%r: need to specify return type of function %r' % (self, self.identifier))
+      self.raise_error('Need to specify return type of function %r' % self.identifier)
     symbol_table[self.identifier] = FunctionSymbol(
       None, arg_identifiers=self.arg_identifiers, arg_types=arg_types, return_type=return_type)
 
@@ -294,18 +294,18 @@ class CallStatementAst(StatementAst):
     """
     # just verify that the argument types are correctly specified, but do not alter symbol_table
     if self.func_identifier not in symbol_table:
-      self.raise_error('%r: Function %r called before declared' % (self, self.func_identifier))
+      self.raise_error('Function %r called before declared' % self.func_identifier)
     symbol = symbol_table[self.func_identifier]
     if not isinstance(symbol, FunctionSymbol):
-      self.raise_error('%r: Cannot call non-function %r' % (self, self.func_identifier))
+      self.raise_error('Cannot call non-function %r' % self.func_identifier)
     if len(self.func_arg_exprs) != len(symbol.arg_identifiers):
-      self.raise_error('%r: Cannot call function %r with %r arguments, expected %r arguments %r' % (
-        self, self.func_identifier, len(self.func_arg_exprs), len(symbol.arg_identifiers), symbol.arg_identifiers))
+      self.raise_error('Cannot call function %r with %r arguments, expected %r arguments %r' % (
+        self.func_identifier, len(self.func_arg_exprs), len(symbol.arg_identifiers), symbol.arg_identifiers))
     called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in self.func_arg_exprs]
     for arg_identifier, called_type, declared_type in zip(symbol.arg_identifiers, called_types, symbol.arg_types):
       if called_type != declared_type:
-        self.raise_error('%r: Cannot call function %r with parameter %r of type %r, expected %r' % (
-          self, self.func_identifier, arg_identifier, called_type, declared_type))
+        self.raise_error('Cannot call function %r with parameter %r of type %r, expected %r' % (
+          self.func_identifier, arg_identifier, called_type, declared_type))
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -396,17 +396,17 @@ class AssignStatementAst(StatementAst):
       declared_type = None
     val_type = self.var_val.make_val_type(symbol_table=symbol_table)
     if declared_type is not None and declared_type != val_type:
-      self.raise_error('%r: Cannot assign variable %r with declared type %r a value of type %r' % (
-        self, self.var_identifier, declared_type, val_type))
+      self.raise_error('Cannot assign variable %r with declared type %r a value of type %r' % (
+        self.var_identifier, declared_type, val_type))
     if self.var_identifier in declared_variables:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
       assert self.var_identifier in symbol_table
       symbol = symbol_table[self.var_identifier]
       if not isinstance(symbol, VariableSymbol):
-        self.raise_error('%r: Cannot assign non-variable %r to a variable' % (self, self.var_identifier))
+        self.raise_error('Cannot assign non-variable %r to a variable' % self.var_identifier)
       if symbol.var_type != val_type:
-        self.raise_error('%r: Cannot redefine variable %r of type %r with new type %r' % (
-          self, self.var_identifier, symbol.var_type, val_type))
+        self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
+          self.var_identifier, symbol.var_type, val_type))
     else:
       assert self.var_identifier not in declared_variables
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
@@ -648,14 +648,14 @@ class BinaryOperatorExpressionAst(ExpressionAst):
         return SLEEPY_DOUBLE_PTR
       if right_type == SLEEPY_DOUBLE_PTR:
         if self.op not in {'==', '!=', '<', '>', '<=', '>', '>='}:
-          self.raise_error('%r: Cannot apply binary operator %r on types %r and %r' % (
-            self, self.op, left_type, right_type))
+          self.raise_error('Cannot apply binary operator %r on types %r and %r' % (
+            self.op, left_type, right_type))
         return SLEEPY_DOUBLE  # TODO: actually a bool.
-      self.raise_error('%r: Cannot apply binary operator %r on types %r and %r' % (
-        self, self.op, left_type, right_type))
+      self.raise_error('Cannot apply binary operator %r on types %r and %r' % (
+        self.op, left_type, right_type))
     if left_type != right_type:
-      self.raise_error('%r: Cannot apply binary operator %r on different types %r and %r' % (
-        self, self.op, left_type, right_type))
+      self.raise_error('Cannot apply binary operator %r on different types %r and %r' % (
+        self.op, left_type, right_type))
     if self.op in {'*', '/', '+', '-'}:
       return left_type
     if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
@@ -671,8 +671,8 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
     right_type = self.right_expr.make_val_type(symbol_table=symbol_table)
     if left_type != right_type and not (left_type == SLEEPY_DOUBLE_PTR and right_type == SLEEPY_INT):
-      self.raise_error('%r: Cannot apply binary operator %r on different types %r and %r' % (
-        self, self.op, left_type, right_type))
+      self.raise_error('Cannot apply binary operator %r on different types %r and %r' % (
+        self.op, left_type, right_type))
     var_type = left_type
     left_val = self.left_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
     right_val = self.right_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
@@ -684,7 +684,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       :rtype: ir.values.Value
       """
       if var_type not in type_instr:
-        self.raise_error('%r: Cannot apply binary operator %r on types %r' % (self, self.op, var_type))
+        self.raise_error('Cannot apply binary operator %r on types %r' % (self.op, var_type))
       return type_instr[var_type](left_val, right_val, name=instr_name)
 
     if self.op == '*':
@@ -707,7 +707,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
         SLEEPY_LONG: partial(builder.icmp_signed, self.op), SLEEPY_DOUBLE_PTR: partial(builder.icmp_unsigned, self.op)},
         instr_name='cmp_tmp')
       return builder.uitofp(ir_bool, ir.DoubleType(), name='cmp_cast')
-    assert False, '%r: operator %s not handled!' % (self, self.op)
+    assert False, 'Operator %s not handled!' % self.op
 
   def __repr__(self):
     """
@@ -755,8 +755,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
         return builder.fmul(constant_minus_one, ir_val, name='neg_tmp')
       if val_type in {SLEEPY_INT, SLEEPY_LONG}:
         return builder.mul(constant_minus_one, ir_val, name='neg_tmp')
-    self.raise_error('%r: Cannot apply unary operator %r to type %r' % (
-      self, self.op, val_type))
+    self.raise_error('Cannot apply unary operator %r to type %r' % (self.op, val_type))
 
   def __repr__(self):
     """
@@ -819,10 +818,10 @@ class VariableExpressionAst(ExpressionAst):
     :rtype: VariableSymbol
     """
     if self.var_identifier not in symbol_table:
-      self.raise_error('%r: Variable %r referenced before declaring' % (self, self.var_identifier))
+      self.raise_error('Variable %r referenced before declaring' % self.var_identifier)
     symbol = symbol_table[self.var_identifier]
     if not isinstance(symbol, VariableSymbol):
-      self.raise_error('%r: Cannot reference a non-variable %r' % (self, self.var_identifier))
+      self.raise_error('Cannot reference a non-variable %r' % self.var_identifier)
     return symbol
 
   def make_val_type(self, symbol_table):
@@ -868,10 +867,10 @@ class CallExpressionAst(ExpressionAst):
     :rtype: FunctionSymbol
     """
     if self.func_identifier not in symbol_table:
-      self.raise_error('%r: Cannot call function %r before its declaration' % (self, self.func_identifier))
+      self.raise_error('Cannot call function %r before its declaration' % self.func_identifier)
     symbol = symbol_table[self.func_identifier]
     if not isinstance(symbol, FunctionSymbol):
-      self.raise_error('%r: Cannot call non-function %r' % (self, self.func_identifier))
+      self.raise_error('Cannot call non-function %r' % self.func_identifier)
     return symbol
 
   def make_val_type(self, symbol_table):
