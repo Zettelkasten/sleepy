@@ -1,7 +1,7 @@
 from typing import Optional, Dict, List, Set, FrozenSet, Any
 
 from sleepy.grammar import EPSILON, ParseError, Production, AttributeGrammar, SyntaxTree, IGNORED_TOKEN, \
-  get_token_word_from_tokens_pos, make_default_attr_eval
+  get_token_word_from_tokens_pos, TreePosition
 
 
 def make_first1_sets(grammar):
@@ -259,6 +259,7 @@ class ParserGenerator:
     pos = 0
     state_stack = [self._initial_state]
     attr_eval_stack = []  # type: List[Dict[str, Any]]
+    start_pos_stack = []  # type: List[int]
     rev_analysis = []  # type: List[Production]
 
     while not accepted:
@@ -270,37 +271,39 @@ class ParserGenerator:
       if isinstance(action, _ShiftAction) and action.symbol == la:
         shifted_token = tokens[pos]
         shifted_token_word = get_token_word_from_tokens_pos(word, tokens_pos, pos)
-        default_attr_eval = make_default_attr_eval(word, tokens, tokens_pos, from_token_pos=pos, to_token_pos=pos + 1)
         pos += 1
         state_stack.append(self._state_goto_table[state][action.symbol])
-        attr_eval_stack.append(attr_grammar.get_terminal_syn_attr_eval(
-          shifted_token, shifted_token_word, default_attr_eval=default_attr_eval))
+        attr_eval_stack.append(attr_grammar.get_terminal_syn_attr_eval(shifted_token, shifted_token_word))
+        start_pos_stack.append(pos - 1)
       elif isinstance(action, _ReduceAction):
         right_attr_evals = attr_eval_stack[len(attr_eval_stack) - len(action.prod.right):]  # type: List[Dict[str, Any]]
+        if len(action.prod.right) > 0:
+          prod_start_pos = start_pos_stack[len(attr_eval_stack) - len(action.prod.right)]
+        else:
+          prod_start_pos = pos
         for i in range(len(action.prod.right)):
           state_stack.pop()
           attr_eval_stack.pop()
+          start_pos_stack.pop()
         assert len(right_attr_evals) == len(action.prod.right)
-        prod_start_pos = right_attr_evals[0]['_from_token_pos'] if len(action.prod.right) > 0 else pos
-        default_attr_eval = make_default_attr_eval(
-          word, tokens, tokens_pos, from_token_pos=prod_start_pos, to_token_pos=pos)
         state_stack.append(self._state_goto_table[state_stack[-1]][action.prod.left])
         attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(
-          action.prod, {}, right_attr_evals, default_attr_eval=default_attr_eval))
+          action.prod, {}, right_attr_evals, helper_values={'_pos': TreePosition(word, prod_start_pos, pos)}))
+        start_pos_stack.append(prod_start_pos)
         rev_analysis.append(action.prod)
       elif isinstance(action, _AcceptAction) and len(state_stack) == 2:
         assert state_stack[0] == self._initial_state
-        assert len(attr_eval_stack) == len(self._start_prod.right) == 1
+        assert len(attr_eval_stack) == len(start_pos_stack) == len(self._start_prod.right) == 1
         right_attr_evals = attr_eval_stack[-len(self._start_prod.right):]  # type: List[Dict[str, Any]]
+        prod_start_pos = start_pos_stack[-len(self._start_prod.right)]
         assert len(right_attr_evals) == len(self._start_prod.right)
-        prod_start_pos = right_attr_evals[0]['_from_token_pos']
-        default_attr_eval = make_default_attr_eval(
-          word, tokens, tokens_pos, from_token_pos=prod_start_pos, to_token_pos=pos)
         state_stack.clear()
         attr_eval_stack.clear()
+        start_pos_stack.clear()
         attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(
-          self._start_prod, {}, right_attr_evals, default_attr_eval=default_attr_eval))
+          self._start_prod, {}, right_attr_evals, helper_values={'_pos': TreePosition(word, prod_start_pos, pos)}))
         rev_analysis.append(self._start_prod)
+        start_pos_stack.append(prod_start_pos)
         accepted = True
       else:  # error
         possible_next_tokens = set(self._state_action_table[state].keys())
@@ -309,7 +312,7 @@ class ParserGenerator:
           'Unexpected %r token, expected: %s' % (la, ', '.join(['%r' % t for t in possible_next_tokens])))
 
     assert rev_analysis[-1] == self._start_prod
-    assert len(attr_eval_stack) == 1
+    assert len(attr_eval_stack) == len(start_pos_stack) == 1
     return tuple(reversed(rev_analysis)), attr_eval_stack[0]
 
   def parse_tree(self, word, tokens, tokens_pos):
