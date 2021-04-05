@@ -235,7 +235,7 @@ class AttributeGrammar:
         if callable(func):
           assert len(self._get_attr_func_arg_names(func)) == 1
         elif isinstance(func, str):
-          assert False, '%r for %r: terminal rules must not depend on other attributes' % (target, prod)
+          assert False, '%r for %r: terminal rules must not depend on other attributes' % (target, terminal)
         else:  # func is a constant
           pass
 
@@ -254,17 +254,20 @@ class AttributeGrammar:
     """
     return len(self.inh_attrs) == 0
 
-  def get_terminal_syn_attr_eval(self, terminal, word):
+  def get_terminal_syn_attr_eval(self, terminal, word, default_attr_eval=None):
     """
     :param str terminal: terminal
     :param str word:
+    :param dict[str,Any]|None default_attr_eval: default values for attr eval
     :rtype: dict[str,Any]
     """
     assert terminal in self.grammar.terminals
-    if terminal not in self.terminal_attr_rules:
-      return {}
+    if default_attr_eval is None:
+      default_attr_eval = {}
 
-    attr_eval = {}  # type: Dict[str, Any]
+    attr_eval = default_attr_eval.copy()  # type: Dict[str, Any]
+    if terminal not in self.terminal_attr_rules:
+      return attr_eval
     for attr_target, func in self.terminal_attr_rules[terminal].items():
       attr_name, attr_pos = self._split_attr_name_pos(attr_target)
       if attr_name not in self.syn_attrs:
@@ -278,7 +281,7 @@ class AttributeGrammar:
         attr_eval[attr_name] = func
     return attr_eval
 
-  def _eval_prod_attr(self, prod, eval_pos, eval_attrs, left_attr_eval, right_attr_evals):
+  def _eval_prod_attr(self, prod, eval_pos, eval_attrs, left_attr_eval, right_attr_evals, default_attr_eval):
     """
     Evaluate attr.pos for all attributes attr.
 
@@ -287,12 +290,15 @@ class AttributeGrammar:
     :param set[str] eval_attrs: which attributes to evaluate
     :param dict[str,Any] left_attr_eval: (partial) evaluation of production left
     :param list[dict[str,Any]] right_attr_evals: (partial) evaluations of production right sides
+    :param dict[str,Any]|None default_attr_eval: default values for attr eval
     :type: dict[str,Any]
     """
     assert prod in self.prod_attr_rules
     assert 0 <= eval_pos <= len(prod.right)
     assert all(attr in self.attrs for attr in eval_attrs)
     assert len(right_attr_evals) == len(prod.right)
+    if default_attr_eval is None:
+      default_attr_eval = {}
 
     def make_attr_getter(get_attr_name, rule_attr_target):
       """
@@ -321,7 +327,7 @@ class AttributeGrammar:
 
       return get
 
-    attr_eval = {}  # type: Dict[str, Any]
+    attr_eval = default_attr_eval.copy()  # type: Dict[str, Any]
     if eval_pos == 0:
       attr_eval.update(left_attr_eval)
     else:
@@ -362,19 +368,21 @@ class AttributeGrammar:
         attr_eval[attr_name] = func
     return attr_eval
 
-  def eval_prod_syn_attr(self, prod, left_attr_eval, right_attr_evals):
+  def eval_prod_syn_attr(self, prod, left_attr_eval, right_attr_evals, default_attr_eval=None):
     """
     Evaluates synthetic attributes bottom-up, i.e. computes value of syn.0.
 
     :param Production prod:
     :param dict[str,Any] left_attr_eval: (partial) evaluation of production left
     :param list[dict[str,Any]] right_attr_evals: evaluations of right side of production
+    :param dict[str,Any]|None default_attr_eval: default values for attr eval
     :rtype: dict[str,Any]
     """
     return self._eval_prod_attr(
-      prod, 0, eval_attrs=self.syn_attrs, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals)
+      prod, 0, eval_attrs=self.syn_attrs, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals,
+      default_attr_eval=default_attr_eval)
 
-  def eval_prod_inh_attr(self, prod, eval_pos, left_attr_eval, right_attr_evals):
+  def eval_prod_inh_attr(self, prod, eval_pos, left_attr_eval, right_attr_evals, default_attr_eval=None):
     """
     Evaluates inherited attributes top-down, i.e. computes value of inh.pos
 
@@ -382,10 +390,12 @@ class AttributeGrammar:
     :param int eval_pos:
     :param dict[str,Any] left_attr_eval: (partial) evaluation of production left
     :param list[dict[str,Any]] right_attr_evals: (partial) evaluations of right side of production
+    :param dict[str,Any]|None default_attr_eval: default values for attr eval
     :rtype: dict[str,Any]
     """
     return self._eval_prod_attr(
-      prod, eval_pos, eval_attrs=self.inh_attrs, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals)
+      prod, eval_pos, eval_attrs=self.inh_attrs, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals,
+      default_attr_eval=default_attr_eval)
 
   def copy_with_start(self, start):
     """
@@ -401,6 +411,25 @@ class AttributeGrammar:
       prod_attr_rules=self.prod_attr_rules.copy(),
       terminal_attr_rules=self.terminal_attr_rules.copy(),
       inh_attrs=self.inh_attrs.copy(), syn_attrs=self.syn_attrs.copy())
+
+
+def make_default_attr_eval(word, tokens, tokens_pos, from_token_pos, to_token_pos):
+  """
+  :param str word:
+  :param list[str] tokens:
+  :param list[int] tokens_pos:
+  :param int from_token_pos:
+  :param int to_token_pos:
+  :rtype: dict[str,Any]
+  """
+  assert len(tokens) == len(tokens_pos)
+  assert 0 <= from_token_pos <= to_token_pos <= len(tokens_pos)
+  from_pos = tokens_pos[from_token_pos] if from_token_pos < len(tokens_pos) else len(word)
+  to_pos = tokens_pos[to_token_pos] if to_token_pos < len(tokens_pos) else len(word)
+  assert from_pos <= to_pos
+  return {
+    '_from_token_pos': from_token_pos, '_to_token_pos': to_token_pos, '_tokens': tokens,
+    '_from_pos': from_pos, '_to_pos': to_pos, '_word': word}
 
 
 class SyntaxTree:
