@@ -26,13 +26,6 @@ def test_LexerGenerator_arithmetic():
   assert_equal(lexer.tokenize('si+3'), (('Name', 'Op', 'Lit'), (0, 2, 3)))
   assert_equal(lexer.tokenize('index4/2'), (('Name', 'Op', 'Lit'), (0, 6, 7)))
 
-def _strip_deleted_tokens(tokens, token_pos):
-  """
-  :param tuple[str] tokens:
-  :param tuple[int] token_pos:
-  :return: tokens + token_pos, but with
-  :rtype: tuple[tuple[str],tuple[int]]
-  """
 
 def test_LexerGenerator_deleted_tokens():
   lexer = LexerGenerator(
