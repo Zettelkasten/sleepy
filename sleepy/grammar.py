@@ -209,7 +209,8 @@ class AttributeGrammar:
           assert False
         if callable(func):
           func_arg_names = self._get_attr_func_arg_names(func)
-          assert all(from_attr_name in self.attrs for from_attr_name in func_arg_names), (
+          assert all(
+            from_attr_name in self.attrs or from_attr_name.startswith('_') for from_attr_name in func_arg_names), (
             '%r for %r: function arguments must be attributes, got %r but only have %r' %
             (target, prod, func_arg_names, self.attrs))
         elif isinstance(func, str):
