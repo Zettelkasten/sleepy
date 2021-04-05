@@ -482,6 +482,20 @@ class TreePosition:
     self.from_pos = from_pos
     self.to_pos = to_pos
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'TreePosition(from=%r, to=%r)' % (self.from_pos, self.to_pos)
+
+  def __eq__(self, other):
+    """
+    :rtype: bool
+    """
+    if not isinstance(other, TreePosition):
+      return False
+    return self.word == other.word and self.from_pos == other.from_pos and self.to_pos == other.to_pos
+
 
 def get_line_col_from_pos(word, error_pos, num_before_context_lines=1, num_after_context_lines=1):
   """
