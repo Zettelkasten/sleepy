@@ -1,7 +1,7 @@
 from typing import Optional, Dict, List, Set, FrozenSet, Any
 
 from sleepy.grammar import EPSILON, ParseError, Production, AttributeGrammar, SyntaxTree, IGNORED_TOKEN, \
-  get_token_word_from_tokens_pos
+  get_token_word_from_tokens_pos, make_default_attr_eval
 
 
 def make_first1_sets(grammar):
@@ -270,24 +270,36 @@ class ParserGenerator:
       if isinstance(action, _ShiftAction) and action.symbol == la:
         shifted_token = tokens[pos]
         shifted_token_word = get_token_word_from_tokens_pos(word, tokens_pos, pos)
+        default_attr_eval = make_default_attr_eval(word, tokens, tokens_pos, from_token_pos=pos, to_token_pos=pos + 1)
         pos += 1
         state_stack.append(self._state_goto_table[state][action.symbol])
-        attr_eval_stack.append(attr_grammar.get_terminal_syn_attr_eval(shifted_token, shifted_token_word))
+        attr_eval_stack.append(attr_grammar.get_terminal_syn_attr_eval(
+          shifted_token, shifted_token_word, default_attr_eval=default_attr_eval))
       elif isinstance(action, _ReduceAction):
         right_attr_evals = attr_eval_stack[len(attr_eval_stack) - len(action.prod.right):]  # type: List[Dict[str, Any]]
         for i in range(len(action.prod.right)):
           state_stack.pop()
           attr_eval_stack.pop()
+        assert len(right_attr_evals) == len(action.prod.right)
+        prod_start_pos = right_attr_evals[0]['_from_token_pos'] if len(action.prod.right) > 0 else pos
+        default_attr_eval = make_default_attr_eval(
+          word, tokens, tokens_pos, from_token_pos=prod_start_pos, to_token_pos=pos)
         state_stack.append(self._state_goto_table[state_stack[-1]][action.prod.left])
-        attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(action.prod, {}, right_attr_evals))
+        attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(
+          action.prod, {}, right_attr_evals, default_attr_eval=default_attr_eval))
         rev_analysis.append(action.prod)
       elif isinstance(action, _AcceptAction) and len(state_stack) == 2:
         assert state_stack[0] == self._initial_state
         assert len(attr_eval_stack) == len(self._start_prod.right) == 1
         right_attr_evals = attr_eval_stack[-len(self._start_prod.right):]  # type: List[Dict[str, Any]]
+        assert len(right_attr_evals) == len(self._start_prod.right)
+        prod_start_pos = right_attr_evals[0]['_from_token_pos']
+        default_attr_eval = make_default_attr_eval(
+          word, tokens, tokens_pos, from_token_pos=prod_start_pos, to_token_pos=pos)
         state_stack.clear()
         attr_eval_stack.clear()
-        attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(self._start_prod, {}, right_attr_evals))
+        attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(
+          self._start_prod, {}, right_attr_evals, default_attr_eval=default_attr_eval))
         rev_analysis.append(self._start_prod)
         accepted = True
       else:  # error

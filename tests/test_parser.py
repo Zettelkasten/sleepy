@@ -323,6 +323,9 @@ def test_ParserGenerator_arithmetic_syn():
     print('tokens:', tokens, 'with decomposition', tokens_pos)
     analysis, result = parser.parse_syn_attr_analysis(attr_g, word, tokens, tokens_pos)
     print('result:', result['res'])
+    assert result['_from_pos'] == result['_from_token_pos'] == 0
+    assert result['_to_pos'] == len(word)
+    assert result['_to_token_pos'] == len(tokens)
     # import common operator names for python eval()
     sin, cos, tan, exp, sqrt = math.sin, math.cos, math.tan, math.exp, math.sqrt  # noqa
     assert_equal(result['res'], eval(word))
@@ -437,7 +440,10 @@ def test_ParserGenerator_attr_syn():
   print('right analysis:', right_analysis)
   print('attribute eval (online):', attr_eval)
   assert_equal(right_analysis, (g.prods[0], g.prods[1], g.prods[2], g.prods[4], g.prods[4]))
-  assert_equal(attr_eval, {'res': 5 + 7})
+  assert_equal(
+    attr_eval, {
+      'res': 5 + 7, '_from_pos': 0, '_from_token_pos': 0, '_to_pos': len(word), '_to_token_pos': len(word),
+      '_word': word, '_tokens': tokens})
   tree = parser.parse_tree(word, tokens, tokens_pos)
   print('parse tree:', tree)
   assert_equal(
