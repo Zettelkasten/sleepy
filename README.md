@@ -1,5 +1,7 @@
 # Compiler for Sleepy Script
 
+![CI Badge](https://github.com/Zettelkasten/sleepy/actions/workflows/main.yml/badge.svg)
+
 This is a compiler written in Python for my experimental programming language Sleepy Script.
 
 To get started, clone the repository and run `nosetests` in the root directory.
