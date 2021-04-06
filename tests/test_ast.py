@@ -474,6 +474,19 @@ def test_define_variable_with_wrong_type():
       _test_compile_program(engine, program)
 
 
+def test_redefine_variable_with_function():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Int {
+      val = 5;
+      func val() -> Int { return 4; }
+      return val();
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 def test_shadow_func_name_with_var():
   with make_execution_engine() as engine:
     program = """
@@ -484,6 +497,26 @@ def test_shadow_func_name_with_var():
     """
     main = _test_compile_program(engine, program)
     assert_equal(main(), 4)
+
+
+def test_shadow_var_name_with_var_of_different_type():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Int {
+      Int val = 5;
+      func inner() -> Bool {
+        Bool val = True();
+        return val;
+      }
+      if inner() {
+        return val;
+      } else {
+        return 3;
+      }
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 5)
 
 
 if __name__ == "__main__":
