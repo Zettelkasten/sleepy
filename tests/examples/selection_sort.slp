@@ -42,16 +42,16 @@ func sort(DoublePtr array, Int size) {
   sort_i(array + -1, array, size);
 }
 
-func is_sorted(DoublePtr array, Int size) -> Double {
+func is_sorted(DoublePtr array, Int size) -> Bool {
   if size <= 1 {
-    return 1.0;
+    return True();
   }
   return and(load(array) <= load(array + 1), is_sorted(array + 1, size - 1));
 }
 
 func main() {
   size = 10;
-  arr = allocate(size);
+  DoublePtr arr = allocate(size);
   store(arr + 0, 5.0);
   store(arr + 1, 1.0);
   store(arr + 2, 4.0);
