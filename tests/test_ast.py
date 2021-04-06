@@ -451,6 +451,41 @@ def test_wrong_return_type_not_matching():
       _test_compile_program(engine, program)
 
 
+def test_redefine_variable_with_different_type():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      a = 3.0;
+      a = True();  # should fail.
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_define_variable_with_wrong_type():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      Bool a = 3.0;  # should fail.
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_shadow_func_name_with_var():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Int {
+      main = 4;  # should work!
+      return main;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 4)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
