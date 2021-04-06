@@ -9,7 +9,7 @@ from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar,
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_TYPES, SLEEPY_INT, \
-  SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR
+  SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -40,7 +40,7 @@ class AbstractSyntaxTree:
     """
     :param str func_identifier:
     :param list[ExpressionAst func_arg_exprs:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     """
     if func_identifier not in symbol_table:
       self.raise_error('Function %r called before declared' % func_identifier)
@@ -61,7 +61,7 @@ class AbstractSyntaxTree:
     :param str func_identifier:
     :param list[ExpressionAst] func_arg_exprs:
     :param IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
     if func_identifier not in symbol_table:
@@ -89,7 +89,7 @@ class StatementAst(AbstractSyntaxTree):
 
   def build_symbol_table(self, symbol_table, declared_variables):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :param list[str] declared_variables:
     """
     raise NotImplementedError()
@@ -98,7 +98,7 @@ class StatementAst(AbstractSyntaxTree):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
     raise NotImplementedError()
@@ -106,7 +106,7 @@ class StatementAst(AbstractSyntaxTree):
   def make_type(self, type_identifier, symbol_table):
     """
     :param str type_identifier:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: Type
     """
     # TODO: This function should be obsolete, instead just put the type names into the symbol table.
@@ -137,7 +137,7 @@ class TopLevelStatementAst(StatementAst):
 
   def build_symbol_table(self, symbol_table, declared_variables):
     """
-    :param dict[str, Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :param list[str] declared_variables:
     """
     pass
@@ -146,7 +146,7 @@ class TopLevelStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
     for expr in self.stmt_list:
@@ -155,12 +155,12 @@ class TopLevelStatementAst(StatementAst):
   def make_module_ir_and_symbol_table(self, module_name):
     """
     :param str module_name:
-    :rtype: (ir.Module,Dict[str, Symbol])
+    :rtype: (ir.Module,SymbolTable)
     """
     module = ir.Module(name=module_name)
     io_func_type = ir.FunctionType(ir.VoidType(), ())
     ir_io_func = ir.Function(module, io_func_type, name='io')
-    symbol_table = {}  # type: Dict[str, Symbol]
+    symbol_table = SymbolTable()
     declared_variables = []  # type: List[str]
     for stmt in self.stmt_list:
       stmt.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
@@ -212,7 +212,7 @@ class FunctionDeclarationAst(StatementAst):
 
   def make_arg_types(self, symbol_table):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: list[Type]
     """
     arg_types = [self.make_type(identifier, symbol_table=symbol_table) for identifier in self.arg_type_identifiers]
@@ -222,7 +222,7 @@ class FunctionDeclarationAst(StatementAst):
 
   def build_symbol_table(self, symbol_table, declared_variables):
     """
-    :param dict[str, Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :param list[str] declared_variables:
     """
     if self.identifier in symbol_table:
@@ -241,7 +241,7 @@ class FunctionDeclarationAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
     assert self.identifier in symbol_table
@@ -255,7 +255,7 @@ class FunctionDeclarationAst(StatementAst):
       block = symbol.ir_func.append_basic_block(name='entry')
       body_builder = ir.IRBuilder(block)
 
-      body_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
+      body_symbol_table = symbol_table.copy()  # type: SymbolTable
       body_declared_variables = []  # type: List[str]
       for arg_identifier, arg_type in zip(self.arg_identifiers, self.make_arg_types(symbol_table=symbol_table)):
         body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type)
@@ -309,7 +309,7 @@ class CallStatementAst(StatementAst):
 
   def build_symbol_table(self, symbol_table, declared_variables):
     """
-    :param dict[str, Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :param list[str] declared_variables:
     """
     # just verify that the argument types are correctly specified, but do not alter symbol_table
@@ -320,7 +320,7 @@ class CallStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
     self._make_func_call_ir(
@@ -350,7 +350,7 @@ class ReturnStatementAst(StatementAst):
 
   def build_symbol_table(self, symbol_table, declared_variables):
     """
-    :param dict[str, Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :param list[str] declared_variables:
     """
     # TODO: Check that the return type is correct.
@@ -361,7 +361,7 @@ class ReturnStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
     if len(self.return_exprs) == 1:
@@ -396,7 +396,7 @@ class AssignStatementAst(StatementAst):
 
   def build_symbol_table(self, symbol_table, declared_variables):
     """
-    :param dict[str, Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :param list[str] declared_variables:
     """
     if self.var_type_identifier is not None:
@@ -427,7 +427,7 @@ class AssignStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
     assert self.var_identifier in symbol_table
@@ -478,7 +478,7 @@ class IfStatementAst(StatementAst):
 
   def build_symbol_table(self, symbol_table, declared_variables):
     """
-    :param dict[str, Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :param list[str] declared_variables:
     """
     # TODO: Make this a separate scope.
@@ -494,7 +494,7 @@ class IfStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder|None
     """
     ir_cond = self.condition_val.make_ir_val(builder=builder, symbol_table=symbol_table)
@@ -503,8 +503,8 @@ class IfStatementAst(StatementAst):
     builder.cbranch(ir_cond, true_block, false_block)
     true_builder, false_builder = ir.IRBuilder(true_block), ir.IRBuilder(false_block)
 
-    true_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
-    false_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
+    true_symbol_table = symbol_table.copy()  # type: SymbolTable
+    false_symbol_table = symbol_table.copy()  # type: SymbolTable
 
     for expr in self.true_stmt_list:
       expr.build_expr_ir(module, builder=true_builder, symbol_table=true_symbol_table)
@@ -546,7 +546,7 @@ class WhileStatementAst(StatementAst):
 
   def build_symbol_table(self, symbol_table, declared_variables):
     """
-    :param dict[str, Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :param list[str] declared_variables:
     """
     # TODO: Make this a separate scope. Also see IfExpressionAst.
@@ -560,13 +560,13 @@ class WhileStatementAst(StatementAst):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder|None
     """
     def make_condition_ir(builder_, symbol_table_):
       """
       :param ir.IRBuilder builder_:
-      :param dict[str,Symbol] symbol_table_:
+      :param SymbolTable symbol_table_:
       :rtype: FCMPInstr
       """
       return self.condition_val.make_ir_val(builder=builder_, symbol_table=symbol_table_)
@@ -577,7 +577,7 @@ class WhileStatementAst(StatementAst):
     builder.cbranch(cond_ir, body_block, continue_block)
     body_builder = ir.IRBuilder(body_block)
 
-    body_symbol_table = symbol_table.copy()  # type: Dict[str, Symbol]
+    body_symbol_table = symbol_table.copy()  # type: SymbolTable
 
     for stmt in self.stmt_list:
       body_builder = stmt.build_expr_ir(module, builder=body_builder, symbol_table=body_symbol_table)
@@ -608,7 +608,7 @@ class ExpressionAst(AbstractSyntaxTree):
 
   def make_val_type(self, symbol_table):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: Type
     """
     raise NotImplementedError()
@@ -616,7 +616,7 @@ class ExpressionAst(AbstractSyntaxTree):
   def make_ir_val(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
     raise NotImplementedError()
@@ -646,7 +646,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
 
   def make_val_type(self, symbol_table):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: Type
     """
     left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
@@ -673,7 +673,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
   def make_ir_val(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
     left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
@@ -741,7 +741,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
 
   def make_val_type(self, symbol_table):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: Type
     """
     return self.expr.make_val_type(symbol_table=symbol_table)
@@ -749,7 +749,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
   def make_ir_val(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
     val_type = self.expr.make_val_type(symbol_table=symbol_table)
@@ -787,7 +787,7 @@ class ConstantExpressionAst(ExpressionAst):
 
   def make_val_type(self, symbol_table):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: Type
     """
     return self.constant_type
@@ -795,7 +795,7 @@ class ConstantExpressionAst(ExpressionAst):
   def make_ir_val(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
     return ir.Constant(self.constant_type.ir_type, self.constant_val)
@@ -821,7 +821,7 @@ class VariableExpressionAst(ExpressionAst):
 
   def get_var_symbol(self, symbol_table):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: VariableSymbol
     """
     if self.var_identifier not in symbol_table:
@@ -833,7 +833,7 @@ class VariableExpressionAst(ExpressionAst):
 
   def make_val_type(self, symbol_table):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: Type
     """
     return self.get_var_symbol(symbol_table=symbol_table).var_type
@@ -841,7 +841,7 @@ class VariableExpressionAst(ExpressionAst):
   def make_ir_val(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
     symbol = self.get_var_symbol(symbol_table=symbol_table)
@@ -870,7 +870,7 @@ class CallExpressionAst(ExpressionAst):
 
   def get_func_symbol(self, symbol_table):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: FunctionSymbol
     """
     if self.func_identifier not in symbol_table:
@@ -882,7 +882,7 @@ class CallExpressionAst(ExpressionAst):
 
   def make_val_type(self, symbol_table):
     """
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: Type
     """
     self._check_func_call_symbol_table(
@@ -892,7 +892,7 @@ class CallExpressionAst(ExpressionAst):
   def make_ir_val(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
-    :param dict[str,Symbol] symbol_table:
+    :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
     return self._make_func_call_ir(

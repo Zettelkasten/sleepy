@@ -14,7 +14,7 @@ from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnState
   add_preamble_to_ast
 from sleepy.grammar import TreePosition
 from sleepy.jit import make_execution_engine, compile_ir
-from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, Symbol
+from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, Symbol, SymbolTable
 
 
 def _test_parse_ast(program):
@@ -70,7 +70,7 @@ def _get_py_func_from_ast(engine, ast):
 
   assert isinstance(ast, FunctionDeclarationAst)
   module = ir.Module(name='_test_last_declared_func')
-  symbol_table = {}  # type: Dict[str, Symbol]
+  symbol_table = SymbolTable()  # type: SymbolTable
   declared_variables = []  # type: List[str]
   ast.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
   ast.build_expr_ir(module=module, builder=None, symbol_table=symbol_table)

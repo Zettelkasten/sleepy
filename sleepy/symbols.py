@@ -6,8 +6,6 @@ from typing import Dict
 
 from llvmlite import ir
 
-from sleepy.grammar import SemanticError
-
 
 class Symbol:
   """
@@ -144,3 +142,45 @@ class FunctionSymbol(Symbol):
     :rtype:
     """
     return (self.return_type.c_type,) + tuple(arg_type.c_type for arg_type in self.arg_types)
+
+
+class SymbolTable:
+  """
+  Basically a dict mapping identifier names to symbols.
+  Also contains information about the current scope.
+  """
+  def __init__(self, copy_from=None):
+    """
+    :param SymbolTable|None copy_from:
+    """
+    if copy_from is None:
+      self.symbols = {}  # type: Dict[str, Symbol]
+    else:
+      self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
+
+  def __setitem__(self, identifier, symbol):
+    """
+    :param str identifier:
+    :param Symbol symbol:
+    """
+    self.symbols[identifier] = symbol
+
+  def __getitem__(self, identifier):
+    """
+    :param str identifier:
+    :rtype: Symbol
+    """
+    return self.symbols[identifier]
+
+  def __contains__(self, identifier):
+    """
+    :param str identifier:
+    :rtype: bool
+    """
+    return identifier in self.symbols
+
+  def copy(self):
+    """
+    :rtype: SymbolTable
+    """
+    return SymbolTable(self)
