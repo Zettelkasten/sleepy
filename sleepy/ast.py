@@ -36,10 +36,30 @@ class AbstractSyntaxTree:
     """
     raise SemanticError(self.pos.word, self.pos.from_pos, self.pos.to_pos, message)
 
-  def _make_func_call_ir(self, func_identifier, func_arg_vals, builder, symbol_table):
+  def _check_func_call_symbol_table(self, func_identifier, func_arg_exprs, symbol_table):
     """
     :param str func_identifier:
-    :param list[ExpressionAst] func_arg_vals:
+    :param list[ExpressionAst func_arg_exprs:
+    :param dict[str,Symbol] symbol_table:
+    """
+    if func_identifier not in symbol_table:
+      self.raise_error('Function %r called before declared' % func_identifier)
+    symbol = symbol_table[func_identifier]
+    if not isinstance(symbol, FunctionSymbol):
+      self.raise_error('Cannot call non-function %r' % func_identifier)
+    if len(func_arg_exprs) != len(symbol.arg_identifiers):
+      self.raise_error('Cannot call function %r with %r arguments, expected %r arguments %r' % (
+        func_identifier, len(func_arg_exprs), len(symbol.arg_identifiers), symbol.arg_identifiers))
+    called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+    for arg_identifier, called_type, declared_type in zip(symbol.arg_identifiers, called_types, symbol.arg_types):
+      if called_type != declared_type:
+        self.raise_error('Cannot call function %r with parameter %r of type %r, expected %r' % (
+          func_identifier, arg_identifier, called_type, declared_type))
+
+  def _make_func_call_ir(self, func_identifier, func_arg_exprs, builder, symbol_table):
+    """
+    :param str func_identifier:
+    :param list[ExpressionAst] func_arg_exprs:
     :param IRBuilder builder:
     :param dict[str,Symbol] symbol_table:
     :rtype: ir.values.Value
@@ -50,10 +70,10 @@ class AbstractSyntaxTree:
     if not isinstance(func_symbol, FunctionSymbol):
       self.raise_error('Referenced name %r is not a function, but a %r' % (func_identifier, type(func_symbol)))
     ir_func = func_symbol.ir_func
-    if not len(ir_func.args) == len(func_arg_vals):
+    if not len(ir_func.args) == len(func_arg_exprs):
       self.raise_error('Function %r called with %r arguments %r, but expected %r arguments %r' % (
-        func_identifier, len(func_arg_vals), func_arg_vals, len(ir_func.args), ir_func.args))
-    ir_func_args = [val.make_ir_val(builder=builder, symbol_table=symbol_table) for val in func_arg_vals]
+        func_identifier, len(func_arg_exprs), func_arg_exprs, len(ir_func.args), ir_func.args))
+    ir_func_args = [val.make_ir_val(builder=builder, symbol_table=symbol_table) for val in func_arg_exprs]
     return builder.call(ir_func, ir_func_args, name='call')
 
 
@@ -293,19 +313,8 @@ class CallStatementAst(StatementAst):
     :param list[str] declared_variables:
     """
     # just verify that the argument types are correctly specified, but do not alter symbol_table
-    if self.func_identifier not in symbol_table:
-      self.raise_error('Function %r called before declared' % self.func_identifier)
-    symbol = symbol_table[self.func_identifier]
-    if not isinstance(symbol, FunctionSymbol):
-      self.raise_error('Cannot call non-function %r' % self.func_identifier)
-    if len(self.func_arg_exprs) != len(symbol.arg_identifiers):
-      self.raise_error('Cannot call function %r with %r arguments, expected %r arguments %r' % (
-        self.func_identifier, len(self.func_arg_exprs), len(symbol.arg_identifiers), symbol.arg_identifiers))
-    called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in self.func_arg_exprs]
-    for arg_identifier, called_type, declared_type in zip(symbol.arg_identifiers, called_types, symbol.arg_types):
-      if called_type != declared_type:
-        self.raise_error('Cannot call function %r with parameter %r of type %r, expected %r' % (
-          self.func_identifier, arg_identifier, called_type, declared_type))
+    self._check_func_call_symbol_table(
+      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -315,7 +324,7 @@ class CallStatementAst(StatementAst):
     :rtype: ir.IRBuilder
     """
     self._make_func_call_ir(
-      func_identifier=self.func_identifier, func_arg_vals=self.func_arg_exprs, builder=builder,
+      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, builder=builder,
       symbol_table=symbol_table)
     return builder
 
@@ -849,15 +858,15 @@ class CallExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> identifier ( ExprList )
   """
-  def __init__(self, pos, func_identifier, func_arg_vals):
+  def __init__(self, pos, func_identifier, func_arg_exprs):
     """
     :param TreePosition pos:
     :param str func_identifier:
-    :param list[ExpressionAst] func_arg_vals:
+    :param list[ExpressionAst] func_arg_exprs:
     """
     super().__init__(pos)
     self.func_identifier = func_identifier
-    self.func_arg_vals = func_arg_vals
+    self.func_arg_exprs = func_arg_exprs
 
   def get_func_symbol(self, symbol_table):
     """
@@ -876,6 +885,8 @@ class CallExpressionAst(ExpressionAst):
     :param dict[str,Symbol] symbol_table:
     :rtype: Type
     """
+    self._check_func_call_symbol_table(
+      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
     return self.get_func_symbol(symbol_table=symbol_table).return_type
 
   def make_ir_val(self, builder, symbol_table):
@@ -885,14 +896,14 @@ class CallExpressionAst(ExpressionAst):
     :rtype: ir.values.Value
     """
     return self._make_func_call_ir(
-      func_identifier=self.func_identifier, func_arg_vals=self.func_arg_vals, builder=builder,
+      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, builder=builder,
       symbol_table=symbol_table)
 
   def __repr__(self):
     """
     :rtype: str
     """
-    return 'CallExpressionAst(func_identifier=%r, func_arg_vals=%r)' % (self.func_identifier, self.func_arg_vals)
+    return 'CallExpressionAst(func_identifier=%r, func_arg_exprs=%r)' % (self.func_identifier, self.func_arg_exprs)
 
 
 def parse_char(value):
