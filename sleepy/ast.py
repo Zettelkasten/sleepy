@@ -256,6 +256,7 @@ class FunctionDeclarationAst(StatementAst):
       body_builder = ir.IRBuilder(block)
 
       body_symbol_table = symbol_table.copy()  # type: SymbolTable
+      body_symbol_table.current_func = symbol
       body_declared_variables = []  # type: List[str]
       for arg_identifier, arg_type in zip(self.arg_identifiers, self.make_arg_types(symbol_table=symbol_table)):
         body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type)
@@ -353,9 +354,23 @@ class ReturnStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :param list[str] declared_variables:
     """
-    # TODO: Check that the return type is correct.
-    # TODO: Infer return type if not specified.
-    pass
+    # Check that return typ matches.
+    if symbol_table.current_func is None:
+      self.raise_error('Can only use return inside a function declaration')
+    if len(self.return_exprs) == 1:
+      return_val_type = self.return_exprs[0].make_val_type(symbol_table=symbol_table)
+      if return_val_type != symbol_table.current_func.return_type:
+        if symbol_table.current_func.return_type == SLEEPY_VOID:
+          self.raise_error('Function declared to return void, but return value is of type %r' % (
+            return_val_type))
+        else:
+          self.raise_error('Function declared to return type %r, but return value is of type %r' % (
+            return_val_type, symbol_table.current_func.return_type))
+    else:
+      assert len(self.return_exprs) == 0
+      if symbol_table.current_func.return_type != SLEEPY_VOID:
+        self.raise_error('Function declared to return a value of type %r, but returned void' % (
+          symbol_table.current_func.return_type))
 
   def build_expr_ir(self, module, builder, symbol_table):
     """

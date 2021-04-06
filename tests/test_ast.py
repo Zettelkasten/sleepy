@@ -6,13 +6,13 @@ import sys
 import unittest
 
 from llvmlite import ir
-from nose.tools import assert_equal, assert_almost_equal
+from nose.tools import assert_equal, assert_almost_equal, assert_raises
 from ctypes import CFUNCTYPE, c_double
 
 from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnStatementAst, \
   BinaryOperatorExpressionAst, ConstantExpressionAst, VariableExpressionAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
   add_preamble_to_ast
-from sleepy.grammar import TreePosition
+from sleepy.grammar import TreePosition, SemanticError
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, Symbol, SymbolTable
 
@@ -416,6 +416,40 @@ def test_types_simple():
     """
     main = _test_compile_program(engine, program)
     main()
+
+
+def test_wrong_return_type_should_be_void():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      return 6;
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_wrong_return_type_should_not_be_void():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Double {
+      return;
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_wrong_return_type_not_matching():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Double {
+      return True();
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
 
 if __name__ == "__main__":
   try:
