@@ -9,7 +9,7 @@ from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar,
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_TYPES, SLEEPY_INT, \
-  SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL
+  SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -1001,7 +1001,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': 'ast.1'},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_DOUBLE)},
-    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_DOUBLE)},  # TODO: actually should be SLEEPY_CHAR  # noqa
+    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_CHAR)},
     {'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
     {'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
     {'ast': 'ast.2'},
@@ -1031,7 +1031,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'identifier': {'identifier': lambda value: value},
     'int': {'number': lambda value: int(value)},
     'double': {'number': lambda value: float(value)},
-    'char': {'number': lambda value: float(ord(parse_char(value)))}
+    'char': {'number': lambda value: ord(parse_char(value))}
   }
 )
 SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
@@ -1057,7 +1057,7 @@ def make_preamble_ast():
   :rtype: TopLevelStatementAst
   """
   preamble_program = """\
-  extern_func print_char(Double char);
+  extern_func print_char(Char char);
   extern_func print_double(Double d);
   extern_func print_int(Int i);
   extern_func allocate(Int size) -> DoublePtr;

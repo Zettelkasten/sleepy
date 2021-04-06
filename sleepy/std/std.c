@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <signal.h>
 
-void print_char(double c) {
-    printf("%c", (char) c);
+void print_char(char c) {
+    putc(c, stdout);
 }
 
 void print_double(double d) {
