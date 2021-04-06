@@ -9,7 +9,7 @@ from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar,
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_TYPES, SLEEPY_INT, \
-  SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR
+  SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -475,6 +475,9 @@ class IfStatementAst(StatementAst):
     # TODO: Make this a separate scope.
     # It is probably easiest to add this by making every scope it's own Statement (essentially a Statement list),
     # and then not having true/false_stmt_list but just a single statement.
+    cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
+    if not cond_type == SLEEPY_BOOL:
+      self.raise_error('Condition use expression of type %r as if-condition' % cond_type)
     for stmt in self.true_stmt_list + self.false_stmt_list:
       stmt.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
 
@@ -485,12 +488,7 @@ class IfStatementAst(StatementAst):
     :param dict[str,Symbol] symbol_table:
     :rtype: ir.IRBuilder|None
     """
-    cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
-    assert cond_type == SLEEPY_DOUBLE, 'not implemented yet'
     ir_cond = self.condition_val.make_ir_val(builder=builder, symbol_table=symbol_table)
-    constant_one = ir.Constant(ir.DoubleType(), 0.0)
-    ir_cond = builder.fcmp_ordered('!=', ir_cond, constant_one, 'ifcond')
-
     true_block = builder.append_basic_block('true_branch')  # type: ir.Block
     false_block = builder.append_basic_block('false_branch')  # type: ir.Block
     builder.cbranch(ir_cond, true_block, false_block)
@@ -543,6 +541,9 @@ class WhileStatementAst(StatementAst):
     :param list[str] declared_variables:
     """
     # TODO: Make this a separate scope. Also see IfExpressionAst.
+    cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
+    if not cond_type == SLEEPY_BOOL:
+      self.raise_error('Condition use expression of type %r as while-condition' % cond_type)
     for stmt in self.stmt_list:
       stmt.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
 
@@ -559,9 +560,7 @@ class WhileStatementAst(StatementAst):
       :param dict[str,Symbol] symbol_table_:
       :rtype: FCMPInstr
       """
-      # TODO: Add type checking for loop variable
-      cond_ir = self.condition_val.make_ir_val(builder=builder_, symbol_table=symbol_table_)
-      return builder_.fcmp_ordered('!=', cond_ir, ir.Constant(ir.DoubleType(), 0.0), 'whilecond')
+      return self.condition_val.make_ir_val(builder=builder_, symbol_table=symbol_table_)
 
     cond_ir = make_condition_ir(builder_=builder, symbol_table_=symbol_table)
     body_block = builder.append_basic_block('while_body')  # type: ir.Block
@@ -650,7 +649,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
         if self.op not in {'==', '!=', '<', '>', '<=', '>', '>='}:
           self.raise_error('Cannot apply binary operator %r on types %r and %r' % (
             self.op, left_type, right_type))
-        return SLEEPY_DOUBLE  # TODO: actually a bool.
+        return SLEEPY_BOOL
       self.raise_error('Cannot apply binary operator %r on types %r and %r' % (
         self.op, left_type, right_type))
     if left_type != right_type:
@@ -659,8 +658,8 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     if self.op in {'*', '/', '+', '-'}:
       return left_type
     if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
-      return SLEEPY_DOUBLE  # TODO: actually a bool.
-    assert False, 'unknown op %r' % self.op
+      return SLEEPY_BOOL
+    self.raise_error('Unknown binary operator %r' % self.op)
 
   def make_ir_val(self, builder, symbol_table):
     """
@@ -702,11 +701,10 @@ class BinaryOperatorExpressionAst(ExpressionAst):
         {SLEEPY_DOUBLE: builder.fsub, SLEEPY_INT: builder.sub, SLEEPY_LONG: builder.mul}, instr_name='sub_tmp')
     if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
       from functools import partial
-      ir_bool = make_op({
+      return make_op({
         SLEEPY_DOUBLE: partial(builder.fcmp_ordered, self.op), SLEEPY_INT: partial(builder.icmp_signed, self.op),
         SLEEPY_LONG: partial(builder.icmp_signed, self.op), SLEEPY_DOUBLE_PTR: partial(builder.icmp_unsigned, self.op)},
         instr_name='cmp_tmp')
-      return builder.uitofp(ir_bool, ir.DoubleType(), name='cmp_cast')
     assert False, 'Operator %s not handled!' % self.op
 
   def __repr__(self):
@@ -1055,10 +1053,12 @@ def make_preamble_ast():
   extern_func deallocate(DoublePtr ptr);
   extern_func load(DoublePtr ptr) -> Double;
   extern_func store(DoublePtr prt, Double value);
-  extern_func assert(Double condition);
-  func or(Double a, Double b) -> Double { if a { return a; } else { return b; } }
-  func and(Double a, Double b) -> Double { if a { return b; } else { return 0.0; } }
-  func not(Double a) -> Double { if (a) { return 0.0; } else { return 1.0; } }
+  extern_func assert(Bool condition);
+  func True() -> Bool { return 0 == 0; }
+  func False() -> Bool { return 0 != 0; }
+  func or(Bool a, Bool b) -> Bool { if a { return a; } else { return b; } }
+  func and(Bool a, Bool b) -> Bool { if a { return b; } else { return False(); } }
+  func not(Bool a) -> Bool { if (a) { return False(); } else { return True(); } }
   """
   return make_program_ast(preamble_program, add_preamble=False)
 

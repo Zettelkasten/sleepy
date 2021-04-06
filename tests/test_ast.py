@@ -251,7 +251,7 @@ def test_nested_func_call():
 def test_simple_if():
   with make_execution_engine() as engine:
     program = """
-    func branch(Double cond, Double true_val, Double false_val) -> Double {
+    func branch(Bool cond, Double true_val, Double false_val) -> Double {
       if cond {
         return true_val;
       } else {

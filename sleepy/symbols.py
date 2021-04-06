@@ -51,6 +51,14 @@ class DoubleType(Type):
     super().__init__(ir.DoubleType(), ctypes.c_double)
 
 
+class BoolType(Type):
+  """
+  A 1-bit integer.
+  """
+  def __init__(self):
+    super().__init__(ir.IntType(bits=1), ctypes.c_bool)
+
+
 class IntType(Type):
   """
   An 32-bit integer.
@@ -85,14 +93,15 @@ class DoublePtrType(Type):
 
 SLEEPY_VOID = VoidType()
 SLEEPY_DOUBLE = DoubleType()
+SLEEPY_BOOL = BoolType()
 SLEEPY_INT = IntType()
 SLEEPY_LONG = LongType()
 SLEEPY_CHAR = CharType()
 SLEEPY_DOUBLE_PTR = DoublePtrType()
 
 SLEEPY_TYPES = {
-  'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR,
-  'DoublePtr': SLEEPY_DOUBLE_PTR}
+  'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG,
+  'Char': SLEEPY_CHAR, 'DoublePtr': SLEEPY_DOUBLE_PTR}
 SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG}
 
 

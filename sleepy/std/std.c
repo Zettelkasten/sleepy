@@ -14,12 +14,11 @@ void print_int(int i) {
     printf("%d", i);
 }
 
-double assert(double property) {
-    if (property != 1.0) {
+void assert(_Bool property) {
+    if (!property) {
         printf("Assertion failed!\n");
         raise(SIGABRT);
     }
-    return 0;
 }
 
 double* allocate(int size) {
