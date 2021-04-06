@@ -227,7 +227,7 @@ def test_simple_mutable_assign():
 
 
 def test_nested_func_call():
-  import numpy
+  import numpy, warnings
   with make_execution_engine() as engine:
     program = """
     func ball_volume(Double radius) -> Double {
@@ -242,10 +242,12 @@ def test_nested_func_call():
     }
     """
     main = _test_compile_program(engine, program)
-    for radius1 in [0.0, 2.0, 3.0, 124.343]:
-      for radius2 in [0.0, 2.0, 3.0, 124.343]:
-        volume1, volume2 = 4.0 / 3.0 * 3.1415 * radius1 ** 3.0, 4.0 / 3.0 * 3.1415 * radius2 ** 3.0
-        numpy.testing.assert_almost_equal(main(radius1, radius2), numpy.divide(volume1, volume2))
+    with warnings.catch_warnings():
+      warnings.filterwarnings('ignore')
+      for radius1 in [0.0, 2.0, 3.0, 124.343]:
+        for radius2 in [0.0, 2.0, 3.0, 124.343]:
+          volume1, volume2 = 4.0 / 3.0 * 3.1415 * radius1 ** 3.0, 4.0 / 3.0 * 3.1415 * radius2 ** 3.0
+          numpy.testing.assert_almost_equal(main(radius1, radius2), numpy.divide(volume1, volume2))
 
 
 def test_simple_if():
