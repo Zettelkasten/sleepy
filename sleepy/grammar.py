@@ -562,7 +562,7 @@ def make_error_message(word, from_pos, error_name, message, to_pos=None):
   return '%s on line %s:%s\n\n' % (error_name, line, from_col) + '\n'.join([
     ('%0' + str(line_num_pad_size) + 'i: %s%s') % (
       context_line_num, context_line,
-      ('\n' + (' ' * (from_col - 1 + line_num_pad_size + 2)) + '^' * (to_col - from_col))
+      ('\n' + (' ' * (from_col - 1 + line_num_pad_size + 2)) + '^' * max(1, to_col - from_col))
       if context_line_num == line else '')
     for context_line_num, context_line in context_lines.items()]
   ) + '\n\n' + message
