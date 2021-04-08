@@ -248,8 +248,7 @@ class FunctionDeclarationAst(StatementAst):
     assert self.identifier in symbol_table
     symbol = symbol_table[self.identifier]
     assert isinstance(symbol, FunctionSymbol)
-    ir_func_type = ir.FunctionType(
-      symbol.return_type.ir_type, [arg_type.ir_type for arg_type in symbol.arg_types])
+    ir_func_type = symbol.make_ir_function_type()
     symbol.ir_func = ir.Function(module, ir_func_type, name=self.identifier)
 
     if not self.is_extern:
@@ -414,10 +413,13 @@ class StructDeclarationAst(StatementAst):
     if self.struct_identifier in symbol_table.current_scope_identifiers:
       self.raise_error('Cannot refined struct with name %r' % self.struct_identifier)
     body_symbol_table = symbol_table.copy()
-    for stmt in self.stmt_list:
+    for member_num, stmt in enumerate(self.stmt_list):
       if not isinstance(stmt, AssignStatementAst):
         stmt.raise_error('Can only use declare statements within a struct declaration')
       stmt.build_symbol_table(symbol_table=body_symbol_table)
+      if len(body_symbol_table.current_scope_identifiers) != member_num + 1:
+        stmt.raise_error('Cannot declare member %r multiple times in struct declaration' % stmt.var_identifier)
+    assert len(body_symbol_table.current_scope_identifiers) == len(self.stmt_list)
     member_identifiers = []
     member_types = []
     for declared_identifier in body_symbol_table.current_scope_identifiers:
@@ -426,11 +428,35 @@ class StructDeclarationAst(StatementAst):
       assert isinstance(declared_symbol, VariableSymbol)
       member_identifiers.append(declared_identifier)
       member_types.append(declared_symbol.var_type)
-    assert len(member_identifiers) == len(member_types)
+    assert len(member_identifiers) == len(member_types) == len(self.stmt_list)
 
     struct_type = StructType(self.struct_identifier, member_identifiers, member_types)
-    symbol_table[self.struct_identifier] = TypeSymbol(struct_type)
+    # ir_func will be set in build_expr_ir
+    constructor = FunctionSymbol(ir_func=None, arg_identifiers=[], arg_types=[], return_type=struct_type)
+    symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
+
+  def _make_constructor_body_ir(self, constructor, symbol_table):
+    """
+    :param constructor: FunctionSymbol
+    :param SymbolTable symbol_table:
+    """
+    # TODO: populate the member variables of the struct
+    constructor_symbol_table = symbol_table.copy()
+    constructor_block = constructor.ir_func.append_basic_block(name='entry')
+    constructor_builder = ir.IRBuilder(constructor_block)
+
+    self_ir_alloca = constructor_builder.alloca(constructor.return_type.ir_type, name='self')
+    for member_num, stmt in enumerate(self.stmt_list):
+      assert isinstance(stmt, AssignStatementAst)
+      member_identifier = stmt.var_identifier
+      ir_val = stmt.var_val.make_ir_val(builder=constructor_builder, symbol_table=constructor_symbol_table)
+      gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
+      member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, '%s_ptr' % member_identifier)
+      constructor_builder.store(ir_val, member_ptr)
+
+    constructor_builder.ret(constructor_builder.load(self_ir_alloca, 'self'))
+    assert constructor_block.is_terminated
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -439,6 +465,15 @@ class StructDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
+    assert self.struct_identifier in symbol_table
+    struct_symbol = symbol_table[self.struct_identifier]
+    assert isinstance(struct_symbol, TypeSymbol)
+    constructor = struct_symbol.constructor_symbol
+    assert constructor is not None
+    assert struct_symbol.type == constructor.return_type
+    ir_func_type = constructor.make_ir_function_type()
+    constructor.ir_func = ir.Function(module, ir_func_type, name='construct_%s' % self.struct_identifier)
+    self._make_constructor_body_ir(constructor, symbol_table=symbol_table)
     return builder
 
   def __repr__(self):

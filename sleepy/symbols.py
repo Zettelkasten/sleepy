@@ -162,16 +162,24 @@ class FunctionSymbol(Symbol):
     """
     return (self.return_type.c_type,) + tuple(arg_type.c_type for arg_type in self.arg_types)
 
+  def make_ir_function_type(self):
+    """
+    :rtype: ir.FunctionType
+    """
+    return ir.FunctionType(self.return_type.ir_type, [arg_type.ir_type for arg_type in self.arg_types])
+
 
 class TypeSymbol(Symbol):
   """
   A (statically) declared type.
   """
-  def __init__(self, type):
+  def __init__(self, type, constructor_symbol):
     """
     :param Type type:
+    :param FunctionSymbol|None constructor_symbol:
     """
     self.type = type
+    self.constructor_symbol = constructor_symbol
 
 
 class SymbolTable:
@@ -226,5 +234,5 @@ def make_initial_symbol_table():
   symbol_table = SymbolTable()
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table
-    symbol_table[type_identifier] = TypeSymbol(inbuilt_type)
+    symbol_table[type_identifier] = TypeSymbol(inbuilt_type, constructor_symbol=None)
   return symbol_table

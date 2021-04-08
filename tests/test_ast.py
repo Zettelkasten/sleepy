@@ -528,6 +528,7 @@ def test_simple_structs():
         Int x = 0;
         Int y = 0;
       }
+      # IntPair x = IntPair();
     }
     """
     main = _test_compile_program(engine, program)
