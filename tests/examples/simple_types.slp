@@ -8,4 +8,9 @@ func main() {
   print_double(sum);
   print_char('\n');
   int_calc = my_int * 34;
+
+  struct IntPair {
+    Int left = 0;
+    Int right = 0;
+   }
 }
