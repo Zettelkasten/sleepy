@@ -71,7 +71,7 @@ def _get_py_func_from_ast(engine, ast):
   module = ir.Module(name='_test_last_declared_func')
   symbol_table = make_initial_symbol_table()  # type: SymbolTable
   declared_variables = []  # type: List[str]
-  ast.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
+  ast.build_symbol_table(symbol_table=symbol_table)
   ast.build_expr_ir(module=module, builder=None, symbol_table=symbol_table)
   assert ast.identifier in symbol_table
   compile_ir(engine, module)

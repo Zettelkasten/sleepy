@@ -88,10 +88,9 @@ class StatementAst(AbstractSyntaxTree):
     """
     super().__init__(pos)
 
-  def build_symbol_table(self, symbol_table, declared_variables):
+  def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
-    :param list[str] declared_variables:
     """
     raise NotImplementedError()
 
@@ -136,10 +135,9 @@ class TopLevelStatementAst(StatementAst):
     super().__init__(pos)
     self.stmt_list = stmt_list
 
-  def build_symbol_table(self, symbol_table, declared_variables):
+  def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
-    :param list[str] declared_variables:
     """
     pass
 
@@ -162,10 +160,13 @@ class TopLevelStatementAst(StatementAst):
     io_func_type = ir.FunctionType(ir.VoidType(), ())
     ir_io_func = ir.Function(module, io_func_type, name='io')
     symbol_table = make_initial_symbol_table()
-    declared_variables = []  # type: List[str]
     for stmt in self.stmt_list:
-      stmt.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
-    assert len(declared_variables) == 0, 'top-level variables current not implemented'
+      stmt.build_symbol_table(symbol_table=symbol_table)
+    for scope_symbol_identifier in symbol_table.current_scope_identifiers:
+      assert scope_symbol_identifier in symbol_table
+      scope_symbol = symbol_table[scope_symbol_identifier]
+      if isinstance(scope_symbol, VariableSymbol):
+        self.raise_error('Defining top-level variables is not supported')
 
     block = ir_io_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
@@ -221,10 +222,9 @@ class FunctionDeclarationAst(StatementAst):
       self.raise_error('need to specify all parameter types of function %r' % self.identifier)
     return arg_types
 
-  def build_symbol_table(self, symbol_table, declared_variables):
+  def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
-    :param list[str] declared_variables:
     """
     if self.identifier in symbol_table:
       self.raise_error('Cannot redefine function with name %r' % self.identifier)
@@ -258,17 +258,18 @@ class FunctionDeclarationAst(StatementAst):
 
       body_symbol_table = symbol_table.copy()  # type: SymbolTable
       body_symbol_table.current_func = symbol
-      body_declared_variables = []  # type: List[str]
+      body_symbol_table.current_scope_identifiers = []
       for arg_identifier, arg_type in zip(self.arg_identifiers, self.make_arg_types(symbol_table=symbol_table)):
         body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type)
-        body_declared_variables.append(arg_identifier)
+        body_symbol_table.current_scope_identifiers.append(arg_identifier)
       for stmt in self.stmt_list:
-        stmt.build_symbol_table(symbol_table=body_symbol_table, declared_variables=body_declared_variables)
+        stmt.build_symbol_table(symbol_table=body_symbol_table)
 
-      for identifier_name in body_declared_variables:
+      for identifier_name in body_symbol_table.current_scope_identifiers:
         assert identifier_name in body_symbol_table
         var_symbol = body_symbol_table[identifier_name]
-        assert isinstance(var_symbol, VariableSymbol)
+        if not isinstance(var_symbol, VariableSymbol):
+          continue
         var_symbol.ir_alloca = body_builder.alloca(var_symbol.var_type.ir_type, name=identifier_name)
 
       for arg_identifier, ir_arg in zip(self.arg_identifiers, symbol.ir_func.args):
@@ -309,10 +310,9 @@ class CallStatementAst(StatementAst):
     self.func_identifier = func_identifier
     self.func_arg_exprs = func_arg_exprs
 
-  def build_symbol_table(self, symbol_table, declared_variables):
+  def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
-    :param list[str] declared_variables:
     """
     # just verify that the argument types are correctly specified, but do not alter symbol_table
     self._check_func_call_symbol_table(
@@ -350,10 +350,9 @@ class ReturnStatementAst(StatementAst):
     self.return_exprs = return_exprs
     assert len(return_exprs) <= 1, 'returning of multiple values is not support yet'
 
-  def build_symbol_table(self, symbol_table, declared_variables):
+  def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
-    :param list[str] declared_variables:
     """
     # Check that return typ matches.
     if symbol_table.current_func is None:
@@ -410,10 +409,9 @@ class AssignStatementAst(StatementAst):
     self.var_val = var_val
     self.var_type_identifier = var_type_identifier
 
-  def build_symbol_table(self, symbol_table, declared_variables):
+  def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
-    :param list[str] declared_variables:
     """
     if self.var_type_identifier is not None:
       declared_type = self.make_type(self.var_type_identifier, symbol_table=symbol_table)
@@ -423,7 +421,7 @@ class AssignStatementAst(StatementAst):
     if declared_type is not None and declared_type != val_type:
       self.raise_error('Cannot assign variable %r with declared type %r a value of type %r' % (
         self.var_identifier, declared_type, val_type))
-    if self.var_identifier in declared_variables:
+    if self.var_identifier in symbol_table.current_scope_identifiers:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
       assert self.var_identifier in symbol_table
       symbol = symbol_table[self.var_identifier]
@@ -433,11 +431,11 @@ class AssignStatementAst(StatementAst):
         self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
           self.var_identifier, symbol.var_type, val_type))
     else:
-      assert self.var_identifier not in declared_variables
+      assert self.var_identifier not in symbol_table.current_scope_identifiers
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
       symbol = VariableSymbol(None, var_type=val_type)
       symbol_table[self.var_identifier] = symbol
-      declared_variables.append(self.var_identifier)
+      symbol_table.current_scope_identifiers.append(self.var_identifier)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -492,10 +490,9 @@ class IfStatementAst(StatementAst):
     """
     return len(self.false_stmt_list) >= 1
 
-  def build_symbol_table(self, symbol_table, declared_variables):
+  def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
-    :param list[str] declared_variables:
     """
     # TODO: Make this a separate scope.
     # It is probably easiest to add this by making every scope it's own Statement (essentially a Statement list),
@@ -504,7 +501,7 @@ class IfStatementAst(StatementAst):
     if not cond_type == SLEEPY_BOOL:
       self.raise_error('Condition use expression of type %r as if-condition' % cond_type)
     for stmt in self.true_stmt_list + self.false_stmt_list:
-      stmt.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
+      stmt.build_symbol_table(symbol_table=symbol_table)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -560,17 +557,16 @@ class WhileStatementAst(StatementAst):
     self.condition_val = condition_val
     self.stmt_list = stmt_list
 
-  def build_symbol_table(self, symbol_table, declared_variables):
+  def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
-    :param list[str] declared_variables:
     """
     # TODO: Make this a separate scope. Also see IfExpressionAst.
     cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
     if not cond_type == SLEEPY_BOOL:
       self.raise_error('Condition use expression of type %r as while-condition' % cond_type)
     for stmt in self.stmt_list:
-      stmt.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
+      stmt.build_symbol_table(symbol_table=symbol_table)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """

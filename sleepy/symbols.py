@@ -2,7 +2,7 @@
 Implements a symbol table.
 """
 import ctypes
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from llvmlite import ir
 
@@ -170,6 +170,7 @@ class SymbolTable:
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
       self.current_func = copy_from.current_func  # type: Optional[FunctionSymbol]
+    self.current_scope_identifiers = []  # type: List[str]
 
   def __setitem__(self, identifier, symbol):
     """
