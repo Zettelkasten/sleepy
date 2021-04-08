@@ -99,7 +99,7 @@ SLEEPY_DOUBLE_PTR = DoublePtrType()
 
 SLEEPY_TYPES = {
   'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG,
-  'Char': SLEEPY_CHAR, 'DoublePtr': SLEEPY_DOUBLE_PTR}
+  'Char': SLEEPY_CHAR, 'DoublePtr': SLEEPY_DOUBLE_PTR}  # type: Dict[str, Type]
 SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG}
 
 
@@ -144,6 +144,17 @@ class FunctionSymbol(Symbol):
     return (self.return_type.c_type,) + tuple(arg_type.c_type for arg_type in self.arg_types)
 
 
+class TypeSymbol(Symbol):
+  """
+  A (statically) declared type.
+  """
+  def __init__(self, type):
+    """
+    :param Type type:
+    """
+    self.type = type
+
+
 class SymbolTable:
   """
   Basically a dict mapping identifier names to symbols.
@@ -186,3 +197,14 @@ class SymbolTable:
     :rtype: SymbolTable
     """
     return SymbolTable(self)
+
+
+def make_initial_symbol_table():
+  """
+  :rtype: SymbolTable
+  """
+  symbol_table = SymbolTable()
+  for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
+    assert type_identifier not in symbol_table
+    symbol_table[type_identifier] = TypeSymbol(inbuilt_type)
+  return symbol_table

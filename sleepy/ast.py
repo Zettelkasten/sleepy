@@ -8,8 +8,9 @@ from llvmlite import ir
 from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar, TreePosition
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
-from sleepy.symbols import FunctionSymbol, Symbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_TYPES, SLEEPY_INT, \
-  SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable
+from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
+  SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
+  make_initial_symbol_table
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -109,12 +110,12 @@ class StatementAst(AbstractSyntaxTree):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    # TODO: This function should be obsolete, instead just put the type names into the symbol table.
-    assert type_identifier is not None
-    if type_identifier in SLEEPY_TYPES:
-      return SLEEPY_TYPES[type_identifier]
-    self.raise_error('Unknown type identifier %r. Available: %r' % (
-      type_identifier, ', '.join('%r' % type_identifier for type_identifier in SLEEPY_TYPES.keys())))
+    if type_identifier not in symbol_table:
+      self.raise_error('Unknown type identifier %r' % type_identifier)
+    type_symbol = symbol_table[type_identifier]
+    if not isinstance(type_symbol, TypeSymbol):
+      self.raise_error('%r is not a type, but a %r' % (type_identifier, type(type_symbol)))
+    return type_symbol.type
 
   def __repr__(self):
     """
@@ -160,7 +161,7 @@ class TopLevelStatementAst(StatementAst):
     module = ir.Module(name=module_name)
     io_func_type = ir.FunctionType(ir.VoidType(), ())
     ir_io_func = ir.Function(module, io_func_type, name='io')
-    symbol_table = SymbolTable()
+    symbol_table = make_initial_symbol_table()
     declared_variables = []  # type: List[str]
     for stmt in self.stmt_list:
       stmt.build_symbol_table(symbol_table=symbol_table, declared_variables=declared_variables)
