@@ -89,6 +89,25 @@ class DoublePtrType(Type):
     super().__init__(ir.PointerType(ir.DoubleType()), ctypes.pointer(ctypes.c_double()))
 
 
+class StructType(Type):
+  """
+  A struct.
+  """
+  def __init__(self, struct_identifier, member_identifiers, member_types):
+    """
+    :param str struct_identifier:
+    :param list[str] member_identifiers:
+    :param list[Type] member_types:
+    """
+    assert len(member_identifiers) == len(member_types)
+    member_ir_types = [member_type.ir_type for member_type in member_types]
+    member_c_types = [
+      (member_identifier, member_type.c_type)
+      for member_identifier, member_type in zip(member_identifiers, member_types)]
+    c_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
+    super().__init__(ir.LiteralStructType(member_ir_types), c_type)
+
+
 SLEEPY_VOID = VoidType()
 SLEEPY_DOUBLE = DoubleType()
 SLEEPY_BOOL = BoolType()

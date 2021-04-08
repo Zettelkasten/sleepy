@@ -520,6 +520,20 @@ def test_shadow_var_name_with_var_of_different_type():
     assert_equal(main(), 5)
 
 
+def test_simple_structs():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      struct IntPair {
+        Int x = 0;
+        Int y = 0;
+      }
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main()
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

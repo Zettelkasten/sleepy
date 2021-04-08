@@ -10,7 +10,7 @@ from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
-  make_initial_symbol_table
+  make_initial_symbol_table, StructType
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -391,6 +391,61 @@ class ReturnStatementAst(StatementAst):
     :rtype: str
     """
     return 'ReturnStatementAst(return_exprs=%r)' % self.return_exprs
+
+
+class StructDeclarationAst(StatementAst):
+  """
+  Stmt -> struct identifier { StmtList }
+  """
+  def __init__(self, pos, struct_identifier, stmt_list):
+    """
+    :param TreePosition pos:
+    :param str struct_identifier:
+    :param List[StatementAst] stmt_list:
+    """
+    self.pos = pos
+    self.struct_identifier = struct_identifier
+    self.stmt_list = stmt_list
+
+  def build_symbol_table(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    """
+    if self.struct_identifier in symbol_table.current_scope_identifiers:
+      self.raise_error('Cannot refined struct with name %r' % self.struct_identifier)
+    body_symbol_table = symbol_table.copy()
+    for stmt in self.stmt_list:
+      if not isinstance(stmt, AssignStatementAst):
+        stmt.raise_error('Can only use declare statements within a struct declaration')
+      stmt.build_symbol_table(symbol_table=body_symbol_table)
+    member_identifiers = []
+    member_types = []
+    for declared_identifier in body_symbol_table.current_scope_identifiers:
+      assert declared_identifier in body_symbol_table
+      declared_symbol = body_symbol_table[declared_identifier]
+      assert isinstance(declared_symbol, VariableSymbol)
+      member_identifiers.append(declared_identifier)
+      member_types.append(declared_symbol.var_type)
+    assert len(member_identifiers) == len(member_types)
+
+    struct_type = StructType(self.struct_identifier, member_identifiers, member_types)
+    symbol_table[self.struct_identifier] = TypeSymbol(struct_type)
+    symbol_table.current_scope_identifiers.append(self.struct_identifier)
+
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param SymbolTable symbol_table:
+    :rtype: ir.IRBuilder
+    """
+    return builder
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'StructDeclarationAst(struct_identifier=%r, stmt_list=%r)' % (self.struct_identifier, self.stmt_list)
 
 
 class AssignStatementAst(StatementAst):
@@ -934,12 +989,12 @@ def parse_char(value):
 
 SLEEPY_LEXER = LexerGenerator(
   [
-    'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '(', ')', '->',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '(', ')', '->',
     'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
     'int', 'double', 'char',
     None, None
   ], [
-    'func', 'extern_func', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\(', '\\)', '\\->',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\(', '\\)', '\\->',
     '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n]+'
@@ -950,6 +1005,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('StmtList', 'Stmt', 'StmtList'),
   Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
   Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'),
+  Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
   Production('Stmt', 'return', 'ExprList', ';'),
   Production('Stmt', 'Type', 'identifier', '=', 'Expr', ';'),
@@ -1000,6 +1056,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},  # noqa
     {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), None))},
+    {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
     {'ast': lambda _pos, identifier, val_list: CallStatementAst(_pos, identifier(1), val_list(3))},
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
     {'ast': lambda _pos, identifier, ast, type_identifier: AssignStatementAst(_pos, identifier(2), ast(4), type_identifier(1))},  # noqa
