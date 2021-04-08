@@ -46,6 +46,12 @@ class AbstractSyntaxTree:
     if func_identifier not in symbol_table:
       self.raise_error('Function %r called before declared' % func_identifier)
     symbol = symbol_table[func_identifier]
+    if isinstance(symbol, TypeSymbol):
+      if symbol.constructor_symbol is None:
+        self.raise_error(
+          'Cannot construct an instance of type %r that does not specify a constructor' % func_identifier)
+      symbol = symbol.constructor_symbol
+      assert isinstance(symbol, FunctionSymbol)
     if not isinstance(symbol, FunctionSymbol):
       self.raise_error('Cannot call non-function %r' % func_identifier)
     if len(func_arg_exprs) != len(symbol.arg_identifiers):
@@ -65,15 +71,13 @@ class AbstractSyntaxTree:
     :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
-    if func_identifier not in symbol_table:
-      self.raise_error('Function name %r referenced before declaration' % func_identifier)
+    assert func_identifier in symbol_table
     func_symbol = symbol_table[func_identifier]
-    if not isinstance(func_symbol, FunctionSymbol):
-      self.raise_error('Referenced name %r is not a function, but a %r' % (func_identifier, type(func_symbol)))
+    if isinstance(func_symbol, TypeSymbol):
+      func_symbol = func_symbol.constructor_symbol
+    assert isinstance(func_symbol, FunctionSymbol)
     ir_func = func_symbol.ir_func
-    if not len(ir_func.args) == len(func_arg_exprs):
-      self.raise_error('Function %r called with %r arguments %r, but expected %r arguments %r' % (
-        func_identifier, len(func_arg_exprs), func_arg_exprs, len(ir_func.args), ir_func.args))
+    assert len(ir_func.args) == len(func_arg_exprs)
     ir_func_args = [val.make_ir_val(builder=builder, symbol_table=symbol_table) for val in func_arg_exprs]
     return builder.call(ir_func, ir_func_args, name='call')
 
@@ -975,11 +979,12 @@ class CallExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: FunctionSymbol
     """
-    if self.func_identifier not in symbol_table:
-      self.raise_error('Cannot call function %r before its declaration' % self.func_identifier)
+    assert self.func_identifier in symbol_table
     symbol = symbol_table[self.func_identifier]
-    if not isinstance(symbol, FunctionSymbol):
-      self.raise_error('Cannot call non-function %r' % self.func_identifier)
+    if isinstance(symbol, TypeSymbol):
+      symbol = symbol.constructor_symbol
+    assert isinstance(symbol, FunctionSymbol)
+    assert symbol is not None
     return symbol
 
   def make_val_type(self, symbol_table):

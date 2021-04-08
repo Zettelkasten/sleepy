@@ -523,16 +523,16 @@ def test_shadow_var_name_with_var_of_different_type():
 def test_simple_structs():
   with make_execution_engine() as engine:
     program = """
-    func main() {
-      struct IntPair {
-        Int x = 0;
-        Int y = 0;
-      }
-      # IntPair x = IntPair();
+    struct Vec2 {
+      Int x = 0;
+      Int y = 0;
+    }
+    func main() -> Vec2 {
+      return Vec2();
     }
     """
     main = _test_compile_program(engine, program)
-    main()
+    assert_equal(type(main()).__name__, 'Vec2_CType')
 
 
 if __name__ == "__main__":
