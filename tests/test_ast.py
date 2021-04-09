@@ -549,6 +549,32 @@ def test_struct_member_access():
     assert_equal(main(), 2.0)
 
 
+def test_struct_with_struct_member():
+  with make_execution_engine() as engine:
+    program = """
+    struct Vec2 {
+      Double x = 0.0;
+      Double y = 0.0;
+    }
+    struct Mat22 {
+      Vec2 first = Vec2();
+      Vec2 second = Vec2();
+    }
+    func mat_sum(Mat22 mat) -> Double {
+      func vec_sum(Vec2 vec) -> Double {
+        return vec.x + vec.y;
+      }
+      return vec_sum(mat.first) + vec_sum(mat.second);
+    }
+    func main() -> Double {
+      Mat22 mat = Mat22();
+      return mat_sum(mat);
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 0.0)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
