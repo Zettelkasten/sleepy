@@ -420,9 +420,12 @@ class StructDeclarationAst(StatementAst):
     for member_num, stmt in enumerate(self.stmt_list):
       if not isinstance(stmt, AssignStatementAst):
         stmt.raise_error('Can only use declare statements within a struct declaration')
+      if not isinstance(stmt.var_target, VariableTargetAst):
+        stmt.raise_error('Can only declare variables within a struct declaration')
       stmt.build_symbol_table(symbol_table=body_symbol_table)
       if len(body_symbol_table.current_scope_identifiers) != member_num + 1:
-        stmt.raise_error('Cannot declare member %r multiple times in struct declaration' % stmt.var_identifier)
+        stmt.raise_error(
+          'Cannot declare member %r multiple times in struct declaration' % stmt.var_target.var_identifier)
     assert len(body_symbol_table.current_scope_identifiers) == len(self.stmt_list)
     member_identifiers = []
     member_types = []
@@ -453,7 +456,8 @@ class StructDeclarationAst(StatementAst):
     self_ir_alloca = constructor_builder.alloca(constructor.return_type.ir_type, name='self')
     for member_num, stmt in enumerate(self.stmt_list):
       assert isinstance(stmt, AssignStatementAst)
-      member_identifier = stmt.var_identifier
+      assert isinstance(stmt.var_target, VariableTargetAst)
+      member_identifier = stmt.var_target.var_identifier
       ir_val = stmt.var_val.make_ir_val(builder=constructor_builder, symbol_table=constructor_symbol_table)
       gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
       member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, '%s_ptr' % member_identifier)
@@ -491,17 +495,37 @@ class AssignStatementAst(StatementAst):
   """
   Stmt -> identifier = Expr ;
   """
-  def __init__(self, pos, var_identifier, var_val, var_type_identifier):
+  def __init__(self, pos, var_target, var_val, var_type_identifier):
     """
     :param TreePosition pos:
-    :param str var_identifier:
+    :param TargetAst var_target:
     :param ExpressionAst var_val:
     :param str|None var_type_identifier:
     """
     super().__init__(pos)
-    self.var_identifier = var_identifier
+    assert isinstance(var_target, VariableTargetAst)
+    self.var_target = var_target
     self.var_val = var_val
     self.var_type_identifier = var_type_identifier
+
+  def is_declaration(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: bool
+    """
+    if not isinstance(self.var_target, VariableTargetAst):
+      return False
+    var_identifier = self.var_target.var_identifier
+    if var_identifier not in symbol_table.current_scope_identifiers:
+      return True
+    assert var_identifier in symbol_table
+    symbol = symbol_table[var_identifier]
+    if not isinstance(symbol, VariableSymbol):
+      self.raise_error('Cannot assign non-variable %r to a variable' % var_identifier)
+    ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
+    if symbol.var_type != ptr_type:
+      self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
+        var_identifier, symbol.var_type, ptr_type))
 
   def build_symbol_table(self, symbol_table):
     """
@@ -513,23 +537,21 @@ class AssignStatementAst(StatementAst):
       declared_type = None
     val_type = self.var_val.make_val_type(symbol_table=symbol_table)
     if declared_type is not None and declared_type != val_type:
-      self.raise_error('Cannot assign variable %r with declared type %r a value of type %r' % (
-        self.var_identifier, declared_type, val_type))
-    if self.var_identifier in symbol_table.current_scope_identifiers:
-      # variable name in this scope already declared. just check that types match, but do not change symbol_table.
-      assert self.var_identifier in symbol_table
-      symbol = symbol_table[self.var_identifier]
-      if not isinstance(symbol, VariableSymbol):
-        self.raise_error('Cannot assign non-variable %r to a variable' % self.var_identifier)
-      if symbol.var_type != val_type:
-        self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
-          self.var_identifier, symbol.var_type, val_type))
-    else:
-      assert self.var_identifier not in symbol_table.current_scope_identifiers
+      self.raise_error('Cannot assign variable with declared type %r a value of type %r' % (declared_type, val_type))
+
+    if self.is_declaration(symbol_table=symbol_table):
+      assert isinstance(self.var_target, VariableTargetAst)
+      var_identifier = self.var_target.var_identifier
+      assert var_identifier not in symbol_table.current_scope_identifiers
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
       symbol = VariableSymbol(None, var_type=val_type)
-      symbol_table[self.var_identifier] = symbol
-      symbol_table.current_scope_identifiers.append(self.var_identifier)
+      symbol_table[var_identifier] = symbol
+      symbol_table.current_scope_identifiers.append(var_identifier)
+    else:
+      # variable name in this scope already declared. just check that types match, but do not change symbol_table.
+      ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
+      if ptr_type != val_type:
+        self.raise_error('Cannot redefine variable of type %r with new type %r' % (ptr_type, val_type))
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -538,20 +560,17 @@ class AssignStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
-    assert self.var_identifier in symbol_table
-    symbol = symbol_table[self.var_identifier]
-    assert isinstance(symbol, VariableSymbol)
-    assert symbol.ir_alloca is not None  # ir_alloca is set in FunctionDeclarationAst
     ir_val = self.var_val.make_ir_val(builder=builder, symbol_table=symbol_table)
-    builder.store(ir_val, symbol.ir_alloca)
+    ir_ptr = self.var_target.make_ir_ptr(builder, symbol_table=symbol_table)
+    builder.store(ir_val, ir_ptr)
     return builder
 
   def __repr__(self):
     """
     :rtype: str
     """
-    return 'AssignStatementAst(var_identifier=%r, var_val=%r, var_type_identifier=%r)' % (
-      self.var_identifier, self.var_val, self.var_type_identifier)
+    return 'AssignStatementAst(var_target=%r, var_val=%r, var_type_identifier=%r)' % (
+      self.var_target, self.var_val, self.var_type_identifier)
 
 
 class IfStatementAst(StatementAst):
@@ -1062,6 +1081,69 @@ class MemberExpressionAst(ExpressionAst):
       self.parent_val_expr, self.member_identifier)
 
 
+class TargetAst(AbstractSyntaxTree):
+  """
+  Target.
+  """
+  def __init__(self, pos):
+    """
+    :param TreePosition pos:
+    """
+    super().__init__(pos)
+
+  def make_ptr_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    raise NotImplementedError()
+
+  def make_ir_ptr(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param SymbolTable symbol_table:
+    :rtype: ir.instructions.Instruction
+    """
+    raise NotImplementedError()
+
+
+class VariableTargetAst(TargetAst):
+  """
+  Target -> identifier
+  """
+  def __init__(self, pos, var_identifier):
+    """
+    :param TreePosition pos:
+    :param str var_identifier:
+    """
+    super().__init__(pos)
+    self.var_identifier = var_identifier
+
+  def make_ptr_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    if self.var_identifier not in symbol_table:
+      self.raise_error('Cannot reference variable %r before declaration' % self.var_identifier)
+    symbol = symbol_table[self.var_identifier]
+    if not isinstance(symbol, VariableSymbol):
+      self.raise_error('Cannot assign to non-variable %r' % self.var_identifier)
+    return symbol.var_type
+
+  def make_ir_ptr(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param SymbolTable symbol_table:
+    :rtype: ir.instructions.Instruction
+    """
+    assert self.var_identifier in symbol_table
+    symbol = symbol_table[self.var_identifier]
+    assert isinstance(symbol, VariableSymbol)
+    assert symbol.ir_alloca is not None  # ir_alloca is set in FunctionDeclarationAst
+    return symbol.ir_alloca
+
+
 def parse_char(value):
   """
   :param str value: e.g. 'a', '\n', ...
@@ -1097,8 +1179,8 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
   Production('Stmt', 'return', 'ExprList', ';'),
-  Production('Stmt', 'Type', 'identifier', '=', 'Expr', ';'),
-  Production('Stmt', 'identifier', '=', 'Expr', ';'),
+  Production('Stmt', 'Type', 'Target', '=', 'Expr', ';'),
+  Production('Stmt', 'Target', '=', 'Expr', ';'),
   Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}'),
   Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}', 'else', '{', 'StmtList', '}'),
   Production('Stmt', 'while', 'Expr', '{', 'StmtList', '}'),
@@ -1118,6 +1200,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('PrimaryExpr', 'identifier'),
   Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'),
   Production('PrimaryExpr', '(', 'Expr', ')'),
+  Production('Target', 'identifier'),
   Production('IdentifierList'),
   Production('IdentifierList', 'IdentifierList+'),
   Production('IdentifierList+', 'identifier'),
@@ -1150,8 +1233,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
     {'ast': lambda _pos, identifier, val_list: CallStatementAst(_pos, identifier(1), val_list(3))},
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
-    {'ast': lambda _pos, identifier, ast, type_identifier: AssignStatementAst(_pos, identifier(2), ast(4), type_identifier(1))},  # noqa
-    {'ast': lambda _pos, identifier, ast: AssignStatementAst(_pos, identifier(1), ast(3), None)},
+    {'ast': lambda _pos, ast, type_identifier: AssignStatementAst(_pos, ast(2), ast(4), type_identifier(1))},
+    {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(1), ast(3), None)},
     {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), [])},
     {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), stmt_list(8))},
     {'ast': lambda _pos, ast, stmt_list: WhileStatementAst(_pos, ast(2), stmt_list(4))}] + [
@@ -1167,6 +1250,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
     {'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
     {'ast': 'ast.2'},
+    {'ast': lambda _pos, identifier: VariableTargetAst(_pos, identifier(1))},
     {'identifier_list': []},
     {'identifier_list': 'identifier_list.1'},
     {'identifier_list': lambda identifier: [identifier(1)]},
