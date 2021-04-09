@@ -568,11 +568,16 @@ def test_struct_with_struct_member():
     }
     func main() -> Double {
       Mat22 mat = Mat22();
+      mat.first.x = 1.0;
+      mat.first.y = 2.0;
+      mat.second.x = 3.0;
+      mat.second.y = 4.0;
+      assert(mat.first.x == 1.0);
       return mat_sum(mat);
     }
     """
     main = _test_compile_program(engine, program)
-    assert_equal(main(), 0.0)
+    assert_equal(main(), 1.0 + 2.0 + 3.0 + 4.0)
 
 
 if __name__ == "__main__":
