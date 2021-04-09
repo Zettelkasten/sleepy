@@ -951,7 +951,7 @@ class VariableExpressionAst(ExpressionAst):
     :rtype: ir.values.Value
     """
     symbol = self.get_var_symbol(symbol_table=symbol_table)
-    return builder.load(symbol.ir_alloca, self.var_identifier)
+    return builder.load(symbol.ir_alloca, name=self.var_identifier)
 
   def __repr__(self):
     """
@@ -1013,6 +1013,55 @@ class CallExpressionAst(ExpressionAst):
     return 'CallExpressionAst(func_identifier=%r, func_arg_exprs=%r)' % (self.func_identifier, self.func_arg_exprs)
 
 
+class MemberExpressionAst(ExpressionAst):
+  """
+  MemberExpr -> MemberExpr . identifier
+  """
+  def __init__(self, pos, parent_val_expr, member_identifier):
+    """
+    :param TreePosition pos:
+    :param ExpressionAst parent_val_expr:
+    :param str member_identifier:
+    """
+    super().__init__(pos)
+    self.parent_val_expr = parent_val_expr
+    self.member_identifier = member_identifier
+
+  def make_val_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
+    if not isinstance(parent_type, StructType):
+      self.raise_error(
+        'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, parent_type))
+    if self.member_identifier not in parent_type.member_identifiers:
+      self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
+        parent_type, self.member_identifier, ', '.join(parent_type.member_identifiers)))
+    member_num = parent_type.get_member_num(self.member_identifier)
+    return parent_type.member_types[member_num]
+
+  def make_ir_val(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param SymbolTable symbol_table:
+    :rtype: ir.values.Value
+    """
+    parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
+    assert isinstance(parent_type, StructType)
+    parent_ir_val = self.parent_val_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
+    return builder.extract_value(
+      parent_ir_val, parent_type.get_member_num(self.member_identifier), name='member_%s' % self.member_identifier)
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'MemberExpressionAst(parent_val_expr=%r, member_identifier=%r)' % (
+      self.parent_val_expr, self.member_identifier)
+
+
 def parse_char(value):
   """
   :param str value: e.g. 'a', '\n', ...
@@ -1029,12 +1078,12 @@ def parse_char(value):
 
 SLEEPY_LEXER = LexerGenerator(
   [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '(', ')', '->',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '->',
     'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
     'int', 'double', 'char',
     None, None
   ], [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\(', '\\)', '\\->',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\->',
     '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n]+'
@@ -1058,7 +1107,9 @@ SLEEPY_GRAMMAR = Grammar(
   Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'),
   Production('SumExpr', 'ProdExpr'),
   Production('ProdExpr', 'ProdExpr', 'prod_op', 'NegExpr'),
-  Production('ProdExpr', 'NegExpr'),
+  Production('ProdExpr', 'MemberExpr'),
+  Production('MemberExpr', 'MemberExpr', '.', 'identifier'),
+  Production('MemberExpr', 'NegExpr'),
   Production('NegExpr', 'sum_op', 'PrimaryExpr'),
   Production('NegExpr', 'PrimaryExpr'),
   Production('PrimaryExpr', 'int'),
@@ -1106,6 +1157,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, ast, stmt_list: WhileStatementAst(_pos, ast(2), stmt_list(4))}] + [
     {'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
+    {'ast': lambda _pos, ast, identifier: MemberExpressionAst(_pos, ast(1), identifier(3))},
+    {'ast': 'ast.1'},
     {'ast': lambda _pos, ast, op: UnaryOperatorExpressionAst(_pos, op(1), ast(2))},
     {'ast': 'ast.1'},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},

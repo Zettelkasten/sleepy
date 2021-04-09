@@ -106,6 +106,17 @@ class StructType(Type):
       for member_identifier, member_type in zip(member_identifiers, member_types)]
     c_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
     super().__init__(ir.LiteralStructType(member_ir_types), c_type)
+    self.struct_identifier = struct_identifier
+    self.member_identifiers = member_identifiers
+    self.member_types = member_types
+
+  def get_member_num(self, member_identifier):
+    """
+    :param str member_identifier:
+    :rtype: int
+    """
+    assert member_identifier in self.member_identifiers
+    return self.member_identifiers.index(member_identifier)
 
 
 SLEEPY_VOID = VoidType()
