@@ -81,6 +81,22 @@ class AbstractSyntaxTree:
     ir_func_args = [val.make_ir_val(builder=builder, symbol_table=symbol_table) for val in func_arg_exprs]
     return builder.call(ir_func, ir_func_args, name='call')
 
+  def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
+    """
+    :param Type parent_type:
+    :param str member_identifier:
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    if not isinstance(parent_type, StructType):
+      self.raise_error(
+        'Cannot access a member variable %r of the non-struct type %r' % (member_identifier, parent_type))
+    if member_identifier not in parent_type.member_identifiers:
+      self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
+        parent_type, member_identifier, ', '.join(parent_type.member_identifiers)))
+    member_num = parent_type.get_member_num(member_identifier)
+    return parent_type.member_types[member_num]
+
 
 class StatementAst(AbstractSyntaxTree):
   """
@@ -503,7 +519,7 @@ class AssignStatementAst(StatementAst):
     :param str|None var_type_identifier:
     """
     super().__init__(pos)
-    assert isinstance(var_target, VariableTargetAst)
+    assert isinstance(var_target, TargetAst)
     self.var_target = var_target
     self.var_val = var_val
     self.var_type_identifier = var_type_identifier
@@ -1052,14 +1068,7 @@ class MemberExpressionAst(ExpressionAst):
     :rtype: Type
     """
     parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
-    if not isinstance(parent_type, StructType):
-      self.raise_error(
-        'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, parent_type))
-    if self.member_identifier not in parent_type.member_identifiers:
-      self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
-        parent_type, self.member_identifier, ', '.join(parent_type.member_identifiers)))
-    member_num = parent_type.get_member_num(self.member_identifier)
-    return parent_type.member_types[member_num]
+    return self._make_member_val_type(parent_type, self.member_identifier, symbol_table)
 
   def make_ir_val(self, builder, symbol_table):
     """
@@ -1106,6 +1115,12 @@ class TargetAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'TargetAst'
+
 
 class VariableTargetAst(TargetAst):
   """
@@ -1142,6 +1157,54 @@ class VariableTargetAst(TargetAst):
     assert isinstance(symbol, VariableSymbol)
     assert symbol.ir_alloca is not None  # ir_alloca is set in FunctionDeclarationAst
     return symbol.ir_alloca
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'VariableTargetAst(var_identifier=%r)' % self.var_identifier
+
+
+class MemberTargetAst(TargetAst):
+  """
+  Target -> Target . identifier
+  """
+  def __init__(self, pos, parent_target, member_identifier):
+    """
+    :param TreePosition pos:
+    :param TargetAst parent_target:
+    :param str member_identifier:
+    """
+    super().__init__(pos)
+    self.parent_target = parent_target
+    self.member_identifier = member_identifier
+
+  def make_ptr_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    parent_type = self.parent_target.make_ptr_type(symbol_table=symbol_table)
+    return self._make_member_val_type(parent_type, member_identifier=self.member_identifier, symbol_table=symbol_table)
+
+  def make_ir_ptr(self, builder, symbol_table):
+    """
+    :param ir.IRBuilder builder:
+    :param SymbolTable symbol_table:
+    :rtype: ir.instructions.Instruction
+    """
+    parent_type = self.parent_target.make_ptr_type(symbol_table=symbol_table)
+    assert isinstance(parent_type, StructType)
+    member_num = parent_type.get_member_num(self.member_identifier)
+    parent_ptr = self.parent_target.make_ir_ptr(builder=builder, symbol_table=symbol_table)
+    gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
+    return builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'MemberTargetAst(parent_target=%r, member_identifier=%r)' % (self.parent_target, self.member_identifier)
 
 
 def parse_char(value):
@@ -1201,6 +1264,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'),
   Production('PrimaryExpr', '(', 'Expr', ')'),
   Production('Target', 'identifier'),
+  Production('Target', 'Target', '.', 'identifier'),
   Production('IdentifierList'),
   Production('IdentifierList', 'IdentifierList+'),
   Production('IdentifierList+', 'identifier'),
@@ -1251,6 +1315,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
     {'ast': 'ast.2'},
     {'ast': lambda _pos, identifier: VariableTargetAst(_pos, identifier(1))},
+    {'ast': lambda _pos, ast, identifier: MemberTargetAst(_pos, ast(1), identifier(3))},
     {'identifier_list': []},
     {'identifier_list': 'identifier_list.1'},
     {'identifier_list': lambda identifier: [identifier(1)]},
