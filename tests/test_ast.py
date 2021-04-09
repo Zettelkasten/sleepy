@@ -520,7 +520,7 @@ def test_shadow_var_name_with_var_of_different_type():
     assert_equal(main(), 5)
 
 
-def test_simple_structs():
+def test_struct_default_constructor():
   with make_execution_engine() as engine:
     program = """
     struct Vec2 {
@@ -533,6 +533,20 @@ def test_simple_structs():
     """
     main = _test_compile_program(engine, program)
     assert_equal(type(main()).__name__, 'Vec2_CType')
+
+
+def test_struct_member_access():
+  with make_execution_engine() as engine:
+    program = """
+    struct Vec3 { Double x = 1.0; Double y = 2.0; Double z = 3.0; }
+    func main() -> Double {
+      Vec3 my_vec = Vec3();
+      middle = my_vec.y;
+      return middle;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 2.0)
 
 
 if __name__ == "__main__":
