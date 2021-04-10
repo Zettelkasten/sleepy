@@ -482,7 +482,8 @@ class StructDeclarationAst(StatementAst):
     from sleepy.symbols import LLVM_SIZE_TYPE
     malloc_ir_func_type = ir.FunctionType(struct_type.make_passed_ir_type(), [LLVM_SIZE_TYPE])
     malloc_ir_func = ir.Function(module, malloc_ir_func_type, name='malloc')
-    self_ir_alloca = constructor_builder.call(malloc_ir_func, [struct_type.make_ir_size(builder=constructor_builder)])
+    self_ir_alloca = constructor_builder.call(
+      malloc_ir_func, [struct_type.make_ir_size(builder=constructor_builder)], name='self')
     for member_num, stmt in enumerate(self.stmt_list):
       assert isinstance(stmt, AssignStatementAst)
       assert isinstance(stmt.var_target, VariableTargetAst)
@@ -1095,7 +1096,7 @@ class MemberExpressionAst(ExpressionAst):
     if parent_type.is_pass_by_ref():
       member_num = parent_type.get_member_num(self.member_identifier)
       gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
-      member_ptr = builder.gep(parent_ir_val, gep_indices, name='member_%s_ptr' % self.member_identifier)
+      member_ptr = builder.gep(parent_ir_val, gep_indices, name='member_ptr_%s' % self.member_identifier)
       return builder.load(member_ptr, name='member_%s' % self.member_identifier)
     else:  # pass by value
       return builder.extract_value(
@@ -1216,7 +1217,10 @@ class MemberTargetAst(TargetAst):
     assert isinstance(parent_type, StructType)
     member_num = parent_type.get_member_num(self.member_identifier)
     parent_ptr = self.parent_target.make_ir_ptr(builder=builder, symbol_table=symbol_table)
-    gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
+    if parent_type.is_pass_by_ref():  # parent_ptr has type struct**
+      # dereference to get struct*.
+      parent_ptr = builder.load(parent_ptr, 'load_struct')
+    gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
     return builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
 
   def __repr__(self):
