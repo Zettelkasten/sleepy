@@ -310,7 +310,7 @@ class ParserGenerator:
       else:  # error
         possible_next_tokens = set(self._state_action_table[state].keys())
         raise ParseError(
-          word, tokens_pos[pos] if pos < len(tokens_pos) else 0,
+          word, tokens_pos[pos] if pos < len(tokens_pos) else len(word),
           'Unexpected %r token, expected: %s' % (la, ', '.join(['%r' % t for t in possible_next_tokens])))
 
     assert rev_analysis[-1] == self._start_prod
