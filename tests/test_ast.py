@@ -580,6 +580,19 @@ def test_struct_with_struct_member():
     assert_equal(main(), 1.0 + 2.0 + 3.0 + 4.0)
 
 
+def test_if_missing_return_branch():
+  with make_execution_engine() as engine:
+    program = """
+    func foo(Int x) -> Int {
+      if x == 0 { return 42; }
+      if x == -1 { return -1; }
+      # missing return here.
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

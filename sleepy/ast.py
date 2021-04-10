@@ -300,9 +300,9 @@ class FunctionDeclarationAst(StatementAst):
       for stmt in self.stmt_list:
         body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
       if body_builder is not None and not body_builder.block.is_terminated:
-        return_pos = TreePosition(self.pos.word, self.pos.to_pos, self.pos.to_pos)
-        ReturnStatementAst(return_pos, []).build_expr_ir(
-          module=module, builder=body_builder, symbol_table=body_symbol_table)
+        return_ast = ReturnStatementAst(self.pos, [])
+        return_ast.build_symbol_table(symbol_table=body_symbol_table)  # for error checking
+        return_ast.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
     return builder
 
   def __repr__(self):
