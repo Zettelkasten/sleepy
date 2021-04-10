@@ -1,3 +1,4 @@
+import os
 from contextlib import contextmanager
 
 import llvmlite.binding as llvm
@@ -20,7 +21,8 @@ def make_execution_engine():
   target_machine = target.create_target_machine()
   backing_mod = llvm.parse_assembly('')
   engine = llvm.create_mcjit_compiler(backing_mod, target_machine)
-  llvm.load_library_permanently('sleepy/std/build/libstd.so')
+  lib_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'std/build/libstd.so')
+  llvm.load_library_permanently(lib_path)
   yield engine
   del engine
 

@@ -6,7 +6,7 @@ This is a compiler written in Python for my experimental programming language Sl
 
 To get started, clone the repository and run `nosetests` in the root directory.
 In particular, this will compile and execute all files in `tests/examples/`, where you can also add your own programs.
-To just run tests for files in this directory, run `nosetests -s tests/test_examples.py`
+To just run your own Sleepy program, simply execute `tools/sleepy.py your_program.slp`.
 
 For example, this Sleepy program prints numbers from `-3` to `5` (very impressive!):
 ```c++
