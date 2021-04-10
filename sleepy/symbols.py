@@ -115,7 +115,7 @@ class StructType(Type):
   """
   A struct.
   """
-  def __init__(self, struct_identifier, member_identifiers, member_types):
+  def __init__(self, struct_identifier, member_identifiers, member_types, pass_by_ref):
     """
     :param str struct_identifier:
     :param list[str] member_identifiers:
@@ -128,7 +128,10 @@ class StructType(Type):
       (member_identifier, member_type.c_type)
       for member_identifier, member_type in zip(member_identifiers, member_types)]
     c_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
-    super().__init__(ir.types.PointerType(ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(c_type))
+    if pass_by_ref:
+      super().__init__(ir.types.PointerType(ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(c_type))
+    else:
+      super().__init__(ir_val_type, pass_by_ref=False, c_type=c_type)
     self.struct_identifier = struct_identifier
     self.member_identifiers = member_identifiers
     self.member_types = member_types
