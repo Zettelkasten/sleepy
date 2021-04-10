@@ -1251,7 +1251,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Expr', 'SumExpr'),
   Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'),
   Production('SumExpr', 'ProdExpr'),
-  Production('ProdExpr', 'ProdExpr', 'prod_op', 'NegExpr'),
+  Production('ProdExpr', 'ProdExpr', 'prod_op', 'MemberExpr'),
   Production('ProdExpr', 'MemberExpr'),
   Production('MemberExpr', 'MemberExpr', '.', 'identifier'),
   Production('MemberExpr', 'NegExpr'),
