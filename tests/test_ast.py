@@ -1,7 +1,7 @@
 from typing import Dict, List
 
 import _setup_test_env  # noqa
-from better_exchook import better_exchook
+import better_exchook
 import sys
 import unittest
 
