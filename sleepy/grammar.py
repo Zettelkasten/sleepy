@@ -525,6 +525,7 @@ def get_line_col_from_pos(word, error_pos, num_before_context_lines=1, num_after
     return 0, 1, {0: '\n'}
   char_pos = 0
   word_lines = word.splitlines()
+  assert len(word_lines) > 0
   for line_num, line in enumerate(word_lines):
     assert char_pos <= error_pos
     if error_pos <= char_pos + len(line):
@@ -536,7 +537,11 @@ def get_line_col_from_pos(word, error_pos, num_before_context_lines=1, num_after
           max(0, line_num - num_before_context_lines), min(len(word_lines), line_num + num_after_context_lines + 1))}
       return line_num + 1, col_num + 1, context_lines
     char_pos += len(line) + 1  # consider end-of-line symbol
-  assert False
+  assert char_pos == len(word)
+  context_lines = {
+    context_line_num + 1: word_lines[context_line_num]
+    for context_line_num in range(max(0, len(word_lines) - num_before_context_lines), len(word_lines))}
+  return len(word_lines), len(word_lines[-1]) + 1, context_lines
 
 
 def make_error_message(word, from_pos, error_name, message, to_pos=None):
