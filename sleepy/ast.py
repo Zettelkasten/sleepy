@@ -190,6 +190,13 @@ class TopLevelStatementAst(StatementAst):
 
     block = ir_io_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
+
+    from sleepy.symbols import LLVM_SIZE_TYPE, LLVM_VOID_POINTER_TYPE
+    symbol_table.ir_func_malloc = ir.Function(
+      module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
+    symbol_table.ir_func_free = ir.Function(
+      module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
+
     for stmt in self.stmt_list:
       body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
     assert not block.is_terminated
@@ -467,23 +474,20 @@ class StructDeclarationAst(StatementAst):
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
-  def _make_constructor_body_ir(self, constructor, module, builder, symbol_table):
+  def _make_constructor_body_ir(self, constructor, symbol_table):
     """
     :param FunctionSymbol constructor:
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
     """
     struct_type = constructor.return_type
     constructor_symbol_table = symbol_table.copy()
     constructor_block = constructor.ir_func.append_basic_block(name='entry')
     constructor_builder = ir.IRBuilder(constructor_block)
-
-    from sleepy.symbols import LLVM_SIZE_TYPE
-    malloc_ir_func_type = ir.FunctionType(struct_type.make_passed_ir_type(), [LLVM_SIZE_TYPE])
-    malloc_ir_func = ir.Function(module, malloc_ir_func_type, name='malloc')
-    self_ir_alloca = constructor_builder.call(
-      malloc_ir_func, [struct_type.make_ir_size(builder=constructor_builder)], name='self')
+    assert symbol_table.ir_func_malloc is not None
+    self_ir_alloca_raw = constructor_builder.call(
+      symbol_table.ir_func_malloc, [struct_type.make_ir_size(builder=constructor_builder)], name='self_raw_ptr')
+    self_ir_alloca = constructor_builder.bitcast(self_ir_alloca_raw, struct_type.make_passed_ir_type(), name='self')
+    # TODO: eventually free memory again
     for member_num, stmt in enumerate(self.stmt_list):
       assert isinstance(stmt, AssignStatementAst)
       assert isinstance(stmt.var_target, VariableTargetAst)
@@ -511,7 +515,7 @@ class StructDeclarationAst(StatementAst):
     assert struct_symbol.type == constructor.return_type
     ir_func_type = constructor.make_ir_function_type()
     constructor.ir_func = ir.Function(module, ir_func_type, name='construct_%s' % self.struct_identifier)
-    self._make_constructor_body_ir(constructor, module=module, builder=builder, symbol_table=symbol_table)
+    self._make_constructor_body_ir(constructor, symbol_table=symbol_table)
     return builder
 
   def __repr__(self):
