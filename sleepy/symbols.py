@@ -8,6 +8,7 @@ from llvmlite import ir
 
 
 LLVM_SIZE_TYPE = ir.types.IntType(64)
+LLVM_VOID_POINTER_TYPE = ir.PointerType(ir.types.IntType(8))
 
 
 class Symbol:
@@ -236,9 +237,13 @@ class SymbolTable:
     if copy_from is None:
       self.symbols = {}  # type: Dict[str, Symbol]
       self.current_func = None  # type: Optional[FunctionSymbol]
+      self.ir_func_malloc = None  # type: Optional[ir.Function]
+      self.ir_func_free = None  # type: Optional[ir.Function]
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
       self.current_func = copy_from.current_func  # type: Optional[FunctionSymbol]
+      self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
+      self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
     self.current_scope_identifiers = []  # type: List[str]
 
   def __setitem__(self, identifier, symbol):
