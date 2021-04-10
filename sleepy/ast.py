@@ -289,7 +289,8 @@ class FunctionDeclarationAst(StatementAst):
         var_symbol = body_symbol_table[identifier_name]
         if not isinstance(var_symbol, VariableSymbol):
           continue
-        var_symbol.ir_alloca = body_builder.alloca(var_symbol.var_type.ir_type, name=identifier_name)
+        passed_ir_type = var_symbol.var_type.make_passed_ir_type()
+        var_symbol.ir_alloca = body_builder.alloca(passed_ir_type, name=identifier_name)
 
       for arg_identifier, ir_arg in zip(self.arg_identifiers, symbol.ir_func.args):
         arg_symbol = body_symbol_table[arg_identifier]
