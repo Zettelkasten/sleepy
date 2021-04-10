@@ -439,7 +439,7 @@ class StructDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     """
     if self.struct_identifier in symbol_table.current_scope_identifiers:
-      self.raise_error('Cannot refined struct with name %r' % self.struct_identifier)
+      self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
     body_symbol_table = symbol_table.copy()
     for member_num, stmt in enumerate(self.stmt_list):
       if not isinstance(stmt, AssignStatementAst):
@@ -467,17 +467,22 @@ class StructDeclarationAst(StatementAst):
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
-  def _make_constructor_body_ir(self, constructor, symbol_table):
+  def _make_constructor_body_ir(self, constructor, module, builder, symbol_table):
     """
-    :param constructor: FunctionSymbol
+    :param FunctionSymbol constructor:
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
     """
-    # TODO: populate the member variables of the struct
+    struct_type = constructor.return_type
     constructor_symbol_table = symbol_table.copy()
     constructor_block = constructor.ir_func.append_basic_block(name='entry')
     constructor_builder = ir.IRBuilder(constructor_block)
 
-    self_ir_alloca = constructor_builder.alloca(constructor.return_type.ir_type, name='self')
+    from sleepy.symbols import LLVM_SIZE_TYPE
+    malloc_ir_func_type = ir.FunctionType(struct_type.make_passed_ir_type(), [LLVM_SIZE_TYPE])
+    malloc_ir_func = ir.Function(module, malloc_ir_func_type, name='malloc')
+    self_ir_alloca = constructor_builder.call(malloc_ir_func, [struct_type.make_ir_size(builder=constructor_builder)])
     for member_num, stmt in enumerate(self.stmt_list):
       assert isinstance(stmt, AssignStatementAst)
       assert isinstance(stmt.var_target, VariableTargetAst)
@@ -487,7 +492,7 @@ class StructDeclarationAst(StatementAst):
       member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, '%s_ptr' % member_identifier)
       constructor_builder.store(ir_val, member_ptr)
 
-    constructor_builder.ret(constructor_builder.load(self_ir_alloca, 'self'))
+    constructor_builder.ret(self_ir_alloca)
     assert constructor_block.is_terminated
 
   def build_expr_ir(self, module, builder, symbol_table):
@@ -505,7 +510,7 @@ class StructDeclarationAst(StatementAst):
     assert struct_symbol.type == constructor.return_type
     ir_func_type = constructor.make_ir_function_type()
     constructor.ir_func = ir.Function(module, ir_func_type, name='construct_%s' % self.struct_identifier)
-    self._make_constructor_body_ir(constructor, symbol_table=symbol_table)
+    self._make_constructor_body_ir(constructor, module=module, builder=builder, symbol_table=symbol_table)
     return builder
 
   def __repr__(self):
@@ -1087,8 +1092,14 @@ class MemberExpressionAst(ExpressionAst):
     parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
     assert isinstance(parent_type, StructType)
     parent_ir_val = self.parent_val_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
-    return builder.extract_value(
-      parent_ir_val, parent_type.get_member_num(self.member_identifier), name='member_%s' % self.member_identifier)
+    if parent_type.is_pass_by_ref():
+      member_num = parent_type.get_member_num(self.member_identifier)
+      gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
+      member_ptr = builder.gep(parent_ir_val, gep_indices, name='member_%s_ptr' % self.member_identifier)
+      return builder.load(member_ptr, name='member_%s' % self.member_identifier)
+    else:  # pass by value
+      return builder.extract_value(
+        parent_ir_val, parent_type.get_member_num(self.member_identifier), name='member_%s' % self.member_identifier)
 
   def __repr__(self):
     """
