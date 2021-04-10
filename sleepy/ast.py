@@ -1265,7 +1265,7 @@ SLEEPY_LEXER = LexerGenerator(
     'func', 'extern_func', 'struct', 'class', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)',
     '\\->', '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
-    '#[^\n]*\n', '[ \n]+'
+    '#[^\n]*\n', '[ \n\t]+'
   ])
 SLEEPY_GRAMMAR = Grammar(
   Production('TopLevelStmt', 'StmtList'),
