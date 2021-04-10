@@ -35,9 +35,15 @@ func add(Vec3 a, Vec3 b) -> Vec3 {
 func sub(Vec3 a, Vec3 b) -> Vec3 {
   return make_Vec3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
+func mul(Double a, Vec3 b) -> Vec3 {
+  return make_Vec3(a * b.x, a * b.y, a * b.z);
+}
+func dot(Vec3 a, Vec3 b) -> Double {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
 func len(Vec3 v) -> Double {
   extern_func sqrt(Double x) -> Double;
-  return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+  return sqrt(dot(v, v));
 }
 
 func print_vector_and_assert(Vec3 val, Vec3 reference) {
@@ -60,5 +66,6 @@ func main() {
 
   print_vector_and_assert(unit3, make_Vec3(0.0, 0.0, 1.0));
   print_vector_and_assert(add(unit1, unit2), make_Vec3(1.0, 1.0, 0.0));
-  print_double_and_assert(len(unit1), 1.0);
+  print_vector_and_assert(sub(mul(3.0, unit1), mul(6.0, unit2)), make_Vec3(3.0, -6.0, 0.0));
+  print_double_and_assert(len(make_Vec3(3.0, 0.0, -4.0)), 5.0);
 }
