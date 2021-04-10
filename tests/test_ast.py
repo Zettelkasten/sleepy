@@ -611,6 +611,24 @@ def test_pass_by_reference():
     assert_equal(main(), 5)
 
 
+def test_pass_by_value():
+  with make_execution_engine() as engine:
+    program = """
+    struct Foo { Int val = 0; }
+    func inc_val(Foo of) {
+      of.val = of.val + 1;
+    }
+    func main() -> Int {
+      my_foo = Foo();
+      my_foo.val = 4;
+      inc_val(my_foo);  # now my_foo.val should still be 4.
+      return my_foo.val;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 4)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
