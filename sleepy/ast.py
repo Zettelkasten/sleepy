@@ -300,7 +300,14 @@ class FunctionDeclarationAst(StatementAst):
       for stmt in self.stmt_list:
         body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
       if body_builder is not None and not body_builder.block.is_terminated:
-        return_ast = ReturnStatementAst(self.pos, [])
+        return_pos = TreePosition(
+          self.pos.word,
+          self.pos.from_pos if len(self.stmt_list) == 0 else self.stmt_list[-1].pos.to_pos,
+          self.pos.to_pos)
+        return_ast = ReturnStatementAst(return_pos, [])
+        if symbol.return_type != SLEEPY_VOID:
+          return_ast.raise_error(
+            'Not all branches within function declaration of %r return something' % self.identifier)
         return_ast.build_symbol_table(symbol_table=body_symbol_table)  # for error checking
         return_ast.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
     return builder
