@@ -31,6 +31,7 @@ class Type:
     :param bool pass_by_ref:
     :param Callable|None c_type:
     """
+    assert not pass_by_ref or isinstance(ir_type, ir.types.PointerType)
     self.ir_type = ir_type
     self.pass_by_ref = pass_by_ref
     self.c_type = c_type
@@ -43,16 +44,6 @@ class Type:
     :rtype: bool
     """
     return self.pass_by_ref
-
-  def make_passed_ir_type(self):
-    """
-    :rtype: ir.types.Type
-    """
-    if self.is_pass_by_ref():
-      assert self.ir_type != ir.types.VoidType()
-      return ir.types.PointerType(self.ir_type)
-    else:
-      return self.ir_type
 
   def make_ir_size(self, builder):
     """
@@ -117,7 +108,7 @@ class DoublePtrType(Type):
   A double pointer.
   """
   def __init__(self):
-    super().__init__(ir.PointerType(ir.DoubleType()), pass_by_ref=False, c_type=ctypes.pointer(ctypes.c_double()))
+    super().__init__(ir.PointerType(ir.DoubleType()), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_double))
 
 
 class StructType(Type):
@@ -132,11 +123,12 @@ class StructType(Type):
     """
     assert len(member_identifiers) == len(member_types)
     member_ir_types = [member_type.ir_type for member_type in member_types]
+    ir_val_type = ir.types.LiteralStructType(member_ir_types)
     member_c_types = [
       (member_identifier, member_type.c_type)
       for member_identifier, member_type in zip(member_identifiers, member_types)]
     c_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
-    super().__init__(ir.LiteralStructType(member_ir_types), pass_by_ref=True, c_type=c_type)
+    super().__init__(ir.types.PointerType(ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(c_type))
     self.struct_identifier = struct_identifier
     self.member_identifiers = member_identifiers
     self.member_types = member_types
@@ -208,8 +200,7 @@ class FunctionSymbol(Symbol):
     """
     :rtype: ir.FunctionType
     """
-    return ir.FunctionType(
-      self.return_type.make_passed_ir_type(), [arg_type.make_passed_ir_type() for arg_type in self.arg_types])
+    return ir.FunctionType(self.return_type.ir_type, [arg_type.ir_type for arg_type in self.arg_types])
 
 
 class TypeSymbol(Symbol):
@@ -221,6 +212,7 @@ class TypeSymbol(Symbol):
     :param Type type:
     :param FunctionSymbol|None constructor_symbol:
     """
+    super().__init__()
     self.type = type
     self.constructor_symbol = constructor_symbol
 

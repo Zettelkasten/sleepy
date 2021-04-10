@@ -532,7 +532,7 @@ def test_struct_default_constructor():
     }
     """
     main = _test_compile_program(engine, program)
-    assert_equal(type(main()).__name__, 'Vec2_CType')
+    assert_equal(type(main()).__name__, 'LP_Vec2_CType')
 
 
 def test_struct_member_access():

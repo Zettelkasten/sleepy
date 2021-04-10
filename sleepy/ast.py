@@ -296,8 +296,7 @@ class FunctionDeclarationAst(StatementAst):
         var_symbol = body_symbol_table[identifier_name]
         if not isinstance(var_symbol, VariableSymbol):
           continue
-        passed_ir_type = var_symbol.var_type.make_passed_ir_type()
-        var_symbol.ir_alloca = body_builder.alloca(passed_ir_type, name=identifier_name)
+        var_symbol.ir_alloca = body_builder.alloca(var_symbol.var_type.ir_type, name=identifier_name)
 
       for arg_identifier, ir_arg in zip(self.arg_identifiers, symbol.ir_func.args):
         arg_symbol = body_symbol_table[arg_identifier]
@@ -486,7 +485,7 @@ class StructDeclarationAst(StatementAst):
     assert symbol_table.ir_func_malloc is not None
     self_ir_alloca_raw = constructor_builder.call(
       symbol_table.ir_func_malloc, [struct_type.make_ir_size(builder=constructor_builder)], name='self_raw_ptr')
-    self_ir_alloca = constructor_builder.bitcast(self_ir_alloca_raw, struct_type.make_passed_ir_type(), name='self')
+    self_ir_alloca = constructor_builder.bitcast(self_ir_alloca_raw, struct_type.ir_type, name='self')
     # TODO: eventually free memory again
     for member_num, stmt in enumerate(self.stmt_list):
       assert isinstance(stmt, AssignStatementAst)
