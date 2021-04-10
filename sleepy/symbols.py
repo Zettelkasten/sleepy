@@ -7,6 +7,9 @@ from typing import Dict, Optional, List
 from llvmlite import ir
 
 
+LLVM_SIZE_TYPE = ir.types.IntType(64)
+
+
 class Symbol:
   """
   A declared symbol, with an identifier.
@@ -49,6 +52,15 @@ class Type:
       return ir.types.PointerType(self.ir_type)
     else:
       return self.ir_type
+
+  def make_ir_size(self, builder):
+    """
+    :param ir.IRBuilder builder:
+    :rtype: ir.values.Value
+    """
+    ir_null_ptr = ir.values.Constant(ir.types.PointerType(self.ir_type), 'null')
+    ir_size_ptr = builder.gep(ir_null_ptr, [ir.values.Constant(LLVM_SIZE_TYPE, 1)], name='size_ptr')
+    return builder.ptrtoint(ir_size_ptr, LLVM_SIZE_TYPE, name='size')
 
 
 class VoidType(Type):
