@@ -1,0 +1,64 @@
+struct Vec3 {
+  Double x = 0.0;
+  Double y = 0.0;
+  Double z = 0.0;
+}
+
+# as there are no constructors yet, do it like this:
+func make_Vec3(Double x, Double y, Double z) -> Vec3 {
+  self = Vec3();
+  self.x = x;
+  self.y = y;
+  self.z = z;
+  return self;
+}
+func unit_Vec3(Int dim) -> Vec3 {
+  if dim == 1 { return make_Vec3(1.0, 0.0, 0.0); }
+  if dim == 2 { return make_Vec3(0.0, 1.0, 0.0); }
+  if dim == 3 { return make_Vec3(0.0, 0.0, 1.0); }
+  assert(False()); return Vec3();
+}
+
+func print_vector(Vec3 vec) {
+  print_char('(');
+  print_double(vec.x);
+  print_char(',');
+  print_double(vec.y);
+  print_char(',');
+  print_double(vec.z);
+  print_char(')');
+}
+
+func add(Vec3 a, Vec3 b) -> Vec3 {
+  return make_Vec3(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+func sub(Vec3 a, Vec3 b) -> Vec3 {
+  return make_Vec3(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+func len(Vec3 v) -> Double {
+  extern_func sqrt(Double x) -> Double;
+  return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
+func print_vector_and_assert(Vec3 val, Vec3 reference) {
+  print_vector(val);
+  assert(val.x == reference.x);
+  assert(val.y == reference.y);
+  assert(val.z == reference.z);
+  print_char('\n');
+}
+func print_double_and_assert(Double val, Double reference) {
+  print_double(val);
+  assert(val == reference);
+  print_char('\n');
+}
+
+func main() {
+  unit1 = unit_Vec3(1);
+  unit2 = unit_Vec3(2);
+  unit3 = unit_Vec3(3);
+
+  print_vector_and_assert(unit3, make_Vec3(0.0, 0.0, 1.0));
+  print_vector_and_assert(add(unit1, unit2), make_Vec3(1.0, 1.0, 0.0));
+  print_double_and_assert(len(unit1), 1.0);
+}
