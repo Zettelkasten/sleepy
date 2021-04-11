@@ -649,6 +649,25 @@ def test_annotation_fail_duplicated():
       _test_compile_program(engine, program)
 
 
+def test_overload_func():
+  with make_execution_engine() as engine:
+    program = """
+    func to_int(Bool b) -> Int {
+      if b { return 1; }
+      else { return 0; }
+    }
+    func to_int(Int i) -> Int {
+      return i;
+    }
+    func main(Bool a, Int b) -> Int {
+      return to_int(a) + b * 2;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(True, 2), 1 + 2 * 2)
+    assert_equal(main(False, -5), 0 - 5 * 2)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
