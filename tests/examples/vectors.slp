@@ -19,14 +19,14 @@ func unit_Vec3(Int dim) -> Vec3 {
   assert(False()); return Vec3();
 }
 
-func print_vector(Vec3 vec) {
-  print_char('(');
-  print_double(vec.x);
-  print_char(',');
-  print_double(vec.y);
-  print_char(',');
-  print_double(vec.z);
-  print_char(')');
+func print(Vec3 vec) {
+  print('(');
+  print(vec.x);
+  print(',');
+  print(vec.y);
+  print(',');
+  print(vec.z);
+  print(')');
 }
 
 func add(Vec3 a, Vec3 b) -> Vec3 {
@@ -46,17 +46,17 @@ func len(Vec3 v) -> Double {
   return sqrt(dot(v, v));
 }
 
-func print_vector_and_assert(Vec3 val, Vec3 reference) {
-  print_vector(val);
+func print_and_assert(Vec3 val, Vec3 reference) {
+  print(val);
   assert(val.x == reference.x);
   assert(val.y == reference.y);
   assert(val.z == reference.z);
-  print_char('\n');
+  print('\n');
 }
-func print_double_and_assert(Double val, Double reference) {
-  print_double(val);
+func print_and_assert(Double val, Double reference) {
+  print(val);
   assert(val == reference);
-  print_char('\n');
+  print('\n');
 }
 
 func main() {
@@ -64,8 +64,8 @@ func main() {
   unit2 = unit_Vec3(2);
   unit3 = unit_Vec3(3);
 
-  print_vector_and_assert(unit3, make_Vec3(0.0, 0.0, 1.0));
-  print_vector_and_assert(add(unit1, unit2), make_Vec3(1.0, 1.0, 0.0));
-  print_vector_and_assert(sub(mul(3.0, unit1), mul(6.0, unit2)), make_Vec3(3.0, -6.0, 0.0));
-  print_double_and_assert(len(make_Vec3(3.0, 0.0, -4.0)), 5.0);
+  print_and_assert(unit3, make_Vec3(0.0, 0.0, 1.0));
+  print_and_assert(add(unit1, unit2), make_Vec3(1.0, 1.0, 0.0));
+  print_and_assert(sub(mul(3.0, unit1), mul(6.0, unit2)), make_Vec3(3.0, -6.0, 0.0));
+  print_and_assert(len(make_Vec3(3.0, 0.0, -4.0)), 5.0);
 }

@@ -6,10 +6,10 @@ func swap(DoublePtr ptr1, DoublePtr ptr2) {
 
 func print_array(DoublePtr array, Int size) {
   if size <= 0 { return; }
-  print_double(load(array));
+  print(load(array));
   if size > 1 {
-    print_char(',');
-    print_char(' ');
+    print(',');
+    print(' ');
   }
   print_array(array + 1, size - 1);
 }
@@ -63,12 +63,12 @@ func main() {
   store(arr + 8, 19.0);
   store(arr + 9, 23.0);
   print_array(arr, size);
-  print_char('\n');
+  print('\n');
   assert(not(is_sorted(arr, size)));
 
   sort(arr, size);
   print_array(arr, size);
-  print_char('\n');
+  print('\n');
 
   assert(load(arr + 0) == 1.0);
   assert(load(arr + 1) == 4.0);

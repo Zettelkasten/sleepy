@@ -2,11 +2,11 @@ func main() {
   Int my_int = 21;
   Double my_double = 4.0;
   Double prod = my_double * my_double;
-  print_double(prod);
-  print_char('\n');
+  print(prod);
+  print('\n');
   sum = my_double + my_double;  # also implicitly a Double
-  print_double(sum);
-  print_char('\n');
+  print(sum);
+  print('\n');
   int_calc = my_int * 34;
 
   struct IntPair {

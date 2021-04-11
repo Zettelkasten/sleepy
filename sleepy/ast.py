@@ -1421,9 +1421,9 @@ def make_preamble_ast():
   :rtype: TopLevelStatementAst
   """
   preamble_program = """\
-  extern_func print_char(Char char);
-  extern_func print_double(Double d);
-  extern_func print_int(Int i);
+  func print(Char char) { extern_func print_char(Char char); print_char(char); }
+  func print(Double double) { extern_func print_double(Double d); print_double(double); }
+  func print(Int int) { extern_func print_int(Int i); print_int(int); }
   extern_func allocate(Int size) -> DoublePtr;
   extern_func deallocate(DoublePtr ptr);
   extern_func load(DoublePtr ptr) -> Double;
