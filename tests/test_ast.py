@@ -660,7 +660,7 @@ def test_overload_func():
       return i;
     }
     func main(Bool a, Int b) -> Int {
-      return to_int(a) + b * 2;
+      return to_int(a) + to_int(b) * 2;
     }
     """
     main = _test_compile_program(engine, program)
