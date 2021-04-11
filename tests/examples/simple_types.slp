@@ -9,8 +9,9 @@ func main() {
   print('\n');
   int_calc = my_int * 34;
 
+  @RefType
   struct IntPair {
     Int left = 0;
     Int right = 0;
-   }
+  }
 }

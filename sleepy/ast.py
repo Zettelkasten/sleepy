@@ -449,17 +449,28 @@ class StructDeclarationAst(StatementAst):
   """
   Stmt -> struct identifier { StmtList }
   """
-  def __init__(self, pos, struct_identifier, stmt_list, pass_by_ref):
+
+  allowed_annotation_identifiers = frozenset({'ValType', 'RefType'})
+
+  def __init__(self, pos, struct_identifier, stmt_list):
     """
     :param TreePosition pos:
     :param str struct_identifier:
     :param List[StatementAst] stmt_list:
-    :param bool pass_by_ref:
     """
     super().__init__(pos)
     self.struct_identifier = struct_identifier
     self.stmt_list = stmt_list
-    self.pass_by_ref = pass_by_ref
+
+  def is_pass_by_ref(self):
+    """
+    :rtype: bool
+    """
+    val_type = any(annotation.identifier == 'ValType' for annotation in self.annotations)
+    ref_type = any(annotation.identifier == 'RefType' for annotation in self.annotations)
+    if val_type and ref_type:
+      self.raise_error('Cannot apply annotation %r and %r at the same time' % ('ValType', 'RefType'))
+    return ref_type  # fall back to pass by value.
 
   def build_symbol_table(self, symbol_table):
     """
@@ -488,7 +499,8 @@ class StructDeclarationAst(StatementAst):
       member_types.append(declared_symbol.var_type)
     assert len(member_identifiers) == len(member_types) == len(self.stmt_list)
 
-    struct_type = StructType(self.struct_identifier, member_identifiers, member_types, pass_by_ref=self.pass_by_ref)
+    struct_type = StructType(
+      self.struct_identifier, member_identifiers, member_types, pass_by_ref=self.is_pass_by_ref())
     constructor = FunctionSymbol()
     # ir_func will be set in build_expr_ir
     constructor.add_concrete_func(
@@ -505,7 +517,7 @@ class StructDeclarationAst(StatementAst):
     constructor_symbol_table = symbol_table.copy()
     constructor_block = constructor.ir_func.append_basic_block(name='entry')
     constructor_builder = ir.IRBuilder(constructor_block)
-    if self.pass_by_ref:  # use malloc
+    if self.is_pass_by_ref():  # use malloc
       assert symbol_table.ir_func_malloc is not None
       self_ir_alloca_raw = constructor_builder.call(
         symbol_table.ir_func_malloc, [struct_type.make_ir_size(builder=constructor_builder)], name='self_raw_ptr')
@@ -522,7 +534,7 @@ class StructDeclarationAst(StatementAst):
       member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, '%s_ptr' % member_identifier)
       constructor_builder.store(ir_val, member_ptr)
 
-    if self.pass_by_ref:
+    if self.is_pass_by_ref():
       constructor_builder.ret(self_ir_alloca)
     else:  # pass by value
       constructor_builder.ret(constructor_builder.load(self_ir_alloca, 'self'))
@@ -1315,12 +1327,12 @@ def parse_char(value):
 
 SLEEPY_LEXER = LexerGenerator(
   [
-    'func', 'extern_func', 'struct', 'class', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')',
     '->', '@', 'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
     'int', 'double', 'char',
     None, None
   ], [
-    'func', 'extern_func', 'struct', 'class', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)',
     '\\->', '@', '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n\t]+'
@@ -1332,7 +1344,6 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
   Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'),
   Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'),
-  Production('Stmt', 'class', 'identifier', '{', 'StmtList', '}'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
   Production('Stmt', 'return', 'ExprList', ';'),
   Production('Stmt', 'Type', 'Target', '=', 'Expr', ';'),
@@ -1390,8 +1401,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},  # noqa
     {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), None))},
-    {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4), pass_by_ref=False)},  # noqa
-    {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4), pass_by_ref=True)},  # noqa
+    {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
     {'ast': lambda _pos, identifier, val_list: CallStatementAst(_pos, identifier(1), val_list(3))},
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
     {'ast': lambda _pos, ast, type_identifier: AssignStatementAst(_pos, ast(2), ast(4), type_identifier(1))},

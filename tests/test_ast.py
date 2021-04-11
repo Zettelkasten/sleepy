@@ -593,7 +593,10 @@ def test_if_missing_return_branch():
 def test_pass_by_reference():
   with make_execution_engine() as engine:
     program = """
-    class Foo { Int val = 0; }
+    @RefType
+    struct Foo {
+      Int val = 0;
+    }
     func inc_val(Foo of) {
       of.val = of.val + 1;
     }
