@@ -1342,6 +1342,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('StmtList'),
   Production('StmtList', 'AnnotationList', 'Stmt', 'StmtList'),
   Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
+  Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
   Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'),
   Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
@@ -1386,7 +1387,10 @@ SLEEPY_GRAMMAR = Grammar(
   Production('ExprList+', 'Expr', ',', 'ExprList+'),
   Production('Type', 'identifier'),
   Production('ReturnType'),
-  Production('ReturnType', '->', 'Type')
+  Production('ReturnType', '->', 'Type'),
+  Production('Op', 'bool_op'),
+  Production('Op', 'sum_op'),
+  Production('Op', 'prod_op')
 )
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
@@ -1398,7 +1402,9 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'stmt_list': []},
     {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
     {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier, stmt_list: (
-      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},  # noqa
+      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},
+    {'ast': lambda _pos, op, identifier_list, type_list, type_identifier, stmt_list: (
+      FunctionDeclarationAst(_pos, op(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},
     {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), None))},
     {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
@@ -1443,7 +1449,10 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
     {'type_identifier': 'identifier.1'},
     {'type_identifier': None},
-    {'type_identifier': 'type_identifier.2'}
+    {'type_identifier': 'type_identifier.2'},
+    {'op': 'op.1'},
+    {'op': 'op.1'},
+    {'op': 'op.1'}
   ],
   terminal_attr_rules={
     'bool_op': {'op': lambda value: value},
