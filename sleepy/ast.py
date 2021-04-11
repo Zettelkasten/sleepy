@@ -1305,7 +1305,7 @@ def annotate_ast(ast, annotation_list):
     if annotation.identifier not in ast.allowed_annotation_identifiers:
       annotation.raise_error('Annotations with name %r not allowed here, only allowed: %s' % (
         annotation.identifier, ', '.join(ast.allowed_annotation_identifiers)))
-    if annotation.identifier in ast.annotations:
+    if any(annotation.identifier == other.identifier for other in ast.annotations):
       annotation.raise_error('Cannot add annotation with name %r multiple times' % annotation.identifier)
     ast.annotations.append(annotation)
   return ast
