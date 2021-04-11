@@ -19,11 +19,15 @@ class AbstractSyntaxTree:
   """
   Abstract syntax tree of a sleepy program.
   """
+
+  allowed_annotation_identifiers = frozenset()
+
   def __init__(self, pos):
     """
     :param TreePosition pos: position where this AST starts
     """
     self.pos = pos
+    self.annotations = []  # type: List[AnnotationAst]
 
   def __repr__(self):
     """
@@ -452,7 +456,7 @@ class StructDeclarationAst(StatementAst):
     :param List[StatementAst] stmt_list:
     :param bool pass_by_ref:
     """
-    self.pos = pos
+    super().__init__(pos)
     self.struct_identifier = struct_identifier
     self.stmt_list = stmt_list
     self.pass_by_ref = pass_by_ref
@@ -1258,6 +1262,43 @@ class MemberTargetAst(TargetAst):
     return 'MemberTargetAst(parent_target=%r, member_identifier=%r)' % (self.parent_target, self.member_identifier)
 
 
+class AnnotationAst(AbstractSyntaxTree):
+  """
+  Annotation.
+  """
+  def __init__(self, pos, identifier):
+    """
+    :param TreePosition pos:
+    :param str identifier:
+    """
+    super().__init__(pos)
+    self.identifier = identifier
+    # TODO: Add type checking for annotation identifiers.
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'AnnotationAst(identifier=%r)' % self.identifier
+
+
+def annotate_ast(ast, annotation_list):
+  """
+  :param AbstractSyntaxTree ast:
+  :param list[AnnotationAst] annotation_list:
+  :rtype: AbstractSyntaxTree
+  """
+  assert len(ast.annotations) == 0
+  for annotation in annotation_list:
+    if annotation.identifier not in ast.allowed_annotation_identifiers:
+      annotation.raise_error('Annotations with name %r not allowed here, only allowed: %s' % (
+        annotation.identifier, ', '.join(ast.allowed_annotation_identifiers)))
+    if annotation.identifier in ast.annotations:
+      annotation.raise_error('Cannot add annotation with name %r multiple times' % annotation.identifier)
+    ast.annotations.append(annotation)
+  return ast
+
+
 def parse_char(value):
   """
   :param str value: e.g. 'a', '\n', ...
@@ -1275,19 +1316,19 @@ def parse_char(value):
 SLEEPY_LEXER = LexerGenerator(
   [
     'func', 'extern_func', 'struct', 'class', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')',
-    '->', 'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
+    '->', '@', 'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
     'int', 'double', 'char',
     None, None
   ], [
     'func', 'extern_func', 'struct', 'class', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)',
-    '\\->', '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
+    '\\->', '@', '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n\t]+'
   ])
 SLEEPY_GRAMMAR = Grammar(
   Production('TopLevelStmt', 'StmtList'),
   Production('StmtList'),
-  Production('StmtList', 'Stmt', 'StmtList'),
+  Production('StmtList', 'AnnotationList', 'Stmt', 'StmtList'),
   Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
   Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'),
   Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'),
@@ -1317,6 +1358,9 @@ SLEEPY_GRAMMAR = Grammar(
   Production('PrimaryExpr', '(', 'Expr', ')'),
   Production('Target', 'identifier'),
   Production('Target', 'Target', '.', 'identifier'),
+  Production('AnnotationList'),
+  Production('AnnotationList', 'Annotation', 'AnnotationList'),
+  Production('Annotation', '@', 'identifier'),
   Production('IdentifierList'),
   Production('IdentifierList', 'IdentifierList+'),
   Production('IdentifierList+', 'identifier'),
@@ -1336,12 +1380,12 @@ SLEEPY_GRAMMAR = Grammar(
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
   syn_attrs={
-    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'type_identifier', 'op',
-    'number'},
+    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'type_identifier', 'annotation_list',
+    'op', 'number'},
   prod_attr_rules=[
     {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, stmt_list(1))},
     {'stmt_list': []},
-    {'stmt_list': lambda ast, stmt_list: [ast(1)] + stmt_list(2)},
+    {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
     {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier, stmt_list: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},  # noqa
     {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier: (
@@ -1369,6 +1413,9 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': 'ast.2'},
     {'ast': lambda _pos, identifier: VariableTargetAst(_pos, identifier(1))},
     {'ast': lambda _pos, ast, identifier: MemberTargetAst(_pos, ast(1), identifier(3))},
+    {'annotation_list': []},
+    {'annotation_list': lambda ast, annotation_list: [ast(1)] + annotation_list(2)},
+    {'ast': lambda _pos, identifier: AnnotationAst(_pos, identifier(2))},
     {'identifier_list': []},
     {'identifier_list': 'identifier_list.1'},
     {'identifier_list': lambda identifier: [identifier(1)]},
