@@ -23,13 +23,12 @@ def _test_compile_example(code_file_name):
     assert 'main' in symbol_table, 'Need to declare a main function'
     main_func_symbol = symbol_table['main']
     assert isinstance(main_func_symbol, FunctionSymbol), 'main needs to be a function'
-    main_func_ptr = engine.get_function_address('main')
-    py_func = CFUNCTYPE(
-      main_func_symbol.return_type.c_type, *[arg_type.c_type for arg_type in main_func_symbol.arg_types])(main_func_ptr)
-    assert callable(py_func)
+    assert len(main_func_symbol.concrete_funcs) == 1, 'need to declare exactly one main function'
+    concrete_main_func = main_func_symbol.get_single_concrete_func()
+    py_func = concrete_main_func.make_py_func(engine)
     print('Now execution:')
     return_val = py_func()
-    print('Returned value: %r of type %r' % (return_val, main_func_symbol.return_type))
+    print('Returned value: %r of type %r' % (return_val, concrete_main_func.return_type))
 
 
 def test_compile_examples():

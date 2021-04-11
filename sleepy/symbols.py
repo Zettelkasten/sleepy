@@ -2,7 +2,7 @@
 Implements a symbol table.
 """
 import ctypes
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 
 from llvmlite import ir
 
@@ -174,28 +174,28 @@ class VariableSymbol(Symbol):
     self.var_type = var_type
 
 
-class FunctionSymbol(Symbol):
+class ConcreteFunction:
   """
-  A declared (static) function (not a function pointer).
+  An actual function implementation.
   """
-  def __init__(self, ir_func, arg_identifiers, arg_types, return_type):
+  def __init__(self, ir_func, return_type, arg_identifiers, arg_types):
     """
     :param ir.Function|None ir_func:
+    :param Type|None return_type:
     :param list[str] arg_identifiers:
     :param list[Type] arg_types:
-    :param Type|None return_type:
     """
-    super().__init__()
     assert ir_func is None or isinstance(ir_func, ir.Function)
+    assert isinstance(return_type, Type)
     assert len(arg_identifiers) == len(arg_types)
     self.ir_func = ir_func
+    self.return_type = return_type
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
-    self.return_type = return_type
 
   def get_c_arg_types(self):
     """
-    :rtype:
+    :rtype: tuple[callable]
     """
     return (self.return_type.c_type,) + tuple(arg_type.c_type for arg_type in self.arg_types)
 
@@ -204,6 +204,71 @@ class FunctionSymbol(Symbol):
     :rtype: ir.FunctionType
     """
     return ir.FunctionType(self.return_type.ir_type, [arg_type.ir_type for arg_type in self.arg_types])
+
+  def to_signature_str(self):
+    """
+    :rtype: str
+    """
+    return '(%s) -> %s' % (
+        ', '.join(['%s %s' % arg_tuple for arg_tuple in zip(self.arg_types, self.arg_identifiers)]), self.return_type)
+
+  def make_py_func(self, engine):
+    """
+    :param ExecutionEngine engine:
+    :rtype: callable
+    """
+    assert self.ir_func is not None
+    from sleepy.jit import get_func_address
+    main_func_ptr = get_func_address(engine, self.ir_func)
+    py_func = ctypes.CFUNCTYPE(
+      self.return_type.c_type, *[arg_type.c_type for arg_type in self.arg_types])(main_func_ptr)
+    assert callable(py_func)
+    return py_func
+
+  def __repr__(self):
+    """
+    :rtype str:
+    """
+    return 'ConcreteFunction(ir_func=%r, return_type=%r, arg_identifiers=%r, arg_types=%r)' % (
+      self.ir_func, self.return_type, self.arg_identifiers, self.arg_types)
+
+
+class FunctionSymbol(Symbol):
+  """
+  A set of declared (static) functions (not a function pointer) with a fixed name.
+  Can have one or multiple overloaded concrete functions accepting different parameter types.
+  """
+  def __init__(self):
+    super().__init__()
+    self.concrete_funcs = {}  # type: Dict[Tuple[Type], ConcreteFunction]
+
+  def has_concrete_func(self, arg_types):
+    """
+    :param list[Type]|tuple[Type] arg_types:
+    :rtype: bool
+    """
+    return tuple(arg_types) in self.concrete_funcs
+
+  def get_concrete_func(self, arg_types):
+    """
+    :param list[Type]|tuple[Type] arg_types:
+    :rtype: ConcreteFunction
+    """
+    return self.concrete_funcs[tuple(arg_types)]
+
+  def add_concrete_func(self, concrete_func):
+    """
+    :param ConcreteFunction concrete_func:
+    """
+    assert not self.has_concrete_func(concrete_func.arg_types)
+    self.concrete_funcs[tuple(concrete_func.arg_types)] = concrete_func
+
+  def get_single_concrete_func(self):
+    """
+    :rtype: ConcreteFunction
+    """
+    assert len(self.concrete_funcs) == 1
+    return next(iter(self.concrete_funcs.values()))
 
 
 class TypeSymbol(Symbol):
@@ -231,12 +296,12 @@ class SymbolTable:
     """
     if copy_from is None:
       self.symbols = {}  # type: Dict[str, Symbol]
-      self.current_func = None  # type: Optional[FunctionSymbol]
+      self.current_func = None  # type: Optional[ConcreteFunction]
       self.ir_func_malloc = None  # type: Optional[ir.Function]
       self.ir_func_free = None  # type: Optional[ir.Function]
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
-      self.current_func = copy_from.current_func  # type: Optional[FunctionSymbol]
+      self.current_func = copy_from.current_func  # type: Optional[ConcreteFunction]
       self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
       self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
     self.current_scope_identifiers = []  # type: List[str]
@@ -267,6 +332,19 @@ class SymbolTable:
     :rtype: SymbolTable
     """
     return SymbolTable(self)
+
+  @classmethod
+  def make_ir_func_name(cls, func_identifier, extern, concrete_func):
+    """
+    :param str func_identifier:
+    :param bool extern:
+    :param ConcreteFunction concrete_func:
+    :rtype: str
+    """
+    if extern:
+      return func_identifier
+    else:
+      return func_identifier + ''.join([str(arg_type) for arg_type in concrete_func.arg_types])
 
 
 def make_initial_symbol_table():

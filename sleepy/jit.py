@@ -39,3 +39,12 @@ def compile_ir(engine, llvm_ir):
   engine.add_module(mod)
   engine.finalize_object()
   engine.run_static_constructors()
+
+
+def get_func_address(engine, ir_func):
+  """
+  :param ExecutionEngine engine:
+  :param llvm.ir.Function ir_func:
+  :return:
+  """
+  return engine.get_function_address(ir_func.name)

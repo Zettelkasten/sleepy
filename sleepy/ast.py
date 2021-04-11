@@ -10,7 +10,7 @@ from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
-  make_initial_symbol_table, StructType
+  make_initial_symbol_table, StructType, ConcreteFunction
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -42,6 +42,7 @@ class AbstractSyntaxTree:
     :param str func_identifier:
     :param list[ExpressionAst func_arg_exprs:
     :param SymbolTable symbol_table:
+    :rtype: ConcreteFunction
     """
     if func_identifier not in symbol_table:
       self.raise_error('Function %r called before declared' % func_identifier)
@@ -54,14 +55,12 @@ class AbstractSyntaxTree:
       assert isinstance(symbol, FunctionSymbol)
     if not isinstance(symbol, FunctionSymbol):
       self.raise_error('Cannot call non-function %r' % func_identifier)
-    if len(func_arg_exprs) != len(symbol.arg_identifiers):
-      self.raise_error('Cannot call function %r with %r arguments, expected %r arguments %r' % (
-        func_identifier, len(func_arg_exprs), len(symbol.arg_identifiers), symbol.arg_identifiers))
     called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
-    for arg_identifier, called_type, declared_type in zip(symbol.arg_identifiers, called_types, symbol.arg_types):
-      if called_type != declared_type:
-        self.raise_error('Cannot call function %r with parameter %r of type %r, expected %r' % (
-          func_identifier, arg_identifier, called_type, declared_type))
+    if not symbol.has_concrete_func(called_types):
+      self.raise_error('Cannot call function %r with arguments of types %r, only declared for parameter types: %r' % (
+        func_identifier, ', '.join([str(called_type) for called_type in called_types]),
+        ', '.join([concrete_func.to_signature_str() for concrete_func in symbol.concrete_funcs.values()])))
+    return symbol.get_concrete_func(called_types)
 
   def _make_func_call_ir(self, func_identifier, func_arg_exprs, builder, symbol_table):
     """
@@ -76,8 +75,12 @@ class AbstractSyntaxTree:
     if isinstance(func_symbol, TypeSymbol):
       func_symbol = func_symbol.constructor_symbol
     assert isinstance(func_symbol, FunctionSymbol)
-    ir_func = func_symbol.ir_func
-    assert len(ir_func.args) == len(func_arg_exprs)
+    called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+    assert func_symbol.has_concrete_func(called_types)
+    concrete_func = func_symbol.get_concrete_func(called_types)
+    ir_func = concrete_func.ir_func
+    assert ir_func is not None
+    assert len(concrete_func.arg_types) == len(func_arg_exprs) == len(ir_func.args)
     ir_func_args = [val.make_ir_val(builder=builder, symbol_table=symbol_table) for val in func_arg_exprs]
     return builder.call(ir_func, ir_func_args, name='call')
 
@@ -246,15 +249,13 @@ class FunctionDeclarationAst(StatementAst):
     """
     arg_types = [self.make_type(identifier, symbol_table=symbol_table) for identifier in self.arg_type_identifiers]
     if any(arg_type is None for arg_type in arg_types):
-      self.raise_error('need to specify all parameter types of function %r' % self.identifier)
+      self.raise_error('Need to specify all parameter types of function %r' % self.identifier)
     return arg_types
 
   def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     """
-    if self.identifier in symbol_table:
-      self.raise_error('Cannot redefine function with name %r' % self.identifier)
     arg_types = self.make_arg_types(symbol_table=symbol_table)
     if self.return_type_identifier is None:
       return_type = SLEEPY_VOID
@@ -262,8 +263,18 @@ class FunctionDeclarationAst(StatementAst):
       return_type = self.make_type(self.return_type_identifier, symbol_table=symbol_table)
     if return_type is None:
       self.raise_error('Need to specify return type of function %r' % self.identifier)
-    symbol_table[self.identifier] = FunctionSymbol(
-      None, arg_identifiers=self.arg_identifiers, arg_types=arg_types, return_type=return_type)
+    if self.identifier in symbol_table:
+      func_symbol = symbol_table[self.identifier]
+      if not isinstance(func_symbol, FunctionSymbol):
+        self.raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier)
+    else:
+      func_symbol = FunctionSymbol()
+      symbol_table[self.identifier] = func_symbol
+    if func_symbol.has_concrete_func(arg_types):
+      self.raise_error('Cannot override definition of function %r with parameter types %r' % (
+        self.identifier, ', '.join([str(arg_type) for arg_type in arg_types])))
+    func_symbol.add_concrete_func(
+      ConcreteFunction(None, return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types))
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -272,20 +283,24 @@ class FunctionDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
+    arg_types = self.make_arg_types(symbol_table=symbol_table)
     assert self.identifier in symbol_table
-    symbol = symbol_table[self.identifier]
-    assert isinstance(symbol, FunctionSymbol)
-    ir_func_type = symbol.make_ir_function_type()
-    symbol.ir_func = ir.Function(module, ir_func_type, name=self.identifier)
+    func_symbol = symbol_table[self.identifier]
+    assert isinstance(func_symbol, FunctionSymbol)
+    assert func_symbol.has_concrete_func(arg_types)
+    concrete_func = func_symbol.get_concrete_func(arg_types)
+    ir_func_type = concrete_func.make_ir_function_type()
+    ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
+    concrete_func.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
 
     if not self.is_extern:
-      block = symbol.ir_func.append_basic_block(name='entry')
+      block = concrete_func.ir_func.append_basic_block(name='entry')
       body_builder = ir.IRBuilder(block)
 
       body_symbol_table = symbol_table.copy()  # type: SymbolTable
-      body_symbol_table.current_func = symbol
+      body_symbol_table.current_func = concrete_func
       body_symbol_table.current_scope_identifiers = []
-      for arg_identifier, arg_type in zip(self.arg_identifiers, self.make_arg_types(symbol_table=symbol_table)):
+      for arg_identifier, arg_type in zip(self.arg_identifiers, arg_types):
         body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type)
         body_symbol_table.current_scope_identifiers.append(arg_identifier)
       for stmt in self.stmt_list:
@@ -298,7 +313,7 @@ class FunctionDeclarationAst(StatementAst):
           continue
         var_symbol.ir_alloca = body_builder.alloca(var_symbol.var_type.ir_type, name=identifier_name)
 
-      for arg_identifier, ir_arg in zip(self.arg_identifiers, symbol.ir_func.args):
+      for arg_identifier, ir_arg in zip(self.arg_identifiers, concrete_func.ir_func.args):
         arg_symbol = body_symbol_table[arg_identifier]
         assert isinstance(arg_symbol, VariableSymbol)
         ir_arg.name = arg_identifier
@@ -312,7 +327,7 @@ class FunctionDeclarationAst(StatementAst):
           self.pos.from_pos if len(self.stmt_list) == 0 else self.stmt_list[-1].pos.to_pos,
           self.pos.to_pos)
         return_ast = ReturnStatementAst(return_pos, [])
-        if symbol.return_type != SLEEPY_VOID:
+        if concrete_func.return_type != SLEEPY_VOID:
           return_ast.raise_error(
             'Not all branches within function declaration of %r return something' % self.identifier)
         return_ast.build_symbol_table(symbol_table=body_symbol_table)  # for error checking
@@ -398,7 +413,7 @@ class ReturnStatementAst(StatementAst):
             return_val_type))
         else:
           self.raise_error('Function declared to return type %r, but return value is of type %r' % (
-            return_val_type, symbol_table.current_func.return_type))
+            symbol_table.current_func.return_type, return_val_type))
     else:
       assert len(self.return_exprs) == 0
       if symbol_table.current_func.return_type != SLEEPY_VOID:
@@ -470,14 +485,16 @@ class StructDeclarationAst(StatementAst):
     assert len(member_identifiers) == len(member_types) == len(self.stmt_list)
 
     struct_type = StructType(self.struct_identifier, member_identifiers, member_types, pass_by_ref=self.pass_by_ref)
+    constructor = FunctionSymbol()
     # ir_func will be set in build_expr_ir
-    constructor = FunctionSymbol(ir_func=None, arg_identifiers=[], arg_types=[], return_type=struct_type)
+    constructor.add_concrete_func(
+      ConcreteFunction(ir_func=None, return_type=struct_type, arg_types=[], arg_identifiers=[]))
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
   def _make_constructor_body_ir(self, constructor, symbol_table):
     """
-    :param FunctionSymbol constructor:
+    :param ConcreteFunction constructor:
     :param SymbolTable symbol_table:
     """
     struct_type = constructor.return_type
@@ -517,7 +534,7 @@ class StructDeclarationAst(StatementAst):
     assert self.struct_identifier in symbol_table
     struct_symbol = symbol_table[self.struct_identifier]
     assert isinstance(struct_symbol, TypeSymbol)
-    constructor = struct_symbol.constructor_symbol
+    constructor = struct_symbol.constructor_symbol.get_concrete_func(arg_types=[])
     assert constructor is not None
     assert struct_symbol.type == constructor.return_type
     ir_func_type = constructor.make_ir_function_type()
@@ -1052,9 +1069,9 @@ class CallExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    self._check_func_call_symbol_table(
+    concrete_func = self._check_func_call_symbol_table(
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
-    return self.get_func_symbol(symbol_table=symbol_table).return_type
+    return concrete_func.return_type
 
   def make_ir_val(self, builder, symbol_table):
     """

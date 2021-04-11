@@ -14,7 +14,7 @@ from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnState
   add_preamble_to_ast
 from sleepy.grammar import TreePosition, SemanticError
 from sleepy.jit import make_execution_engine, compile_ir
-from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, Symbol, SymbolTable, make_initial_symbol_table
+from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, SymbolTable, make_initial_symbol_table
 
 
 def _test_parse_ast(program):
@@ -70,13 +70,13 @@ def _get_py_func_from_ast(engine, ast):
   assert isinstance(ast, FunctionDeclarationAst)
   module = ir.Module(name='_test_last_declared_func')
   symbol_table = make_initial_symbol_table()  # type: SymbolTable
-  declared_variables = []  # type: List[str]
   ast.build_symbol_table(symbol_table=symbol_table)
   ast.build_expr_ir(module=module, builder=None, symbol_table=symbol_table)
   assert ast.identifier in symbol_table
+  func_symbol = symbol_table[ast.identifier]
+  assert isinstance(func_symbol, FunctionSymbol)
   compile_ir(engine, module)
-  func_ptr = engine.get_function_address(ast.identifier)
-  return CFUNCTYPE(*((c_double,) + (c_double,) * len(ast.arg_identifiers)))(func_ptr)
+  return func_symbol.get_single_concrete_func().make_py_func(engine)
 
 
 def test_FunctionDeclarationAst_build_expr_ir():
@@ -117,13 +117,10 @@ def _test_compile_program(engine, program, main_func_identifier='main'):
   print('---- module intermediate repr:')
   print(module_ir)
   compile_ir(engine, module_ir)
-  main_func_ptr = engine.get_function_address(main_func_identifier)
-
   assert main_func_identifier in symbol_table
   main_func_symbol = symbol_table[main_func_identifier]
   assert isinstance(main_func_symbol, FunctionSymbol)
-  py_func = CFUNCTYPE(
-    main_func_symbol.return_type.c_type, *[arg_type.c_type for arg_type in main_func_symbol.arg_types])(main_func_ptr)
+  py_func = main_func_symbol.get_single_concrete_func().make_py_func(engine)
   assert callable(py_func)
   return py_func
 

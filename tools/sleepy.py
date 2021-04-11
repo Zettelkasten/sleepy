@@ -28,21 +28,21 @@ def main():
   ast = make_program_ast(program)
   module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='default_module')
   if main_func_identifier not in symbol_table:
-    print('Error: Entry point function %r not found')
+    print('Error: Entry point function %r not found' % main_func_identifier)
     exit()
   main_func_symbol = symbol_table[main_func_identifier]
   if not isinstance(main_func_symbol, FunctionSymbol):
-    print('Error: Entry point %r must be a function')
+    print('Error: Entry point %r must be a function' % main_func_identifier)
     exit()
-
+  if len(main_func_symbol.concrete_funcs) != 1:
+    print('Error: Must declare exactly one entry point function %r' % main_func_identifier)
+    exit()
+  concrete_main_func = main_func_symbol.get_single_concrete_func()
   with make_execution_engine() as engine:
     compile_ir(engine, module_ir)
-  main_func_ptr = engine.get_function_address(main_func_identifier)
-  py_func = CFUNCTYPE(
-    main_func_symbol.return_type.c_type, *[arg_type.c_type for arg_type in main_func_symbol.arg_types])(main_func_ptr)
-  assert callable(py_func)
+  py_func = concrete_main_func.make_py_func(engine)
   return_val = py_func()
-  print('\nExited with return value %r of type %r' % (return_val, main_func_symbol.return_type))
+  print('\nExited with return value %r of type %r' % (return_val, concrete_main_func.return_type))
 
 
 if __name__ == '__main__':
