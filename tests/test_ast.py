@@ -629,6 +629,26 @@ def test_pass_by_value():
     assert_equal(main(), 4)
 
 
+def test_annotation_fail_contradiction():
+  with make_execution_engine() as engine:
+    program = """
+    @ValType @RefType struct BadStruct { }
+    func main() { }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_annotation_fail_duplicated():
+  with make_execution_engine() as engine:
+    program = """
+    @ValType @ValType struct BadStruct { }
+    func main() { }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
