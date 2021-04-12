@@ -14,4 +14,11 @@ func main() {
     Int left = 0;
     Int right = 0;
   }
+
+  func get_left(@Const IntPair pair) {
+    return pair.left;
+  }
+  func set_left(@Mutable IntPair pair, Int new_left) {
+    pair.left = new_left;
+  }
 }
