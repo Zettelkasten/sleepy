@@ -9,6 +9,11 @@ llvm.initialize()
 llvm.initialize_native_target()
 llvm.initialize_all_asmprinters()
 
+pass_manager = llvm.ModulePassManager()
+pass_manager.add_instruction_combining_pass()
+pass_manager.add_gvn_pass()
+pass_manager.add_cfg_simplification_pass()
+
 
 @contextmanager
 def make_execution_engine():
@@ -27,18 +32,23 @@ def make_execution_engine():
   del engine
 
 
-def compile_ir(engine, llvm_ir):
+def compile_ir(engine, llvm_ir, optimize=True):
   """
   :param ExecutionEngine engine:
   :param str|Any llvm_ir:
+  :param bool optimize:
+  :rtype: llvm.ModuleRef
   """
   if not isinstance(llvm_ir, str):
     llvm_ir = llvm_ir.__repr__()
   mod = llvm.parse_assembly(llvm_ir)
+  if optimize:
+    pass_manager.run(mod)
   mod.verify()
   engine.add_module(mod)
   engine.finalize_object()
   engine.run_static_constructors()
+  return mod
 
 
 def get_func_address(engine, ir_func):

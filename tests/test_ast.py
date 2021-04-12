@@ -103,11 +103,12 @@ def test_FunctionDeclarationAst_build_expr_ir():
     assert_equal(func3(7.0, 3.0), 10.0)
 
 
-def _test_compile_program(engine, program, main_func_identifier='main'):
+def _test_compile_program(engine, program, main_func_identifier='main', optimize=True):
   """
   :param ExecutionEngine engine:
   :param str program:
   :param str main_func_identifier:
+  :param bool optimize:
   :rtype: Callable[[], float]
   """
   ast = _test_parse_ast(program)
@@ -116,7 +117,10 @@ def _test_compile_program(engine, program, main_func_identifier='main'):
   print(symbol_table)
   print('---- module intermediate repr:')
   print(module_ir)
-  compile_ir(engine, module_ir)
+  optimized_module_ir = compile_ir(engine, module_ir, optimize=optimize)
+  if optimize:
+    print('---- optimized module intermediate repr:')
+    print(optimized_module_ir)
   assert main_func_identifier in symbol_table
   main_func_symbol = symbol_table[main_func_identifier]
   assert isinstance(main_func_symbol, FunctionSymbol)
