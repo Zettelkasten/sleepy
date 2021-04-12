@@ -601,7 +601,7 @@ def test_pass_by_reference():
     struct Foo {
       Int val = 0;
     }
-    func inc_val(Foo of) {
+    func inc_val(@Mutable Foo of) {
       of.val = of.val + 1;
     }
     func main() -> Int {
@@ -619,7 +619,7 @@ def test_pass_by_value():
   with make_execution_engine() as engine:
     program = """
     struct Foo { Int val = 0; }
-    func inc_val(Foo of) {
+    func inc_val(@Mutable Foo of) {
       of.val = of.val + 1;
     }
     func main() -> Int {

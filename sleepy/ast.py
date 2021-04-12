@@ -1305,6 +1305,8 @@ class MemberTargetAst(TargetAst):
     :param SymbolTable symbol_table:
     :rtype: bool
     """
+    if not self.parent_target.is_ptr_mutable(symbol_table=symbol_table):
+      return False
     # TODO: Make it configurable whether struct members are mutable or not.
     # For now, they are all mutable.
     return True
