@@ -900,6 +900,24 @@ def test_immutable_struct_member_assign_mutable_member():
       _test_compile_program(engine, program)
 
 
+def test_func_operator():
+  with make_execution_engine() as engine:
+    program = """
+    # use + as logical or, * as logical and.
+    func +(Bool a, Bool b) -> Bool {
+      return or(a, b);
+    }
+    func main(Bool a, Bool b) -> Bool {
+      return a + b;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(False, False), False)
+    assert_equal(main(True, False), True)
+    assert_equal(main(False, True), True)
+    assert_equal(main(True, True), True)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
