@@ -706,6 +706,32 @@ def test_assign_to_mutable_var():
     assert_equal(main(4), 4 + 1)
 
 
+def test_const_add_vs_assign_add():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Vec2 { Double x = 0.0; Double y = 0.0; }
+    func add(Vec2 a, Vec2 b) -> Vec2 {
+      v = Vec2();
+      v.x = a.x + b.x;
+      v.y = a.y + b.y;
+      return v;
+    }
+    func assign_add(@Mutable Vec2 a, Vec2 b) {
+      a.x = a.x + b.x;
+      a.y = a.y + b.y;
+    }
+    func main() -> Double {
+      v1 = Vec2(); v1.x = 5.0; v1.y = 7.0;
+      v2 = Vec2(); v2.x = 0.0; v2.y = 3.0;
+      v3 = add(v1, v2);  # should be (5.0, 10.0)
+      assign_add(v2, v3);  # v2 = (5.0, 13.0);
+      v4 = add(v1, v2);  # should be (10.0, 20.0)
+      return v4.x + v4.y;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 10.0 + 20.0)
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
