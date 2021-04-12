@@ -143,18 +143,24 @@ class StatementAst(AbstractSyntaxTree):
       self.raise_error('%r is not a type, but a %r' % (type_identifier, type(type_symbol)))
     return type_symbol.type
 
-  def make_var_is_mutable(self, arg_identifier, arg_annotation_list, default):
+  def make_var_is_mutable(self, arg_identifier, arg_type, arg_annotation_list, default):
     """
     :param str arg_identifier:
+    :param Type arg_type:
     :param list[AnnotationAst] arg_annotation_list:
     :param bool default:
     """
     assert isinstance(arg_annotation_list, (tuple, list))
-    mutable = any(annotation.identifier == 'Mutable' for annotation in arg_annotation_list)
-    const = any(annotation.identifier == 'Const' for annotation in arg_annotation_list)
-    if mutable and const:
+    has_mutable = any(annotation.identifier == 'Mutable' for annotation in arg_annotation_list)
+    has_const = any(annotation.identifier == 'Const' for annotation in arg_annotation_list)
+    if has_mutable and has_const:
       self.raise_error('Cannot annotate parameter %r with both %r and %r' % (arg_identifier, 'Mutable', 'Const'))
-    return const if default else mutable  # fallback to default if none is specified
+    mutable = has_const if default else has_mutable  # fallback to default if none is specified
+    if mutable and not arg_type.pass_by_ref:
+      self.raise_error(
+        'Type %r of mutable parameter %r needs to have pass-by-reference semantics (annotatated by @RefType)' % (
+          arg_type, arg_identifier))
+    return mutable
 
   def __repr__(self):
     """
@@ -331,7 +337,7 @@ class FunctionDeclarationAst(StatementAst):
       body_symbol_table.current_func = concrete_func
       body_symbol_table.current_scope_identifiers = []
       for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations):
-        mutable = self.make_var_is_mutable(arg_identifier, arg_annotation_list, default=False)
+        mutable = self.make_var_is_mutable(arg_identifier, arg_type, arg_annotation_list, default=False)
         body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, mutable)
         body_symbol_table.current_scope_identifiers.append(arg_identifier)
       for stmt in self.stmt_list:
@@ -656,7 +662,7 @@ class AssignStatementAst(StatementAst):
       ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
       if ptr_type != val_type:
         self.raise_error('Cannot redefine variable of type %r with new type %r' % (ptr_type, val_type))
-      if not self.var_target.is_ptr_mutable(symbol_table=symbol_table):
+      if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
         self.raise_error('Cannot reassign a non-mutable variable')
 
   def build_expr_ir(self, module, builder, symbol_table):
@@ -1210,6 +1216,13 @@ class TargetAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
+  def is_ptr_reassignable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype bool:
+    """
+    raise NotImplementedError()
+
   def make_ir_ptr(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
@@ -1258,6 +1271,13 @@ class VariableTargetAst(TargetAst):
     symbol = symbol_table[self.var_identifier]
     assert isinstance(symbol, VariableSymbol)
     return symbol.mutable
+
+  def is_ptr_reassignable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype bool:
+    """
+    return True
 
   def make_ir_ptr(self, builder, symbol_table):
     """
@@ -1311,6 +1331,12 @@ class MemberTargetAst(TargetAst):
     # For now, they are all mutable.
     return True
 
+  def is_ptr_reassignable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype bool:
+    """
+    return self.parent_target.is_ptr_mutable(symbol_table=symbol_table)
 
   def make_ir_ptr(self, builder, symbol_table):
     """

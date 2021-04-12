@@ -216,7 +216,7 @@ def test_global_var():
 def test_simple_mutable_assign():
   with make_execution_engine() as engine:
     program = """
-    func main(@Mutable Int x) -> Int {
+    func main(Int x) -> Int {
       x = x + 1;
       x = x + 1;
       return x;
@@ -618,19 +618,13 @@ def test_pass_by_reference():
 def test_pass_by_value():
   with make_execution_engine() as engine:
     program = """
-    struct Foo { Int val = 0; }
-    func inc_val(@Mutable Foo of) {
-      of.val = of.val + 1;
-    }
-    func main() -> Int {
-      my_foo = Foo();
-      my_foo.val = 4;
-      inc_val(my_foo);  # now my_foo.val should still be 4.
-      return my_foo.val;
+    @RefType struct Foo { Int val = 0; }
+    func inc_val(Foo of) {
+      of.val = of.val + 1;  # cannot redefine a immutable parameter!
     }
     """
-    main = _test_compile_program(engine, program)
-    assert_equal(main(), 4)
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
 
 
 def test_annotation_fail_contradiction():
@@ -670,40 +664,6 @@ def test_overload_func():
     main = _test_compile_program(engine, program)
     assert_equal(main(True, 2), 1 + 2 * 2)
     assert_equal(main(False, -5), 0 - 5 * 2)
-
-
-def test_assign_to_const_var():
-  with make_execution_engine() as engine:
-    program = """
-    func main(@Const Int constant_int) {
-      constant_int = constant_int + 1;
-    }
-    """
-    with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
-
-
-def test_assign_to_const_var_implicit():
-  with make_execution_engine() as engine:
-    program = """
-    func main(Int constant_int) {  # no declaration means @Const.
-      constant_int = constant_int + 1;
-    }
-    """
-    with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
-
-
-def test_assign_to_mutable_var():
-  with make_execution_engine() as engine:
-    program = """
-    func main(@Mutable Int mutable_int) -> Int {
-      mutable_int = mutable_int + 1;
-      return mutable_int;
-    }
-    """
-    main = _test_compile_program(engine, program)
-    assert_equal(main(4), 4 + 1)
 
 
 def test_const_add_vs_assign_add():
