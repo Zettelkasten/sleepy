@@ -222,20 +222,26 @@ class FunctionDeclarationAst(StatementAst):
   """
   Stmt -> func identifier ( TypedIdentifierList ) { StmtList }
   """
-  def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, return_type_identifier, stmt_list):
+
+  allowed_arg_annotation_identifiers = {'Const', 'Mutable'}
+
+  def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, arg_annotations, return_type_identifier,
+               stmt_list):
     """
     :param TreePosition pos:
     :param str identifier:
-    :param list[str|None] arg_identifiers:
+    :param list[str] arg_identifiers:
     :param list[str|None] arg_type_identifiers:
+    :param list[list[AnnotationAst]] arg_annotations:
     :param str|None return_type_identifier:
     :param list[StatementAst]|None stmt_list: body, or None if extern function.
     """
     super().__init__(pos)
-    assert len(arg_identifiers) == len(arg_type_identifiers)
+    assert len(arg_identifiers) == len(arg_type_identifiers) == len(arg_annotations)
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
     self.arg_type_identifiers = arg_type_identifiers
+    self.arg_annotations = arg_annotations
     self.return_type_identifier = return_type_identifier
     self.stmt_list = stmt_list
 
@@ -254,6 +260,13 @@ class FunctionDeclarationAst(StatementAst):
     arg_types = [self.make_type(identifier, symbol_table=symbol_table) for identifier in self.arg_type_identifiers]
     if any(arg_type is None for arg_type in arg_types):
       self.raise_error('Need to specify all parameter types of function %r' % self.identifier)
+    for arg_identifier, arg_annotation_list in zip(self.arg_identifiers, self.arg_annotations):
+      for arg_annotation_num, arg_annotation in enumerate(arg_annotation_list):
+        if arg_annotation.identifier in arg_annotation_list[:arg_annotation_num]:
+          arg_annotation.raise_error('Cannot apply annotation with identifier %r twice' % arg_annotation.identifier)
+        if arg_annotation.identifier not in self.allowed_arg_annotation_identifiers:
+          arg_annotation.raise_error('Cannot apply annotation with identifier %r, allowed: %r' % (
+            arg_annotation.identifier, ', '.join(self.allowed_arg_annotation_identifiers)))
     return arg_types
 
   def build_symbol_table(self, symbol_table):
@@ -1379,8 +1392,8 @@ SLEEPY_GRAMMAR = Grammar(
   Production('IdentifierList+', 'identifier', ',', 'IdentifierList+'),
   Production('TypedIdentifierList'),
   Production('TypedIdentifierList', 'TypedIdentifierList+'),
-  Production('TypedIdentifierList+', 'Type', 'identifier'),
-  Production('TypedIdentifierList+', 'Type', 'identifier', ',', 'TypedIdentifierList+'),
+  Production('TypedIdentifierList+', 'AnnotationList', 'Type', 'identifier'),
+  Production('TypedIdentifierList+', 'AnnotationList', 'Type', 'identifier', ',', 'TypedIdentifierList+'),
   Production('ExprList'),
   Production('ExprList', 'ExprList+'),
   Production('ExprList+', 'Expr'),
@@ -1401,12 +1414,12 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, stmt_list(1))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier, stmt_list: (
-      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},
-    {'ast': lambda _pos, op, identifier_list, type_list, type_identifier, stmt_list: (
-      FunctionDeclarationAst(_pos, op(2), identifier_list(4), type_list(4), type_identifier(6), stmt_list(8)))},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, type_identifier: (
-      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), type_identifier(6), None))},
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier, stmt_list: (
+      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6), stmt_list(8)))},  # noqa
+    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, type_identifier, stmt_list: (
+      FunctionDeclarationAst(_pos, op(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6), stmt_list(8)))},  # noqa
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier: (
+      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6), None))},  # noqa
     {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
     {'ast': lambda _pos, identifier, val_list: CallStatementAst(_pos, identifier(1), val_list(3))},
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
@@ -1436,12 +1449,17 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'identifier_list': 'identifier_list.1'},
     {'identifier_list': lambda identifier: [identifier(1)]},
     {'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(3)},
-    {'identifier_list': [], 'type_list': []},
-    {'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1'},
-    {'identifier_list': lambda identifier: [identifier(2)], 'type_list': lambda type_identifier: [type_identifier(1)]},
+    {'identifier_list': [], 'type_list': [], 'annotation_list': []},
+    {'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
     {
-      'identifier_list': lambda identifier, identifier_list: [identifier(2)] + identifier_list(4),
-      'type_list': lambda type_identifier, type_list: [type_identifier(1)] + type_list(4)
+      'identifier_list': lambda identifier: [identifier(3)],
+      'type_list': lambda type_identifier: [type_identifier(2)],
+      'annotation_list': lambda annotation_list: [annotation_list(1)]
+    },
+    {
+      'identifier_list': lambda identifier, identifier_list: [identifier(3)] + identifier_list(5),
+      'type_list': lambda type_identifier, type_list: [type_identifier(2)] + type_list(5),
+      'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(5)
     },
     {'val_list': []},
     {'val_list': 'val_list.1'},
