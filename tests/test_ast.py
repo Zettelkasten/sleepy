@@ -706,23 +706,6 @@ def test_assign_to_mutable_var():
     assert_equal(main(4), 4 + 1)
 
 
-def test_simple_optimize():
-  with make_execution_engine() as engine:
-    program = """
-    func sum(Int a, Int b) -> Int {
-      return a + b;
-    }
-    func main(Int x) -> Int {
-      if x > 0 {
-        return sum(x, 2);  # should fold these constants.
-      } else {
-        return 6;
-      }
-    }
-    """
-    _test_compile_program(engine, program)
-
-
 if __name__ == "__main__":
   try:
     better_exchook.install()
