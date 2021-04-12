@@ -163,15 +163,17 @@ class VariableSymbol(Symbol):
   """
   A declared variable.
   """
-  def __init__(self, ir_alloca, var_type):
+  def __init__(self, ir_alloca, var_type, mutable):
     """
     :param ir.instructions.AllocaInstr|None ir_alloca:
     :param Type var_type:
+    :param bool mutable:
     """
     super().__init__()
     assert ir_alloca is None or isinstance(ir_alloca, ir.instructions.AllocaInstr)
     self.ir_alloca = ir_alloca
     self.var_type = var_type
+    self.mutable = mutable
 
 
 class ConcreteFunction:

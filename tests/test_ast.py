@@ -7,7 +7,6 @@ import unittest
 
 from llvmlite import ir
 from nose.tools import assert_equal, assert_almost_equal, assert_raises
-from ctypes import CFUNCTYPE, c_double
 
 from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnStatementAst, \
   BinaryOperatorExpressionAst, ConstantExpressionAst, VariableExpressionAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
@@ -217,7 +216,7 @@ def test_global_var():
 def test_simple_mutable_assign():
   with make_execution_engine() as engine:
     program = """
-    func main(Int x) -> Int {
+    func main(@Mutable Int x) -> Int {
       x = x + 1;
       x = x + 1;
       return x;
@@ -671,6 +670,40 @@ def test_overload_func():
     main = _test_compile_program(engine, program)
     assert_equal(main(True, 2), 1 + 2 * 2)
     assert_equal(main(False, -5), 0 - 5 * 2)
+
+
+def test_assign_to_const_var():
+  with make_execution_engine() as engine:
+    program = """
+    func main(@Const Int constant_int) {
+      constant_int = constant_int + 1;
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_assign_to_const_var_implicit():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Int constant_int) {  # no declaration means @Const.
+      constant_int = constant_int + 1;
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_assign_to_mutable_var():
+  with make_execution_engine() as engine:
+    program = """
+    func main(@Mutable Int mutable_int) -> Int {
+      mutable_int = mutable_int + 1;
+      return mutable_int;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(4), 4 + 1)
 
 
 def test_simple_optimize():

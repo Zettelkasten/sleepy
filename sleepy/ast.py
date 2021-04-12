@@ -143,6 +143,19 @@ class StatementAst(AbstractSyntaxTree):
       self.raise_error('%r is not a type, but a %r' % (type_identifier, type(type_symbol)))
     return type_symbol.type
 
+  def make_var_is_mutable(self, arg_identifier, arg_annotation_list, default):
+    """
+    :param str arg_identifier:
+    :param list[AnnotationAst] arg_annotation_list:
+    :param bool default:
+    """
+    assert isinstance(arg_annotation_list, (tuple, list))
+    mutable = any(annotation.identifier == 'Mutable' for annotation in arg_annotation_list)
+    const = any(annotation.identifier == 'Const' for annotation in arg_annotation_list)
+    if mutable and const:
+      self.raise_error('Cannot annotate parameter %r with both %r and %r' % (arg_identifier, 'Mutable', 'Const'))
+    return const if default else mutable  # fallback to default if none is specified
+
   def __repr__(self):
     """
     :rtype: str
@@ -317,8 +330,9 @@ class FunctionDeclarationAst(StatementAst):
       body_symbol_table = symbol_table.copy()  # type: SymbolTable
       body_symbol_table.current_func = concrete_func
       body_symbol_table.current_scope_identifiers = []
-      for arg_identifier, arg_type in zip(self.arg_identifiers, arg_types):
-        body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type)
+      for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations):
+        mutable = self.make_var_is_mutable(arg_identifier, arg_annotation_list, default=False)
+        body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, mutable)
         body_symbol_table.current_scope_identifiers.append(arg_identifier)
       for stmt in self.stmt_list:
         stmt.build_symbol_table(symbol_table=body_symbol_table)
@@ -501,13 +515,15 @@ class StructDeclarationAst(StatementAst):
       if len(body_symbol_table.current_scope_identifiers) != member_num + 1:
         stmt.raise_error(
           'Cannot declare member %r multiple times in struct declaration' % stmt.var_target.var_identifier)
-    assert len(body_symbol_table.current_scope_identifiers) == len(self.stmt_list)
+    assert len(self.stmt_list) == len(body_symbol_table.current_scope_identifiers)
     member_identifiers = []
     member_types = []
-    for declared_identifier in body_symbol_table.current_scope_identifiers:
+    for stmt, declared_identifier in zip(self.stmt_list, body_symbol_table.current_scope_identifiers):
       assert declared_identifier in body_symbol_table
       declared_symbol = body_symbol_table[declared_identifier]
       assert isinstance(declared_symbol, VariableSymbol)
+      if not declared_symbol.mutable:
+        stmt.raise_error('Struct member %r must be mutable' % declared_identifier)
       member_identifiers.append(declared_identifier)
       member_types.append(declared_symbol.var_type)
     assert len(member_identifiers) == len(member_types) == len(self.stmt_list)
@@ -631,7 +647,8 @@ class AssignStatementAst(StatementAst):
       var_identifier = self.var_target.var_identifier
       assert var_identifier not in symbol_table.current_scope_identifiers
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
-      symbol = VariableSymbol(None, var_type=val_type)
+      # TODO: Infer if it should be mutable by default from the arguments.
+      symbol = VariableSymbol(None, var_type=val_type, mutable=True)
       symbol_table[var_identifier] = symbol
       symbol_table.current_scope_identifiers.append(var_identifier)
     else:
@@ -639,6 +656,8 @@ class AssignStatementAst(StatementAst):
       ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
       if ptr_type != val_type:
         self.raise_error('Cannot redefine variable of type %r with new type %r' % (ptr_type, val_type))
+      if not self.var_target.is_ptr_mutable(symbol_table=symbol_table):
+        self.raise_error('Cannot reassign a non-mutable variable')
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -1184,6 +1203,13 @@ class TargetAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
+  def is_ptr_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: bool
+    """
+    raise NotImplementedError()
+
   def make_ir_ptr(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
@@ -1222,6 +1248,16 @@ class VariableTargetAst(TargetAst):
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign to non-variable %r' % self.var_identifier)
     return symbol.var_type
+
+  def is_ptr_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: bool
+    """
+    assert self.var_identifier in symbol_table
+    symbol = symbol_table[self.var_identifier]
+    assert isinstance(symbol, VariableSymbol)
+    return symbol.mutable
 
   def make_ir_ptr(self, builder, symbol_table):
     """
@@ -1263,6 +1299,16 @@ class MemberTargetAst(TargetAst):
     """
     parent_type = self.parent_target.make_ptr_type(symbol_table=symbol_table)
     return self._make_member_val_type(parent_type, member_identifier=self.member_identifier, symbol_table=symbol_table)
+
+  def is_ptr_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: bool
+    """
+    # TODO: Make it configurable whether struct members are mutable or not.
+    # For now, they are all mutable.
+    return True
+
 
   def make_ir_ptr(self, builder, symbol_table):
     """
