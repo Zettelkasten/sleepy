@@ -64,7 +64,14 @@ class AbstractSyntaxTree:
       self.raise_error('Cannot call function %r with arguments of types %r, only declared for parameter types: %r' % (
         func_identifier, ', '.join([str(called_type) for called_type in called_types]),
         ', '.join([concrete_func.to_signature_str() for concrete_func in symbol.concrete_funcs.values()])))
-    return symbol.get_concrete_func(called_types)
+    concrete_func = symbol.get_concrete_func(called_types)
+    called_mutables = [arg_expr.is_val_mutable(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+    for arg_identifier, arg_mutable, called_mutable in zip(
+        concrete_func.arg_identifiers, concrete_func.arg_mutables, called_mutables):
+      if arg_mutable and not called_mutable:
+        self.raise_error('Cannot call function %r declared with mutable parameter %r with immutable argument' % (
+          func_identifier, arg_identifier))
+    return concrete_func
 
   def _make_func_call_ir(self, func_identifier, func_arg_exprs, builder, symbol_table):
     """
@@ -309,8 +316,13 @@ class FunctionDeclarationAst(StatementAst):
     if func_symbol.has_concrete_func(arg_types):
       self.raise_error('Cannot override definition of function %r with parameter types %r' % (
         self.identifier, ', '.join([str(arg_type) for arg_type in arg_types])))
+    arg_mutables = [
+      self.make_var_is_mutable(arg_identifier, arg_type, arg_annotation_list, default=False)
+      for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
     func_symbol.add_concrete_func(
-      ConcreteFunction(None, return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types))
+      ConcreteFunction(
+        None, return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types,
+        arg_mutables=arg_mutables))
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -336,9 +348,8 @@ class FunctionDeclarationAst(StatementAst):
       body_symbol_table = symbol_table.copy()  # type: SymbolTable
       body_symbol_table.current_func = concrete_func
       body_symbol_table.current_scope_identifiers = []
-      for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations):
-        mutable = self.make_var_is_mutable(arg_identifier, arg_type, arg_annotation_list, default=False)
-        body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, mutable)
+      for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
+        body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
         body_symbol_table.current_scope_identifiers.append(arg_identifier)
       for stmt in self.stmt_list:
         stmt.build_symbol_table(symbol_table=body_symbol_table)
@@ -539,7 +550,7 @@ class StructDeclarationAst(StatementAst):
     constructor = FunctionSymbol()
     # ir_func will be set in build_expr_ir
     constructor.add_concrete_func(
-      ConcreteFunction(ir_func=None, return_type=struct_type, arg_types=[], arg_identifiers=[]))
+      ConcreteFunction(ir_func=None, return_type=struct_type, arg_types=[], arg_identifiers=[], arg_mutables=[]))
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
@@ -850,6 +861,13 @@ class ExpressionAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
+  def is_val_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    raise NotImplementedError()
+
   def make_ir_val(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
@@ -906,6 +924,13 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
       return SLEEPY_BOOL
     self.raise_error('Unknown binary operator %r' % self.op)
+
+  def is_val_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    return True
 
   def make_ir_val(self, builder, symbol_table):
     """
@@ -983,6 +1008,13 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     return self.expr.make_val_type(symbol_table=symbol_table)
 
+  def is_val_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    return True
+
   def make_ir_val(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
@@ -1029,6 +1061,13 @@ class ConstantExpressionAst(ExpressionAst):
     """
     return self.constant_type
 
+  def is_val_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    return True
+
   def make_ir_val(self, builder, symbol_table):
     """
     :param ir.IRBuilder builder:
@@ -1074,6 +1113,13 @@ class VariableExpressionAst(ExpressionAst):
     :rtype: Type
     """
     return self.get_var_symbol(symbol_table=symbol_table).var_type
+
+  def is_val_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    return self.get_var_symbol(symbol_table=symbol_table).mutable
 
   def make_ir_val(self, builder, symbol_table):
     """
@@ -1126,6 +1172,13 @@ class CallExpressionAst(ExpressionAst):
     concrete_func = self._check_func_call_symbol_table(
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
     return concrete_func.return_type
+
+  def is_val_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    return True
 
   def make_ir_val(self, builder, symbol_table):
     """
@@ -1183,6 +1236,16 @@ class MemberExpressionAst(ExpressionAst):
     else:  # pass by value
       return builder.extract_value(
         parent_ir_val, parent_type.get_member_num(self.member_identifier), name='member_%s' % self.member_identifier)
+
+  def is_val_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    if not self.parent_val_expr.is_val_mutable(symbol_table=symbol_table):
+      return False
+    # TODO: Add immutable struct members
+    raise True
 
   def __repr__(self):
     """

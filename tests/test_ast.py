@@ -692,6 +692,51 @@ def test_const_add_vs_assign_add():
     main = _test_compile_program(engine, program)
     assert_equal(main(), 10.0 + 20.0)
 
+
+def test_call_mutable_with_const_var():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Counter { Int val = 0; }
+    func inc(@Mutable Counter c) { c.val = c.val + 1; }
+    func inc_wrapper(Counter c) { inc(c); }
+    func main() {
+      c = Counter();
+      inc_wrapper(c);
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_counter_is_empty():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Counter { Int val = 0; }
+    func increase(@Mutable Counter c) {
+      c.val = c.val + 1;
+    }
+    func is_empty(Counter c) -> Bool {
+      return c.val == 0;
+    }
+    func increase_if_empty(@Mutable Counter c) {
+      if is_empty(c) {
+        increase(c);
+      }
+    }
+    func main() -> Int {
+      c = Counter();
+      increase(c);
+      increase_if_empty(c);  # should not do anything
+      c.val = c.val - 1;
+      increase_if_empty(c);  # should increase
+      increase(c);
+      return c.val;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 2)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

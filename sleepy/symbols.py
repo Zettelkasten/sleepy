@@ -180,20 +180,22 @@ class ConcreteFunction:
   """
   An actual function implementation.
   """
-  def __init__(self, ir_func, return_type, arg_identifiers, arg_types):
+  def __init__(self, ir_func, return_type, arg_identifiers, arg_types, arg_mutables):
     """
     :param ir.Function|None ir_func:
     :param Type|None return_type:
     :param list[str] arg_identifiers:
     :param list[Type] arg_types:
+    :param list[bool] arg_mutables:
     """
     assert ir_func is None or isinstance(ir_func, ir.Function)
     assert isinstance(return_type, Type)
-    assert len(arg_identifiers) == len(arg_types)
+    assert len(arg_identifiers) == len(arg_types) == len(arg_mutables)
     self.ir_func = ir_func
     self.return_type = return_type
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
+    self.arg_mutables = arg_mutables
 
   def get_c_arg_types(self):
     """
