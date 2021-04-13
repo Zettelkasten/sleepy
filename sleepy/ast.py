@@ -1245,7 +1245,7 @@ class MemberExpressionAst(ExpressionAst):
     if not self.parent_val_expr.is_val_mutable(symbol_table=symbol_table):
       return False
     # TODO: Add immutable struct members
-    raise True
+    return True
 
   def __repr__(self):
     """
