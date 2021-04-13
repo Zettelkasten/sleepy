@@ -737,6 +737,21 @@ def test_counter_is_empty():
     assert_equal(main(), 2)
 
 
+def test_if_inside_while():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Int {
+      x = 5;
+      while False() {
+        if True() { x = 7; } else { x = 5; }
+      }
+      return x;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 5)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
