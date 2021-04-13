@@ -674,7 +674,7 @@ class AssignStatementAst(StatementAst):
       if ptr_type != val_type:
         self.raise_error('Cannot redefine variable of type %r with new type %r' % (ptr_type, val_type))
       if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
-        self.raise_error('Cannot reassign a non-mutable variable')
+        self.raise_error('Cannot reassign member of a non-mutable variable')
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
