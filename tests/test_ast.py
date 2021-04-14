@@ -767,6 +767,30 @@ def test_if_inside_while2():
     assert_equal(main(0), 7)
 
 
+def test_wrong_assign_void():
+  with make_execution_engine() as engine:
+    program = """
+    func nothing() { }
+    func main() {
+      x = nothing();  # cannot assign void to x.
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_wrong_return_void():
+  with make_execution_engine() as engine:
+    program = """
+    func nothing() { }
+    func main() {
+      return nothing();  # cannot return void.
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

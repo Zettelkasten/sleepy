@@ -455,6 +455,8 @@ class ReturnStatementAst(StatementAst):
       self.raise_error('Can only use return inside a function declaration')
     if len(self.return_exprs) == 1:
       return_val_type = self.return_exprs[0].make_val_type(symbol_table=symbol_table)
+      if return_val_type == SLEEPY_VOID:
+        self.raise_error('Cannot use void return value')
       if return_val_type != symbol_table.current_func.return_type:
         if symbol_table.current_func.return_type == SLEEPY_VOID:
           self.raise_error('Function declared to return void, but return value is of type %r' % (
@@ -656,6 +658,8 @@ class AssignStatementAst(StatementAst):
     else:
       declared_type = None
     val_type = self.var_val.make_val_type(symbol_table=symbol_table)
+    if val_type == SLEEPY_VOID:
+      self.raise_error('Cannot assign void to variable')
     if declared_type is not None and declared_type != val_type:
       self.raise_error('Cannot assign variable with declared type %r a value of type %r' % (declared_type, val_type))
 
@@ -906,6 +910,10 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     """
     left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
     right_type = self.right_expr.make_val_type(symbol_table=symbol_table)
+    if left_type == SLEEPY_VOID:
+      self.raise_error('Cannot apply binary operator %r on left void operand')
+    if right_type == SLEEPY_VOID:
+      self.raise_error('Cannot apply binary operator %r on right void operand')
     if left_type == SLEEPY_DOUBLE_PTR:
       if self.op == '+' and right_type == SLEEPY_INT:
         return SLEEPY_DOUBLE_PTR
@@ -1006,7 +1014,10 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    return self.expr.make_val_type(symbol_table=symbol_table)
+    val_type = self.expr.make_val_type(symbol_table=symbol_table)
+    if val_type == SLEEPY_VOID:
+      self.raise_error('Cannot apply unary operator %r on void operand')
+    return val_type
 
   def is_val_mutable(self, symbol_table):
     """

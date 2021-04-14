@@ -171,6 +171,7 @@ class VariableSymbol(Symbol):
     """
     super().__init__()
     assert ir_alloca is None or isinstance(ir_alloca, ir.instructions.AllocaInstr)
+    assert var_type != SLEEPY_VOID
     self.ir_alloca = ir_alloca
     self.var_type = var_type
     self.mutable = mutable
