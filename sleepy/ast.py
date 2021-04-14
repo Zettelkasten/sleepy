@@ -829,8 +829,7 @@ class WhileStatementAst(StatementAst):
 
     for stmt in self.stmt_list:
       body_builder = stmt.build_expr_ir(module, builder=body_builder, symbol_table=body_symbol_table)
-    body_block = body_builder.block
-    if not body_block.is_terminated:
+    if not body_builder.block.is_terminated:
       assert body_builder is not None
       body_cond_ir = make_condition_ir(builder_=body_builder, symbol_table_=body_symbol_table)
       body_builder.cbranch(body_cond_ir, body_block, continue_block)

@@ -752,6 +752,21 @@ def test_if_inside_while():
     assert_equal(main(), 5)
 
 
+def test_if_inside_while2():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Int x) -> Int {
+      while x <= 5 {
+        if x <= 2 { x = x + 1; }
+        else { x = x + 2; }
+      }
+      return x;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(0), 7)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
