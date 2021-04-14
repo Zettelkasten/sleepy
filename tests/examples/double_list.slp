@@ -1,0 +1,70 @@
+@RefType struct DoubleList {
+  DoublePtr pointer = allocate(8);
+  Int alloc_length = 8;
+  Int length = 0;
+}
+func get(DoubleList l, Int idx) -> Double {
+  assert(and(idx >= 0, idx < l.length));
+  return load(l.pointer + idx);
+}
+func set(DoubleList l, Int idx, Double val) {  # here, the list is actually not modified as just the memory it points to is ...
+  assert(and(idx >= 0, idx < l.length));
+  store(l.pointer + idx, val);
+}
+func insert(@Mutable DoubleList l, Double val) {
+  if l.length >= l.alloc_length {
+    # no space left, resize
+    extern_func memcpy(DoublePtr to, DoublePtr from, Int size);  # size is actually a Long
+    new_alloc_length = 2 * l.alloc_length;
+    new_pointer = allocate(new_alloc_length);
+    memcpy(new_pointer, l.pointer, l.alloc_length * 8);
+    deallocate(l.pointer);
+    l.alloc_length = new_alloc_length;
+    l.pointer = new_pointer;
+  }
+  new_idx = l.length;
+  l.length = l.length + 1;
+  set(l, new_idx, val);
+}
+func remove(@Mutable DoubleList l, Int idx) {
+  assert(and(idx >= 0, idx < l.length));
+  # move all elements after idx one to front
+  move_idx = idx + 1;
+  while move_idx < l.length {
+    set(l, move_idx - 1, get(l, move_idx));
+    move_idx = move_idx + 1;
+  }
+  l.length = l.length - 1;
+}
+
+func print(DoubleList l) {
+  print('[');
+  idx = 0;
+  while idx < l.length {
+    print(get(l, idx));
+    idx = idx + 1;
+    if idx < l.length { print(','); }
+  }
+  print(']');
+}
+func print_line(DoubleList l) { print(l); print('\n'); }
+
+func main() {
+  l = DoubleList();
+  print_line(l);
+  insert(l, 4.2);
+  insert(l, 12.0);
+  insert(l, 7.0);
+  print_line(l);
+  # add a whole bunch of elements to test that resizing works.
+  s = 1.0;
+  while s > 0.0 {
+    s = s - 0.01;
+    insert(l, s);
+  }
+  insert(l, 123.0);
+  remove(l, 1);
+  print('l'); print('e'); print('n'); print(':'); print(' ');
+  print_line(l.length);
+  print_line(l);
+}
