@@ -1645,6 +1645,12 @@ def make_preamble_ast():
   func print(Char char) { extern_func print_char(Char char); print_char(char); }
   func print(Double double) { extern_func print_double(Double d); print_double(double); }
   func print(Int int) { extern_func print_int(Int i); print_int(int); }
+  func print(Bool bool) { if bool { print('T'); } else { print('F'); } }
+  func print_line() { print('\n'); }
+  func print_line(Char char) { print(char); print_line(); }
+  func print_line(Double double) { print(double); print_line(); }
+  func print_line(Int int) { print(int); print_line(); }
+  func print_line(Bool bool) { print(bool); print_line(); }
   extern_func allocate(Int size) -> DoublePtr;
   extern_func deallocate(DoublePtr ptr);
   extern_func load(DoublePtr ptr) -> Double;
