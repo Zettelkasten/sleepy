@@ -308,10 +308,11 @@ class ParserGenerator:
         start_pos_stack.append(prod_start_pos)
         accepted = True
       else:  # error
+        la_name = '%r token' % la if la is not EPSILON else 'end of file'
         possible_next_tokens = set(self._state_action_table[state].keys())
         raise ParseError(
           word, tokens_pos[pos] if pos < len(tokens_pos) else len(word),
-          'Unexpected %r token, expected: %s' % (la, ', '.join(['%r' % t for t in possible_next_tokens])))
+          'Unexpected %s, expected: %s' % (la_name, ', '.join(['%r' % t for t in possible_next_tokens])))
 
     assert rev_analysis[-1] == self._start_prod
     assert len(attr_eval_stack) == len(start_pos_stack) == 1
