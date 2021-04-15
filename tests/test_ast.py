@@ -816,6 +816,39 @@ def test_wrong_return_void():
       _test_compile_program(engine, program)
 
 
+def test_mutable_struct_member_const():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Box { Int val = 42; }
+    @RefType struct SuperBox { @Mutable Box b = Box(); }
+    func main() {
+      @Mutable Box b = Box();
+      SuperBox sb = SuperBox();
+      sb.b = b;  # should fail, sb is immutable.
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
+def test_mutable_struct_member_mutable():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Box { Int val = 42; }
+    @RefType struct SuperBox { @Mutable Box b = Box(); }
+    func main() -> Int {
+      @Mutable Box b = Box();
+      @Mutable SuperBox sb = SuperBox();
+      sb.b = b;  # should work now.
+      # can now even change b, and sb should be effected too:
+      b.val = 123;
+      return sb.b.val;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 123)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
