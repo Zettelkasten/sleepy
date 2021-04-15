@@ -953,7 +953,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    return True
+    return False
 
   def make_ir_val(self, builder, symbol_table):
     """
@@ -1039,7 +1039,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    return True
+    return False
 
   def make_ir_val(self, builder, symbol_table):
     """
@@ -1092,7 +1092,7 @@ class ConstantExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    return True
+    return False
 
   def make_ir_val(self, builder, symbol_table):
     """
