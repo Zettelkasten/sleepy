@@ -549,18 +549,18 @@ class StructDeclarationAst(StatementAst):
         stmt.raise_error(
           'Cannot declare member %r multiple times in struct declaration' % stmt.var_target.var_identifier)
     assert len(self.stmt_list) == len(body_symbol_table.current_scope_identifiers)
-    member_identifiers = []
-    member_types = []
+    member_identifiers, member_types, member_mutables = [], [], []
     for stmt, declared_identifier in zip(self.stmt_list, body_symbol_table.current_scope_identifiers):
       assert declared_identifier in body_symbol_table
       declared_symbol = body_symbol_table[declared_identifier]
       assert isinstance(declared_symbol, VariableSymbol)
       member_identifiers.append(declared_identifier)
       member_types.append(declared_symbol.var_type)
-    assert len(member_identifiers) == len(member_types) == len(self.stmt_list)
+      member_mutables.append(declared_symbol.mutable)
+    assert len(member_identifiers) == len(member_types) == len(member_mutables) == len(self.stmt_list)
 
     struct_type = StructType(
-      self.struct_identifier, member_identifiers, member_types, pass_by_ref=self.is_pass_by_ref())
+      self.struct_identifier, member_identifiers, member_types, member_mutables, pass_by_ref=self.is_pass_by_ref())
     constructor = FunctionSymbol()
     # ir_func will be set in build_expr_ir
     # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
@@ -1282,10 +1282,11 @@ class MemberExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    if self.parent_val_expr.is_val_mutable(symbol_table=symbol_table):
-      return True
-    # TODO: Add immutable struct members
-    return False
+    parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
+    assert isinstance(parent_type, StructType)
+    member_num = parent_type.get_member_num(self.member_identifier)
+    member_mutable = parent_type.member_mutables[member_num]
+    return member_mutable
 
   def __repr__(self):
     """
@@ -1428,11 +1429,12 @@ class MemberTargetAst(TargetAst):
     :param SymbolTable symbol_table:
     :rtype: bool
     """
-    if not self.parent_target.is_ptr_mutable(symbol_table=symbol_table):
-      return False
-    # TODO: Make it configurable whether struct members are mutable or not.
-    # For now, they are all mutable.
-    return True
+    parent_type = self.parent_target.make_ptr_type(symbol_table=symbol_table)
+    assert isinstance(parent_type, StructType)
+    assert self.member_identifier in parent_type.member_identifiers
+    member_num = parent_type.get_member_num(self.member_identifier)
+    member_mutable = parent_type.member_mutables[member_num]
+    return self.parent_target.is_ptr_mutable(symbol_table=symbol_table) and member_mutable
 
   def is_ptr_reassignable(self, symbol_table):
     """

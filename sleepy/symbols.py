@@ -115,13 +115,14 @@ class StructType(Type):
   """
   A struct.
   """
-  def __init__(self, struct_identifier, member_identifiers, member_types, pass_by_ref):
+  def __init__(self, struct_identifier, member_identifiers, member_types, member_mutables, pass_by_ref):
     """
     :param str struct_identifier:
     :param list[str] member_identifiers:
     :param list[Type] member_types:
+    :param list[bool] member_mutables:
     """
-    assert len(member_identifiers) == len(member_types)
+    assert len(member_identifiers) == len(member_types) == len(member_mutables)
     member_ir_types = [member_type.ir_type for member_type in member_types]
     ir_val_type = ir.types.LiteralStructType(member_ir_types)
     member_c_types = [
@@ -135,6 +136,7 @@ class StructType(Type):
     self.struct_identifier = struct_identifier
     self.member_identifiers = member_identifiers
     self.member_types = member_types
+    self.member_mutables = member_mutables
 
   def get_member_num(self, member_identifier):
     """
