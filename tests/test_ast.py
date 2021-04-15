@@ -849,6 +849,22 @@ def test_mutable_struct_member_mutable():
     assert_equal(main(), 123)
 
 
+def test_immutable_struct_member_assign_mutable_member():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Box { Int val = 42; }
+    @RefType struct SuperBox { Box b = Box(); }
+    func main() -> Int {
+      @Mutable Box b = Box();
+      b.val = 27;
+      SuperBox sb = SuperBox();
+      sb.b = b;  # should fail as sb is immutable.
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
