@@ -155,14 +155,15 @@ class StatementAst(AbstractSyntaxTree):
     :param str arg_name:
     :param Type arg_type:
     :param list[AnnotationAst] arg_annotation_list:
-    :param bool default:
+    :param bool|None default:
+    :rtype: bool|None
     """
     assert isinstance(arg_annotation_list, (tuple, list))
     has_mutable = any(annotation.identifier == 'Mutable' for annotation in arg_annotation_list)
     has_const = any(annotation.identifier == 'Const' for annotation in arg_annotation_list)
     if has_mutable and has_const:
       self.raise_error('Cannot annotate %r with both %r and %r' % (arg_name, 'Mutable', 'Const'))
-    mutable = has_const if default else has_mutable  # fallback to default if none is specified
+    mutable = default if (not has_mutable and not has_const) else has_mutable
     if mutable and not arg_type.pass_by_ref:
       self.raise_error(
         'Type %r of mutable %s needs to have pass-by-reference semantics (annotatated by @RefType)' % (
@@ -629,6 +630,8 @@ class AssignStatementAst(StatementAst):
   """
   Stmt -> identifier = Expr ;
   """
+  allowed_annotation_identifiers = frozenset({'Const', 'Mutable'})
+
   def __init__(self, pos, var_target, var_val, var_type_identifier):
     """
     :param TreePosition pos:
@@ -674,13 +677,19 @@ class AssignStatementAst(StatementAst):
       self.raise_error('Cannot assign void to variable')
     if declared_type is not None and declared_type != val_type:
       self.raise_error('Cannot assign variable with declared type %r a value of type %r' % (declared_type, val_type))
+    declared_mutable = self.make_var_is_mutable('left-hand-side', val_type, self.annotations, default=None)
+    val_mutable = self.var_val.is_val_mutable(symbol_table=symbol_table)
 
     if self.is_declaration(symbol_table=symbol_table):
       assert isinstance(self.var_target, VariableTargetAst)
       var_identifier = self.var_target.var_identifier
       assert var_identifier not in symbol_table.current_scope_identifiers
+      if declared_mutable is None:
+        declared_mutable = False
+      if not declared_mutable and val_mutable:
+        self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % val_type)
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
-      symbol = VariableSymbol(None, var_type=val_type, mutable=False)
+      symbol = VariableSymbol(None, var_type=val_type, mutable=declared_mutable)
       symbol_table[var_identifier] = symbol
       symbol_table.current_scope_identifiers.append(var_identifier)
     else:
@@ -690,7 +699,13 @@ class AssignStatementAst(StatementAst):
         self.raise_error('Cannot redefine variable of type %r with new type %r' % (ptr_type, val_type))
       if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
         self.raise_error('Cannot reassign member of a non-mutable variable')
-      # TODO: Check that we do not reassign a non-mutable variable to a mutable variable
+      if declared_mutable is None:
+        declared_mutable = val_mutable
+      if declared_mutable != val_mutable:
+        if declared_mutable:
+          self.raise_error('Cannot redefine a non-mutable variable as mutable')
+        else:
+          self.raise_error('Cannot redefine a mutable variable as non-mutable')
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -1267,10 +1282,10 @@ class MemberExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    if not self.parent_val_expr.is_val_mutable(symbol_table=symbol_table):
-      return False
+    if self.parent_val_expr.is_val_mutable(symbol_table=symbol_table):
+      return True
     # TODO: Add immutable struct members
-    return True
+    return False
 
   def __repr__(self):
     """

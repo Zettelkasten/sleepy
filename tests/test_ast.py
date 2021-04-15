@@ -605,7 +605,7 @@ def test_pass_by_reference():
       of.val = of.val + 1;
     }
     func main() -> Int {
-      my_foo = Foo();
+      @Mutable my_foo = Foo();
       my_foo.val = 4;
       inc_val(my_foo);  # now my_foo.val should be 5.
       return my_foo.val;
@@ -724,7 +724,7 @@ def test_counter_is_empty():
       }
     }
     func main() -> Int {
-      c = Counter();
+      @Mutable c = Counter();
       increase(c);
       increase_if_empty(c);  # should not do anything
       c.val = c.val - 1;
