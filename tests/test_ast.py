@@ -737,6 +737,18 @@ def test_counter_is_empty():
     assert_equal(main(), 2)
 
 
+def test_return_mutable_var_as_mutable():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Container { Int value = 0; }
+    func identity(@Mutable Container c) -> @Mutable Container {
+      return c;
+    }
+    func main() { }
+    """
+    _test_compile_program(engine, program)  # just check that it compiles.
+
+
 def test_if_inside_while():
   with make_execution_engine() as engine:
     program = """
