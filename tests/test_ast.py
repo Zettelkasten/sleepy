@@ -83,21 +83,21 @@ def test_FunctionDeclarationAst_build_expr_ir():
     pos = TreePosition('', 0, 0)
     ast1 = FunctionDeclarationAst(
       pos, identifier='foo', arg_identifiers=[], arg_type_identifiers=[], arg_annotations=[],
-      return_type_identifier='Double',
+      return_type_identifier='Double', return_annotations=[],
       stmt_list=[ReturnStatementAst(pos, [ConstantExpressionAst(pos, 42.0, SLEEPY_DOUBLE)])])
     func1 = _get_py_func_from_ast(engine, ast1)
     assert_equal(func1(), 42.0)
   with make_execution_engine() as engine:
     ast2 = FunctionDeclarationAst(
       pos, identifier='foo', arg_identifiers=[], arg_type_identifiers=[], arg_annotations=[],
-      return_type_identifier='Double', stmt_list=[ReturnStatementAst(pos, [
+      return_type_identifier='Double', return_annotations=[], stmt_list=[ReturnStatementAst(pos, [
         BinaryOperatorExpressionAst(pos, '+', ConstantExpressionAst(pos, 3.0, SLEEPY_DOUBLE), ConstantExpressionAst(pos, 5.0, SLEEPY_DOUBLE))])])
     func2 = _get_py_func_from_ast(engine, ast2)
     assert_equal(func2(), 8.0)
   with make_execution_engine() as engine:
     ast3 = FunctionDeclarationAst(
       pos, identifier='sum', arg_identifiers=['a', 'b'], arg_type_identifiers=['Double', 'Double'],
-      arg_annotations=[[], []], return_type_identifier='Double', stmt_list=[
+      arg_annotations=[[], []], return_type_identifier='Double', return_annotations=[], stmt_list=[
         ReturnStatementAst(pos, [BinaryOperatorExpressionAst(pos, '+', VariableExpressionAst(pos, 'a'), VariableExpressionAst(pos, 'b'))])])
     func3 = _get_py_func_from_ast(engine, ast3)
     assert_equal(func3(7.0, 3.0), 10.0)

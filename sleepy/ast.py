@@ -252,7 +252,7 @@ class FunctionDeclarationAst(StatementAst):
   allowed_arg_annotation_identifiers = {'Const', 'Mutable'}
 
   def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, arg_annotations, return_type_identifier,
-               stmt_list):
+               return_annotations, stmt_list):
     """
     :param TreePosition pos:
     :param str identifier:
@@ -260,15 +260,18 @@ class FunctionDeclarationAst(StatementAst):
     :param list[str|None] arg_type_identifiers:
     :param list[list[AnnotationAst]] arg_annotations:
     :param str|None return_type_identifier:
+    :param list[AnnotationAst]|None return_annotations:
     :param list[StatementAst]|None stmt_list: body, or None if extern function.
     """
     super().__init__(pos)
     assert len(arg_identifiers) == len(arg_type_identifiers) == len(arg_annotations)
+    assert (return_type_identifier is None) == (return_annotations is None)
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
     self.arg_type_identifiers = arg_type_identifiers
     self.arg_annotations = arg_annotations
     self.return_type_identifier = return_type_identifier
+    self.return_annotations = return_annotations
     self.stmt_list = stmt_list
 
   @property
@@ -286,7 +289,9 @@ class FunctionDeclarationAst(StatementAst):
     arg_types = [self.make_type(identifier, symbol_table=symbol_table) for identifier in self.arg_type_identifiers]
     if any(arg_type is None for arg_type in arg_types):
       self.raise_error('Need to specify all parameter types of function %r' % self.identifier)
-    for arg_identifier, arg_annotation_list in zip(self.arg_identifiers, self.arg_annotations):
+    all_annotation_list = (
+      self.arg_annotations + ([self.return_annotations] if self.return_annotations is not None else []))
+    for arg_annotation_list in all_annotation_list:
       for arg_annotation_num, arg_annotation in enumerate(arg_annotation_list):
         if arg_annotation.identifier in arg_annotation_list[:arg_annotation_num]:
           arg_annotation.raise_error('Cannot apply annotation with identifier %r twice' % arg_annotation.identifier)
@@ -1548,7 +1553,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('ExprList+', 'Expr', ',', 'ExprList+'),
   Production('Type', 'identifier'),
   Production('ReturnType'),
-  Production('ReturnType', '->', 'Type'),
+  Production('ReturnType', '->', 'AnnotationList', 'Type'),
   Production('Op', 'bool_op'),
   Production('Op', 'sum_op'),
   Production('Op', 'prod_op')
@@ -1563,11 +1568,14 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'stmt_list': []},
     {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
     {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier, stmt_list: (
-      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6), stmt_list(8)))},  # noqa
+      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
+        type_identifier(6), annotation_list(6), stmt_list(8)))},
     {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, type_identifier, stmt_list: (
-      FunctionDeclarationAst(_pos, op(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6), stmt_list(8)))},  # noqa
+      FunctionDeclarationAst(_pos, op(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6),
+        annotation_list(6), stmt_list(8)))},
     {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier: (
-      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6), None))},  # noqa
+      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
+        type_identifier(6), annotation_list(6), None))},
     {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
     {'ast': lambda _pos, identifier, val_list: CallStatementAst(_pos, identifier(1), val_list(3))},
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
@@ -1614,8 +1622,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'val_list': lambda ast: [ast(1)]},
     {'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
     {'type_identifier': 'identifier.1'},
-    {'type_identifier': None},
-    {'type_identifier': 'type_identifier.2'},
+    {'type_identifier': None, 'annotation_list': None},
+    {'type_identifier': 'type_identifier.3', 'annotation_list': 'annotation_list.2'},
     {'op': 'op.1'},
     {'op': 'op.1'},
     {'op': 'op.1'}
