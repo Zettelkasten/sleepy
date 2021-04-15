@@ -554,8 +554,6 @@ class StructDeclarationAst(StatementAst):
       assert declared_identifier in body_symbol_table
       declared_symbol = body_symbol_table[declared_identifier]
       assert isinstance(declared_symbol, VariableSymbol)
-      if not declared_symbol.mutable:
-        stmt.raise_error('Struct member %r must be mutable' % declared_identifier)
       member_identifiers.append(declared_identifier)
       member_types.append(declared_symbol.var_type)
     assert len(member_identifiers) == len(member_types) == len(self.stmt_list)
@@ -682,8 +680,7 @@ class AssignStatementAst(StatementAst):
       var_identifier = self.var_target.var_identifier
       assert var_identifier not in symbol_table.current_scope_identifiers
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
-      # TODO: Infer if it should be mutable by default from the arguments.
-      symbol = VariableSymbol(None, var_type=val_type, mutable=True)
+      symbol = VariableSymbol(None, var_type=val_type, mutable=False)
       symbol_table[var_identifier] = symbol
       symbol_table.current_scope_identifiers.append(var_identifier)
     else:
