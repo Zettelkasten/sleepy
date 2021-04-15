@@ -150,9 +150,9 @@ class StatementAst(AbstractSyntaxTree):
       self.raise_error('%r is not a type, but a %r' % (type_identifier, type(type_symbol)))
     return type_symbol.type
 
-  def make_var_is_mutable(self, arg_identifier, arg_type, arg_annotation_list, default):
+  def make_var_is_mutable(self, arg_name, arg_type, arg_annotation_list, default):
     """
-    :param str arg_identifier:
+    :param str arg_name:
     :param Type arg_type:
     :param list[AnnotationAst] arg_annotation_list:
     :param bool default:
@@ -161,12 +161,12 @@ class StatementAst(AbstractSyntaxTree):
     has_mutable = any(annotation.identifier == 'Mutable' for annotation in arg_annotation_list)
     has_const = any(annotation.identifier == 'Const' for annotation in arg_annotation_list)
     if has_mutable and has_const:
-      self.raise_error('Cannot annotate parameter %r with both %r and %r' % (arg_identifier, 'Mutable', 'Const'))
+      self.raise_error('Cannot annotate %r with both %r and %r' % (arg_name, 'Mutable', 'Const'))
     mutable = has_const if default else has_mutable  # fallback to default if none is specified
     if mutable and not arg_type.pass_by_ref:
       self.raise_error(
-        'Type %r of mutable parameter %r needs to have pass-by-reference semantics (annotatated by @RefType)' % (
-          arg_type, arg_identifier))
+        'Type %r of mutable %s needs to have pass-by-reference semantics (annotatated by @RefType)' % (
+          arg_type, arg_name))
     return mutable
 
   def __repr__(self):
@@ -252,7 +252,7 @@ class FunctionDeclarationAst(StatementAst):
   allowed_arg_annotation_identifiers = {'Const', 'Mutable'}
 
   def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, arg_annotations, return_type_identifier,
-               return_annotations, stmt_list):
+               return_annotation_list, stmt_list):
     """
     :param TreePosition pos:
     :param str identifier:
@@ -260,18 +260,18 @@ class FunctionDeclarationAst(StatementAst):
     :param list[str|None] arg_type_identifiers:
     :param list[list[AnnotationAst]] arg_annotations:
     :param str|None return_type_identifier:
-    :param list[AnnotationAst]|None return_annotations:
+    :param list[AnnotationAst]|None return_annotation_list:
     :param list[StatementAst]|None stmt_list: body, or None if extern function.
     """
     super().__init__(pos)
     assert len(arg_identifiers) == len(arg_type_identifiers) == len(arg_annotations)
-    assert (return_type_identifier is None) == (return_annotations is None)
+    assert (return_type_identifier is None) == (return_annotation_list is None)
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
     self.arg_type_identifiers = arg_type_identifiers
     self.arg_annotations = arg_annotations
     self.return_type_identifier = return_type_identifier
-    self.return_annotations = return_annotations
+    self.return_annotation_list = return_annotation_list
     self.stmt_list = stmt_list
 
   @property
@@ -290,7 +290,7 @@ class FunctionDeclarationAst(StatementAst):
     if any(arg_type is None for arg_type in arg_types):
       self.raise_error('Need to specify all parameter types of function %r' % self.identifier)
     all_annotation_list = (
-      self.arg_annotations + ([self.return_annotations] if self.return_annotations is not None else []))
+      self.arg_annotations + ([self.return_annotation_list] if self.return_annotation_list is not None else []))
     for arg_annotation_list in all_annotation_list:
       for arg_annotation_num, arg_annotation in enumerate(arg_annotation_list):
         if arg_annotation.identifier in arg_annotation_list[:arg_annotation_num]:
@@ -311,6 +311,10 @@ class FunctionDeclarationAst(StatementAst):
       return_type = self.make_type(self.return_type_identifier, symbol_table=symbol_table)
     if return_type is None:
       self.raise_error('Need to specify return type of function %r' % self.identifier)
+    if return_type == SLEEPY_VOID:
+      return_mutable = False
+    else:
+      return_mutable = self.make_var_is_mutable('return type', return_type, self.return_annotation_list, default=False)
     if self.identifier in symbol_table:
       func_symbol = symbol_table[self.identifier]
       if not isinstance(func_symbol, FunctionSymbol):
@@ -322,12 +326,12 @@ class FunctionDeclarationAst(StatementAst):
       self.raise_error('Cannot override definition of function %r with parameter types %r' % (
         self.identifier, ', '.join([str(arg_type) for arg_type in arg_types])))
     arg_mutables = [
-      self.make_var_is_mutable(arg_identifier, arg_type, arg_annotation_list, default=False)
+      self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
       for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
     func_symbol.add_concrete_func(
       ConcreteFunction(
-        None, return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types,
-        arg_mutables=arg_mutables))
+        None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
+        arg_types=arg_types, arg_mutables=arg_mutables))
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -469,6 +473,10 @@ class ReturnStatementAst(StatementAst):
         else:
           self.raise_error('Function declared to return type %r, but return value is of type %r' % (
             symbol_table.current_func.return_type, return_val_type))
+      return_val_mutable = self.return_exprs[0].is_val_mutable(symbol_table=symbol_table)
+      if not symbol_table.current_func.return_mutable and return_val_mutable:
+        self.raise_error(
+          'Function declared to return a non-mutable type %r, but return value is mutable' % return_val_type)
     else:
       assert len(self.return_exprs) == 0
       if symbol_table.current_func.return_type != SLEEPY_VOID:
@@ -556,8 +564,9 @@ class StructDeclarationAst(StatementAst):
       self.struct_identifier, member_identifiers, member_types, pass_by_ref=self.is_pass_by_ref())
     constructor = FunctionSymbol()
     # ir_func will be set in build_expr_ir
-    constructor.add_concrete_func(
-      ConcreteFunction(ir_func=None, return_type=struct_type, arg_types=[], arg_identifiers=[], arg_mutables=[]))
+    # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
+    constructor.add_concrete_func(ConcreteFunction(
+      ir_func=None, return_type=struct_type, return_mutable=False, arg_types=[], arg_identifiers=[], arg_mutables=[]))
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
@@ -684,6 +693,7 @@ class AssignStatementAst(StatementAst):
         self.raise_error('Cannot redefine variable of type %r with new type %r' % (ptr_type, val_type))
       if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
         self.raise_error('Cannot reassign member of a non-mutable variable')
+      # TODO: Check that we do not reassign a non-mutable variable to a mutable variable
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -1194,7 +1204,9 @@ class CallExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    return True
+    concrete_func = self._check_func_call_symbol_table(
+      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
+    return concrete_func.return_mutable
 
   def make_ir_val(self, builder, symbol_table):
     """
