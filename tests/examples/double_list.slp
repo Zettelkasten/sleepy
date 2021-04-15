@@ -64,7 +64,7 @@ func print_line(DoubleList l) { print(l); print('\n'); }
 func print_len(DoubleList l) { print('l'); print('e'); print('n'); print(':'); print(' '); print_line(l.length); }
 
 func main() {
-  l = DoubleList();
+  @Mutable l = DoubleList();
   print_line(l);
   insert(l, 4.2);
   insert(l, 12.0);
