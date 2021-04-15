@@ -7,7 +7,8 @@ func get(DoubleList l, Int idx) -> Double {
   assert(and(idx >= 0, idx < l.length));
   return load(l.pointer + idx);
 }
-func set(DoubleList l, Int idx, Double val) {  # here, the list is actually not modified as just the memory it points to is ...
+func set(@Mutable DoubleList l, Int idx, Double val) {
+  # compiler cannot enforce that the list has to be mutable, but we will anyway.
   assert(and(idx >= 0, idx < l.length));
   store(l.pointer + idx, val);
 }
@@ -25,6 +26,18 @@ func insert(@Mutable DoubleList l, Double val) {
   new_idx = l.length;
   l.length = l.length + 1;
   set(l, new_idx, val);
+}
+func insert_all(@Mutable DoubleList l, DoubleList other) {
+  # could be smarter: e.g. use memcpy
+  other_length = other.length;  # store in case l == other, we do not want to increase this.
+  # To make this nicer: use a range(..) object and iterate over that
+  idx = 0;
+  while idx < other_length {
+    insert(l, get(other, idx));
+    idx = idx + 1;
+  }
+  # Thoughts: This function is problematic, if l == other.
+  # Then, we would ideally want other to be a copy of l before we do anything
 }
 func remove(@Mutable DoubleList l, Int idx) {
   assert(and(idx >= 0, idx < l.length));
@@ -48,6 +61,7 @@ func print(DoubleList l) {
   print(']');
 }
 func print_line(DoubleList l) { print(l); print('\n'); }
+func print_len(DoubleList l) { print('l'); print('e'); print('n'); print(':'); print(' '); print_line(l.length); }
 
 func main() {
   l = DoubleList();
@@ -64,7 +78,9 @@ func main() {
   }
   insert(l, 123.0);
   remove(l, 1);
-  print('l'); print('e'); print('n'); print(':'); print(' ');
-  print_line(l.length);
+  print_len(l);
+  print_line(l);
+  insert_all(l, l);
+  print_len(l);
   print_line(l);
 }
