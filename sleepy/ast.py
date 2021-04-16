@@ -565,7 +565,7 @@ class StructDeclarationAst(StatementAst):
     # ir_func will be set in build_expr_ir
     # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
     constructor.add_concrete_func(ConcreteFunction(
-      ir_func=None, return_type=struct_type, return_mutable=False,
+      ir_func=None, return_type=struct_type, return_mutable=True,
       arg_types=member_types, arg_identifiers=member_identifiers, arg_mutables=member_mutables))
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
@@ -690,8 +690,6 @@ class AssignStatementAst(StatementAst):
       assert var_identifier not in symbol_table.current_scope_identifiers
       if declared_mutable is None:
         declared_mutable = False
-      if not declared_mutable and val_mutable:
-        self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % val_type)
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
       symbol = VariableSymbol(None, var_type=val_type, mutable=declared_mutable)
       symbol_table[var_identifier] = symbol
@@ -707,9 +705,11 @@ class AssignStatementAst(StatementAst):
         declared_mutable = val_mutable
       if declared_mutable != val_mutable:
         if declared_mutable:
-          self.raise_error('Cannot redefine a non-mutable variable as mutable')
+          self.raise_error('Cannot redefine a variable declared as non-mutable to mutable')
         else:
-          self.raise_error('Cannot redefine a mutable variable as non-mutable')
+          self.raise_error('Cannot redefine a variable declared as mutable to non-mutable')
+    if declared_mutable and not val_mutable:
+      self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % val_type)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
