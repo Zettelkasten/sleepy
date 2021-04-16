@@ -565,7 +565,8 @@ class StructDeclarationAst(StatementAst):
     # ir_func will be set in build_expr_ir
     # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
     constructor.add_concrete_func(ConcreteFunction(
-      ir_func=None, return_type=struct_type, return_mutable=False, arg_types=[], arg_identifiers=[], arg_mutables=[]))
+      ir_func=None, return_type=struct_type, return_mutable=False,
+      arg_types=member_types, arg_identifiers=member_identifiers, arg_mutables=member_mutables))
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
@@ -586,14 +587,15 @@ class StructDeclarationAst(StatementAst):
       # TODO: eventually free memory again
     else:  # pass by value, use alloca
       self_ir_alloca = constructor_builder.alloca(struct_type.ir_type, name='self')
-    for member_num, stmt in enumerate(self.stmt_list):
+
+    for member_num, (stmt, ir_func_arg) in enumerate(zip(self.stmt_list, constructor.ir_func.args)):
       assert isinstance(stmt, AssignStatementAst)
       assert isinstance(stmt.var_target, VariableTargetAst)
       member_identifier = stmt.var_target.var_identifier
-      ir_val = stmt.var_val.make_ir_val(builder=constructor_builder, symbol_table=constructor_symbol_table)
+      ir_func_arg.name = member_identifier
       gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
       member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, '%s_ptr' % member_identifier)
-      constructor_builder.store(ir_val, member_ptr)
+      constructor_builder.store(ir_func_arg, member_ptr)
 
     if self.is_pass_by_ref():
       constructor_builder.ret(self_ir_alloca)
@@ -611,11 +613,13 @@ class StructDeclarationAst(StatementAst):
     assert self.struct_identifier in symbol_table
     struct_symbol = symbol_table[self.struct_identifier]
     assert isinstance(struct_symbol, TypeSymbol)
-    constructor = struct_symbol.constructor_symbol.get_concrete_func(arg_types=[])
+    assert isinstance(struct_symbol.type, StructType)
+    constructor = struct_symbol.constructor_symbol.get_concrete_func(arg_types=struct_symbol.type.member_types)
     assert constructor is not None
     assert struct_symbol.type == constructor.return_type
     ir_func_type = constructor.make_ir_function_type()
-    constructor.ir_func = ir.Function(module, ir_func_type, name='construct_%s' % self.struct_identifier)
+    ir_func_name = symbol_table.make_ir_func_name(self.struct_identifier, extern=False, concrete_func=constructor)
+    constructor.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
     self._make_constructor_body_ir(constructor, symbol_table=symbol_table)
     return builder
 
