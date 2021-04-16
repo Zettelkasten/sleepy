@@ -475,9 +475,9 @@ class ReturnStatementAst(StatementAst):
           self.raise_error('Function declared to return type %r, but return value is of type %r' % (
             symbol_table.current_func.return_type, return_val_type))
       return_val_mutable = self.return_exprs[0].is_val_mutable(symbol_table=symbol_table)
-      if not symbol_table.current_func.return_mutable and return_val_mutable:
+      if not return_val_mutable and symbol_table.current_func.return_mutable:
         self.raise_error(
-          'Function declared to return a non-mutable type %r, but return value is mutable' % return_val_type)
+          'Function declared to return a mutable type %r, but return value is not mutable' % return_val_type)
     else:
       assert len(self.return_exprs) == 0
       if symbol_table.current_func.return_type != SLEEPY_VOID:

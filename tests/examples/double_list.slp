@@ -3,6 +3,9 @@
   Int alloc_length = 8;
   Int length = 0;
 }
+func empty_list() -> @Mutable DoubleList {
+  return DoubleList(allocate(8), 8, 0);
+}
 func get(DoubleList l, Int idx) -> Double {
   assert(and(idx >= 0, idx < l.length));
   return load(l.pointer + idx);
@@ -64,7 +67,7 @@ func print_line(DoubleList l) { print(l); print('\n'); }
 func print_len(DoubleList l) { print('l'); print('e'); print('n'); print(':'); print(' '); print_line(l.length); }
 
 func main() {
-  @Mutable l = DoubleList(allocate(8), 8, 0);
+  @Mutable l = empty_list();
   print_line(l);
   insert(l, 4.2);
   insert(l, 12.0);

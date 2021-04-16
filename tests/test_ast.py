@@ -702,6 +702,35 @@ def test_call_mutable_with_const_var():
       _test_compile_program(engine, program)
 
 
+def test_assign_mutable_to_const():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Counter { Int val = 0; }
+    func main() -> Int {
+      @Const con = Counter(-42);
+      @Mutable mut = Counter(123);
+      con = mut;
+      return con.val;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 123)
+
+
+def test_assign_const_to_mutable():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Counter { Int val = 0; }
+    func main() -> Int {
+      @Const con = Counter(-42);
+      @Mutable mut = Counter(123);
+      mut = con;  # not allowed.
+      return con.val;
+    }
+    """
+    _test_compile_program(engine, program)
+
+
 def test_counter_is_empty():
   with make_execution_engine() as engine:
     program = """
@@ -743,17 +772,29 @@ def test_return_mutable_var_as_mutable():
     _test_compile_program(engine, program)  # just check that it compiles.
 
 
-def test_return_mutable_var_as_const():
+def test_return_const_var_as_mutable():
   with make_execution_engine() as engine:
     program = """
     @RefType struct Container { Int value = 0; }
-    func identity(@Mutable Container c) -> Container {
-      return c;  # shouldn't be allowed, return type is not mutable!
+    func identity(Container c) -> @Mutable Container {
+      return c;  # shouldn't be allowed, cannot make something immutable suddenly mutable!
     }
     func main() { }
     """
     with assert_raises(SemanticError):
       _test_compile_program(engine, program)
+
+
+def test_return_mutable_var_as_const():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Container { Int value = 0; }
+    func identity(@Mutable Container c) -> Container {
+      return c;  # giving up that something can be edited is fine though.
+    }
+    func main() { }
+    """
+    _test_compile_program(engine, program)  # just check that compiles
 
 
 def test_if_inside_while():
