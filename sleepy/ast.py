@@ -68,7 +68,7 @@ class AbstractSyntaxTree:
     called_mutables = [arg_expr.is_val_mutable(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
     for arg_identifier, arg_mutable, called_mutable in zip(
         concrete_func.arg_identifiers, concrete_func.arg_mutables, called_mutables):
-      if arg_mutable and not called_mutable:
+      if not called_mutable and arg_mutable:
         self.raise_error('Cannot call function %r declared with mutable parameter %r with immutable argument' % (
           func_identifier, arg_identifier))
     return concrete_func
