@@ -5,18 +5,11 @@ struct Vec3 {
 }
 
 # as there are no constructors yet, do it like this:
-func make_Vec3(Double x, Double y, Double z) -> Vec3 {
-  self = Vec3();
-  self.x = x;
-  self.y = y;
-  self.z = z;
-  return self;
-}
 func unit_Vec3(Int dim) -> Vec3 {
-  if dim == 1 { return make_Vec3(1.0, 0.0, 0.0); }
-  if dim == 2 { return make_Vec3(0.0, 1.0, 0.0); }
-  if dim == 3 { return make_Vec3(0.0, 0.0, 1.0); }
-  assert(False()); return Vec3();
+  if dim == 1 { return Vec3(1.0, 0.0, 0.0); }
+  if dim == 2 { return Vec3(0.0, 1.0, 0.0); }
+  if dim == 3 { return Vec3(0.0, 0.0, 1.0); }
+  assert(False()); return Vec3(0.0, 0.0, 0.0);
 }
 
 func print(Vec3 vec) {
@@ -30,13 +23,13 @@ func print(Vec3 vec) {
 }
 
 func add(Vec3 a, Vec3 b) -> Vec3 {
-  return make_Vec3(a.x + b.x, a.y + b.y, a.z + b.z);
+  return Vec3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
 func sub(Vec3 a, Vec3 b) -> Vec3 {
-  return make_Vec3(a.x - b.x, a.y - b.y, a.z - b.z);
+  return Vec3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 func mul(Double a, Vec3 b) -> Vec3 {
-  return make_Vec3(a * b.x, a * b.y, a * b.z);
+  return Vec3(a * b.x, a * b.y, a * b.z);
 }
 func dot(Vec3 a, Vec3 b) -> Double {
   return a.x * b.x + a.y * b.y + a.z * b.z;
@@ -64,8 +57,8 @@ func main() {
   unit2 = unit_Vec3(2);
   unit3 = unit_Vec3(3);
 
-  print_and_assert(unit3, make_Vec3(0.0, 0.0, 1.0));
-  print_and_assert(add(unit1, unit2), make_Vec3(1.0, 1.0, 0.0));
-  print_and_assert(sub(mul(3.0, unit1), mul(6.0, unit2)), make_Vec3(3.0, -6.0, 0.0));
-  print_and_assert(len(make_Vec3(3.0, 0.0, -4.0)), 5.0);
+  print_and_assert(unit3, Vec3(0.0, 0.0, 1.0));
+  print_and_assert(add(unit1, unit2), Vec3(1.0, 1.0, 0.0));
+  print_and_assert(sub(mul(3.0, unit1), mul(6.0, unit2)), Vec3(3.0, -6.0, 0.0));
+  print_and_assert(len(Vec3(3.0, 0.0, -4.0)), 5.0);
 }

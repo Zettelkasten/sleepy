@@ -529,7 +529,7 @@ def test_struct_default_constructor():
       Int y = 0;
     }
     func main() -> Vec2 {
-      return Vec2();
+      return Vec2(0, 0);
     }
     """
     main = _test_compile_program(engine, program)
@@ -541,7 +541,7 @@ def test_struct_member_access():
     program = """
     struct Vec3 { Double x = 1.0; Double y = 2.0; Double z = 3.0; }
     func main() -> Double {
-      Vec3 my_vec = Vec3();
+      Vec3 my_vec = Vec3(1.0, 2.0, 3.0);
       middle = my_vec.y;
       return middle;
     }
@@ -558,8 +558,8 @@ def test_struct_with_struct_member():
       Double y = 0.0;
     }
     struct Mat22 {
-      Vec2 first = Vec2();
-      Vec2 second = Vec2();
+      Vec2 first = Vec2(0.0, 0.0);
+      Vec2 second = Vec2(0.0, 0.0);
     }
     func mat_sum(Mat22 mat) -> Double {
       func vec_sum(Vec2 vec) -> Double {
@@ -568,11 +568,7 @@ def test_struct_with_struct_member():
       return vec_sum(mat.first) + vec_sum(mat.second);
     }
     func main() -> Double {
-      Mat22 mat = Mat22();
-      mat.first.x = 1.0;
-      mat.first.y = 2.0;
-      mat.second.x = 3.0;
-      mat.second.y = 4.0;
+      Mat22 mat = Mat22(Vec2(1.0, 2.0), Vec2(3.0, 4.0));
       assert(mat.first.x == 1.0);
       return mat_sum(mat);
     }
@@ -605,7 +601,7 @@ def test_pass_by_reference():
       of.val = of.val + 1;
     }
     func main() -> Int {
-      @Mutable my_foo = Foo();
+      @Mutable my_foo = Foo(0);
       my_foo.val = 4;
       inc_val(my_foo);  # now my_foo.val should be 5.
       return my_foo.val;
@@ -622,6 +618,7 @@ def test_pass_by_value():
     func inc_val(Foo of) {
       of.val = of.val + 1;  # cannot redefine a immutable parameter!
     }
+    func main() { }
     """
     with assert_raises(SemanticError):
       _test_compile_program(engine, program)
@@ -671,18 +668,15 @@ def test_const_add_vs_assign_add():
     program = """
     @RefType struct Vec2 { Double x = 0.0; Double y = 0.0; }
     func add(Vec2 a, Vec2 b) -> Vec2 {
-      v = Vec2();
-      v.x = a.x + b.x;
-      v.y = a.y + b.y;
-      return v;
+      return Vec2(a.x + b.x, a.y + b.y);
     }
     func assign_add(@Mutable Vec2 a, Vec2 b) {
       a.x = a.x + b.x;
       a.y = a.y + b.y;
     }
     func main() -> Double {
-      v1 = Vec2(); v1.x = 5.0; v1.y = 7.0;
-      v2 = Vec2(); v2.x = 0.0; v2.y = 3.0;
+      v1 = Vec2(5.0, 7.0);
+      @Mutable v2 = Vec2(0.0, 3.0);
       v3 = add(v1, v2);  # should be (5.0, 10.0)
       assign_add(v2, v3);  # v2 = (5.0, 13.0);
       v4 = add(v1, v2);  # should be (10.0, 20.0)
@@ -700,7 +694,7 @@ def test_call_mutable_with_const_var():
     func inc(@Mutable Counter c) { c.val = c.val + 1; }
     func inc_wrapper(Counter c) { inc(c); }
     func main() {
-      c = Counter();
+      c = Counter(0);
       inc_wrapper(c);
     }
     """
@@ -724,7 +718,7 @@ def test_counter_is_empty():
       }
     }
     func main() -> Int {
-      @Mutable c = Counter();
+      @Mutable c = Counter(0);
       increase(c);
       increase_if_empty(c);  # should not do anything
       c.val = c.val - 1;
@@ -820,10 +814,10 @@ def test_mutable_struct_member_const():
   with make_execution_engine() as engine:
     program = """
     @RefType struct Box { Int val = 42; }
-    @RefType struct SuperBox { @Mutable Box b = Box(); }
+    @RefType struct SuperBox { @Mutable Box b = Box(42); }
     func main() {
-      @Mutable Box b = Box();
-      SuperBox sb = SuperBox();
+      @Mutable Box b = Box(42);
+      SuperBox sb = SuperBox(Box(42));
       sb.b = b;  # should fail, sb is immutable.
     }
     """
@@ -835,10 +829,10 @@ def test_mutable_struct_member_mutable():
   with make_execution_engine() as engine:
     program = """
     @RefType struct Box { Int val = 42; }
-    @RefType struct SuperBox { @Mutable Box b = Box(); }
+    @RefType struct SuperBox { @Mutable Box b = Box(42); }
     func main() -> Int {
-      @Mutable Box b = Box();
-      @Mutable SuperBox sb = SuperBox();
+      @Mutable Box b = Box(42);
+      @Mutable SuperBox sb = SuperBox(Box(42));
       sb.b = b;  # should work now.
       # can now even change b, and sb should be effected too:
       b.val = 123;
@@ -853,11 +847,11 @@ def test_immutable_struct_member_assign_mutable_member():
   with make_execution_engine() as engine:
     program = """
     @RefType struct Box { Int val = 42; }
-    @RefType struct SuperBox { Box b = Box(); }
+    @RefType struct SuperBox { Box b = Box(42); }
     func main() -> Int {
-      @Mutable Box b = Box();
+      @Mutable Box b = Box(42);
       b.val = 27;
-      SuperBox sb = SuperBox();
+      SuperBox sb = SuperBox(Box(42));
       sb.b = b;  # should fail as sb is immutable.
     }
     """
