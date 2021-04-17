@@ -79,7 +79,7 @@ class AbstractSyntaxTree:
     :param list[ExpressionAst] func_arg_exprs:
     :param IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: ir.values.Value
+    :rtype: tuple[ir.values.Value,IRBuilder]
     """
     assert func_identifier in symbol_table
     func_symbol = symbol_table[func_identifier]
@@ -92,8 +92,12 @@ class AbstractSyntaxTree:
     ir_func = concrete_func.ir_func
     assert ir_func is not None
     assert len(concrete_func.arg_types) == len(func_arg_exprs) == len(ir_func.args)
-    ir_func_args = [val.make_ir_val(builder=builder, symbol_table=symbol_table) for val in func_arg_exprs]
-    return builder.call(ir_func, ir_func_args, name='call_%s' % func_identifier)
+    ir_func_args = []  # type: List[ir.values.Value]
+    for func_arg_expr in func_arg_exprs:
+      ir_func_arg, builder = func_arg_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
+      ir_func_args.append(ir_func_arg)
+    assert len(ir_func_args) == len(func_arg_exprs)
+    return builder.call(ir_func, ir_func_args, name='call_%s' % func_identifier), builder
 
   def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
     """
@@ -502,7 +506,8 @@ class ReturnStatementAst(StatementAst):
     :rtype: ir.IRBuilder
     """
     if len(self.return_exprs) == 1:
-      builder.ret(self.return_exprs[0].make_ir_val(builder=builder, symbol_table=symbol_table))
+      ir_val, builder = self.return_exprs[0].make_ir_val(builder=builder, symbol_table=symbol_table)
+      builder.ret(ir_val)
     else:
       assert len(self.return_exprs) == 0
       builder.ret_void()
@@ -728,7 +733,7 @@ class AssignStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
-    ir_val = self.var_val.make_ir_val(builder=builder, symbol_table=symbol_table)
+    ir_val, builder = self.var_val.make_ir_val(builder=builder, symbol_table=symbol_table)
     ir_ptr = self.var_target.make_ir_ptr(builder, symbol_table=symbol_table)
     builder.store(ir_val, ir_ptr)
     return builder
@@ -791,7 +796,7 @@ class IfStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder|None
     """
-    ir_cond = self.condition_val.make_ir_val(builder=builder, symbol_table=symbol_table)
+    ir_cond, builder = self.condition_val.make_ir_val(builder=builder, symbol_table=symbol_table)
     true_block = builder.append_basic_block('true_branch')  # type: ir.Block
     false_block = builder.append_basic_block('false_branch')  # type: ir.Block
     builder.cbranch(ir_cond, true_block, false_block)
@@ -801,9 +806,9 @@ class IfStatementAst(StatementAst):
     false_symbol_table = symbol_table.copy()  # type: SymbolTable
 
     for expr in self.true_stmt_list:
-      expr.build_expr_ir(module, builder=true_builder, symbol_table=true_symbol_table)
+      true_builder = expr.build_expr_ir(module, builder=true_builder, symbol_table=true_symbol_table)
     for expr in self.false_stmt_list:
-      expr.build_expr_ir(module, builder=false_builder, symbol_table=false_symbol_table)
+      false_builder = expr.build_expr_ir(module, builder=false_builder, symbol_table=false_symbol_table)
 
     if not true_block.is_terminated or not false_block.is_terminated:
       continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
@@ -860,11 +865,11 @@ class WhileStatementAst(StatementAst):
       """
       :param ir.IRBuilder builder_:
       :param SymbolTable symbol_table_:
-      :rtype: FCMPInstr
+      :rtype: (ir.values.Value, ir.IRBuilder)
       """
       return self.condition_val.make_ir_val(builder=builder_, symbol_table=symbol_table_)
 
-    cond_ir = make_condition_ir(builder_=builder, symbol_table_=symbol_table)
+    cond_ir, builder = make_condition_ir(builder_=builder, symbol_table_=symbol_table)
     body_block = builder.append_basic_block('while_body')  # type: ir.Block
     continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
     builder.cbranch(cond_ir, body_block, continue_block)
@@ -876,7 +881,7 @@ class WhileStatementAst(StatementAst):
       body_builder = stmt.build_expr_ir(module, builder=body_builder, symbol_table=body_symbol_table)
     if not body_builder.block.is_terminated:
       assert body_builder is not None
-      body_cond_ir = make_condition_ir(builder_=body_builder, symbol_table_=body_symbol_table)
+      body_cond_ir, body_builder = make_condition_ir(builder_=body_builder, symbol_table_=body_symbol_table)
       body_builder.cbranch(body_cond_ir, body_block, continue_block)
 
     continue_builder = ir.IRBuilder(continue_block)
@@ -917,7 +922,8 @@ class ExpressionAst(AbstractSyntaxTree):
     """
     :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: ir.values.Value
+    :rtype: (ir.values.Value, ir.IRBuilder)
+    :return: The value this expression is evaluated to + the builder of the context after this is executed
     """
     raise NotImplementedError()
 
@@ -965,7 +971,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     """
     :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: ir.values.Value
+    :rtype: (ir.values.Value, ir.IRBuilder)
     """
     operand_exprs = [self.left_expr, self.right_expr]
     return self._make_func_call_ir(
@@ -1014,7 +1020,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: ir.values.Value
+    :rtype: (ir.values.Value, ir.IRBuilder)
     """
     operand_exprs = [self.expr]
     return self._make_func_call_ir(
@@ -1059,9 +1065,9 @@ class ConstantExpressionAst(ExpressionAst):
     """
     :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: ir.values.Value
+    :rtype: (ir.values.Value, ir.IRBuilder)
     """
-    return ir.Constant(self.constant_type.ir_type, self.constant_val)
+    return ir.Constant(self.constant_type.ir_type, self.constant_val), builder
 
   def __repr__(self):
     """
@@ -1112,10 +1118,10 @@ class VariableExpressionAst(ExpressionAst):
     """
     :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: ir.values.Value
+    :rtype: (ir.values.Value, ir.IRBuilder)
     """
     symbol = self.get_var_symbol(symbol_table=symbol_table)
-    return builder.load(symbol.ir_alloca, name=self.var_identifier)
+    return builder.load(symbol.ir_alloca, name=self.var_identifier), builder
 
   def __repr__(self):
     """
@@ -1173,7 +1179,7 @@ class CallExpressionAst(ExpressionAst):
     """
     :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: ir.values.Value
+    :rtype: (ir.values.Value, ir.IRBuilder)
     """
     return self._make_func_call_ir(
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, builder=builder,
@@ -1212,19 +1218,21 @@ class MemberExpressionAst(ExpressionAst):
     """
     :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: ir.values.Value
+    :rtype: (ir.values.Value, ir.IRBuilder)
     """
     parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
     assert isinstance(parent_type, StructType)
-    parent_ir_val = self.parent_val_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
+    parent_ir_val, builder = self.parent_val_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
     if parent_type.is_pass_by_ref():
       member_num = parent_type.get_member_num(self.member_identifier)
       gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
       member_ptr = builder.gep(parent_ir_val, gep_indices, name='member_ptr_%s' % self.member_identifier)
-      return builder.load(member_ptr, name='member_%s' % self.member_identifier)
+      return builder.load(member_ptr, name='member_%s' % self.member_identifier), builder
     else:  # pass by value
-      return builder.extract_value(
-        parent_ir_val, parent_type.get_member_num(self.member_identifier), name='member_%s' % self.member_identifier)
+      return (
+        builder.extract_value(
+          parent_ir_val, parent_type.get_member_num(self.member_identifier), name='member_%s' % self.member_identifier),
+        builder)
 
   def is_val_mutable(self, symbol_table):
     """
