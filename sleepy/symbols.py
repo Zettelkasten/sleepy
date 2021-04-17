@@ -470,12 +470,10 @@ def make_initial_symbol_table():
   return symbol_table
 
 
-def build_initial_module_ir(module, builder, symbol_table):
+def build_initial_module_ir(module, symbol_table):
   """
   :param ir.Module module:
-  :param ir.IRBuilder builder:
   :param SymbolTable symbol_table:
-  :rtype: ir.IRBuilder
   """
   symbol_table.ir_func_malloc = ir.Function(
     module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
@@ -502,4 +500,3 @@ def build_initial_module_ir(module, builder, symbol_table):
       ir_val = _make_builtin_op_ir_val(op=op, op_arg_types=op_arg_types, op_ir_args=op_ir_args, builder=body_builder)
       body_builder.ret(ir_val)
   print(symbol_table.symbols)
-  return builder

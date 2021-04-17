@@ -13,7 +13,8 @@ from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnState
   add_preamble_to_ast
 from sleepy.grammar import TreePosition, SemanticError
 from sleepy.jit import make_execution_engine, compile_ir
-from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, SymbolTable, make_initial_symbol_table
+from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, SymbolTable, make_initial_symbol_table, \
+  build_initial_module_ir
 
 
 def _test_parse_ast(program):
@@ -70,6 +71,7 @@ def _get_py_func_from_ast(engine, ast):
   module = ir.Module(name='_test_last_declared_func')
   symbol_table = make_initial_symbol_table()  # type: SymbolTable
   ast.build_symbol_table(symbol_table=symbol_table)
+  build_initial_module_ir(module=module, symbol_table=symbol_table)
   ast.build_expr_ir(module=module, builder=None, symbol_table=symbol_table)
   assert ast.identifier in symbol_table
   func_symbol = symbol_table[ast.identifier]

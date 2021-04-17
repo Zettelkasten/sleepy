@@ -224,7 +224,7 @@ class TopLevelStatementAst(StatementAst):
 
     block = ir_io_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
-    build_initial_module_ir(module=module, builder=body_builder, symbol_table=symbol_table)
+    build_initial_module_ir(module=module, symbol_table=symbol_table)
     assert symbol_table.ir_func_malloc is not None and symbol_table.ir_func_free is not None
 
     for stmt in self.stmt_list:
