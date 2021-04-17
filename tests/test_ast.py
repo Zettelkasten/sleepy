@@ -940,6 +940,25 @@ def test_overload_func_twice():
       _test_compile_program(engine, program)
 
 
+def test_overload_with_different_structs():
+  with make_execution_engine() as engine:
+    program = """
+    struct Vec2 { Double x = 0.0; Double y = 0.0; }
+    struct Vec3 { Double x = 0.0; Double y = 0.0; Double z = 0.0; }
+    func +(Vec2 left, Vec2 right) -> Vec2 {
+      return Vec2(left.x + right.x, left.y + right.y);
+    }
+    func +(Vec3 left, Vec3 right) -> Vec3 {
+      return Vec3(left.x + right.x, left.y + right.y, left.z + right.z);
+    }
+    func main() {
+      res1 = Vec2(0.0, 0.0) + Vec2(1.0, 3.0);
+      res2 = Vec3(0.0, 0.0, 0.4) + Vec3(1.0, 3.0, -3.4);
+    }
+    """
+    _test_compile_program(engine, program)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
