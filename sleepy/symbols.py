@@ -146,6 +146,12 @@ class StructType(Type):
     assert member_identifier in self.member_identifiers
     return self.member_identifiers.index(member_identifier)
 
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return '%sType' % self.struct_identifier
+
 
 SLEEPY_VOID = VoidType()
 SLEEPY_DOUBLE = DoubleType()
