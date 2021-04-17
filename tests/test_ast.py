@@ -959,6 +959,19 @@ def test_overload_with_different_structs():
     _test_compile_program(engine, program)
 
 
+def test_func_inline_mutable_arg():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Nothing {}
+    @Inline func my_func(@Mutable Nothing wow) -> Int {
+      return 32;
+    }
+    func main() { return wow(Nothing()); }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

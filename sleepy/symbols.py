@@ -189,7 +189,7 @@ class ConcreteFunction:
   """
   An actual function implementation.
   """
-  def __init__(self, ir_func, return_type, return_mutable, arg_identifiers, arg_types, arg_mutables):
+  def __init__(self, ir_func, return_type, return_mutable, arg_identifiers, arg_types, arg_mutables, is_inline=False):
     """
     :param ir.Function|None ir_func:
     :param Type return_type:
@@ -197,6 +197,7 @@ class ConcreteFunction:
     :param list[str] arg_identifiers:
     :param list[Type] arg_types:
     :param list[bool] arg_mutables:
+    :param bool is_inline:
     """
     assert ir_func is None or isinstance(ir_func, ir.Function)
     assert isinstance(return_type, Type)
@@ -207,6 +208,7 @@ class ConcreteFunction:
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
     self.arg_mutables = arg_mutables
+    self.is_inline = is_inline
 
   def get_c_arg_types(self):
     """
@@ -244,8 +246,8 @@ class ConcreteFunction:
     """
     :rtype str:
     """
-    return 'ConcreteFunction(ir_func=%r, return_type=%r, arg_identifiers=%r, arg_types=%r)' % (
-      self.ir_func, self.return_type, self.arg_identifiers, self.arg_types)
+    return 'ConcreteFunction(ir_func=%r, return_type=%r, arg_identifiers=%r, arg_types=%r, is_inline=%r)' % (
+      self.ir_func, self.return_type, self.arg_identifiers, self.arg_types, self.is_inline)
 
 
 class FunctionSymbol(Symbol):

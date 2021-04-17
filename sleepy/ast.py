@@ -246,6 +246,7 @@ class FunctionDeclarationAst(StatementAst):
   Stmt -> func identifier ( TypedIdentifierList ) { StmtList }
   """
 
+  allowed_annotation_identifiers = {'Inline'}
   allowed_arg_annotation_identifiers = {'Const', 'Mutable'}
 
   def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, arg_annotations, return_type_identifier,
@@ -277,6 +278,13 @@ class FunctionDeclarationAst(StatementAst):
     :rtype: bool
     """
     return self.stmt_list is None
+
+  @property
+  def is_inline(self):
+    """
+    :rtype: bool
+    """
+    return any(annotation.identifier == 'Inline' for annotation in self.annotations)
 
   def make_arg_types(self, symbol_table):
     """
@@ -325,10 +333,16 @@ class FunctionDeclarationAst(StatementAst):
     arg_mutables = [
       self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
       for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
+    if self.is_inline:
+      if self.is_extern:
+        self.raise_error('Extern function %r cannot be inlined' % self.identifier)
+      for arg_identifier, arg_mutable in zip(self.arg_identifiers, arg_mutables):
+        if arg_mutable:
+          self.raise_error('Cannot inline function %r with a mutable parameter %r' % (self.identifier, arg_identifier))
     func_symbol.add_concrete_func(
       ConcreteFunction(
         None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
-        arg_types=arg_types, arg_mutables=arg_mutables))
+        arg_types=arg_types, arg_mutables=arg_mutables, is_inline=self.is_inline))
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
