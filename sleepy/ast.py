@@ -957,7 +957,6 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     return self._make_func_call_ir(
       func_identifier=self.op, func_arg_exprs=operand_exprs, builder=builder, symbol_table=symbol_table)
 
-
   def __repr__(self):
     """
     :rtype: str
@@ -977,7 +976,6 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     :param ExpressionAst expr:
     """
     super().__init__(pos)
-    assert op in {'+', '-'}
     self.op = op
     self.expr = expr
 
@@ -986,10 +984,10 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    val_type = self.expr.make_val_type(symbol_table=symbol_table)
-    if val_type == SLEEPY_VOID:
-      self.raise_error('Cannot apply unary operator %r on void operand')
-    return val_type
+    operand_exprs = [self.expr]
+    concrete_func = self._check_func_call_symbol_table(
+      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+    return concrete_func.return_type
 
   def is_val_mutable(self, symbol_table):
     """
@@ -1004,17 +1002,9 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
-    val_type = self.expr.make_val_type(symbol_table=symbol_table)
-    ir_val = self.expr.make_ir_val(builder=builder, symbol_table=symbol_table)
-    if self.op == '+':
-      return ir_val
-    if self.op == '-':
-      constant_minus_one = ir.Constant(val_type.ir_type, -1)
-      if val_type == SLEEPY_DOUBLE:
-        return builder.fmul(constant_minus_one, ir_val, name='neg_tmp')
-      if val_type in {SLEEPY_INT, SLEEPY_LONG}:
-        return builder.mul(constant_minus_one, ir_val, name='neg_tmp')
-    self.raise_error('Cannot apply unary operator %r to type %r' % (self.op, val_type))
+    operand_exprs = [self.expr]
+    return self._make_func_call_ir(
+      func_identifier=self.op, func_arg_exprs=operand_exprs, builder=builder, symbol_table=symbol_table)
 
   def __repr__(self):
     """
