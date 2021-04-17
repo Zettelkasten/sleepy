@@ -93,7 +93,7 @@ class AbstractSyntaxTree:
     assert ir_func is not None
     assert len(concrete_func.arg_types) == len(func_arg_exprs) == len(ir_func.args)
     ir_func_args = [val.make_ir_val(builder=builder, symbol_table=symbol_table) for val in func_arg_exprs]
-    return builder.call(ir_func, ir_func_args, name='call')
+    return builder.call(ir_func, ir_func_args, name='call_%s' % func_identifier)
 
   def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
     """
