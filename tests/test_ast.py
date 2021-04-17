@@ -927,6 +927,19 @@ def test_func_operator():
     assert_equal(main(True, True, False), True)
 
 
+def test_overload_func_twice():
+  with make_execution_engine() as engine:
+    program = """
+    func +(Bool a, Bool b) -> Bool {
+      return or(a, b);
+    }
+    func +(Bool left, Bool right) -> Bool { return True(); }  # not allowed!
+    func main() { }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
