@@ -2,7 +2,7 @@
 Implements a symbol table.
 """
 import ctypes
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Set
 
 from llvmlite import ir
 
@@ -308,11 +308,13 @@ class SymbolTable:
       self.current_func = None  # type: Optional[ConcreteFunction]
       self.ir_func_malloc = None  # type: Optional[ir.Function]
       self.ir_func_free = None  # type: Optional[ir.Function]
+      self.used_ir_func_names = set()  # type: Set[str]
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
       self.current_func = copy_from.current_func  # type: Optional[ConcreteFunction]
       self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
       self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
+      self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
     self.current_scope_identifiers = []  # type: List[str]
 
   def __setitem__(self, identifier, symbol):
@@ -342,8 +344,7 @@ class SymbolTable:
     """
     return SymbolTable(self)
 
-  @classmethod
-  def make_ir_func_name(cls, func_identifier, extern, concrete_func):
+  def make_ir_func_name(self, func_identifier, extern, concrete_func):
     """
     :param str func_identifier:
     :param bool extern:
@@ -351,9 +352,12 @@ class SymbolTable:
     :rtype: str
     """
     if extern:
-      return func_identifier
+      ir_func_name = func_identifier
     else:
-      return func_identifier + ''.join([str(arg_type) for arg_type in concrete_func.arg_types])
+      ir_func_name = func_identifier + '_' + '_'.join([str(arg_type) for arg_type in concrete_func.arg_types])
+      assert ir_func_name not in self.used_ir_func_names
+    self.used_ir_func_names.add(ir_func_name)
+    return ir_func_name
 
 
 def _make_builtin_op_arg_names(op, op_arg_types):
