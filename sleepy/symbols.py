@@ -373,15 +373,19 @@ SLEEPY_INBUILT_BINARY_OPS = ['+', '-', '*', '/', '==', '!=', '<', '>', '<=', '>=
 SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES = [
   [
     [SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
-    [SLEEPY_DOUBLE_PTR, SLEEPY_INT]],
-  [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG]],
+    [SLEEPY_DOUBLE_PTR, SLEEPY_INT],
+    [SLEEPY_DOUBLE], [SLEEPY_INT], [SLEEPY_LONG]
+  ], [
+    [SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
+    [SLEEPY_DOUBLE], [SLEEPY_INT], [SLEEPY_LONG]
+  ],
   [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG]],
   [[SLEEPY_DOUBLE, SLEEPY_DOUBLE]]] + [
     [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
     [SLEEPY_DOUBLE_PTR, SLEEPY_DOUBLE_PTR]]] * 6  # type: List[List[List[Type]]]
 SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES = [
-  [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE_PTR],
-  [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
+  [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE_PTR, SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
+  [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
   [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
   [SLEEPY_DOUBLE]] + [[SLEEPY_BOOL] * 4] * 6  # type: List[List[Type]]
 assert (
@@ -427,6 +431,9 @@ def _make_builtin_op_ir_val(op, op_arg_types, op_ir_args, builder):
   if op == '/':
     return make_binary_op({SLEEPY_DOUBLE: builder.fdiv}, instr_name='div')
   if op == '+':
+    if len(op_arg_types) == 1:
+      assert len(op_ir_args) == 1
+      return op_ir_args[0]
     assert len(op_arg_types) == len(op_ir_args) == 2
     left_type, right_type = op_arg_types
     left_val, right_val = op_ir_args
@@ -435,6 +442,14 @@ def _make_builtin_op_ir_val(op, op_arg_types, op_ir_args, builder):
     return make_binary_op(
       {SLEEPY_DOUBLE: builder.fadd, SLEEPY_INT: builder.add, SLEEPY_LONG: builder.add}, instr_name='add')
   if op == '-':
+    if len(op_arg_types) == 1:
+      assert len(op_ir_args) == 1
+      val_type, ir_val = op_arg_types[0], op_ir_args[0]
+      constant_minus_one = ir.Constant(val_type.ir_type, -1)
+      if val_type == SLEEPY_DOUBLE:
+        return builder.fmul(constant_minus_one, ir_val, name='neg')
+      if val_type in {SLEEPY_INT, SLEEPY_LONG}:
+        return builder.mul(constant_minus_one, ir_val, name='neg')
     return make_binary_op(
       {SLEEPY_DOUBLE: builder.fsub, SLEEPY_INT: builder.sub, SLEEPY_LONG: builder.sub}, instr_name='sub')
   if op in {'==', '!=', '<', '>', '<=', '>='}:
