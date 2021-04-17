@@ -909,15 +909,22 @@ def test_func_operator():
     func +(Bool a, Bool b) -> Bool {
       return or(a, b);
     }
-    func main(Bool a, Bool b) -> Bool {
-      return a + b;
+    func *(Bool a, Bool b) -> Bool {
+      return and(a, b);
+    }
+    func main(Bool a, Bool b, Bool c) -> Bool {
+      return a + b * c;
     }
     """
     main = _test_compile_program(engine, program)
-    assert_equal(main(False, False), False)
-    assert_equal(main(True, False), True)
-    assert_equal(main(False, True), True)
-    assert_equal(main(True, True), True)
+    assert_equal(main(False, False, True), False)
+    assert_equal(main(True, False, True), True)
+    assert_equal(main(False, True, True), True)
+    assert_equal(main(True, True, True), True)
+    assert_equal(main(False, False, False), False)
+    assert_equal(main(True, False, False), True)
+    assert_equal(main(False, True, False), False)
+    assert_equal(main(True, True, False), True)
 
 
 if __name__ == "__main__":
