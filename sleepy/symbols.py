@@ -160,6 +160,14 @@ SLEEPY_TYPES = {
   'Char': SLEEPY_CHAR, 'DoublePtr': SLEEPY_DOUBLE_PTR}  # type: Dict[str, Type]
 SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG}
 
+SLEEPY_INBUILT_BINARY_OPS = ['+', '-', '*', '/']  # type: List[str]
+SLEEPY_INBUILT_BINARY_IR_BUILDERS = [
+  {SLEEPY_DOUBLE: 'fadd', SLEEPY_INT: 'add', SLEEPY_LONG: 'add'},
+  {SLEEPY_DOUBLE: 'fsub', SLEEPY_INT: 'sub', SLEEPY_LONG: 'sub'},
+  {SLEEPY_DOUBLE: 'fmul', SLEEPY_INT: 'mul', SLEEPY_LONG: 'mul'},
+  {SLEEPY_DOUBLE: 'fdiv'}]  # type: List[Dict[Type, str]]
+SLEEPY_INBUILT_BINARY_OP_RETURN_TYPE = []
+
 
 class VariableSymbol(Symbol):
   """
@@ -364,4 +372,52 @@ def make_initial_symbol_table():
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table
     symbol_table[type_identifier] = TypeSymbol(inbuilt_type, constructor_symbol=None)
+
+  for op, op_builders in zip(SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_IR_BUILDERS):
+    assert op not in symbol_table
+    func_symbol = FunctionSymbol()
+    symbol_table[op] = func_symbol
+    for operand_type in op_builders.keys():
+      assert not func_symbol.has_concrete_func([operand_type, operand_type])
+      # ir_func will be set in build_initial_module_ir
+      concrete_func = ConcreteFunction(
+        ir_func=None, return_type=operand_type, return_mutable=False, arg_identifiers=['left', 'right'],
+        arg_types=[operand_type, operand_type], arg_mutables=[False, False])
+      func_symbol.add_concrete_func(concrete_func)
   return symbol_table
+
+
+def build_initial_module_ir(module, builder, symbol_table):
+  """
+  :param ir.Module module:
+  :param ir.IRBuilder builder:
+  :param SymbolTable symbol_table:
+  :rtype: ir.IRBuilder
+  """
+  symbol_table.ir_func_malloc = ir.Function(
+    module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
+  symbol_table.ir_func_free = ir.Function(
+    module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
+
+  for op, op_builders in zip(SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_IR_BUILDERS):
+    assert op in symbol_table
+    func_symbol = symbol_table[op]
+    assert isinstance(func_symbol, FunctionSymbol)
+    for operand_type, op_builder_name in op_builders.items():
+      assert func_symbol.has_concrete_func([operand_type, operand_type])
+      concrete_func = func_symbol.get_concrete_func([operand_type, operand_type])
+      ir_func_type = concrete_func.make_ir_function_type()
+      ir_func_name = symbol_table.make_ir_func_name(op, extern=False, concrete_func=concrete_func)
+      concrete_func.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
+      assert len(concrete_func.ir_func.args) == 2
+      left_arg, right_arg = concrete_func.ir_func.args
+      left_arg.name, right_arg.name = 'left', 'right'
+      body_block = concrete_func.ir_func.append_basic_block(name='entry')
+      body_builder = ir.IRBuilder(body_block)
+      assert hasattr(body_builder, op_builder_name)
+      builder_func = getattr(body_builder, op_builder_name)
+      assert callable(builder_func)
+      ir_op = builder_func(lhs=left_arg, rhs=right_arg, name=op_builder_name)
+      body_builder.ret(ir_op)
+  print(symbol_table.symbols)
+  return builder

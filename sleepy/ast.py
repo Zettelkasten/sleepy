@@ -10,7 +10,7 @@ from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
-  make_initial_symbol_table, StructType, ConcreteFunction
+  make_initial_symbol_table, StructType, ConcreteFunction, build_initial_module_ir
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -224,12 +224,8 @@ class TopLevelStatementAst(StatementAst):
 
     block = ir_io_func.append_basic_block(name='entry')
     body_builder = ir.IRBuilder(block)
-
-    from sleepy.symbols import LLVM_SIZE_TYPE, LLVM_VOID_POINTER_TYPE
-    symbol_table.ir_func_malloc = ir.Function(
-      module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
-    symbol_table.ir_func_free = ir.Function(
-      module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
+    build_initial_module_ir(module=module, builder=body_builder, symbol_table=symbol_table)
+    assert symbol_table.ir_func_malloc is not None and symbol_table.ir_func_free is not None
 
     for stmt in self.stmt_list:
       body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
@@ -939,30 +935,10 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
-    right_type = self.right_expr.make_val_type(symbol_table=symbol_table)
-    if left_type == SLEEPY_VOID:
-      self.raise_error('Cannot apply binary operator %r on left void operand')
-    if right_type == SLEEPY_VOID:
-      self.raise_error('Cannot apply binary operator %r on right void operand')
-    if left_type == SLEEPY_DOUBLE_PTR:
-      if self.op == '+' and right_type == SLEEPY_INT:
-        return SLEEPY_DOUBLE_PTR
-      if right_type == SLEEPY_DOUBLE_PTR:
-        if self.op not in {'==', '!=', '<', '>', '<=', '>', '>='}:
-          self.raise_error('Cannot apply binary operator %r on types %r and %r' % (
-            self.op, left_type, right_type))
-        return SLEEPY_BOOL
-      self.raise_error('Cannot apply binary operator %r on types %r and %r' % (
-        self.op, left_type, right_type))
-    if left_type != right_type:
-      self.raise_error('Cannot apply binary operator %r on different types %r and %r' % (
-        self.op, left_type, right_type))
-    if self.op in {'*', '/', '+', '-'}:
-      return left_type
-    if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
-      return SLEEPY_BOOL
-    self.raise_error('Unknown binary operator %r' % self.op)
+    operand_exprs = [self.left_expr, self.right_expr]
+    concrete_func = self._check_func_call_symbol_table(
+      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+    return concrete_func.return_type
 
   def is_val_mutable(self, symbol_table):
     """
@@ -977,45 +953,10 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: ir.values.Value
     """
-    left_type = self.left_expr.make_val_type(symbol_table=symbol_table)
-    right_type = self.right_expr.make_val_type(symbol_table=symbol_table)
-    if left_type != right_type and not (left_type == SLEEPY_DOUBLE_PTR and right_type == SLEEPY_INT):
-      self.raise_error('Cannot apply binary operator %r on different types %r and %r' % (
-        self.op, left_type, right_type))
-    var_type = left_type
-    left_val = self.left_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
-    right_val = self.right_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
+    operand_exprs = [self.left_expr, self.right_expr]
+    return self._make_func_call_ir(
+      func_identifier=self.op, func_arg_exprs=operand_exprs, builder=builder, symbol_table=symbol_table)
 
-    def make_op(type_instr, instr_name):
-      """
-      :param Dict[Type,Callable] type_instr:
-      :param str instr_name:
-      :rtype: ir.values.Value
-      """
-      if var_type not in type_instr:
-        self.raise_error('Cannot apply binary operator %r on types %r' % (self.op, var_type))
-      return type_instr[var_type](left_val, right_val, name=instr_name)
-
-    if self.op == '*':
-      return make_op(
-        {SLEEPY_DOUBLE: builder.fmul, SLEEPY_INT: builder.mul, SLEEPY_LONG: builder.mul}, instr_name='mul_tmp')
-    if self.op == '/':
-      return make_op({SLEEPY_DOUBLE: builder.fdiv}, instr_name='div_tmp')
-    if self.op == '+':
-      if left_type == SLEEPY_DOUBLE_PTR and right_type == SLEEPY_INT:
-        return builder.gep(left_val, (right_val,), name='incr_ptr_tmp')
-      return make_op(
-        {SLEEPY_DOUBLE: builder.fadd, SLEEPY_INT: builder.add, SLEEPY_LONG: builder.mul}, instr_name='add_tmp')
-    if self.op == '-':
-      return make_op(
-        {SLEEPY_DOUBLE: builder.fsub, SLEEPY_INT: builder.sub, SLEEPY_LONG: builder.mul}, instr_name='sub_tmp')
-    if self.op in {'==', '!=', '<', '>', '<=', '>', '>='}:
-      from functools import partial
-      return make_op({
-        SLEEPY_DOUBLE: partial(builder.fcmp_ordered, self.op), SLEEPY_INT: partial(builder.icmp_signed, self.op),
-        SLEEPY_LONG: partial(builder.icmp_signed, self.op), SLEEPY_DOUBLE_PTR: partial(builder.icmp_unsigned, self.op)},
-        instr_name='cmp_tmp')
-    assert False, 'Operator %s not handled!' % self.op
 
   def __repr__(self):
     """
