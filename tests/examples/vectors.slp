@@ -31,6 +31,9 @@ func -(Vec3 a, Vec3 b) -> Vec3 {
 func *(Double a, Vec3 b) -> Vec3 {
   return Vec3(a * b.x, a * b.y, a * b.z);
 }
+func -(Vec3 a) -> Vec3 {
+  return -1.0 * a;
+}
 func *(Vec3 a, Vec3 b) -> Double {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
