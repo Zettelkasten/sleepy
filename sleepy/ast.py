@@ -417,6 +417,23 @@ class FunctionDeclarationAst(StatementAst):
 
     return builder
 
+  def _build_body_symbol_table(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: SymbolTable
+    """
+    arg_types = self.make_arg_types(symbol_table=symbol_table)
+    concrete_func = self._get_concrete_func(symbol_table=symbol_table)
+    body_symbol_table = symbol_table.copy()
+    body_symbol_table.current_func = concrete_func
+    body_symbol_table.current_scope_identifiers = []
+    for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
+      body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
+      body_symbol_table.current_scope_identifiers.append(arg_identifier)
+    for stmt in self.stmt_list:
+      stmt.build_symbol_table(symbol_table=body_symbol_table)
+    return body_symbol_table
+
   def _build_body_ir(self, ir_func_args, module, body_builder, symbol_table, inline_return_collect_block=None,
                      inline_return_ir_alloca=None):
     """
@@ -429,19 +446,11 @@ class FunctionDeclarationAst(StatementAst):
     """
     assert not self.is_extern
     assert (inline_return_collect_block is None) == (not self.is_inline)
-    arg_types = self.make_arg_types(symbol_table=symbol_table)
     concrete_func = self._get_concrete_func(symbol_table=symbol_table)
     assert len(ir_func_args) == len(concrete_func.arg_identifiers)
-    body_symbol_table = symbol_table.copy()  # type: SymbolTable
-    body_symbol_table.current_func = concrete_func
-    body_symbol_table.current_scope_identifiers = []
+    body_symbol_table = self._build_body_symbol_table(symbol_table)
     body_symbol_table.current_func_inline_return_collect_block = inline_return_collect_block
     body_symbol_table.current_func_inline_return_ir_alloca = inline_return_ir_alloca
-    for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
-      body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
-      body_symbol_table.current_scope_identifiers.append(arg_identifier)
-    for stmt in self.stmt_list:
-      stmt.build_symbol_table(symbol_table=body_symbol_table)
 
     for identifier_name in body_symbol_table.current_scope_identifiers:
       assert identifier_name in body_symbol_table
