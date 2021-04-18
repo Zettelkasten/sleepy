@@ -234,6 +234,7 @@ class ConcreteFunction:
     :param ExecutionEngine engine:
     :rtype: callable
     """
+    assert not self.is_inline
     assert self.ir_func is not None
     from sleepy.jit import get_func_address
     main_func_ptr = get_func_address(engine, self.ir_func)

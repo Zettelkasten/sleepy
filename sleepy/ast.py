@@ -89,9 +89,7 @@ class AbstractSyntaxTree:
     called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
     assert func_symbol.has_concrete_func(called_types)
     concrete_func = func_symbol.get_concrete_func(called_types)
-    ir_func = concrete_func.ir_func
-    assert ir_func is not None
-    assert len(concrete_func.arg_types) == len(func_arg_exprs) == len(ir_func.args)
+    assert len(concrete_func.arg_types) == len(func_arg_exprs)
     ir_func_args = []  # type: List[ir.values.Value]
     for func_arg_expr in func_arg_exprs:
       ir_func_arg, builder = func_arg_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
@@ -101,6 +99,9 @@ class AbstractSyntaxTree:
       assert callable(concrete_func.make_inline_func_call_ir)
       return concrete_func.make_inline_func_call_ir(ir_func_args=ir_func_args, body_builder=builder)
     else:
+      ir_func = concrete_func.ir_func
+      assert ir_func is not None
+      assert len(ir_func.args) == len(func_arg_exprs)
       return builder.call(ir_func, ir_func_args, name='call_%s' % func_identifier), builder
 
   def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
@@ -372,44 +373,47 @@ class FunctionDeclarationAst(StatementAst):
     :rtype: ir.IRBuilder
     """
     concrete_func = self._get_concrete_func(symbol_table=symbol_table)
-    ir_func_type = concrete_func.make_ir_function_type()
-    ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
-    concrete_func.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
+    if not self.is_inline:
+      ir_func_type = concrete_func.make_ir_function_type()
+      ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
+      concrete_func.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
 
-    if not self.is_extern:
-      if self.is_inline:
-        def make_inline_func_call_ir(ir_func_args, body_builder):
-          """
-          :param list[ir.values.Value] ir_func_args:
-          :param ir.IRBuilder body_builder:
-          :rtype: (ir.values.Value|None, ir.IRBuilder)
-          """
-          assert self.is_inline
-          assert len(ir_func_args) == len(self.arg_identifiers)
-          if concrete_func.return_type == SLEEPY_VOID:
-            return_val_ir_alloca = None
-          else:
-            return_val_ir_alloca = body_builder.alloca(
-              concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
-          collect_block = body_builder.append_basic_block('collect_return_%s_block' % self.identifier)
-          self._build_body_ir(
-            ir_func_args=ir_func_args, module=module, body_builder=body_builder, symbol_table=symbol_table,
-            inline_return_collect_block=collect_block, inline_return_ir_alloca=return_val_ir_alloca)
-          collect_builder = ir.IRBuilder(collect_block)
-          if concrete_func.return_type == SLEEPY_VOID:
-            return_val = None
-          else:
-            return_val = collect_builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
-          return return_val, collect_builder
+    if self.is_extern:
+      return builder
 
-        concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
-      else:
-        assert not self.is_inline
-        block = concrete_func.ir_func.append_basic_block(name='entry')
-        concrete_func = self._get_concrete_func(symbol_table=symbol_table)
-        body_builder = ir.IRBuilder(block)
+    if self.is_inline:
+      def make_inline_func_call_ir(ir_func_args, body_builder):
+        """
+        :param list[ir.values.Value] ir_func_args:
+        :param ir.IRBuilder body_builder:
+        :rtype: (ir.values.Value|None, ir.IRBuilder)
+        """
+        assert self.is_inline
+        assert len(ir_func_args) == len(self.arg_identifiers)
+        if concrete_func.return_type == SLEEPY_VOID:
+          return_val_ir_alloca = None
+        else:
+          return_val_ir_alloca = body_builder.alloca(
+            concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
+        collect_block = body_builder.append_basic_block('collect_return_%s_block' % self.identifier)
         self._build_body_ir(
-          ir_func_args=concrete_func.ir_func.args, module=module, body_builder=body_builder, symbol_table=symbol_table)
+          ir_func_args=ir_func_args, module=module, body_builder=body_builder, symbol_table=symbol_table,
+          inline_return_collect_block=collect_block, inline_return_ir_alloca=return_val_ir_alloca)
+        collect_builder = ir.IRBuilder(collect_block)
+        if concrete_func.return_type == SLEEPY_VOID:
+          return_val = None
+        else:
+          return_val = collect_builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
+        return return_val, collect_builder
+
+      concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
+    else:
+      assert not self.is_inline
+      block = concrete_func.ir_func.append_basic_block(name='entry')
+      concrete_func = self._get_concrete_func(symbol_table=symbol_table)
+      body_builder = ir.IRBuilder(block)
+      self._build_body_ir(
+        ir_func_args=concrete_func.ir_func.args, module=module, body_builder=body_builder, symbol_table=symbol_table)
 
     return builder
 
