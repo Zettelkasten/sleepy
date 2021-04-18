@@ -22,22 +22,22 @@ func print(Vec3 vec) {
   print(')');
 }
 
-func +(Vec3 a, Vec3 b) -> Vec3 {
+@Inline func +(Vec3 a, Vec3 b) -> Vec3 {
   return Vec3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
-func -(Vec3 a, Vec3 b) -> Vec3 {
+@Inline func -(Vec3 a, Vec3 b) -> Vec3 {
   return Vec3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
-func *(Double a, Vec3 b) -> Vec3 {
+@Inline func *(Double a, Vec3 b) -> Vec3 {
   return Vec3(a * b.x, a * b.y, a * b.z);
 }
-func -(Vec3 a) -> Vec3 {
+@Inline func -(Vec3 a) -> Vec3 {
   return -1.0 * a;
 }
-func *(Vec3 a, Vec3 b) -> Double {
+@Inline func *(Vec3 a, Vec3 b) -> Double {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
-func len(Vec3 v) -> Double {
+@Inline func len(Vec3 v) -> Double {
   extern_func sqrt(Double x) -> Double;
   return sqrt(v * v);
 }

@@ -16,10 +16,27 @@ func main() {
   }
 
   # @Const can also be omitted.
-  func get_left(@Const IntPair pair) -> Int {
+  @Inline func get_left(@Const IntPair pair) -> Int {
     return pair.left;
   }
-  func set_left(@Mutable IntPair pair, Int new_left) {
+  @Inline func set_left(@Mutable IntPair pair, Int new_left) {
     pair.left = new_left;
   }
+
+  func print(IntPair pair) {
+    print('(');
+    print(pair.left);
+    print('|');
+    print(pair.right);
+    print(')');
+  }
+
+  IntPair p = IntPair(4, -3);
+  print_line(get_left(p));
+  # set_left(p, 6) would fail, as p is immutable!
+  @Mutable mutable_pair = IntPair(6, 9);
+  set_left(mutable_pair, 53);  # this works however.
+  print_line(get_left(mutable_pair));  # and orints 53.
+  print(mutable_pair);  # mutable types can implicitly be "downcast" to non-mutable types.
+  print_line();
 }
