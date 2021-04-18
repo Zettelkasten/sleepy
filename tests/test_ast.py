@@ -1012,6 +1012,34 @@ def test_func_inline_nested():
     assert_equal(main(True, 51, -43), 51 + 42)
     assert_equal(main(False, 51, -43), -43 + 42)
 
+def test_func_inline_sequence():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func sum(Int a, Int b) -> Int { return a + b; }
+    func main(Int a, Int b) -> Int {
+      c = sum(a, b);
+      d = sum(c, b);
+      return d;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(4, 6), 4 + 6 + 6)
+    assert_equal(main(2, 4), 2 + 4 + 4)
+
+
+def test_func_inline_void():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func nothing() { }
+    func main() {
+      nothing();
+      nothing();
+      nothing();
+    }
+    """
+    main = _test_compile_program(engine, program, add_preamble=False)
+    main()
+
 
 def test_func_inline_mutable_arg():
   with make_execution_engine() as engine:
