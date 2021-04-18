@@ -994,6 +994,22 @@ def test_func_inline_with_branching():
     assert_equal(main(False, 51, -43), -43)
 
 
+def test_func_inline_nested():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func sum(Int a, Int b) -> Int { return a + b; }
+    @Inline func ternary(Bool cond, Int if_true, Int if_false) -> Int {
+      if cond { return if_true; } else { return if_false; }
+    }
+    func main(Bool cond, Int if_true, Int if_false) -> Int {
+      return sum(ternary(cond, if_true, if_false), 42);
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(True, 51, -43), 51 + 42)
+    assert_equal(main(False, 51, -43), -43 + 42)
+
+
 def test_func_inline_mutable_arg():
   with make_execution_engine() as engine:
     program = """
