@@ -348,6 +348,18 @@ class FunctionDeclarationAst(StatementAst):
         None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
         arg_types=arg_types, arg_mutables=arg_mutables, is_inline=self.is_inline))
 
+  def _get_concrete_func(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: ConcreteFunction
+    """
+    arg_types = self.make_arg_types(symbol_table=symbol_table)
+    assert self.identifier in symbol_table
+    func_symbol = symbol_table[self.identifier]
+    assert isinstance(func_symbol, FunctionSymbol)
+    assert func_symbol.has_concrete_func(arg_types)
+    return func_symbol.get_concrete_func(arg_types)
+
   def build_expr_ir(self, module, builder, symbol_table):
     """
     :param ir.Module module:
@@ -355,56 +367,67 @@ class FunctionDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
-    arg_types = self.make_arg_types(symbol_table=symbol_table)
-    assert self.identifier in symbol_table
-    func_symbol = symbol_table[self.identifier]
-    assert isinstance(func_symbol, FunctionSymbol)
-    assert func_symbol.has_concrete_func(arg_types)
-    concrete_func = func_symbol.get_concrete_func(arg_types)
+    concrete_func = self._get_concrete_func(symbol_table=symbol_table)
     ir_func_type = concrete_func.make_ir_function_type()
     ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
     concrete_func.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
 
     if not self.is_extern:
       block = concrete_func.ir_func.append_basic_block(name='entry')
+      concrete_func = self._get_concrete_func(symbol_table=symbol_table)
       body_builder = ir.IRBuilder(block)
+      self._build_body_ir(
+        ir_func_args=concrete_func.ir_func.args, module=module, body_builder=body_builder, symbol_table=symbol_table)
 
-      body_symbol_table = symbol_table.copy()  # type: SymbolTable
-      body_symbol_table.current_func = concrete_func
-      body_symbol_table.current_scope_identifiers = []
-      for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
-        body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
-        body_symbol_table.current_scope_identifiers.append(arg_identifier)
-      for stmt in self.stmt_list:
-        stmt.build_symbol_table(symbol_table=body_symbol_table)
-
-      for identifier_name in body_symbol_table.current_scope_identifiers:
-        assert identifier_name in body_symbol_table
-        var_symbol = body_symbol_table[identifier_name]
-        if not isinstance(var_symbol, VariableSymbol):
-          continue
-        var_symbol.ir_alloca = body_builder.alloca(var_symbol.var_type.ir_type, name=identifier_name)
-
-      for arg_identifier, ir_arg in zip(self.arg_identifiers, concrete_func.ir_func.args):
-        arg_symbol = body_symbol_table[arg_identifier]
-        assert isinstance(arg_symbol, VariableSymbol)
-        ir_arg.name = arg_identifier
-        body_builder.store(ir_arg, arg_symbol.ir_alloca)
-
-      for stmt in self.stmt_list:
-        body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
-      if body_builder is not None and not body_builder.block.is_terminated:
-        return_pos = TreePosition(
-          self.pos.word,
-          self.pos.from_pos if len(self.stmt_list) == 0 else self.stmt_list[-1].pos.to_pos,
-          self.pos.to_pos)
-        return_ast = ReturnStatementAst(return_pos, [])
-        if concrete_func.return_type != SLEEPY_VOID:
-          return_ast.raise_error(
-            'Not all branches within function declaration of %r return something' % self.identifier)
-        return_ast.build_symbol_table(symbol_table=body_symbol_table)  # for error checking
-        return_ast.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
     return builder
+
+  def _build_body_ir(self, ir_func_args, module, body_builder, symbol_table):
+    """
+    :param list[ir.values.Value] ir_func_args:
+    :param ir.Module module:
+    :param ir.IRBuilder body_builder:
+    :param SymbolTable symbol_table:
+    :rtype: (ir.values.Value, ir.IRBuilder)
+    """
+    assert not self.is_extern
+    arg_types = self.make_arg_types(symbol_table=symbol_table)
+    concrete_func = self._get_concrete_func(symbol_table=symbol_table)
+    assert len(ir_func_args) == len(concrete_func.arg_identifiers)
+    body_symbol_table = symbol_table.copy()  # type: SymbolTable
+    body_symbol_table.current_func = concrete_func
+    body_symbol_table.current_scope_identifiers = []
+    for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
+      body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
+      body_symbol_table.current_scope_identifiers.append(arg_identifier)
+    for stmt in self.stmt_list:
+      stmt.build_symbol_table(symbol_table=body_symbol_table)
+
+    for identifier_name in body_symbol_table.current_scope_identifiers:
+      assert identifier_name in body_symbol_table
+      var_symbol = body_symbol_table[identifier_name]
+      if not isinstance(var_symbol, VariableSymbol):
+        continue
+      var_symbol.ir_alloca = body_builder.alloca(var_symbol.var_type.ir_type, name=identifier_name)
+
+    for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func_args):
+      arg_symbol = body_symbol_table[arg_identifier]
+      assert isinstance(arg_symbol, VariableSymbol)
+      ir_arg.name = arg_identifier
+      body_builder.store(ir_arg, arg_symbol.ir_alloca)
+
+    for stmt in self.stmt_list:
+      body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
+    if body_builder is not None and not body_builder.block.is_terminated:
+      return_pos = TreePosition(
+        self.pos.word,
+        self.pos.from_pos if len(self.stmt_list) == 0 else self.stmt_list[-1].pos.to_pos,
+        self.pos.to_pos)
+      return_ast = ReturnStatementAst(return_pos, [])
+      if concrete_func.return_type != SLEEPY_VOID:
+        return_ast.raise_error(
+          'Not all branches within function declaration of %r return something' % self.identifier)
+      return_ast.build_symbol_table(symbol_table=body_symbol_table)  # for error checking
+      return_ast.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
 
   def __repr__(self):
     """
