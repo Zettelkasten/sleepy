@@ -17,9 +17,10 @@ from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, SymbolTable, make_init
   build_initial_module_ir
 
 
-def _test_parse_ast(program):
+def _test_parse_ast(program, add_preamble=True):
   """
   :param str program:
+  :param bool add_preamble:
   :rtype: TopLevelStatementAst
   """
   print('---- input program:')
@@ -34,8 +35,9 @@ def _test_parse_ast(program):
   print('---- abstract syntax tree (without preamble):')
   print(ast)
   assert isinstance(ast, TopLevelStatementAst)
-  ast = add_preamble_to_ast(ast)
-  assert isinstance(ast, TopLevelStatementAst)
+  if add_preamble:
+    ast = add_preamble_to_ast(ast)
+    assert isinstance(ast, TopLevelStatementAst)
   return ast
 
 
@@ -105,15 +107,16 @@ def test_FunctionDeclarationAst_build_expr_ir():
     assert_equal(func3(7.0, 3.0), 10.0)
 
 
-def _test_compile_program(engine, program, main_func_identifier='main', optimize=True):
+def _test_compile_program(engine, program, main_func_identifier='main', optimize=True, add_preamble=True):
   """
   :param ExecutionEngine engine:
   :param str program:
   :param str main_func_identifier:
   :param bool optimize:
+  :param bool add_preamble:
   :rtype: Callable[[], float]
   """
-  ast = _test_parse_ast(program)
+  ast = _test_parse_ast(program, add_preamble=add_preamble)
   module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast')
   print('---- symbol table:')
   print(symbol_table)
