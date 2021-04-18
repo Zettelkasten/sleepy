@@ -974,6 +974,26 @@ def test_func_inline():
     assert_equal(main(), 42 + 5)
 
 
+def test_func_inline_with_branching():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func ternary(Bool cond, Int if_true, Int if_false) -> Int {
+      if cond {
+        return if_true;
+      } else {
+        return if_false;
+      }
+    }
+    # wrapper around ternary because we cannot inline main
+    func main(Bool cond, Int if_true, Int if_false) -> Int {
+      return ternary(cond, if_true, if_false);
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(True, 51, -43), 51)
+    assert_equal(main(False, 51, -43), -43)
+
+
 def test_func_inline_mutable_arg():
   with make_execution_engine() as engine:
     program = """
