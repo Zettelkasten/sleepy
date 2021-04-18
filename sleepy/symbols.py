@@ -246,7 +246,7 @@ class ConcreteFunction:
     """
     :param list[ir.values.Value] ir_func_args:
     :param ir.IRBuilder body_builder:
-    :rtype: (ir.values.Value, ir.IRBuilder)
+    :rtype: (ir.values.Value|None, ir.IRBuilder)
     """
     assert self.is_inline
     raise NotImplementedError()

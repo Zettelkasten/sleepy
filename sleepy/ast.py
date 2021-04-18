@@ -79,7 +79,7 @@ class AbstractSyntaxTree:
     :param list[ExpressionAst] func_arg_exprs:
     :param IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: tuple[ir.values.Value,IRBuilder]
+    :rtype: tuple[ir.values.Value|None,IRBuilder]
     """
     assert func_identifier in symbol_table
     func_symbol = symbol_table[func_identifier]
@@ -382,18 +382,24 @@ class FunctionDeclarationAst(StatementAst):
           """
           :param list[ir.values.Value] ir_func_args:
           :param ir.IRBuilder body_builder:
-          :rtype: (ir.values.Value, ir.IRBuilder)
+          :rtype: (ir.values.Value|None, ir.IRBuilder)
           """
           assert self.is_inline
           assert len(ir_func_args) == len(self.arg_identifiers)
-          return_val_ir_alloca = body_builder.alloca(
-            concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
+          if concrete_func.return_type == SLEEPY_VOID:
+            return_val_ir_alloca = None
+          else:
+            return_val_ir_alloca = body_builder.alloca(
+              concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
           collect_block = body_builder.append_basic_block('collect_return_%s_block' % self.identifier)
           self._build_body_ir(
             ir_func_args=ir_func_args, module=module, body_builder=body_builder, symbol_table=symbol_table,
-            inline_return_ir_alloca=return_val_ir_alloca, inline_return_collect_block=collect_block)
+            inline_return_collect_block=collect_block, inline_return_ir_alloca=return_val_ir_alloca)
           collect_builder = ir.IRBuilder(collect_block)
-          return_val = collect_builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
+          if concrete_func.return_type == SLEEPY_VOID:
+            return_val = None
+          else:
+            return_val = collect_builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
           return return_val, collect_builder
 
         concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
@@ -416,7 +422,6 @@ class FunctionDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     :param None|ir.Block inline_return_collect_block:
     :param None|ir.instructions.AllocaInstr inline_return_ir_alloca:
-    :rtype: (ir.values.Value, ir.IRBuilder)
     """
     assert not self.is_extern
     assert (inline_return_collect_block is None) == (not self.is_inline)
@@ -450,16 +455,20 @@ class FunctionDeclarationAst(StatementAst):
     for stmt in self.stmt_list:
       body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
     if body_builder is not None and not body_builder.block.is_terminated:
-      return_pos = TreePosition(
-        self.pos.word,
-        self.pos.from_pos if len(self.stmt_list) == 0 else self.stmt_list[-1].pos.to_pos,
-        self.pos.to_pos)
-      return_ast = ReturnStatementAst(return_pos, [])
-      if concrete_func.return_type != SLEEPY_VOID:
-        return_ast.raise_error(
-          'Not all branches within function declaration of %r return something' % self.identifier)
-      return_ast.build_symbol_table(symbol_table=body_symbol_table)  # for error checking
-      return_ast.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
+      if concrete_func.is_inline:
+        body_builder.branch(inline_return_collect_block)
+      else:  # not concrete_func.is_inline
+        return_pos = TreePosition(
+          self.pos.word,
+          self.pos.from_pos if len(self.stmt_list) == 0 else self.stmt_list[-1].pos.to_pos,
+          self.pos.to_pos)
+        return_ast = ReturnStatementAst(return_pos, [])
+        if concrete_func.return_type != SLEEPY_VOID:
+          return_ast.raise_error(
+            'Not all branches within function declaration of %r return something' % self.identifier)
+        return_ast.build_symbol_table(symbol_table=body_symbol_table)  # for error checking
+        return_ast.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
+    
 
   def __repr__(self):
     """
@@ -500,7 +509,7 @@ class CallStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
-    self._make_func_call_ir(
+    _, builder = self._make_func_call_ir(
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, builder=builder,
       symbol_table=symbol_table)
     return builder
@@ -576,9 +585,13 @@ class ReturnStatementAst(StatementAst):
         assert not symbol_table.current_func.is_inline
         builder.ret_void()
     if symbol_table.current_func.is_inline:
-      assert symbol_table.current_func_inline_return_collect_block is not None
-      builder.branch(symbol_table.current_func_inline_return_collect_block)
-    return builder
+      collect_block = symbol_table.current_func_inline_return_collect_block
+      assert collect_block is not None
+      builder.branch(collect_block)
+      return ir.IRBuilder(collect_block)
+    else:
+      assert not symbol_table.current_func.is_inline
+      return builder
 
   def __repr__(self):
     """
