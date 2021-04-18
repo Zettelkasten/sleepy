@@ -959,6 +959,21 @@ def test_overload_with_different_structs():
     _test_compile_program(engine, program)
 
 
+def test_func_inline():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func important() -> Int {
+      return 42;
+    }
+    func main() -> Int {
+      Int what = important();
+      return what + 5;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 42 + 5)
+
+
 def test_func_inline_mutable_arg():
   with make_execution_engine() as engine:
     program = """

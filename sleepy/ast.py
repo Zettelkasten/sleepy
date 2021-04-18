@@ -407,25 +407,26 @@ class FunctionDeclarationAst(StatementAst):
 
     return builder
 
-  def _build_body_ir(self, ir_func_args, module, body_builder, symbol_table, inline_return_ir_alloca=None,
-                     inline_return_collect_block=None):
+  def _build_body_ir(self, ir_func_args, module, body_builder, symbol_table, inline_return_collect_block=None,
+                     inline_return_ir_alloca=None):
     """
     :param list[ir.values.Value] ir_func_args:
     :param ir.Module module:
     :param ir.IRBuilder body_builder:
     :param SymbolTable symbol_table:
-    :param None|ir.instructions.AllocaInstr inline_return_ir_alloca:
     :param None|ir.Block inline_return_collect_block:
+    :param None|ir.instructions.AllocaInstr inline_return_ir_alloca:
     :rtype: (ir.values.Value, ir.IRBuilder)
     """
     assert not self.is_extern
-    assert (inline_return_ir_alloca is None) == (inline_return_collect_block is None) == (not self.is_inline)
+    assert (inline_return_collect_block is None) == (not self.is_inline)
     arg_types = self.make_arg_types(symbol_table=symbol_table)
     concrete_func = self._get_concrete_func(symbol_table=symbol_table)
     assert len(ir_func_args) == len(concrete_func.arg_identifiers)
     body_symbol_table = symbol_table.copy()  # type: SymbolTable
     body_symbol_table.current_func = concrete_func
     body_symbol_table.current_scope_identifiers = []
+    body_symbol_table.current_func_inline_return_collect_block = inline_return_collect_block
     body_symbol_table.current_func_inline_return_ir_alloca = inline_return_ir_alloca
     for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
       body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
@@ -561,10 +562,22 @@ class ReturnStatementAst(StatementAst):
     """
     if len(self.return_exprs) == 1:
       ir_val, builder = self.return_exprs[0].make_ir_val(builder=builder, symbol_table=symbol_table)
-      builder.ret(ir_val)
+      if symbol_table.current_func.is_inline:
+        assert symbol_table.current_func_inline_return_ir_alloca is not None
+        builder.store(ir_val, symbol_table.current_func_inline_return_ir_alloca)
+      else:
+        assert not symbol_table.current_func.is_inline
+        builder.ret(ir_val)
     else:
       assert len(self.return_exprs) == 0
-      builder.ret_void()
+      if symbol_table.current_func.is_inline:
+        assert symbol_table.current_func_inline_return_ir_alloca is None
+      else:
+        assert not symbol_table.current_func.is_inline
+        builder.ret_void()
+    if symbol_table.current_func.is_inline:
+      assert symbol_table.current_func_inline_return_collect_block is not None
+      builder.branch(symbol_table.current_func_inline_return_collect_block)
     return builder
 
   def __repr__(self):
