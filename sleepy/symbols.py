@@ -425,24 +425,24 @@ assert all(len(arg_types) == len(return_types) for arg_types, return_types in (
   zip(SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES)))
 
 
-def _make_builtin_op_ir_val(op, op_arg_types, op_ir_args, builder):
+def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, body_builder):
   """
   :param str op:
   :param list[Type] op_arg_types:
-  :param list[ir.values.Value] op_ir_args:
-  :param ir.IRBuilder builder:
-  :rtype: ir.values.Value
+  :param list[ir.values.Value] ir_func_args:
+  :param ir.IRBuilder body_builder:
+  :rtype: (ir.values.Value, ir.IRBuilder)
   """
   op_arg_types = tuple(op_arg_types)
-  assert len(op_arg_types) == len(op_ir_args)
+  assert len(op_arg_types) == len(ir_func_args)
 
   def make_binary_op(single_type_instr, instr_name):
     """
     :param Dict[Type,Callable] single_type_instr:
     :param str instr_name:
-    :rtype: ir.values.Value
+    :rtype: (ir.values.Value, ir.IRBuilder)
     """
-    assert len(op_arg_types) == len(op_ir_args) == 2
+    assert len(op_arg_types) == len(ir_func_args) == 2
     type_instr = {(arg_type, arg_type): instr for arg_type, instr in single_type_instr.items()}
     return make_op(type_instr=type_instr, instr_name=instr_name)
 
@@ -450,43 +450,43 @@ def _make_builtin_op_ir_val(op, op_arg_types, op_ir_args, builder):
     """
     :param Dict[Tuple[Type],Callable] type_instr:
     :param str instr_name:
-    :rtype: ir.values.Value
+    :rtype: (ir.values.Value, ir.IRBuilder)
     """
     assert op_arg_types in type_instr
-    return type_instr[op_arg_types](*op_ir_args, name=instr_name)
+    return type_instr[op_arg_types](*ir_func_args, name=instr_name), body_builder
 
   if op == '*':
     return make_binary_op(
-      {SLEEPY_DOUBLE: builder.fmul, SLEEPY_INT: builder.mul, SLEEPY_LONG: builder.mul}, instr_name='mul')
+      {SLEEPY_DOUBLE: body_builder.fmul, SLEEPY_INT: body_builder.mul, SLEEPY_LONG: body_builder.mul}, instr_name='mul')
   if op == '/':
-    return make_binary_op({SLEEPY_DOUBLE: builder.fdiv}, instr_name='div')
+    return make_binary_op({SLEEPY_DOUBLE: body_builder.fdiv}, instr_name='div')
   if op == '+':
     if len(op_arg_types) == 1:
-      assert len(op_ir_args) == 1
-      return op_ir_args[0]
-    assert len(op_arg_types) == len(op_ir_args) == 2
+      assert len(ir_func_args) == 1
+      return ir_func_args[0], body_builder
+    assert len(op_arg_types) == len(ir_func_args) == 2
     left_type, right_type = op_arg_types
-    left_val, right_val = op_ir_args
+    left_val, right_val = ir_func_args
     if left_type == SLEEPY_DOUBLE_PTR and right_type == SLEEPY_INT:
-      return builder.gep(left_val, (right_val,), name='add')
+      return body_builder.gep(left_val, (right_val,), name='add'), body_builder
     return make_binary_op(
-      {SLEEPY_DOUBLE: builder.fadd, SLEEPY_INT: builder.add, SLEEPY_LONG: builder.add}, instr_name='add')
+      {SLEEPY_DOUBLE: body_builder.fadd, SLEEPY_INT: body_builder.add, SLEEPY_LONG: body_builder.add}, instr_name='add')
   if op == '-':
     if len(op_arg_types) == 1:
-      assert len(op_ir_args) == 1
-      val_type, ir_val = op_arg_types[0], op_ir_args[0]
+      assert len(ir_func_args) == 1
+      val_type, ir_val = op_arg_types[0], ir_func_args[0]
       constant_minus_one = ir.Constant(val_type.ir_type, -1)
       if val_type == SLEEPY_DOUBLE:
-        return builder.fmul(constant_minus_one, ir_val, name='neg')
+        return body_builder.fmul(constant_minus_one, ir_val, name='neg'), body_builder
       if val_type in {SLEEPY_INT, SLEEPY_LONG}:
-        return builder.mul(constant_minus_one, ir_val, name='neg')
+        return body_builder.mul(constant_minus_one, ir_val, name='neg'), body_builder
     return make_binary_op(
-      {SLEEPY_DOUBLE: builder.fsub, SLEEPY_INT: builder.sub, SLEEPY_LONG: builder.sub}, instr_name='sub')
+      {SLEEPY_DOUBLE: body_builder.fsub, SLEEPY_INT: body_builder.sub, SLEEPY_LONG: body_builder.sub}, instr_name='sub')
   if op in {'==', '!=', '<', '>', '<=', '>='}:
     from functools import partial
     return make_binary_op({
-      SLEEPY_DOUBLE: partial(builder.fcmp_ordered, op), SLEEPY_INT: partial(builder.icmp_signed, op),
-      SLEEPY_LONG: partial(builder.icmp_signed, op), SLEEPY_DOUBLE_PTR: partial(builder.icmp_unsigned, op)},
+      SLEEPY_DOUBLE: partial(body_builder.fcmp_ordered, op), SLEEPY_INT: partial(body_builder.icmp_signed, op),
+      SLEEPY_LONG: partial(body_builder.icmp_signed, op), SLEEPY_DOUBLE_PTR: partial(body_builder.icmp_unsigned, op)},
       instr_name='cmp')
   assert False, 'Operator %s not handled!' % op
 
@@ -512,7 +512,7 @@ def make_initial_symbol_table():
       # ir_func will be set in build_initial_module_ir
       concrete_func = ConcreteFunction(
         ir_func=None, return_type=op_return_type, return_mutable=False, arg_identifiers=op_arg_identifiers,
-        arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types))
+        arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), is_inline=True)
       func_symbol.add_concrete_func(concrete_func)
   return symbol_table
 
@@ -535,15 +535,5 @@ def build_initial_module_ir(module, symbol_table):
     for op_arg_types, op_return_type in zip(op_arg_type_list, op_return_type_list):
       assert func_symbol.has_concrete_func(op_arg_types)
       concrete_func = func_symbol.get_concrete_func(op_arg_types)
-      ir_func_type = concrete_func.make_ir_function_type()
-      ir_func_name = symbol_table.make_ir_func_name(op, extern=False, concrete_func=concrete_func)
-      concrete_func.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
-      assert len(concrete_func.ir_func.args) == len(op_arg_types)
-      op_ir_args = concrete_func.ir_func.args
-      for ir_arg, arg_identifier in zip(op_ir_args, _make_builtin_op_arg_names(op, op_arg_types)):
-        ir_arg.name = arg_identifier
-      body_block = concrete_func.ir_func.append_basic_block(name='entry')
-      body_builder = ir.IRBuilder(body_block)
-      ir_val = _make_builtin_op_ir_val(op=op, op_arg_types=op_arg_types, op_ir_args=op_ir_args, builder=body_builder)
-      body_builder.ret(ir_val)
-  print(symbol_table.symbols)
+      from functools import partial
+      concrete_func.make_inline_func_call_ir = partial(_make_builtin_op_ir_val, op, op_arg_types)
