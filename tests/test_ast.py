@@ -1048,10 +1048,10 @@ def test_func_inline_mutable_arg():
     @Inline func my_func(@Mutable Nothing wow) -> Int {
       return 32;
     }
-    func main() { return wow(Nothing()); }
+    func main() -> Int { return my_func(Nothing()); }
     """
-    with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 32)
 
 
 if __name__ == "__main__":

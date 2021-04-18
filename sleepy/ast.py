@@ -345,9 +345,6 @@ class FunctionDeclarationAst(StatementAst):
     if self.is_inline:
       if self.is_extern:
         self.raise_error('Extern function %r cannot be inlined' % self.identifier)
-      for arg_identifier, arg_mutable in zip(self.arg_identifiers, arg_mutables):
-        if arg_mutable:
-          self.raise_error('Cannot inline function %r with a mutable parameter %r' % (self.identifier, arg_identifier))
     func_symbol.add_concrete_func(
       ConcreteFunction(
         None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
