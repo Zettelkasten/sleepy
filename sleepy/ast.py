@@ -352,6 +352,9 @@ class FunctionDeclarationAst(StatementAst):
       ConcreteFunction(
         None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
         arg_types=arg_types, arg_mutables=arg_mutables, is_inline=self.is_inline))
+    # build body symbols to check their types
+    if not self.is_extern:
+      self._build_body_symbol_table(symbol_table=symbol_table)
 
   def _get_concrete_func(self, symbol_table):
     """
@@ -422,6 +425,7 @@ class FunctionDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: SymbolTable
     """
+    assert not self.is_extern
     arg_types = self.make_arg_types(symbol_table=symbol_table)
     concrete_func = self._get_concrete_func(symbol_table=symbol_table)
     body_symbol_table = symbol_table.copy()
