@@ -454,10 +454,9 @@ class FunctionDeclarationAst(StatementAst):
 
     for stmt in self.stmt_list:
       body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
-    if body_builder is not None and not body_builder.block.is_terminated:
-      if concrete_func.is_inline:
-        body_builder.branch(inline_return_collect_block)
-      else:  # not concrete_func.is_inline
+    if body_builder is not None:
+      should_return = not concrete_func.is_inline or (body_builder.block != inline_return_collect_block)
+      if should_return and not body_builder.block.is_terminated:
         return_pos = TreePosition(
           self.pos.word,
           self.pos.from_pos if len(self.stmt_list) == 0 else self.stmt_list[-1].pos.to_pos,
