@@ -97,7 +97,11 @@ class AbstractSyntaxTree:
       ir_func_arg, builder = func_arg_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
       ir_func_args.append(ir_func_arg)
     assert len(ir_func_args) == len(func_arg_exprs)
-    return builder.call(ir_func, ir_func_args, name='call_%s' % func_identifier), builder
+    if concrete_func.is_inline:
+      assert callable(concrete_func.make_inline_func_call_ir)
+      return concrete_func.make_inline_func_call_ir(ir_func_args=ir_func_args, body_builder=builder)
+    else:
+      return builder.call(ir_func, ir_func_args, name='call_%s' % func_identifier), builder
 
   def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
     """
@@ -373,29 +377,56 @@ class FunctionDeclarationAst(StatementAst):
     concrete_func.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
 
     if not self.is_extern:
-      block = concrete_func.ir_func.append_basic_block(name='entry')
-      concrete_func = self._get_concrete_func(symbol_table=symbol_table)
-      body_builder = ir.IRBuilder(block)
-      self._build_body_ir(
-        ir_func_args=concrete_func.ir_func.args, module=module, body_builder=body_builder, symbol_table=symbol_table)
+      if self.is_inline:
+        def make_inline_func_call_ir(ir_func_args, body_builder):
+          """
+          :param list[ir.values.Value] ir_func_args:
+          :param ir.IRBuilder body_builder:
+          :rtype: (ir.values.Value, ir.IRBuilder)
+          """
+          assert self.is_inline
+          assert len(ir_func_args) == len(self.arg_identifiers)
+          return_val_ir_alloca = body_builder.alloca(
+            concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
+          collect_block = body_builder.append_basic_block('collect_return_%s_block' % self.identifier)
+          self._build_body_ir(
+            ir_func_args=ir_func_args, module=module, body_builder=body_builder, symbol_table=symbol_table,
+            inline_return_ir_alloca=return_val_ir_alloca, inline_return_collect_block=collect_block)
+          collect_builder = ir.IRBuilder(collect_block)
+          return_val = collect_builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
+          return return_val, collect_builder
+
+        concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
+      else:
+        assert not self.is_inline
+        block = concrete_func.ir_func.append_basic_block(name='entry')
+        concrete_func = self._get_concrete_func(symbol_table=symbol_table)
+        body_builder = ir.IRBuilder(block)
+        self._build_body_ir(
+          ir_func_args=concrete_func.ir_func.args, module=module, body_builder=body_builder, symbol_table=symbol_table)
 
     return builder
 
-  def _build_body_ir(self, ir_func_args, module, body_builder, symbol_table):
+  def _build_body_ir(self, ir_func_args, module, body_builder, symbol_table, inline_return_ir_alloca=None,
+                     inline_return_collect_block=None):
     """
     :param list[ir.values.Value] ir_func_args:
     :param ir.Module module:
     :param ir.IRBuilder body_builder:
     :param SymbolTable symbol_table:
+    :param None|ir.instructions.AllocaInstr inline_return_ir_alloca:
+    :param None|ir.Block inline_return_collect_block:
     :rtype: (ir.values.Value, ir.IRBuilder)
     """
     assert not self.is_extern
+    assert (inline_return_ir_alloca is None) == (inline_return_collect_block is None) == (not self.is_inline)
     arg_types = self.make_arg_types(symbol_table=symbol_table)
     concrete_func = self._get_concrete_func(symbol_table=symbol_table)
     assert len(ir_func_args) == len(concrete_func.arg_identifiers)
     body_symbol_table = symbol_table.copy()  # type: SymbolTable
     body_symbol_table.current_func = concrete_func
     body_symbol_table.current_scope_identifiers = []
+    body_symbol_table.current_func_inline_return_ir_alloca = inline_return_ir_alloca
     for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
       body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
       body_symbol_table.current_scope_identifiers.append(arg_identifier)

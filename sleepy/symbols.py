@@ -242,6 +242,15 @@ class ConcreteFunction:
     assert callable(py_func)
     return py_func
 
+  def make_inline_func_call_ir(self, ir_func_args, body_builder):
+    """
+    :param list[ir.values.Value] ir_func_args:
+    :param ir.IRBuilder body_builder:
+    :rtype: (ir.values.Value, ir.IRBuilder)
+    """
+    assert self.is_inline
+    raise NotImplementedError()
+
   def __repr__(self):
     """
     :rtype str:
@@ -314,16 +323,26 @@ class SymbolTable:
     if copy_from is None:
       self.symbols = {}  # type: Dict[str, Symbol]
       self.current_func = None  # type: Optional[ConcreteFunction]
+      self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
+      self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
       self.ir_func_malloc = None  # type: Optional[ir.Function]
       self.ir_func_free = None  # type: Optional[ir.Function]
       self.used_ir_func_names = set()  # type: Set[str]
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
       self.current_func = copy_from.current_func  # type: Optional[ConcreteFunction]
+      self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
+      self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
       self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
       self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
     self.current_scope_identifiers = []  # type: List[str]
+    if self.current_func is None:
+      assert self.current_func_inline_return_ir_alloca is None
+    else:
+      assert (
+        (self.current_func_inline_return_ir_alloca is None) == (self.current_func_inline_return_collect_block is None)
+        == (not self.current_func.is_inline))
 
   def __setitem__(self, identifier, symbol):
     """
