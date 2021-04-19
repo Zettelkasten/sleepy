@@ -1054,6 +1054,24 @@ def test_func_inline_mutable_arg():
     assert_equal(main(), 32)
 
 
+def test_func_inline_own_symbol_table():
+  with make_execution_engine() as engine:
+    program = """
+    # compute a + (a + 5)
+    @Inline func foo(Int a) -> Int {
+      Int b = a + 5;
+      return a + b;
+    }
+    func main(Int x) -> Int {
+      Int c = foo(x);
+      Double b = 2.0;
+      return c;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(4), 4 + (4 + 5))
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
