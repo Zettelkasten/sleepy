@@ -10,7 +10,7 @@ from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.symbols import FunctionSymbol
 
 
-def _test_compile_example(code_file_name):
+def _test_run_example(code_file_name):
   print('\nLoading example from %s.' % code_file_name)
   with make_execution_engine() as engine:
     with open(code_file_name, 'r') as file:
@@ -24,17 +24,17 @@ def _test_compile_example(code_file_name):
     assert len(main_func_symbol.concrete_funcs) == 1, 'need to declare exactly one main function'
     concrete_main_func = main_func_symbol.get_single_concrete_func()
     py_func = concrete_main_func.make_py_func(engine)
-    print('Now execution:')
+    print('Now executing:')
     return_val = py_func()
     print('Returned value: %r of type %r' % (return_val, concrete_main_func.return_type))
 
 
-def test_compile_examples():
+def test_run_examples():
   examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'examples')
   code_file_root, _, code_file_names = next(os.walk(examples_path))
   assert len(code_file_names) >= 1
   for code_file_name in code_file_names:
-    yield _test_compile_example, os.path.join(code_file_root, code_file_name)
+    yield _test_run_example, os.path.join(code_file_root, code_file_name)
 
 
 if __name__ == "__main__":
