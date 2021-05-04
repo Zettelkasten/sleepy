@@ -1,16 +1,38 @@
 #!/usr/bin/env python3
 
 """
-Main entry point: Load a sleepy program and execute its main function.
+Main entry point: Compile a sleepy program to object code.
 """
 import argparse
-from ctypes import CFUNCTYPE
 import better_exchook
 
 import _setup_sleepy_env  # noqa
 from sleepy.ast import make_program_ast
-from sleepy.jit import make_execution_engine, compile_ir
+from sleepy.jit import make_execution_engine, compile_ir, LIB_PATH
 from sleepy.symbols import FunctionSymbol
+import llvmlite.binding as llvm
+
+
+def _make_file_name(source_file_name, file_ending, allow_exist=False):
+  """
+  :param str source_file_name:
+  :param str file_ending: with leading . if applicable
+  :param bool allow_exist:
+  :rtype str:
+  """
+  if source_file_name.endswith('.slp'):
+    base_file_name = source_file_name[:-len('.slp')]
+  else:
+    base_file_name = source_file_name
+    if file_ending == '':
+      base_file_name += '.out'
+  import os.path
+  if allow_exist or not os.path.isfile('%s%s' % (base_file_name, file_ending)):
+    return '%s%s' % (base_file_name, file_ending)
+  file_num = 0
+  while os.path.isfile('%s.%s%s' % (base_file_name, file_num, file_ending)):
+    file_num += 1
+  return '%s.%s%s' % (base_file_name, file_num, file_ending)
 
 
 def main():
@@ -18,12 +40,18 @@ def main():
   Main entry point.
   """
   better_exchook.install()
-  parser = argparse.ArgumentParser(description='Run a Sleepy Script program.')
+  parser = argparse.ArgumentParser(description='Compile a Sleepy program to object code.')
   parser.add_argument('program', help='Path to source code')
+  parser.add_argument('--execute', dest='execute', action='store_true', help='Run program after compilation using JIT.')
+  parser.add_argument(
+    '--emit-object', '-c', dest='emit_object', action='store_true', help='Emit object code, but do not link.')
+  parser.set_defaults(execute=False)
+
   args = parser.parse_args()
 
   main_func_identifier = 'main'
-  with open(args.program) as program_file:
+  source_file_name = args.program  # type: str
+  with open(source_file_name) as program_file:
     program = program_file.read()
   ast = make_program_ast(program)
   module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='default_module')
@@ -37,12 +65,28 @@ def main():
   if len(main_func_symbol.concrete_funcs) != 1:
     print('Error: Must declare exactly one entry point function %r' % main_func_identifier)
     exit()
-  concrete_main_func = main_func_symbol.get_single_concrete_func()
-  with make_execution_engine() as engine:
-    compile_ir(engine, module_ir)
-  py_func = concrete_main_func.make_py_func(engine)
-  return_val = py_func()
-  print('\nExited with return value %r of type %r' % (return_val, concrete_main_func.return_type))
+  if args.execute:
+    # Execute directly using JIT compilation.
+    concrete_main_func = main_func_symbol.get_single_concrete_func()
+    with make_execution_engine() as engine:
+      compile_ir(engine, module_ir)
+      py_func = concrete_main_func.make_py_func(engine)
+      return_val = py_func()
+    print('\nExited with return value %r of type %r' % (return_val, concrete_main_func.return_type))
+    return
+
+  object_file_name = _make_file_name(source_file_name, '.o', allow_exist=True)
+  module_ref = llvm.parse_assembly(str(module_ir))
+  target = llvm.Target.from_default_triple()
+  machine = target.create_target_machine()
+  with open(object_file_name, 'wb') as file:
+    file.write(machine.emit_object(module_ref))
+  if args.emit_object:
+    return
+
+  exec_file_name = _make_file_name(source_file_name, '', allow_exist=True)
+  import subprocess
+  subprocess.run(['gcc', '-o', exec_file_name, object_file_name, LIB_PATH])
 
 
 if __name__ == '__main__':
