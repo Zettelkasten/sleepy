@@ -20,6 +20,7 @@ jobs:
           - TEST=semantic
           - TEST=ast
           - TEST=examples
+          - TEST=compiler
 
     steps:
     - uses: actions/checkout@v2
