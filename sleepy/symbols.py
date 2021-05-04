@@ -25,13 +25,15 @@ class Type:
   """
   A type of a declared variable.
   """
-  def __init__(self, ir_type, pass_by_ref, c_type):
+  def __init__(self, size, ir_type, pass_by_ref, c_type):
     """
+    :param int size:
     :param ir.types.Type ir_type:
     :param bool pass_by_ref:
     :param Callable|None c_type:
     """
     assert not pass_by_ref or isinstance(ir_type, ir.types.PointerType)
+    self.size = size
     self.ir_type = ir_type
     self.pass_by_ref = pass_by_ref
     self.c_type = c_type
@@ -45,14 +47,11 @@ class Type:
     """
     return self.pass_by_ref
 
-  def make_ir_size(self, builder):
+  def make_ir_size(self):
     """
-    :param ir.IRBuilder builder:
     :rtype: ir.values.Value
     """
-    ir_null_ptr = ir.values.Constant(ir.types.PointerType(self.ir_type), 'null')
-    ir_size_ptr = builder.gep(ir_null_ptr, [ir.values.Constant(LLVM_SIZE_TYPE, 1)], name='size_ptr')
-    return builder.ptrtoint(ir_size_ptr, LLVM_SIZE_TYPE, name='size')
+    return ir.Constant(LLVM_SIZE_TYPE, self.size)
 
 
 class VoidType(Type):
@@ -60,7 +59,7 @@ class VoidType(Type):
   Typ returned when nothing is returned.
   """
   def __init__(self):
-    super().__init__(ir.VoidType(), pass_by_ref=False, c_type=None)
+    super().__init__(0, ir.VoidType(), pass_by_ref=False, c_type=None)
 
 
 class DoubleType(Type):
@@ -68,7 +67,7 @@ class DoubleType(Type):
   A double.
   """
   def __init__(self):
-    super().__init__(ir.DoubleType(), pass_by_ref=False, c_type=ctypes.c_double)
+    super().__init__(8, ir.DoubleType(), pass_by_ref=False, c_type=ctypes.c_double)
 
 
 class BoolType(Type):
@@ -76,7 +75,7 @@ class BoolType(Type):
   A 1-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=1), pass_by_ref=False, c_type=ctypes.c_bool)
+    super().__init__(1, ir.IntType(bits=1), pass_by_ref=False, c_type=ctypes.c_bool)
 
 
 class IntType(Type):
@@ -84,7 +83,7 @@ class IntType(Type):
   An 32-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=32), pass_by_ref=False, c_type=ctypes.c_int32)
+    super().__init__(4, ir.IntType(bits=32), pass_by_ref=False, c_type=ctypes.c_int32)
 
 
 class LongType(Type):
@@ -92,15 +91,15 @@ class LongType(Type):
   A 64-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=64), pass_by_ref=False, c_type=ctypes.c_int64)
+    super().__init__(8, ir.IntType(bits=64), pass_by_ref=False, c_type=ctypes.c_int64)
 
 
 class CharType(Type):
   """
-  An 32-bit character.
+  An 8-bit character.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=32), pass_by_ref=False, c_type=ctypes.c_char)
+    super().__init__(1, ir.IntType(bits=8), pass_by_ref=False, c_type=ctypes.c_char)
 
 
 class DoublePtrType(Type):
@@ -108,7 +107,7 @@ class DoublePtrType(Type):
   A double pointer.
   """
   def __init__(self):
-    super().__init__(ir.PointerType(ir.DoubleType()), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_double))
+    super().__init__(8, ir.PointerType(ir.DoubleType()), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_double))
 
 
 class StructType(Type):
@@ -130,9 +129,10 @@ class StructType(Type):
       for member_identifier, member_type in zip(member_identifiers, member_types)]
     c_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
     if pass_by_ref:
-      super().__init__(ir.types.PointerType(ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(c_type))
+      super().__init__(8, ir.types.PointerType(ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(c_type))
     else:
-      super().__init__(ir_val_type, pass_by_ref=False, c_type=c_type)
+      size = sum(member_type.size for member_type in member_types)
+      super().__init__(size, ir_val_type, pass_by_ref=False, c_type=c_type)
     self.struct_identifier = struct_identifier
     self.member_identifiers = member_identifiers
     self.member_types = member_types

@@ -690,7 +690,7 @@ class StructDeclarationAst(StatementAst):
     if self.is_pass_by_ref():  # use malloc
       assert symbol_table.ir_func_malloc is not None
       self_ir_alloca_raw = constructor_builder.call(
-        symbol_table.ir_func_malloc, [struct_type.make_ir_size(builder=constructor_builder)], name='self_raw_ptr')
+        symbol_table.ir_func_malloc, [struct_type.make_ir_size()], name='self_raw_ptr')
       self_ir_alloca = constructor_builder.bitcast(self_ir_alloca_raw, struct_type.ir_type, name='self')
       # TODO: eventually free memory again
     else:  # pass by value, use alloca
