@@ -32,6 +32,7 @@ def _test_run_example(code_file_name):
 def test_run_examples():
   examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'examples')
   code_file_root, _, code_file_names = next(os.walk(examples_path))
+  code_file_names = [code_file_name for code_file_name in code_file_names if code_file_name.endswith('.slp')]
   assert len(code_file_names) >= 1
   for code_file_name in code_file_names:
     yield _test_run_example, os.path.join(code_file_root, code_file_name)
