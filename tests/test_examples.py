@@ -10,6 +10,18 @@ from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.symbols import FunctionSymbol
 
 
+def find_all_example_files():
+  """
+  :rtype: tuple[str, list[str]]
+  :returns: code_file_root and a list of code_file_names
+  """
+  examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'examples')
+  code_file_root, _, code_file_names = next(os.walk(examples_path))
+  code_file_names = [code_file_name for code_file_name in code_file_names if code_file_name.endswith('.slp')]
+  assert len(code_file_names) >= 1
+  return code_file_root, code_file_names
+
+
 def _test_run_example(code_file_name):
   print('\nLoading example from %s.' % code_file_name)
   with make_execution_engine() as engine:
@@ -30,10 +42,7 @@ def _test_run_example(code_file_name):
 
 
 def test_run_examples():
-  examples_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'examples')
-  code_file_root, _, code_file_names = next(os.walk(examples_path))
-  code_file_names = [code_file_name for code_file_name in code_file_names if code_file_name.endswith('.slp')]
-  assert len(code_file_names) >= 1
+  code_file_root, code_file_names = find_all_example_files()
   for code_file_name in code_file_names:
     yield _test_run_example, os.path.join(code_file_root, code_file_name)
 
