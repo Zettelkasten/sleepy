@@ -380,7 +380,7 @@ class SymbolTable:
     if extern:
       ir_func_name = func_identifier
     else:
-      ir_func_name = func_identifier + '_' + '_'.join([str(arg_type) for arg_type in concrete_func.arg_types])
+      ir_func_name = '_'.join([func_identifier] + [str(arg_type) for arg_type in concrete_func.arg_types])
       assert ir_func_name not in self.used_ir_func_names
     self.used_ir_func_names.add(ir_func_name)
     return ir_func_name
