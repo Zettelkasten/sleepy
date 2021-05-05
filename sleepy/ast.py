@@ -10,7 +10,7 @@ from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
-  make_initial_symbol_table, StructType, ConcreteFunction, build_initial_module_ir
+  make_initial_symbol_table, StructType, ConcreteFunction, build_initial_module_ir, UnionType
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -1555,6 +1555,33 @@ class IdentifierTypeAst(TypeAst):
     return 'IdentifierType(type_identifier=%r)' % self.type_identifier
 
 
+class UnionTypeAst(TypeAst):
+  """
+  IdentifierType -> identifier.
+  """
+  def __init__(self, pos, variant_types):
+    """
+    :param TreePosition pos:
+    :param list[TypeAst] variant_types:
+    """
+    super().__init__(pos)
+    self.variant_types = variant_types
+
+  def make_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    concrete_variant_types = [variant_type.make_type(symbol_table=symbol_table) for variant_type in self.variant_types]
+    return UnionType(concrete_variant_types, list(range(len(concrete_variant_types))))
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'UnionTypeAst(variant_types=%r)' % self.variant_types
+
+
 class AnnotationAst(AbstractSyntaxTree):
   """
   Annotation.
@@ -1608,12 +1635,12 @@ def parse_char(value):
 
 SLEEPY_LEXER = LexerGenerator(
   [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '|',
     '->', '@', 'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
     'int', 'double', 'char',
     None, None
   ], [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\|',
     '\\->', '@', '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n\t]+'
@@ -1666,7 +1693,10 @@ SLEEPY_GRAMMAR = Grammar(
   Production('ExprList', 'ExprList+'),
   Production('ExprList+', 'Expr'),
   Production('ExprList+', 'Expr', ',', 'ExprList+'),
-  Production('Type', 'identifier'),
+  Production('Type', 'Type', '|', 'IdentifierType'),
+  Production('Type', 'IdentifierType'),
+  Production('IdentifierType', 'identifier'),
+  Production('IdentifierType', '(', 'Type', ')'),
   Production('ReturnType'),
   Production('ReturnType', '->', 'AnnotationList', 'Type'),
   Production('Op', 'bool_op'),
@@ -1736,7 +1766,10 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'val_list': 'val_list.1'},
     {'val_list': lambda ast: [ast(1)]},
     {'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
+    {'ast': lambda _pos, ast: UnionTypeAst(_pos, [ast(1), ast(3)])},
+    {'ast': 'ast.1'},
     {'ast': lambda _pos, identifier: IdentifierTypeAst(_pos, identifier(1))},
+    {'ast': 'ast.2'},
     {'ast': None, 'annotation_list': None},
     {'ast': 'ast.3', 'annotation_list': 'annotation_list.2'},
     {'op': 'op.1'},
