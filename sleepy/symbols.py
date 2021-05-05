@@ -115,6 +115,35 @@ class DoublePtrType(Type):
     super().__init__(ir.PointerType(ir.DoubleType()), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_double))
 
 
+class UnionType(Type):
+  """
+  A tagged union, i.e. a type that can be one of a set of different types.
+  """
+  def __init__(self, possible_types, possible_type_nums):
+    """
+    :param list[Type] possible_types:
+    :param list[int] possible_type_nums:
+    """
+    assert len(possible_types) == len(possible_type_nums)
+    self.possible_types = possible_types
+    self.possible_type_nums = possible_type_nums
+    self.tag_size = 1
+
+    identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
+
+    self.tag_c_type = ctypes.c_uint8
+    self.tag_ir_type = ir.types.IntType(8)
+    self.untagged_union_c_type = type(
+      '%s_UntaggedCType' % identifier, (ctypes.Union,),
+      {'_fields_': [('variant%s' % num, possible_type.c_type) for num, possible_type in enumerate(possible_types)]})
+    self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), ctypes.sizeof(self.untagged_union_c_type))
+    c_type = type(
+      '%s_CType' % identifier, (ctypes.Structure,),
+      {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
+    ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
+    super().__init__(ir_type, pass_by_ref=False, c_type=c_type)
+
+
 class StructType(Type):
   """
   A struct.
