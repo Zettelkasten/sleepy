@@ -146,19 +146,6 @@ class StatementAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
-  def make_type(self, type_identifier, symbol_table):
-    """
-    :param str type_identifier:
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    if type_identifier not in symbol_table:
-      self.raise_error('Unknown type identifier %r' % type_identifier)
-    type_symbol = symbol_table[type_identifier]
-    if not isinstance(type_symbol, TypeSymbol):
-      self.raise_error('%r is not a type, but a %r' % (type_identifier, type(type_symbol)))
-    return type_symbol.type
-
   def make_var_is_mutable(self, arg_name, arg_type, arg_annotation_list, default):
     """
     :param str arg_name:
@@ -258,26 +245,26 @@ class FunctionDeclarationAst(StatementAst):
   allowed_annotation_identifiers = {'Inline'}
   allowed_arg_annotation_identifiers = {'Const', 'Mutable'}
 
-  def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, arg_annotations, return_type_identifier,
+  def __init__(self, pos, identifier, arg_identifiers, arg_types, arg_annotations, return_type,
                return_annotation_list, stmt_list):
     """
     :param TreePosition pos:
     :param str identifier:
     :param list[str] arg_identifiers:
-    :param list[str|None] arg_type_identifiers:
+    :param list[TypeAst] arg_types:
     :param list[list[AnnotationAst]] arg_annotations:
-    :param str|None return_type_identifier:
+    :param TypeAst|None return_type:
     :param list[AnnotationAst]|None return_annotation_list:
     :param list[StatementAst]|None stmt_list: body, or None if extern function.
     """
     super().__init__(pos)
-    assert len(arg_identifiers) == len(arg_type_identifiers) == len(arg_annotations)
-    assert (return_type_identifier is None) == (return_annotation_list is None)
+    assert len(arg_identifiers) == len(arg_types) == len(arg_annotations)
+    assert (return_type is None) == (return_annotation_list is None)
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
-    self.arg_type_identifiers = arg_type_identifiers
+    self.arg_types = arg_types
     self.arg_annotations = arg_annotations
-    self.return_type_identifier = return_type_identifier
+    self.return_type = return_type
     self.return_annotation_list = return_annotation_list
     self.stmt_list = stmt_list
 
@@ -300,7 +287,7 @@ class FunctionDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: list[Type]
     """
-    arg_types = [self.make_type(identifier, symbol_table=symbol_table) for identifier in self.arg_type_identifiers]
+    arg_types = [arg_type.make_type(symbol_table=symbol_table) for arg_type in self.arg_types]
     if any(arg_type is None for arg_type in arg_types):
       self.raise_error('Need to specify all parameter types of function %r' % self.identifier)
     all_annotation_list = (
@@ -319,10 +306,10 @@ class FunctionDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     """
     arg_types = self.make_arg_types(symbol_table=symbol_table)
-    if self.return_type_identifier is None:
+    if self.return_type is None:
       return_type = SLEEPY_VOID
     else:
-      return_type = self.make_type(self.return_type_identifier, symbol_table=symbol_table)
+      return_type = self.return_type.make_type(symbol_table=symbol_table)
     if return_type is None:
       self.raise_error('Need to specify return type of function %r' % self.identifier)
     if return_type == SLEEPY_VOID:
@@ -488,9 +475,9 @@ class FunctionDeclarationAst(StatementAst):
     :rtype: str
     """
     return (
-        'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_type_identifiers=%r, '
-        'return_type_identifier=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_type_identifiers,
-    self.return_type_identifier, 'extern' if self.is_extern else ', '.join([repr(stmt) for stmt in self.stmt_list])))
+        'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
+        'return_type=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_types,
+    self.return_type, 'extern' if self.is_extern else ', '.join([repr(stmt) for stmt in self.stmt_list])))
 
 
 class CallStatementAst(StatementAst):
@@ -744,18 +731,18 @@ class AssignStatementAst(StatementAst):
   """
   allowed_annotation_identifiers = frozenset({'Const', 'Mutable'})
 
-  def __init__(self, pos, var_target, var_val, var_type_identifier):
+  def __init__(self, pos, var_target, var_val, var_type):
     """
     :param TreePosition pos:
     :param TargetAst var_target:
     :param ExpressionAst var_val:
-    :param str|None var_type_identifier:
+    :param TypeAst|None var_type:
     """
     super().__init__(pos)
     assert isinstance(var_target, TargetAst)
     self.var_target = var_target
     self.var_val = var_val
-    self.var_type_identifier = var_type_identifier
+    self.var_type = var_type
 
   def is_declaration(self, symbol_table):
     """
@@ -780,8 +767,8 @@ class AssignStatementAst(StatementAst):
     """
     :param SymbolTable symbol_table:
     """
-    if self.var_type_identifier is not None:
-      declared_type = self.make_type(self.var_type_identifier, symbol_table=symbol_table)
+    if self.var_type is not None:
+      declared_type = self.var_type.make_type(symbol_table=symbol_table)
     else:
       declared_type = None
     val_type = self.var_val.make_val_type(symbol_table=symbol_table)
@@ -835,8 +822,8 @@ class AssignStatementAst(StatementAst):
     """
     :rtype: str
     """
-    return 'AssignStatementAst(var_target=%r, var_val=%r, var_type_identifier=%r)' % (
-      self.var_target, self.var_val, self.var_type_identifier)
+    return 'AssignStatementAst(var_target=%r, var_val=%r, var_type=%r)' % (
+      self.var_target, self.var_val, self.var_type)
 
 
 class IfStatementAst(StatementAst):
@@ -1516,6 +1503,58 @@ class MemberTargetAst(TargetAst):
     return 'MemberTargetAst(parent_target=%r, member_identifier=%r)' % (self.parent_target, self.member_identifier)
 
 
+class TypeAst(AbstractSyntaxTree):
+  """
+  Type.
+  """
+  def __init__(self, pos):
+    """
+    :param TreePosition pos:
+    """
+    super().__init__(pos)
+
+  def make_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    raise NotImplementedError()
+
+  def __repr__(self):
+    return 'TypeAst()'
+
+
+class IdentifierTypeAst(TypeAst):
+  """
+  IdentifierType -> identifier.
+  """
+  def __init__(self, pos, type_identifier):
+    """
+    :param TreePosition pos:
+    :param str type_identifier:
+    """
+    super().__init__(pos)
+    self.type_identifier = type_identifier
+
+  def make_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    if self.type_identifier not in symbol_table:
+      self.raise_error('Unknown type identifier %r' % self.type_identifier)
+    type_symbol = symbol_table[self.type_identifier]
+    if not isinstance(type_symbol, TypeSymbol):
+      self.raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)))
+    return type_symbol.type
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'IdentifierType(type_identifier=%r)' % self.type_identifier
+
+
 class AnnotationAst(AbstractSyntaxTree):
   """
   Annotation.
@@ -1637,25 +1676,25 @@ SLEEPY_GRAMMAR = Grammar(
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
   syn_attrs={
-    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'type_identifier', 'annotation_list',
+    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
     'op', 'number'},
   prod_attr_rules=[
     {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, stmt_list(1))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier, stmt_list: (
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast, stmt_list: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
-        type_identifier(6), annotation_list(6), stmt_list(8)))},
-    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, type_identifier, stmt_list: (
-      FunctionDeclarationAst(_pos, op(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6),
+        ast(6), annotation_list(6), stmt_list(8)))},
+    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast, stmt_list: (
+      FunctionDeclarationAst(_pos, op(2), identifier_list(4), type_list(4), annotation_list(4), ast(6),
         annotation_list(6), stmt_list(8)))},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier: (
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
-        type_identifier(6), annotation_list(6), None))},
+        ast(6), annotation_list(6), None))},
     {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
     {'ast': lambda _pos, identifier, val_list: CallStatementAst(_pos, identifier(1), val_list(3))},
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
-    {'ast': lambda _pos, ast, type_identifier: AssignStatementAst(_pos, ast(2), ast(4), type_identifier(1))},
+    {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(2), ast(4), ast(1))},
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(1), ast(3), None)},
     {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), [])},
     {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), stmt_list(8))},
@@ -1685,21 +1724,21 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
     {
       'identifier_list': lambda identifier: [identifier(3)],
-      'type_list': lambda type_identifier: [type_identifier(2)],
+      'type_list': lambda ast: [ast(2)],
       'annotation_list': lambda annotation_list: [annotation_list(1)]
     },
     {
       'identifier_list': lambda identifier, identifier_list: [identifier(3)] + identifier_list(5),
-      'type_list': lambda type_identifier, type_list: [type_identifier(2)] + type_list(5),
+      'type_list': lambda ast, type_list: [ast(2)] + type_list(5),
       'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(5)
     },
     {'val_list': []},
     {'val_list': 'val_list.1'},
     {'val_list': lambda ast: [ast(1)]},
     {'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
-    {'type_identifier': 'identifier.1'},
-    {'type_identifier': None, 'annotation_list': None},
-    {'type_identifier': 'type_identifier.3', 'annotation_list': 'annotation_list.2'},
+    {'ast': lambda _pos, identifier: IdentifierTypeAst(_pos, identifier(1))},
+    {'ast': None, 'annotation_list': None},
+    {'ast': 'ast.3', 'annotation_list': 'annotation_list.2'},
     {'op': 'op.1'},
     {'op': 'op.1'},
     {'op': 'op.1'}

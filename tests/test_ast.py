@@ -9,8 +9,9 @@ from llvmlite import ir
 from nose.tools import assert_equal, assert_almost_equal, assert_raises
 
 from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnStatementAst, \
-  BinaryOperatorExpressionAst, ConstantExpressionAst, VariableExpressionAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
-  add_preamble_to_ast
+  BinaryOperatorExpressionAst, ConstantExpressionAst, VariableExpressionAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, \
+  SLEEPY_PARSER, \
+  add_preamble_to_ast, IdentifierTypeAst
 from sleepy.grammar import TreePosition, SemanticError
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, SymbolTable, make_initial_symbol_table, \
@@ -83,25 +84,26 @@ def _get_py_func_from_ast(engine, ast):
 
 
 def test_FunctionDeclarationAst_build_expr_ir():
+  pos = TreePosition('', 0, 0)
+  double_type = IdentifierTypeAst(pos, 'Double')
   with make_execution_engine() as engine:
-    pos = TreePosition('', 0, 0)
     ast1 = FunctionDeclarationAst(
-      pos, identifier='foo', arg_identifiers=[], arg_type_identifiers=[], arg_annotations=[],
-      return_type_identifier='Double', return_annotation_list=[],
+      pos, identifier='foo', arg_identifiers=[], arg_types=[], arg_annotations=[],
+      return_type=double_type, return_annotation_list=[],
       stmt_list=[ReturnStatementAst(pos, [ConstantExpressionAst(pos, 42.0, SLEEPY_DOUBLE)])])
     func1 = _get_py_func_from_ast(engine, ast1)
     assert_equal(func1(), 42.0)
   with make_execution_engine() as engine:
     ast2 = FunctionDeclarationAst(
-      pos, identifier='foo', arg_identifiers=[], arg_type_identifiers=[], arg_annotations=[],
-      return_type_identifier='Double', return_annotation_list=[], stmt_list=[ReturnStatementAst(pos, [
+      pos, identifier='foo', arg_identifiers=[], arg_types=[], arg_annotations=[],
+      return_type=double_type, return_annotation_list=[], stmt_list=[ReturnStatementAst(pos, [
         BinaryOperatorExpressionAst(pos, '+', ConstantExpressionAst(pos, 3.0, SLEEPY_DOUBLE), ConstantExpressionAst(pos, 5.0, SLEEPY_DOUBLE))])])
     func2 = _get_py_func_from_ast(engine, ast2)
     assert_equal(func2(), 8.0)
   with make_execution_engine() as engine:
     ast3 = FunctionDeclarationAst(
-      pos, identifier='sum', arg_identifiers=['a', 'b'], arg_type_identifiers=['Double', 'Double'],
-      arg_annotations=[[], []], return_type_identifier='Double', return_annotation_list=[], stmt_list=[
+      pos, identifier='sum', arg_identifiers=['a', 'b'], arg_types=[double_type, double_type],
+      arg_annotations=[[], []], return_type=double_type, return_annotation_list=[], stmt_list=[
         ReturnStatementAst(pos, [BinaryOperatorExpressionAst(pos, '+', VariableExpressionAst(pos, 'a'), VariableExpressionAst(pos, 'b'))])])
     func3 = _get_py_func_from_ast(engine, ast3)
     assert_equal(func3(7.0, 3.0), 10.0)
