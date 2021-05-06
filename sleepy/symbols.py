@@ -321,31 +321,38 @@ class SymbolTable:
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
-  def __init__(self, copy_from=None):
+  def __init__(self, copy_from=None, copy_new_current_func=None):
     """
     :param SymbolTable|None copy_from:
+    :param ConcreteFunction|None copy_new_current_func:
     """
     if copy_from is None:
+      assert copy_new_current_func is None
       self.symbols = {}  # type: Dict[str, Symbol]
       self.current_func = None  # type: Optional[ConcreteFunction]
       self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
       self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
+      self.current_scope_identifiers = []  # type: List[str]
       self.ir_func_malloc = None  # type: Optional[ir.Function]
       self.ir_func_free = None  # type: Optional[ir.Function]
       self.used_ir_func_names = set()  # type: Set[str]
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
-      self.current_func = copy_from.current_func  # type: Optional[ConcreteFunction]
-      self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
-      self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
+      if copy_new_current_func is None:
+        self.current_func = copy_from.current_func  # type: Optional[ConcreteFunction]
+        self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
+        self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
+        self.current_scope_identifiers = copy_from.current_scope_identifiers.copy()  # type: List[str]
+      else:
+        self.current_func = copy_new_current_func  # type: Optional[ConcreteFunction]
+        self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
+        self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
+        self.current_scope_identifiers = []  # type: List[str]
       self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
       self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
-    self.current_scope_identifiers = []  # type: List[str]
-    if self.current_func is None:
-      assert self.current_func_inline_return_ir_alloca is None
-    else:
-      assert (self.current_func_inline_return_collect_block is None) == (not self.current_func.is_inline)
+    if self.current_func is None or not self.current_func.is_inline:
+      assert self.current_func_inline_return_ir_alloca is self.current_func_inline_return_collect_block is None
 
   def __setitem__(self, identifier, symbol):
     """
@@ -373,6 +380,19 @@ class SymbolTable:
     :rtype: SymbolTable
     """
     return SymbolTable(self)
+
+  def copy_with_new_current_func(self, new_current_func):
+    """
+    :param ConcreteFunction new_current_func:
+    :rtype: SymbolTable
+    """
+    return SymbolTable(self, copy_new_current_func=new_current_func)
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'SymbolTable%r' % self.__dict__
 
   def make_ir_func_name(self, func_identifier, extern, concrete_func):
     """

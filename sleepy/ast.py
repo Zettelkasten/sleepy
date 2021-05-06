@@ -373,9 +373,8 @@ class FunctionDeclarationAst(StatementAst):
     arg_mutables = [
       self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
       for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
-    if self.is_inline:
-      if self.is_extern:
-        self.raise_error('Extern function %r cannot be inlined' % self.identifier)
+    if self.is_inline and self.is_extern:
+      self.raise_error('Extern function %r cannot be inlined' % self.identifier)
     func_symbol.add_concrete_func(
       ConcreteFunction(
         None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
@@ -456,9 +455,7 @@ class FunctionDeclarationAst(StatementAst):
     assert not self.is_extern
     arg_types = self.make_arg_types(symbol_table=symbol_table)
     concrete_func = self._get_concrete_func(symbol_table=symbol_table)
-    body_symbol_table = symbol_table.copy()
-    body_symbol_table.current_func = concrete_func
-    body_symbol_table.current_scope_identifiers = []
+    body_symbol_table = symbol_table.copy_with_new_current_func(concrete_func)
     for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
       body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
       body_symbol_table.current_scope_identifiers.append(arg_identifier)
@@ -678,6 +675,7 @@ class StructDeclarationAst(StatementAst):
     if self.struct_identifier in symbol_table.current_scope_identifiers:
       self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
     body_symbol_table = symbol_table.copy()
+    body_symbol_table.current_scope_identifiers = []
     for member_num, stmt in enumerate(self.stmt_list):
       if not isinstance(stmt, AssignStatementAst):
         stmt.raise_error('Can only use declare statements within a struct declaration')
@@ -872,46 +870,33 @@ class AssignStatementAst(StatementAst):
 
 class IfStatementAst(StatementAst):
   """
-  Stmt -> if Expr { StmtList }
-        | if Expr { StmtList } else { StmtList }
+  Stmt -> if Expr Scope
+        | if Expr Scope else Scope
   """
-  def __init__(self, pos, condition_val, true_stmt_list, false_stmt_list):
+  def __init__(self, pos, condition_val, true_scope, false_scope):
     """
     :param TreePosition pos:
     :param ExpressionAst condition_val:
-    :param list[StatementAst] true_stmt_list:
-    :param list[StatementAst] false_stmt_list:
+    :param ScopeAst true_scope:
+    :param ScopeAst|None false_scope:
     """
     super().__init__(pos)
     self.condition_val = condition_val
-    self.true_stmt_list, self.false_stmt_list = true_stmt_list, false_stmt_list
-
-  @property
-  def has_true_branch(self):
-    """
-    :rtype: bool
-    """
-    return len(self.true_stmt_list) >= 1
-
-  @property
-  def has_false_branch(self):
-    """
-    :rtype: bool
-    """
-    return len(self.false_stmt_list) >= 1
+    if false_scope is None:
+      false_scope = ScopeAst(TreePosition(pos.word, pos.to_pos, pos.to_pos), [])
+    self.true_scope, self.false_scope = true_scope, false_scope
 
   def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     """
-    # TODO: Make this a separate scope.
-    # It is probably easiest to add this by making every scope it's own Statement (essentially a Statement list),
-    # and then not having true/false_stmt_list but just a single statement.
     cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
     if not cond_type == SLEEPY_BOOL:
       self.raise_error('Condition use expression of type %r as if-condition' % cond_type)
-    for stmt in self.true_stmt_list + self.false_stmt_list:
-      stmt.build_symbol_table(symbol_table=symbol_table)
+    # build branch symbol tables just for type checking
+    true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
+    self.true_scope.build_symbol_table(symbol_table=true_symbol_table)
+    self.false_scope.build_symbol_table(symbol_table=false_symbol_table)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -926,13 +911,12 @@ class IfStatementAst(StatementAst):
     builder.cbranch(ir_cond, true_block, false_block)
     true_builder, false_builder = ir.IRBuilder(true_block), ir.IRBuilder(false_block)
 
-    true_symbol_table = symbol_table.copy()  # type: SymbolTable
-    false_symbol_table = symbol_table.copy()  # type: SymbolTable
+    true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
+    self.true_scope.build_symbol_table(symbol_table=true_symbol_table)
+    self.false_scope.build_symbol_table(symbol_table=false_symbol_table)
 
-    for expr in self.true_stmt_list:
-      true_builder = expr.build_expr_ir(module, builder=true_builder, symbol_table=true_symbol_table)
-    for expr in self.false_stmt_list:
-      false_builder = expr.build_expr_ir(module, builder=false_builder, symbol_table=false_symbol_table)
+    true_builder = self.true_scope.build_expr_ir(module, builder=true_builder, symbol_table=true_symbol_table)
+    false_builder = self.false_scope.build_expr_ir(module, builder=false_builder, symbol_table=false_symbol_table)
 
     if not true_block.is_terminated or not false_block.is_terminated:
       continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
@@ -949,8 +933,8 @@ class IfStatementAst(StatementAst):
     """
     :rtype: str
     """
-    return 'IfStatementAst(condition_val=%r, true_stmt_list=%r, false_stmt_list=%r)' % (
-      self.condition_val, self.true_stmt_list, self.false_stmt_list)
+    return 'IfStatementAst(condition_val=%r, true_scope=%r, false_scope=%r)' % (
+      self.condition_val, self.true_scope, self.false_scope)
 
 
 class WhileStatementAst(StatementAst):
@@ -1623,8 +1607,8 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'return', 'ExprList', ';'),
   Production('Stmt', 'Type', 'Target', '=', 'Expr', ';'),
   Production('Stmt', 'Target', '=', 'Expr', ';'),
-  Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}'),
-  Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}', 'else', '{', 'StmtList', '}'),
+  Production('Stmt', 'if', 'Expr', 'Scope'),
+  Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'),
   Production('Stmt', 'while', 'Expr', '{', 'StmtList', '}'),
   Production('Expr', 'Expr', 'bool_op', 'SumExpr'),
   Production('Expr', 'SumExpr'),
@@ -1692,8 +1676,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
     {'ast': lambda _pos, ast, type_identifier: AssignStatementAst(_pos, ast(2), ast(4), type_identifier(1))},
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(1), ast(3), None)},
-    {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), [])},
-    {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), stmt_list(8))},
+    {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), None)},
+    {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), ast(5))},
     {'ast': lambda _pos, ast, stmt_list: WhileStatementAst(_pos, ast(2), stmt_list(4))}] + [
     {'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
