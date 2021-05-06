@@ -1094,6 +1094,36 @@ def test_union():
     main()
 
 
+def test_assign_to_union():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      Double|Int sth = 42;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main()
+
+
+def test_assign_to_union2():
+  with make_execution_engine() as engine:
+    program = """
+    struct MathError { }
+    func safe_sqrt(Double x) -> Double|MathError {
+      if x < 0.0 { return MathError(); }
+      extern_func sqrt(Double x) -> Double;
+      return sqrt(x);
+    }
+    func main() {
+      a = safe_sqrt(-123.0);
+      a = 5.0;
+      Double|MathError a = MathError();  # can also explicitly specify type again
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main()
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

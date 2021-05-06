@@ -734,18 +734,18 @@ class AssignStatementAst(StatementAst):
   """
   allowed_annotation_identifiers = frozenset({'Const', 'Mutable'})
 
-  def __init__(self, pos, var_target, var_val, var_type):
+  def __init__(self, pos, var_target, var_val, declared_var_type):
     """
     :param TreePosition pos:
     :param TargetAst var_target:
     :param ExpressionAst var_val:
-    :param TypeAst|None var_type:
+    :param TypeAst|None declared_var_type:
     """
     super().__init__(pos)
     assert isinstance(var_target, TargetAst)
     self.var_target = var_target
     self.var_val = var_val
-    self.var_type = var_type
+    self.declared_var_type = declared_var_type
 
   def is_declaration(self, symbol_table):
     """
@@ -770,15 +770,17 @@ class AssignStatementAst(StatementAst):
     """
     :param SymbolTable symbol_table:
     """
-    if self.var_type is not None:
-      declared_type = self.var_type.make_type(symbol_table=symbol_table)
+    if self.declared_var_type is not None:
+      declared_type = self.declared_var_type.make_type(symbol_table=symbol_table)
     else:
       declared_type = None
     val_type = self.var_val.make_val_type(symbol_table=symbol_table)
     if val_type == SLEEPY_VOID:
       self.raise_error('Cannot assign void to variable')
-    if declared_type is not None and declared_type != val_type:
-      self.raise_error('Cannot assign variable with declared type %r a value of type %r' % (declared_type, val_type))
+    if declared_type is not None:
+      if not can_implicit_cast_to(val_type, declared_type):
+        self.raise_error('Cannot assign variable with declared type %r a value of type %r' % (declared_type, val_type))
+      val_type = declared_type  # implicitly cast to the declared type
     declared_mutable = self.make_var_is_mutable('left-hand-side', val_type, self.annotations, default=None)
     val_mutable = self.var_val.is_val_mutable(symbol_table=symbol_table)
 
@@ -794,9 +796,12 @@ class AssignStatementAst(StatementAst):
       symbol_table.current_scope_identifiers.append(var_identifier)
     else:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
-      ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
-      if ptr_type != val_type:
-        self.raise_error('Cannot redefine variable of type %r with new type %r' % (ptr_type, val_type))
+      existing_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
+      assert existing_type is not None
+      if not can_implicit_cast_to(val_type, existing_type):
+        self.raise_error('Cannot redefine variable of type %r with new type %r' % (existing_type, val_type))
+      if declared_type is not None and declared_type != existing_type:
+        self.raise_error('Cannot redeclare variable of type %r with new type %r' % (existing_type, declared_type))
       if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
         self.raise_error('Cannot reassign member of a non-mutable variable')
       if declared_mutable is None:
@@ -807,7 +812,7 @@ class AssignStatementAst(StatementAst):
         else:
           self.raise_error('Cannot redefine a variable declared as mutable to non-mutable')
     if declared_mutable and not val_mutable:
-      self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % val_type)
+      self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % declared_type)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -816,7 +821,10 @@ class AssignStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
+    ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
+    var_type = self.var_val.make_val_type(symbol_table=symbol_table)
     ir_val, builder = self.var_val.make_ir_val(builder=builder, symbol_table=symbol_table)
+    ir_val, builder = make_implicit_cast_to_ir_val(var_type, ptr_type, ir_val, builder=builder)
     ir_ptr = self.var_target.make_ir_ptr(builder, symbol_table=symbol_table)
     builder.store(ir_val, ir_ptr)
     return builder
@@ -826,7 +834,7 @@ class AssignStatementAst(StatementAst):
     :rtype: str
     """
     return 'AssignStatementAst(var_target=%r, var_val=%r, var_type=%r)' % (
-      self.var_target, self.var_val, self.var_type)
+      self.var_target, self.var_val, self.declared_var_type)
 
 
 class IfStatementAst(StatementAst):
