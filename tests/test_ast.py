@@ -1072,6 +1072,26 @@ def test_func_inline_own_symbol_table():
     assert_equal(main(4), 4 + (4 + 5))
 
 
+def test_if_scope():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Bool case) -> Int {
+      Bool result = False();
+      if case {
+        Bool bar = True();
+        result = bar;
+      } else {
+        Double bar = 1.23;
+        result = bar > 2.0;
+      }
+      return result;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(True), False)
+    assert_equal(main(False), True)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
