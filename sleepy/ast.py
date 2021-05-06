@@ -10,7 +10,8 @@ from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
-  make_initial_symbol_table, StructType, ConcreteFunction, build_initial_module_ir, UnionType
+  make_initial_symbol_table, StructType, ConcreteFunction, build_initial_module_ir, UnionType, can_implicit_cast_to, \
+  make_implicit_cast_to_ir_val
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
 
@@ -468,7 +469,6 @@ class FunctionDeclarationAst(StatementAst):
             'Not all branches within function declaration of %r return something' % self.identifier)
         return_ast.build_symbol_table(symbol_table=body_symbol_table)  # for error checking
         return_ast.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
-    
 
   def __repr__(self):
     """
@@ -545,7 +545,7 @@ class ReturnStatementAst(StatementAst):
       return_val_type = self.return_exprs[0].make_val_type(symbol_table=symbol_table)
       if return_val_type == SLEEPY_VOID:
         self.raise_error('Cannot use void return value')
-      if return_val_type != symbol_table.current_func.return_type:
+      if not can_implicit_cast_to(return_val_type, symbol_table.current_func.return_type):
         if symbol_table.current_func.return_type == SLEEPY_VOID:
           self.raise_error('Function declared to return void, but return value is of type %r' % (
             return_val_type))
@@ -570,7 +570,10 @@ class ReturnStatementAst(StatementAst):
     :rtype: ir.IRBuilder
     """
     if len(self.return_exprs) == 1:
+      return_val_type = self.return_exprs[0].make_val_type(symbol_table=symbol_table)
       ir_val, builder = self.return_exprs[0].make_ir_val(builder=builder, symbol_table=symbol_table)
+      ir_val, builder = make_implicit_cast_to_ir_val(
+        return_val_type, symbol_table.current_func.return_type, ir_val, builder=builder)
       if symbol_table.current_func.is_inline:
         assert symbol_table.current_func_inline_return_ir_alloca is not None
         builder.store(ir_val, symbol_table.current_func_inline_return_ir_alloca)
@@ -689,13 +692,13 @@ class StructDeclarationAst(StatementAst):
       member_identifier = stmt.var_target.var_identifier
       ir_func_arg.name = member_identifier
       gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
-      member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, '%s_ptr' % member_identifier)
+      member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
       constructor_builder.store(ir_func_arg, member_ptr)
 
     if self.is_pass_by_ref():
       constructor_builder.ret(self_ir_alloca)
     else:  # pass by value
-      constructor_builder.ret(constructor_builder.load(self_ir_alloca, 'self'))
+      constructor_builder.ret(constructor_builder.load(self_ir_alloca, name='self'))
     assert constructor_block.is_terminated
 
   def build_expr_ir(self, module, builder, symbol_table):
@@ -1572,6 +1575,8 @@ class UnionTypeAst(TypeAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
+    if not all(isinstance(variant_type, IdentifierTypeAst) for variant_type in self.variant_types):
+      self.raise_error('Union types cannot be nested')
     concrete_variant_types = [variant_type.make_type(symbol_table=symbol_table) for variant_type in self.variant_types]
     return UnionType(concrete_variant_types, list(range(len(concrete_variant_types))))
 
