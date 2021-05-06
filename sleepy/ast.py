@@ -11,9 +11,9 @@ from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
   make_initial_symbol_table, StructType, ConcreteFunction, build_initial_module_ir, UnionType, can_implicit_cast_to, \
-  make_implicit_cast_to_ir_val
+  make_implicit_cast_to_ir_val, make_ir_val_is_type
 
-SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
+SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is'}
 
 
 class AbstractSyntaxTree:
@@ -45,7 +45,7 @@ class AbstractSyntaxTree:
   def _check_func_call_symbol_table(self, func_identifier, func_arg_exprs, symbol_table):
     """
     :param str func_identifier:
-    :param list[ExpressionAst func_arg_exprs:
+    :param list[ExpressionAst] func_arg_exprs:
     :param SymbolTable symbol_table:
     :rtype: ConcreteFunction
     """
@@ -71,7 +71,14 @@ class AbstractSyntaxTree:
         concrete_func.arg_identifiers, concrete_func.arg_mutables, called_mutables):
       if not called_mutable and arg_mutable:
         self.raise_error('Cannot call function %r declared with mutable parameter %r with immutable argument' % (
-          func_identifier, arg_identifier))
+            func_identifier, arg_identifier))
+
+    for func_arg_expr, arg_type_assertion in zip(func_arg_exprs, concrete_func.arg_type_assertions):
+      if isinstance(func_arg_expr, VariableExpressionAst):
+        var_symbol = symbol_table[func_arg_expr.var_identifier]
+        assert isinstance(var_symbol, VariableSymbol)
+        var_symbol.asserted_var_type = arg_type_assertion
+
     return concrete_func
 
   def _make_func_call_ir(self, func_identifier, func_arg_exprs, builder, symbol_table):
@@ -336,7 +343,7 @@ class FunctionDeclarationAst(StatementAst):
     func_symbol.add_concrete_func(
       ConcreteFunction(
         None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
-        arg_types=arg_types, arg_mutables=arg_mutables, is_inline=self.is_inline))
+        arg_types=arg_types, arg_mutables=arg_mutables, arg_type_assertions=arg_types, is_inline=self.is_inline))
     # build body symbols to check their types
     if not self.is_extern:
       self._build_body_symbol_table(symbol_table=symbol_table)
@@ -446,7 +453,7 @@ class FunctionDeclarationAst(StatementAst):
       var_symbol = body_symbol_table[identifier_name]
       if not isinstance(var_symbol, VariableSymbol):
         continue
-      var_symbol.ir_alloca = body_builder.alloca(var_symbol.var_type.ir_type, name=identifier_name)
+      var_symbol.ir_alloca = body_builder.alloca(var_symbol.declared_var_type.ir_type, name=identifier_name)
 
     for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func_args):
       arg_symbol = body_symbol_table[arg_identifier]
@@ -653,7 +660,7 @@ class StructDeclarationAst(StatementAst):
       declared_symbol = body_symbol_table[declared_identifier]
       assert isinstance(declared_symbol, VariableSymbol)
       member_identifiers.append(declared_identifier)
-      member_types.append(declared_symbol.var_type)
+      member_types.append(declared_symbol.declared_var_type)
     member_mutables = [False] * len(member_identifiers)
     assert len(member_identifiers) == len(member_types) == len(member_mutables) == len(self.stmt_list)
 
@@ -664,7 +671,8 @@ class StructDeclarationAst(StatementAst):
     # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
     constructor.add_concrete_func(ConcreteFunction(
       ir_func=None, return_type=struct_type, return_mutable=True,
-      arg_types=member_types, arg_identifiers=member_identifiers, arg_mutables=member_mutables))
+      arg_types=member_types, arg_identifiers=member_identifiers, arg_type_assertions=member_types,
+      arg_mutables=member_mutables))
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
@@ -762,9 +770,9 @@ class AssignStatementAst(StatementAst):
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign non-variable %r to a variable' % var_identifier)
     ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
-    if symbol.var_type != ptr_type:
+    if symbol.declared_var_type != ptr_type:
       self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
-        var_identifier, symbol.var_type, ptr_type))
+        var_identifier, symbol.declared_var_type, ptr_type))
 
   def build_symbol_table(self, symbol_table):
     """
@@ -1040,12 +1048,19 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     assert op in SLOPPY_OP_TYPES
     self.op = op
     self.left_expr, self.right_expr = left_expr, right_expr
+    if self.op == 'is':
+      assert isinstance(self.right_expr, VariableExpressionAst)
 
   def make_val_type(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: Type
     """
+    if self.op == 'is':
+      assert isinstance(self.right_expr, VariableExpressionAst)
+      type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
+      type_expr.make_type(symbol_table=symbol_table)  # just check that type exists
+      return SLEEPY_BOOL
     operand_exprs = [self.left_expr, self.right_expr]
     concrete_func = self._check_func_call_symbol_table(
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
@@ -1064,6 +1079,13 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: (ir.values.Value, ir.IRBuilder)
     """
+    if self.op == 'is':
+      assert isinstance(self.right_expr, VariableExpressionAst)
+      check_type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
+      check_type = check_type_expr.make_type(symbol_table=symbol_table)
+      val_type = self.left_expr.make_val_type(symbol_table=symbol_table)
+      ir_val, builder = self.left_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
+      return make_ir_val_is_type(ir_val, val_type, check_type, builder=builder)
     operand_exprs = [self.left_expr, self.right_expr]
     return self._make_func_call_ir(
       func_identifier=self.op, func_arg_exprs=operand_exprs, builder=builder, symbol_table=symbol_table)
@@ -1196,7 +1218,7 @@ class VariableExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    return self.get_var_symbol(symbol_table=symbol_table).var_type
+    return self.get_var_symbol(symbol_table=symbol_table).declared_var_type
 
   def is_val_mutable(self, symbol_table):
     """
@@ -1412,7 +1434,7 @@ class VariableTargetAst(TargetAst):
     symbol = symbol_table[self.var_identifier]
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign to non-variable %r' % self.var_identifier)
-    return symbol.var_type
+    return symbol.asserted_var_type
 
   def is_ptr_mutable(self, symbol_table):
     """
@@ -1649,12 +1671,12 @@ def parse_char(value):
 SLEEPY_LEXER = LexerGenerator(
   [
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '|',
-    '->', '@', 'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
+    '->', '@', 'cmp_op', 'sum_op', 'prod_op', '=', 'identifier',
     'int', 'double', 'char',
     None, None
   ], [
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\|',
-    '\\->', '@', '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
+    '\\->', '@', '==|!=|<=?|>=?|is', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n\t]+'
   ])
@@ -1673,7 +1695,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}'),
   Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}', 'else', '{', 'StmtList', '}'),
   Production('Stmt', 'while', 'Expr', '{', 'StmtList', '}'),
-  Production('Expr', 'Expr', 'bool_op', 'SumExpr'),
+  Production('Expr', 'Expr', 'cmp_op', 'SumExpr'),
   Production('Expr', 'SumExpr'),
   Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'),
   Production('SumExpr', 'ProdExpr'),
@@ -1712,7 +1734,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('IdentifierType', '(', 'Type', ')'),
   Production('ReturnType'),
   Production('ReturnType', '->', 'AnnotationList', 'Type'),
-  Production('Op', 'bool_op'),
+  Production('Op', 'cmp_op'),
   Production('Op', 'sum_op'),
   Production('Op', 'prod_op')
 )
@@ -1790,7 +1812,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'op': 'op.1'}
   ],
   terminal_attr_rules={
-    'bool_op': {'op': lambda value: value},
+    'cmp_op': {'op': lambda value: value},
     'sum_op': {'op': lambda value: value},
     'prod_op': {'op': lambda value: value},
     'identifier': {'identifier': lambda value: value},
