@@ -325,6 +325,15 @@ class VariableSymbol(Symbol):
     self.asserted_var_type = var_type
     self.mutable = mutable
 
+  def copy_with_asserted_var_type(self, asserted_var_type):
+    """
+    :param Type asserted_var_type:
+    :rtype: VariableSymbol
+    """
+    new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
+    new_var_symbol.asserted_var_type = asserted_var_type
+    return new_var_symbol
+
 
 class ConcreteFunction:
   """

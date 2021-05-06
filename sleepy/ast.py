@@ -77,7 +77,7 @@ class AbstractSyntaxTree:
       if isinstance(func_arg_expr, VariableExpressionAst):
         var_symbol = symbol_table[func_arg_expr.var_identifier]
         assert isinstance(var_symbol, VariableSymbol)
-        var_symbol.asserted_var_type = arg_type_assertion
+        symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_asserted_var_type(arg_type_assertion)
 
     return concrete_func
 
