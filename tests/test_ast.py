@@ -1153,6 +1153,32 @@ def test_union_is_operator():
     assert_equal(main_bar(), 2)
 
 
+def test_union_scope_assertions():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Double x, Double y) -> Double {
+      struct MathError { }
+      func safe_div(Double x, Double y) -> Double|MathError {
+        eps = 0.0000001;
+        if and(-eps <= y, y <= eps) {
+          return MathError();
+        }
+        return x / y;
+      }
+      Double|MathError div = safe_div(x, y);
+      if div is MathError {
+        return 0.0;
+      } else {
+        return div;
+      }
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(5, 0), 0)
+    assert_equal(main(5, 1), 5 / 1)
+    assert_equal(main(-3, -6), -3 / -6)
+
+
 def test_assign_to_union():
   with make_execution_engine() as engine:
     program = """
