@@ -214,6 +214,7 @@ class ScopeAst(StatementAst):
     """
     for expr in self.stmt_list:
       builder = expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
+    return builder
 
   def __repr__(self):
     """
@@ -281,14 +282,14 @@ class TopLevelStatementAst(StatementAst):
 
 class FunctionDeclarationAst(StatementAst):
   """
-  Stmt -> func identifier ( TypedIdentifierList ) { StmtList }
+  Stmt -> func identifier ( TypedIdentifierList ) Scope
   """
 
   allowed_annotation_identifiers = {'Inline'}
   allowed_arg_annotation_identifiers = {'Const', 'Mutable'}
 
   def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, arg_annotations, return_type_identifier,
-               return_annotation_list, stmt_list):
+               return_annotation_list, body_scope):
     """
     :param TreePosition pos:
     :param str identifier:
@@ -297,25 +298,26 @@ class FunctionDeclarationAst(StatementAst):
     :param list[list[AnnotationAst]] arg_annotations:
     :param str|None return_type_identifier:
     :param list[AnnotationAst]|None return_annotation_list:
-    :param list[StatementAst]|None stmt_list: body, or None if extern function.
+    :param ScopeAst|None body_scope: body, or None if extern function.
     """
     super().__init__(pos)
     assert len(arg_identifiers) == len(arg_type_identifiers) == len(arg_annotations)
     assert (return_type_identifier is None) == (return_annotation_list is None)
+    assert body_scope is None or isinstance(body_scope, ScopeAst)
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
     self.arg_type_identifiers = arg_type_identifiers
     self.arg_annotations = arg_annotations
     self.return_type_identifier = return_type_identifier
     self.return_annotation_list = return_annotation_list
-    self.stmt_list = stmt_list
+    self.body_scope = body_scope
 
   @property
   def is_extern(self):
     """
     :rtype: bool
     """
-    return self.stmt_list is None
+    return self.body_scope is None
 
   @property
   def is_inline(self):
@@ -460,8 +462,8 @@ class FunctionDeclarationAst(StatementAst):
     for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
       body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
       body_symbol_table.current_scope_identifiers.append(arg_identifier)
-    for stmt in self.stmt_list:
-      stmt.build_symbol_table(symbol_table=body_symbol_table)
+    assert self.body_scope is not None
+    self.body_scope.build_symbol_table(symbol_table=body_symbol_table)
     return body_symbol_table
 
   def _build_body_ir(self, ir_func_args, module, body_builder, symbol_table, inline_return_collect_block=None,
@@ -495,14 +497,14 @@ class FunctionDeclarationAst(StatementAst):
       ir_arg.name = arg_identifier
       body_builder.store(ir_arg, arg_symbol.ir_alloca)
 
-    for stmt in self.stmt_list:
-      body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
+    assert self.body_scope is not None
+    body_builder = self.body_scope.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
     if body_builder is not None:
       should_return = not concrete_func.is_inline or (body_builder.block != inline_return_collect_block)
       if should_return and not body_builder.block.is_terminated:
         return_pos = TreePosition(
           self.pos.word,
-          self.pos.from_pos if len(self.stmt_list) == 0 else self.stmt_list[-1].pos.to_pos,
+          self.pos.from_pos if len(self.body_scope.stmt_list) == 0 else self.body_scope.stmt_list[-1].pos.to_pos,
           self.pos.to_pos)
         return_ast = ReturnStatementAst(return_pos, [])
         if concrete_func.return_type != SLEEPY_VOID:
@@ -517,9 +519,9 @@ class FunctionDeclarationAst(StatementAst):
     :rtype: str
     """
     return (
-        'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_type_identifiers=%r, '
-        'return_type_identifier=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_type_identifiers,
-    self.return_type_identifier, 'extern' if self.is_extern else ', '.join([repr(stmt) for stmt in self.stmt_list])))
+      'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_type_identifiers=%r, '
+      'return_type_identifier=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_type_identifiers,
+      self.return_type_identifier, 'extern' if self.is_extern else self.body_scope))
 
 
 class CallStatementAst(StatementAst):
@@ -1610,10 +1612,11 @@ SLEEPY_LEXER = LexerGenerator(
   ])
 SLEEPY_GRAMMAR = Grammar(
   Production('TopLevelStmt', 'StmtList'),
+  Production('Scope', '{', 'StmtList', '}'),
   Production('StmtList'),
   Production('StmtList', 'AnnotationList', 'Stmt', 'StmtList'),
-  Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
-  Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
+  Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'),
+  Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'),
   Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'),
   Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
@@ -1670,14 +1673,17 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'op', 'number'},
   prod_attr_rules=[
     {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, ScopeAst(_pos, stmt_list(1)))},
+    {'ast': lambda _pos, stmt_list: ScopeAst(_pos, stmt_list(2))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier, stmt_list: (
-      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
-        type_identifier(6), annotation_list(6), stmt_list(8)))},
-    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, type_identifier, stmt_list: (
-      FunctionDeclarationAst(_pos, op(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6),
-        annotation_list(6), stmt_list(8)))},
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier, ast: (
+      FunctionDeclarationAst(
+        _pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
+        type_identifier(6), annotation_list(6), ast(7)))},
+    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, type_identifier, ast: (
+      FunctionDeclarationAst(
+        _pos, op(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6),
+        annotation_list(6), ast(7)))},
     {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
         type_identifier(6), annotation_list(6), None))},
