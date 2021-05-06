@@ -186,9 +186,9 @@ class StatementAst(AbstractSyntaxTree):
     return 'StatementAst'
 
 
-class TopLevelStatementAst(StatementAst):
+class ScopeAst(StatementAst):
   """
-  TopLevelExpr.
+  stmt_list.
   """
   def __init__(self, pos, stmt_list):
     """
@@ -197,6 +197,43 @@ class TopLevelStatementAst(StatementAst):
     """
     super().__init__(pos)
     self.stmt_list = stmt_list
+
+  def build_symbol_table(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    """
+    for expr in self.stmt_list:
+      expr.build_symbol_table(symbol_table=symbol_table)
+
+  def build_expr_ir(self, module, builder, symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param SymbolTable symbol_table:
+    :rtype: ir.IRBuilder
+    """
+    for expr in self.stmt_list:
+      builder = expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'ScopeAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
+
+
+class TopLevelStatementAst(StatementAst):
+  """
+  TopLevelExpr.
+  """
+
+  def __init__(self, pos, root_scope):
+    """
+    :param TreePosition pos:
+    :param ScopeAst root_scope:
+    """
+    super().__init__(pos)
+    self.root_scope = root_scope
 
   def build_symbol_table(self, symbol_table):
     """
@@ -211,8 +248,7 @@ class TopLevelStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
-    for expr in self.stmt_list:
-      builder = expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
+    return builder
 
   def make_module_ir_and_symbol_table(self, module_name):
     """
@@ -222,32 +258,25 @@ class TopLevelStatementAst(StatementAst):
     module = ir.Module(name=module_name)
     io_func_type = ir.FunctionType(ir.VoidType(), ())
     ir_io_func = ir.Function(module, io_func_type, name='io')
-    symbol_table = make_initial_symbol_table()
-    for stmt in self.stmt_list:
-      stmt.build_symbol_table(symbol_table=symbol_table)
-    for scope_symbol_identifier in symbol_table.current_scope_identifiers:
-      assert scope_symbol_identifier in symbol_table
-      scope_symbol = symbol_table[scope_symbol_identifier]
-      if isinstance(scope_symbol, VariableSymbol):
-        self.raise_error('Defining top-level variables is not supported')
+    root_symbol_table = make_initial_symbol_table()
+    self.root_scope.build_symbol_table(symbol_table=root_symbol_table)
 
-    block = ir_io_func.append_basic_block(name='entry')
-    body_builder = ir.IRBuilder(block)
-    build_initial_module_ir(module=module, symbol_table=symbol_table)
-    assert symbol_table.ir_func_malloc is not None and symbol_table.ir_func_free is not None
+    root_block = ir_io_func.append_basic_block(name='entry')
+    root_builder = ir.IRBuilder(root_block)
+    build_initial_module_ir(module=module, symbol_table=root_symbol_table)
+    assert root_symbol_table.ir_func_malloc is not None and root_symbol_table.ir_func_free is not None
 
-    for stmt in self.stmt_list:
-      body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
-    assert not block.is_terminated
-    body_builder.ret_void()
+    self.root_scope.build_expr_ir(module=module, builder=root_builder, symbol_table=root_symbol_table)
+    assert not root_block.is_terminated
+    root_builder.ret_void()
 
-    return module, symbol_table
+    return module, root_symbol_table
 
   def __repr__(self):
     """
     :rtype: str
     """
-    return 'TopLevelStatementAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
+    return 'TopLevelStatementAst(%s)' % self.root_scope
 
 
 class FunctionDeclarationAst(StatementAst):
@@ -1640,7 +1669,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'type_identifier', 'annotation_list',
     'op', 'number'},
   prod_attr_rules=[
-    {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, stmt_list(1))},
+    {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, ScopeAst(_pos, stmt_list(1)))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
     {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier, stmt_list: (
@@ -1750,5 +1779,5 @@ def add_preamble_to_ast(program_ast):
   """
   preamble_ast = make_preamble_ast()
   assert isinstance(preamble_ast, TopLevelStatementAst)
-  preamble_pos = TreePosition(program_ast.pos.word, 0, 0)
-  return TopLevelStatementAst(preamble_pos, preamble_ast.stmt_list + program_ast.stmt_list)
+  return TopLevelStatementAst(program_ast.pos, ScopeAst(
+    preamble_ast.pos, preamble_ast.root_scope.stmt_list + program_ast.root_scope.stmt_list))
