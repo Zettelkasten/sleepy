@@ -170,6 +170,30 @@ class UnionType(Type):
     """
     assert variant_type in self.possible_types
     return self.possible_types.index(variant_type)
+  
+  def make_tag_ptr(self, union_ir_alloca, builder):
+    """
+    :param ir.instructions.AllocaInstr union_ir_alloca:
+    :param ir.IRBuilder builder:
+    :rtype: ir.instructions.Instruction
+    """
+    tag_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
+    return builder.gep(union_ir_alloca, tag_gep_indices, name='%s_tag_ptr' % self.identifier)
+
+  def make_untagged_union_ptr(self, union_ir_alloca, variant_type, builder):
+    """
+    :param ir.instructions.AllocaInstr union_ir_alloca:
+    :param Type variant_type:
+    :param ir.IRBuilder builder:
+    :rtype: ir.instructions.Instruction
+    """
+    assert variant_type in self.possible_types
+    untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1))
+    untagged_union_ptr = builder.gep(
+      union_ir_alloca, untagged_union_gep_indices, name='%s_untagged_union_ptr' % self.identifier)
+    return builder.bitcast(
+      untagged_union_ptr, ir.types.PointerType(variant_type.ir_type),
+      name='%s_untagged_union_ptr_cast' % self.identifier)
 
 
 class StructType(Type):
@@ -257,17 +281,30 @@ def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, builder):
   assert not isinstance(from_type, UnionType), 'not implemented yet'
   variant_num = to_type.get_variant_num(from_type)
   ir_alloca = builder.alloca(to_type.ir_type, name=to_type.identifier)
-
-  tag_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
-  tag_ptr = builder.gep(ir_alloca, tag_gep_indices, name='%s_tag_ptr' % to_type.identifier)
-  builder.store(ir.Constant(to_type.tag_ir_type, variant_num), tag_ptr)
-  untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
-  untagged_union_ptr = builder.gep(
-    ir_alloca, untagged_union_gep_indices, name='%s_untagged_union_ptr' % to_type.identifier)
-  untagged_union_ptr_casted = builder.bitcast(
-    untagged_union_ptr, ir.types.PointerType(from_type.ir_type), name='%s_untagged_union_ptr_cast' % to_type.identifier)
-  builder.store(from_ir_val, untagged_union_ptr_casted)
+  builder.store(ir.Constant(to_type.tag_ir_type, variant_num), to_type.make_tag_ptr(ir_alloca, builder=builder))
+  builder.store(from_ir_val, to_type.make_untagged_union_ptr(ir_alloca, from_type, builder=builder))
   return builder.load(ir_alloca), builder
+
+
+def make_ir_val_is_type(ir_val, known_type, check_type, builder):
+  """
+  :param ir.values.Value ir_val:
+  :param Type known_type:
+  :param Type check_type:
+  :param ir.IRBuilder builder:
+  :rtype: tuple[ir.values.Value, ir.IRBuilder]
+  """
+  if known_type == check_type:
+    return True
+  if not isinstance(known_type, UnionType):
+    return False
+  if not known_type.contains(check_type):
+    return False
+  assert not isinstance(check_type, UnionType), 'not implemented yet'
+  union_tag = builder.extract_value(ir_val, 0)
+  cmp_val = builder.icmp_signed(
+    '==', union_tag, ir.Constant(known_type.tag_ir_type, known_type.get_variant_num(check_type)))
+  return cmp_val, builder
 
 
 class VariableSymbol(Symbol):
@@ -284,7 +321,8 @@ class VariableSymbol(Symbol):
     assert ir_alloca is None or isinstance(ir_alloca, ir.instructions.AllocaInstr)
     assert var_type != SLEEPY_VOID
     self.ir_alloca = ir_alloca
-    self.var_type = var_type
+    self.declared_var_type = var_type
+    self.asserted_var_type = var_type
     self.mutable = mutable
 
 
@@ -292,7 +330,8 @@ class ConcreteFunction:
   """
   An actual function implementation.
   """
-  def __init__(self, ir_func, return_type, return_mutable, arg_identifiers, arg_types, arg_mutables, is_inline=False):
+  def __init__(self, ir_func, return_type, return_mutable, arg_identifiers, arg_types, arg_mutables,
+               arg_type_assertions, is_inline=False):
     """
     :param ir.Function|None ir_func:
     :param Type return_type:
@@ -300,17 +339,19 @@ class ConcreteFunction:
     :param list[str] arg_identifiers:
     :param list[Type] arg_types:
     :param list[bool] arg_mutables:
+    :param list[Type] arg_type_assertions:
     :param bool is_inline:
     """
     assert ir_func is None or isinstance(ir_func, ir.Function)
     assert isinstance(return_type, Type)
-    assert len(arg_identifiers) == len(arg_types) == len(arg_mutables)
+    assert len(arg_identifiers) == len(arg_types) == len(arg_mutables) == len(arg_type_assertions)
     self.ir_func = ir_func
     self.return_type = return_type
     self.return_mutable = return_mutable
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
     self.arg_mutables = arg_mutables
+    self.arg_type_assertions = arg_type_assertions
     self.is_inline = is_inline
 
   def get_c_arg_types(self):
@@ -359,8 +400,10 @@ class ConcreteFunction:
     """
     :rtype str:
     """
-    return 'ConcreteFunction(ir_func=%r, return_type=%r, arg_identifiers=%r, arg_types=%r, is_inline=%r)' % (
-      self.ir_func, self.return_type, self.arg_identifiers, self.arg_types, self.is_inline)
+    return (
+      'ConcreteFunction(ir_func=%r, return_type=%r, arg_identifiers=%r, arg_types=%r, arg_type_assertions=%r, '
+      'is_inline=%r)' % (
+        self.ir_func, self.return_type, self.arg_identifiers, self.arg_types, self.arg_type_assertions, self.is_inline))
 
 
 class FunctionSymbol(Symbol):
@@ -615,7 +658,8 @@ def make_initial_symbol_table():
       # ir_func will be set in build_initial_module_ir
       concrete_func = ConcreteFunction(
         ir_func=None, return_type=op_return_type, return_mutable=False, arg_identifiers=op_arg_identifiers,
-        arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), is_inline=True)
+        arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), arg_type_assertions=op_arg_types,
+        is_inline=True)
       func_symbol.add_concrete_func(concrete_func)
   return symbol_table
 

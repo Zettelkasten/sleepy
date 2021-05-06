@@ -1094,6 +1094,30 @@ def test_union():
     main()
 
 
+def test_union_is_operator():
+  with make_execution_engine() as engine:
+    program = """
+    struct Foo { Int lol = 1; }  # 1
+    struct Bar { Int fav = 42; }  # 2
+    func main_foo() -> Int {
+      Bar|Foo value = Foo(0);
+      if value is Foo { return 1; }
+      if value is Bar { return 2; }
+      return 0;
+    }
+    func main_bar() -> Int {
+      Bar|Foo value = Bar(-123);
+      if value is Foo { return 1; }
+      if value is Bar { return 2; }
+      return 0;
+    }
+    """
+    main_foo = _test_compile_program(engine, program, main_func_identifier='main_foo')
+    main_bar = _test_compile_program(engine, program, main_func_identifier='main_bar')
+    assert_equal(main_foo(), 1)
+    assert_equal(main_bar(), 2)
+
+
 def test_assign_to_union():
   with make_execution_engine() as engine:
     program = """
