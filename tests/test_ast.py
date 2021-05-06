@@ -1074,6 +1074,26 @@ def test_func_inline_own_symbol_table():
     assert_equal(main(4), 4 + (4 + 5))
 
 
+def test_union():
+  with make_execution_engine() as engine:
+    program = """
+    struct MathError { }
+    func safe_sqrt(Double x) -> Double|MathError {
+      if x < 0.0 {
+        return MathError();
+      }
+      extern_func sqrt(Double x) -> Double;
+      return sqrt(x);
+    }
+    func main() {
+      a = safe_sqrt(-123.0);
+      b = safe_sqrt(1.0);
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main()
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

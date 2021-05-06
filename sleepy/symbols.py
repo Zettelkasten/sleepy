@@ -29,7 +29,7 @@ class Type:
     """
     :param ir.types.Type ir_type:
     :param bool pass_by_ref:
-    :param Callable|None c_type:
+    :param ctypes._CData|None c_type:
     """
     assert not pass_by_ref or isinstance(ir_type, ir.types.PointerType)
     self.ir_type = ir_type
@@ -127,21 +127,49 @@ class UnionType(Type):
     assert len(possible_types) == len(possible_type_nums)
     self.possible_types = possible_types
     self.possible_type_nums = possible_type_nums
-    self.tag_size = 1
-
-    identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
+    self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
 
     self.tag_c_type = ctypes.c_uint8
     self.tag_ir_type = ir.types.IntType(8)
     self.untagged_union_c_type = type(
-      '%s_UntaggedCType' % identifier, (ctypes.Union,),
+      '%s_UntaggedCType' % self.identifier, (ctypes.Union,),
       {'_fields_': [('variant%s' % num, possible_type.c_type) for num, possible_type in enumerate(possible_types)]})
     self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), ctypes.sizeof(self.untagged_union_c_type))
     c_type = type(
-      '%s_CType' % identifier, (ctypes.Structure,),
+      '%s_CType' % self.identifier, (ctypes.Structure,),
       {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
     ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
     super().__init__(ir_type, pass_by_ref=False, c_type=c_type)
+
+  def __repr__(self):
+    return self.identifier
+
+  def __eq__(self, other):
+    """
+    :param Any other:
+    """
+    if not isinstance(other, UnionType):
+      return False
+    return self.possible_types == other.possible_types and self.possible_type_nums == other.possible_type_nums
+
+  def contains(self, contained_type):
+    """
+    :param Type contained_type:
+    :rtype: bool
+    """
+    if isinstance(contained_type, UnionType):
+      contained_possible_types = set(contained_type.possible_types)
+    else:
+      contained_possible_types = {contained_type}
+    return contained_possible_types.issubset(self.possible_types)
+
+  def get_variant_num(self, variant_type):
+    """
+    :param Type variant_type:
+    :rtype: int
+    """
+    assert variant_type in self.possible_types
+    return self.possible_types.index(variant_type)
 
 
 class StructType(Type):
@@ -198,6 +226,48 @@ SLEEPY_TYPES = {
   'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG,
   'Char': SLEEPY_CHAR, 'DoublePtr': SLEEPY_DOUBLE_PTR}  # type: Dict[str, Type]
 SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG}
+
+
+def can_implicit_cast_to(from_type, to_type):
+  """
+  :param Type from_type:
+  :param Type to_type:
+  :rtype bool:
+  """
+  if from_type == to_type:
+    return True
+  if not isinstance(to_type, UnionType):
+    return False
+  return to_type.contains(from_type)
+
+
+def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, builder):
+  """
+  :param Type from_type:
+  :param Type to_type:
+  :param ir.values.Value from_ir_val:
+  :param ir.IRBuilder builder:
+  :rtype: tuple[ir.values.Value,ir.IRBuilder]
+  """
+  assert can_implicit_cast_to(from_type, to_type)
+  if from_type == to_type:
+    return from_ir_val, builder
+  assert isinstance(to_type, UnionType)
+  assert not to_type.is_pass_by_ref()
+  assert not isinstance(from_type, UnionType), 'not implemented yet'
+  variant_num = to_type.get_variant_num(from_type)
+  ir_alloca = builder.alloca(to_type.ir_type, name=to_type.identifier)
+
+  tag_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
+  tag_ptr = builder.gep(ir_alloca, tag_gep_indices, name='%s_tag_ptr' % to_type.identifier)
+  builder.store(ir.Constant(to_type.tag_ir_type, variant_num), tag_ptr)
+  untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
+  untagged_union_ptr = builder.gep(
+    ir_alloca, untagged_union_gep_indices, name='%s_untagged_union_ptr' % to_type.identifier)
+  untagged_union_ptr_casted = builder.bitcast(
+    untagged_union_ptr, ir.types.PointerType(from_type.ir_type), name='%s_untagged_union_ptr_cast' % to_type.identifier)
+  builder.store(from_ir_val, untagged_union_ptr_casted)
+  return builder.load(ir_alloca), builder
 
 
 class VariableSymbol(Symbol):
