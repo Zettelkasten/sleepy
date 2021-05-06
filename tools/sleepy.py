@@ -44,6 +44,8 @@ def main():
   parser.add_argument('program', help='Path to source code')
   parser.add_argument('--execute', dest='execute', action='store_true', help='Run program after compilation using JIT.')
   parser.add_argument(
+    '--emit-ir', '-ir', dest='emit_ir', action='store_true', help='Emit LLVM intermediate representation.')
+  parser.add_argument(
     '--emit-object', '-c', dest='emit_object', action='store_true', help='Emit object code, but do not link.')
   parser.set_defaults(execute=False)
 
@@ -73,6 +75,11 @@ def main():
       py_func = concrete_main_func.make_py_func(engine)
       return_val = py_func()
     print('\nExited with return value %r of type %r' % (return_val, concrete_main_func.return_type))
+    return
+  if args.emit_ir:
+    ir_file_name = _make_file_name(source_file_name, '.ll', allow_exist=True)
+    with open(ir_file_name, 'w') as file:
+      file.write(str(module_ir))
     return
 
   object_file_name = _make_file_name(source_file_name, '.o', allow_exist=True)
