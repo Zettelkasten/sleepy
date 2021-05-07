@@ -1067,6 +1067,20 @@ def test_if_scope():
     assert_equal(main(False), False)
 
 
+def test_if_scope_leak_var():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Bool case) -> Int {
+      if case {
+        Int fav_num = 123456;
+      }
+      return fav_num;  # should fail! if should not leak its local variables.
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
