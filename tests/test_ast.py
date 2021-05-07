@@ -1063,8 +1063,8 @@ def test_if_scope():
     }
     """
     main = _test_compile_program(engine, program)
-    assert_equal(main(True), False)
-    assert_equal(main(False), True)
+    assert_equal(main(True), True)
+    assert_equal(main(False), False)
 
 
 if __name__ == "__main__":

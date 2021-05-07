@@ -509,7 +509,7 @@ class FunctionDeclarationAst(StatementAst):
     body_symbol_table.current_func_inline_return_ir_alloca = inline_return_ir_alloca
 
     # create all function body variables
-    self.body_scope.build_scope_var_expr_ir(
+    body_builder = self.body_scope.build_scope_var_expr_ir(
       module=module, builder=body_builder, parent_symbol_table=parent_symbol_table,
       scope_symbol_table=body_symbol_table)
     # set function argument values
@@ -946,10 +946,12 @@ class IfStatementAst(StatementAst):
       module=module, builder=true_builder, parent_symbol_table=symbol_table, scope_symbol_table=true_symbol_table)
     true_builder = self.true_scope.build_scope_body_expr_ir(
       module, builder=true_builder, scope_symbol_table=true_symbol_table)
+    true_block = true_builder.block
     false_builder = self.false_scope.build_scope_var_expr_ir(
       module=module, builder=false_builder, parent_symbol_table=symbol_table, scope_symbol_table=false_symbol_table)
     false_builder = self.false_scope.build_scope_body_expr_ir(
       module, builder=false_builder, scope_symbol_table=false_symbol_table)
+    false_block = false_builder.block
 
     if not true_block.is_terminated or not false_block.is_terminated:
       continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
