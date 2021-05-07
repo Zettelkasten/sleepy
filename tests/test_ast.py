@@ -83,32 +83,6 @@ def _get_py_func_from_ast(engine, ast):
   return func_symbol.get_single_concrete_func().make_py_func(engine)
 
 
-def test_FunctionDeclarationAst_build_expr_ir():
-  pos = TreePosition('', 0, 0)
-  double_type = IdentifierTypeAst(pos, 'Double')
-  with make_execution_engine() as engine:
-    ast1 = FunctionDeclarationAst(
-      pos, identifier='foo', arg_identifiers=[], arg_types=[], arg_annotations=[],
-      return_type=double_type, return_annotation_list=[],
-      stmt_list=[ReturnStatementAst(pos, [ConstantExpressionAst(pos, 42.0, SLEEPY_DOUBLE)])])
-    func1 = _get_py_func_from_ast(engine, ast1)
-    assert_equal(func1(), 42.0)
-  with make_execution_engine() as engine:
-    ast2 = FunctionDeclarationAst(
-      pos, identifier='foo', arg_identifiers=[], arg_types=[], arg_annotations=[],
-      return_type=double_type, return_annotation_list=[], stmt_list=[ReturnStatementAst(pos, [
-        BinaryOperatorExpressionAst(pos, '+', ConstantExpressionAst(pos, 3.0, SLEEPY_DOUBLE), ConstantExpressionAst(pos, 5.0, SLEEPY_DOUBLE))])])
-    func2 = _get_py_func_from_ast(engine, ast2)
-    assert_equal(func2(), 8.0)
-  with make_execution_engine() as engine:
-    ast3 = FunctionDeclarationAst(
-      pos, identifier='sum', arg_identifiers=['a', 'b'], arg_types=[double_type, double_type],
-      arg_annotations=[[], []], return_type=double_type, return_annotation_list=[], stmt_list=[
-        ReturnStatementAst(pos, [BinaryOperatorExpressionAst(pos, '+', VariableExpressionAst(pos, 'a'), VariableExpressionAst(pos, 'b'))])])
-    func3 = _get_py_func_from_ast(engine, ast3)
-    assert_equal(func3(7.0, 3.0), 10.0)
-
-
 def _test_compile_program(engine, program, main_func_identifier='main', optimize=True, add_preamble=True):
   """
   :param ExecutionEngine engine:
@@ -1074,6 +1048,40 @@ def test_func_inline_own_symbol_table():
     assert_equal(main(4), 4 + (4 + 5))
 
 
+def test_if_scope():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Bool case) -> Bool {
+      Bool result = False();
+      if case {
+        Bool bar = True();
+        result = bar;
+      } else {
+        Double bar = 1.23;
+        result = bar > 2.0;
+      }
+      return result;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(True), True)
+    assert_equal(main(False), False)
+
+
+def test_if_scope_leak_var():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Bool case) -> Int {
+      if case {
+        Int fav_num = 123456;
+      }
+      return fav_num;  # should fail! if should not leak its local variables.
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+      
 def test_union():
   with make_execution_engine() as engine:
     program = """

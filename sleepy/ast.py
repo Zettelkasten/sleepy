@@ -181,9 +181,9 @@ class StatementAst(AbstractSyntaxTree):
     return 'StatementAst'
 
 
-class TopLevelStatementAst(StatementAst):
+class AbstractScopeAst(AbstractSyntaxTree):
   """
-  TopLevelExpr.
+  Used to group multiple statements, forming a scope.
   """
   def __init__(self, pos, stmt_list):
     """
@@ -192,6 +192,63 @@ class TopLevelStatementAst(StatementAst):
     """
     super().__init__(pos)
     self.stmt_list = stmt_list
+
+  def build_scope_symbol_table(self, scope_symbol_table):
+    """
+    :param SymbolTable scope_symbol_table:
+    :rtype: SymbolTable
+    """
+    for expr in self.stmt_list:
+      expr.build_symbol_table(symbol_table=scope_symbol_table)
+    return scope_symbol_table
+
+  def build_scope_var_expr_ir(self, module, builder, scope_symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param SymbolTable scope_symbol_table:
+    :rtype: ir.IRBuilder
+    """
+    assert all(
+      var_identifier in scope_symbol_table.current_scope_identifiers
+      for var_identifier in scope_symbol_table.current_scope_new_declared_var_identifiers)
+    for identifier_name in scope_symbol_table.current_scope_new_declared_var_identifiers:
+      var_symbol = scope_symbol_table[identifier_name]
+      assert isinstance(var_symbol, VariableSymbol)
+      assert var_symbol.ir_alloca is None
+      var_symbol.ir_alloca = builder.alloca(var_symbol.declared_var_type.ir_type, name=identifier_name)
+    return builder
+
+  def build_scope_body_expr_ir(self, module, builder, scope_symbol_table):
+    """
+    :param ir.Module module:
+    :param ir.IRBuilder builder:
+    :param SymbolTable scope_symbol_table:
+    :rtype: ir.IRBuilder
+    """
+    for expr in self.stmt_list:
+      builder = expr.build_expr_ir(module=module, builder=builder, symbol_table=scope_symbol_table)
+    return builder
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'AbstractScopeAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
+
+
+class TopLevelStatementAst(StatementAst):
+  """
+  TopLevelExpr.
+  """
+
+  def __init__(self, pos, root_scope):
+    """
+    :param TreePosition pos:
+    :param AbstractScopeAst root_scope:
+    """
+    super().__init__(pos)
+    self.root_scope = root_scope
 
   def build_symbol_table(self, symbol_table):
     """
@@ -206,8 +263,7 @@ class TopLevelStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
-    for expr in self.stmt_list:
-      builder = expr.build_expr_ir(module=module, builder=builder, symbol_table=symbol_table)
+    return builder
 
   def make_module_ir_and_symbol_table(self, module_name):
     """
@@ -217,24 +273,22 @@ class TopLevelStatementAst(StatementAst):
     module = ir.Module(name=module_name)
     io_func_type = ir.FunctionType(ir.VoidType(), ())
     ir_io_func = ir.Function(module, io_func_type, name='io')
-    symbol_table = make_initial_symbol_table()
-    for stmt in self.stmt_list:
-      stmt.build_symbol_table(symbol_table=symbol_table)
-    for scope_symbol_identifier in symbol_table.current_scope_identifiers:
-      assert scope_symbol_identifier in symbol_table
-      scope_symbol = symbol_table[scope_symbol_identifier]
-      if isinstance(scope_symbol, VariableSymbol):
-        self.raise_error('Defining top-level variables is not supported')
+    root_block = ir_io_func.append_basic_block(name='entry')
+    root_builder = ir.IRBuilder(root_block)
 
-    block = ir_io_func.append_basic_block(name='entry')
-    body_builder = ir.IRBuilder(block)
+    symbol_table = make_initial_symbol_table()
+    self.root_scope.build_scope_symbol_table(scope_symbol_table=symbol_table)
+
     build_initial_module_ir(module=module, symbol_table=symbol_table)
     assert symbol_table.ir_func_malloc is not None and symbol_table.ir_func_free is not None
-
-    for stmt in self.stmt_list:
-      body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=symbol_table)
-    assert not block.is_terminated
-    body_builder.ret_void()
+    declared_vars = [
+      identifier for identifier in symbol_table.current_scope_identifiers
+      if isinstance(symbol_table[identifier], VariableSymbol)]
+    if len(declared_vars) > 0:
+      self.raise_error('Cannot declare variables in top-level scope, but got: %r' % ', '.join(declared_vars))
+    self.root_scope.build_scope_body_expr_ir(module=module, builder=root_builder, scope_symbol_table=symbol_table)
+    assert not root_block.is_terminated
+    root_builder.ret_void()
 
     return module, symbol_table
 
@@ -242,19 +296,19 @@ class TopLevelStatementAst(StatementAst):
     """
     :rtype: str
     """
-    return 'TopLevelStatementAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
+    return 'TopLevelStatementAst(%s)' % self.root_scope
 
 
 class FunctionDeclarationAst(StatementAst):
   """
-  Stmt -> func identifier ( TypedIdentifierList ) { StmtList }
+  Stmt -> func identifier ( TypedIdentifierList ) Scope
   """
 
   allowed_annotation_identifiers = {'Inline'}
   allowed_arg_annotation_identifiers = {'Const', 'Mutable'}
 
   def __init__(self, pos, identifier, arg_identifiers, arg_types, arg_annotations, return_type,
-               return_annotation_list, stmt_list):
+               return_annotation_list, body_scope):
     """
     :param TreePosition pos:
     :param str identifier:
@@ -263,25 +317,26 @@ class FunctionDeclarationAst(StatementAst):
     :param list[list[AnnotationAst]] arg_annotations:
     :param TypeAst|None return_type:
     :param list[AnnotationAst]|None return_annotation_list:
-    :param list[StatementAst]|None stmt_list: body, or None if extern function.
+    :param AbstractScopeAst|None body_scope: body, or None if extern function.
     """
     super().__init__(pos)
     assert len(arg_identifiers) == len(arg_types) == len(arg_annotations)
     assert (return_type is None) == (return_annotation_list is None)
+    assert body_scope is None or isinstance(body_scope, AbstractScopeAst)
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
     self.arg_annotations = arg_annotations
     self.return_type = return_type
     self.return_annotation_list = return_annotation_list
-    self.stmt_list = stmt_list
+    self.body_scope = body_scope
 
   @property
   def is_extern(self):
     """
     :rtype: bool
     """
-    return self.stmt_list is None
+    return self.body_scope is None
 
   @property
   def is_inline(self):
@@ -337,25 +392,24 @@ class FunctionDeclarationAst(StatementAst):
     arg_mutables = [
       self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
       for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
-    if self.is_inline:
-      if self.is_extern:
-        self.raise_error('Extern function %r cannot be inlined' % self.identifier)
+    if self.is_inline and self.is_extern:
+      self.raise_error('Extern function %r cannot be inlined' % self.identifier)
     func_symbol.add_concrete_func(
       ConcreteFunction(
         None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
         arg_types=arg_types, arg_mutables=arg_mutables, arg_type_assertions=arg_types, is_inline=self.is_inline))
     # build body symbols to check their types
     if not self.is_extern:
-      self._build_body_symbol_table(symbol_table=symbol_table)
+      self._build_body_symbol_table(parent_symbol_table=symbol_table)
 
-  def _get_concrete_func(self, symbol_table):
+  def _get_concrete_func(self, parent_symbol_table):
     """
-    :param SymbolTable symbol_table:
+    :param SymbolTable parent_symbol_table:
     :rtype: ConcreteFunction
     """
-    arg_types = self.make_arg_types(symbol_table=symbol_table)
-    assert self.identifier in symbol_table
-    func_symbol = symbol_table[self.identifier]
+    arg_types = self.make_arg_types(symbol_table=parent_symbol_table)
+    assert self.identifier in parent_symbol_table
+    func_symbol = parent_symbol_table[self.identifier]
     assert isinstance(func_symbol, FunctionSymbol)
     assert func_symbol.has_concrete_func(arg_types)
     return func_symbol.get_concrete_func(arg_types)
@@ -367,7 +421,7 @@ class FunctionDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
-    concrete_func = self._get_concrete_func(symbol_table=symbol_table)
+    concrete_func = self._get_concrete_func(parent_symbol_table=symbol_table)
     if not self.is_inline:
       ir_func_type = concrete_func.make_ir_function_type()
       ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
@@ -392,7 +446,7 @@ class FunctionDeclarationAst(StatementAst):
             concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
         collect_block = body_builder.append_basic_block('collect_return_%s_block' % self.identifier)
         self._build_body_ir(
-          ir_func_args=ir_func_args, module=module, body_builder=body_builder, symbol_table=symbol_table,
+          ir_func_args=ir_func_args, module=module, body_builder=body_builder, parent_symbol_table=symbol_table,
           inline_return_collect_block=collect_block, inline_return_ir_alloca=return_val_ir_alloca)
         collect_builder = ir.IRBuilder(collect_block)
         if concrete_func.return_type == SLEEPY_VOID:
@@ -405,70 +459,69 @@ class FunctionDeclarationAst(StatementAst):
     else:
       assert not self.is_inline
       block = concrete_func.ir_func.append_basic_block(name='entry')
-      concrete_func = self._get_concrete_func(symbol_table=symbol_table)
+      concrete_func = self._get_concrete_func(parent_symbol_table=symbol_table)
       body_builder = ir.IRBuilder(block)
       self._build_body_ir(
-        ir_func_args=concrete_func.ir_func.args, module=module, body_builder=body_builder, symbol_table=symbol_table)
+        ir_func_args=concrete_func.ir_func.args, module=module, body_builder=body_builder, parent_symbol_table=symbol_table)
 
     return builder
 
-  def _build_body_symbol_table(self, symbol_table):
+  def _build_body_symbol_table(self, parent_symbol_table):
     """
-    :param SymbolTable symbol_table:
+    :param SymbolTable parent_symbol_table:
     :rtype: SymbolTable
     """
     assert not self.is_extern
-    arg_types = self.make_arg_types(symbol_table=symbol_table)
-    concrete_func = self._get_concrete_func(symbol_table=symbol_table)
-    body_symbol_table = symbol_table.copy()
-    body_symbol_table.current_func = concrete_func
-    body_symbol_table.current_scope_identifiers = []
-    for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, concrete_func.arg_mutables):
+    concrete_func = self._get_concrete_func(parent_symbol_table=parent_symbol_table)
+    assert self.is_inline == concrete_func.is_inline
+    body_symbol_table = parent_symbol_table.copy_with_new_current_func(concrete_func)
+    for arg_identifier, arg_type, arg_mutable in zip(
+        concrete_func.arg_identifiers, concrete_func.arg_types, concrete_func.arg_mutables):
       body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
+      assert arg_identifier not in body_symbol_table.current_scope_identifiers
+      assert arg_identifier not in body_symbol_table.current_scope_new_declared_var_identifiers
       body_symbol_table.current_scope_identifiers.append(arg_identifier)
-    for stmt in self.stmt_list:
-      stmt.build_symbol_table(symbol_table=body_symbol_table)
+      body_symbol_table.current_scope_new_declared_var_identifiers.append(arg_identifier)
+    self.body_scope.build_scope_symbol_table(scope_symbol_table=body_symbol_table)
     return body_symbol_table
 
-  def _build_body_ir(self, ir_func_args, module, body_builder, symbol_table, inline_return_collect_block=None,
+  def _build_body_ir(self, ir_func_args, module, body_builder, parent_symbol_table, inline_return_collect_block=None,
                      inline_return_ir_alloca=None):
     """
     :param list[ir.values.Value] ir_func_args:
     :param ir.Module module:
     :param ir.IRBuilder body_builder:
-    :param SymbolTable symbol_table:
+    :param SymbolTable parent_symbol_table:
     :param None|ir.Block inline_return_collect_block:
     :param None|ir.instructions.AllocaInstr inline_return_ir_alloca:
     """
     assert not self.is_extern
-    assert (inline_return_collect_block is None) == (not self.is_inline)
-    concrete_func = self._get_concrete_func(symbol_table=symbol_table)
+    concrete_func = self._get_concrete_func(parent_symbol_table=parent_symbol_table)
+    assert (inline_return_collect_block is not None) == self.is_inline == concrete_func.is_inline
     assert len(ir_func_args) == len(concrete_func.arg_identifiers)
-    body_symbol_table = self._build_body_symbol_table(symbol_table)
+    body_symbol_table = self._build_body_symbol_table(parent_symbol_table=parent_symbol_table)
     body_symbol_table.current_func_inline_return_collect_block = inline_return_collect_block
     body_symbol_table.current_func_inline_return_ir_alloca = inline_return_ir_alloca
 
-    for identifier_name in body_symbol_table.current_scope_identifiers:
-      assert identifier_name in body_symbol_table
-      var_symbol = body_symbol_table[identifier_name]
-      if not isinstance(var_symbol, VariableSymbol):
-        continue
-      var_symbol.ir_alloca = body_builder.alloca(var_symbol.declared_var_type.ir_type, name=identifier_name)
-
-    for arg_identifier, ir_arg in zip(self.arg_identifiers, ir_func_args):
+    # create all function body variables
+    body_builder = self.body_scope.build_scope_var_expr_ir(
+      module=module, builder=body_builder, scope_symbol_table=body_symbol_table)
+    # set function argument values
+    for arg_identifier, ir_arg in zip(concrete_func.arg_identifiers, ir_func_args):
+      assert arg_identifier in body_symbol_table  # set in _build_body_symbol_table
       arg_symbol = body_symbol_table[arg_identifier]
       assert isinstance(arg_symbol, VariableSymbol)
       ir_arg.name = arg_identifier
+      assert arg_symbol.ir_alloca is not None  # set by ScopeAst
       body_builder.store(ir_arg, arg_symbol.ir_alloca)
-
-    for stmt in self.stmt_list:
-      body_builder = stmt.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
-    if body_builder is not None:
-      should_return = not concrete_func.is_inline or (body_builder.block != inline_return_collect_block)
-      if should_return and not body_builder.block.is_terminated:
+    # build function body
+    body_builder = self.body_scope.build_scope_body_expr_ir(
+      module=module, builder=body_builder, scope_symbol_table=body_symbol_table)
+    # maybe add implicit return
+    if body_builder is not None and not is_block_terminated(body_builder.block, symbol_table=body_symbol_table):
         return_pos = TreePosition(
           self.pos.word,
-          self.pos.from_pos if len(self.stmt_list) == 0 else self.stmt_list[-1].pos.to_pos,
+          self.pos.from_pos if len(self.body_scope.stmt_list) == 0 else self.body_scope.stmt_list[-1].pos.to_pos,
           self.pos.to_pos)
         return_ast = ReturnStatementAst(return_pos, [])
         if concrete_func.return_type != SLEEPY_VOID:
@@ -482,9 +535,9 @@ class FunctionDeclarationAst(StatementAst):
     :rtype: str
     """
     return (
-        'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
-        'return_type=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_types,
-    self.return_type, 'extern' if self.is_extern else ', '.join([repr(stmt) for stmt in self.stmt_list])))
+      'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
+      'return_type=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_types,
+      self.return_type, 'extern' if self.is_extern else self.body_scope))
 
 
 class CallStatementAst(StatementAst):
@@ -644,6 +697,7 @@ class StructDeclarationAst(StatementAst):
     if self.struct_identifier in symbol_table.current_scope_identifiers:
       self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
     body_symbol_table = symbol_table.copy()
+    body_symbol_table.current_scope_identifiers = []
     for member_num, stmt in enumerate(self.stmt_list):
       if not isinstance(stmt, AssignStatementAst):
         stmt.raise_error('Can only use declare statements within a struct declaration')
@@ -681,8 +735,8 @@ class StructDeclarationAst(StatementAst):
     :param ConcreteFunction constructor:
     :param SymbolTable symbol_table:
     """
+    # TODO: Make this a new scope.
     struct_type = constructor.return_type
-    constructor_symbol_table = symbol_table.copy()
     constructor_block = constructor.ir_func.append_basic_block(name='entry')
     constructor_builder = ir.IRBuilder(constructor_block)
     if self.is_pass_by_ref():  # use malloc
@@ -707,7 +761,7 @@ class StructDeclarationAst(StatementAst):
       constructor_builder.ret(self_ir_alloca)
     else:  # pass by value
       constructor_builder.ret(constructor_builder.load(self_ir_alloca, name='self'))
-    assert constructor_block.is_terminated
+    assert is_block_terminated(constructor_block, symbol_table=symbol_table)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -801,6 +855,7 @@ class AssignStatementAst(StatementAst):
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
       symbol = VariableSymbol(None, var_type=val_type, mutable=declared_mutable)
       symbol_table[var_identifier] = symbol
+      symbol_table.current_scope_new_declared_var_identifiers.append(var_identifier)
       symbol_table.current_scope_identifiers.append(var_identifier)
     else:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
@@ -847,46 +902,33 @@ class AssignStatementAst(StatementAst):
 
 class IfStatementAst(StatementAst):
   """
-  Stmt -> if Expr { StmtList }
-        | if Expr { StmtList } else { StmtList }
+  Stmt -> if Expr Scope
+        | if Expr Scope else Scope
   """
-  def __init__(self, pos, condition_val, true_stmt_list, false_stmt_list):
+  def __init__(self, pos, condition_val, true_scope, false_scope):
     """
     :param TreePosition pos:
     :param ExpressionAst condition_val:
-    :param list[StatementAst] true_stmt_list:
-    :param list[StatementAst] false_stmt_list:
+    :param AbstractScopeAst true_scope:
+    :param AbstractScopeAst|None false_scope:
     """
     super().__init__(pos)
     self.condition_val = condition_val
-    self.true_stmt_list, self.false_stmt_list = true_stmt_list, false_stmt_list
-
-  @property
-  def has_true_branch(self):
-    """
-    :rtype: bool
-    """
-    return len(self.true_stmt_list) >= 1
-
-  @property
-  def has_false_branch(self):
-    """
-    :rtype: bool
-    """
-    return len(self.false_stmt_list) >= 1
+    if false_scope is None:
+      false_scope = AbstractScopeAst(TreePosition(pos.word, pos.to_pos, pos.to_pos), [])
+    self.true_scope, self.false_scope = true_scope, false_scope
 
   def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     """
-    # TODO: Make this a separate scope.
-    # It is probably easiest to add this by making every scope it's own Statement (essentially a Statement list),
-    # and then not having true/false_stmt_list but just a single statement.
     cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
     if not cond_type == SLEEPY_BOOL:
       self.raise_error('Condition use expression of type %r as if-condition' % cond_type)
-    for stmt in self.true_stmt_list + self.false_stmt_list:
-      stmt.build_symbol_table(symbol_table=symbol_table)
+    # build branch symbol tables just for type checking
+    true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
+    self.true_scope.build_scope_symbol_table(scope_symbol_table=true_symbol_table)
+    self.false_scope.build_scope_symbol_table(scope_symbol_table=false_symbol_table)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -901,20 +943,29 @@ class IfStatementAst(StatementAst):
     builder.cbranch(ir_cond, true_block, false_block)
     true_builder, false_builder = ir.IRBuilder(true_block), ir.IRBuilder(false_block)
 
-    true_symbol_table = symbol_table.copy()  # type: SymbolTable
-    false_symbol_table = symbol_table.copy()  # type: SymbolTable
+    true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
+    self.true_scope.build_scope_symbol_table(scope_symbol_table=true_symbol_table)
+    self.false_scope.build_scope_symbol_table(scope_symbol_table=false_symbol_table)
 
-    for expr in self.true_stmt_list:
-      true_builder = expr.build_expr_ir(module, builder=true_builder, symbol_table=true_symbol_table)
-    for expr in self.false_stmt_list:
-      false_builder = expr.build_expr_ir(module, builder=false_builder, symbol_table=false_symbol_table)
+    true_builder = self.true_scope.build_scope_var_expr_ir(
+      module=module, builder=true_builder, scope_symbol_table=true_symbol_table)
+    true_builder = self.true_scope.build_scope_body_expr_ir(
+      module, builder=true_builder, scope_symbol_table=true_symbol_table)
+    true_block = true_builder.block
+    true_terminated = is_block_terminated(true_block, symbol_table=true_symbol_table)
+    false_builder = self.false_scope.build_scope_var_expr_ir(
+      module=module, builder=false_builder, scope_symbol_table=false_symbol_table)
+    false_builder = self.false_scope.build_scope_body_expr_ir(
+      module, builder=false_builder, scope_symbol_table=false_symbol_table)
+    false_block = false_builder.block
+    false_terminated = is_block_terminated(false_block, symbol_table=false_symbol_table)
 
-    if not true_block.is_terminated or not false_block.is_terminated:
+    if not (true_terminated and false_terminated):
       continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
       continue_builder = ir.IRBuilder(continue_block)
-      if not true_block.is_terminated:
+      if not true_terminated:
         true_builder.branch(continue_block)
-      if not false_block.is_terminated:
+      if not false_terminated:
         false_builder.branch(continue_block)
       return continue_builder
     else:
@@ -924,8 +975,8 @@ class IfStatementAst(StatementAst):
     """
     :rtype: str
     """
-    return 'IfStatementAst(condition_val=%r, true_stmt_list=%r, false_stmt_list=%r)' % (
-      self.condition_val, self.true_stmt_list, self.false_stmt_list)
+    return 'IfStatementAst(condition_val=%r, true_scope=%r, false_scope=%r)' % (
+      self.condition_val, self.true_scope, self.false_scope)
 
 
 class WhileStatementAst(StatementAst):
@@ -1462,7 +1513,7 @@ class VariableTargetAst(TargetAst):
     assert self.var_identifier in symbol_table
     symbol = symbol_table[self.var_identifier]
     assert isinstance(symbol, VariableSymbol)
-    assert symbol.ir_alloca is not None  # ir_alloca is set in FunctionDeclarationAst
+    assert symbol.ir_alloca is not None  # ir_alloca is set in AbstractScopeAst
     return symbol.ir_alloca
 
   def __repr__(self):
@@ -1682,18 +1733,19 @@ SLEEPY_LEXER = LexerGenerator(
   ])
 SLEEPY_GRAMMAR = Grammar(
   Production('TopLevelStmt', 'StmtList'),
+  Production('Scope', '{', 'StmtList', '}'),
   Production('StmtList'),
   Production('StmtList', 'AnnotationList', 'Stmt', 'StmtList'),
-  Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
-  Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', '{', 'StmtList', '}'),
+  Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'),
+  Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'),
   Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'),
   Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
   Production('Stmt', 'return', 'ExprList', ';'),
   Production('Stmt', 'Type', 'Target', '=', 'Expr', ';'),
   Production('Stmt', 'Target', '=', 'Expr', ';'),
-  Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}'),
-  Production('Stmt', 'if', 'Expr', '{', 'StmtList', '}', 'else', '{', 'StmtList', '}'),
+  Production('Stmt', 'if', 'Expr', 'Scope'),
+  Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'),
   Production('Stmt', 'while', 'Expr', '{', 'StmtList', '}'),
   Production('Expr', 'Expr', 'cmp_op', 'SumExpr'),
   Production('Expr', 'SumExpr'),
@@ -1744,15 +1796,17 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
     'op', 'number'},
   prod_attr_rules=[
-    {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, stmt_list(1))},
+    {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, AbstractScopeAst(_pos, stmt_list(1)))},
+    {'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list(2))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast, stmt_list: (
-      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
-        ast(6), annotation_list(6), stmt_list(8)))},
-    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast, stmt_list: (
-      FunctionDeclarationAst(_pos, op(2), identifier_list(4), type_list(4), annotation_list(4), ast(6),
-        annotation_list(6), stmt_list(8)))},
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+      FunctionDeclarationAst(
+        _pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6),
+        ast(7)))},
+    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast: (
+      FunctionDeclarationAst(
+        _pos, op(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6), ast(7)))},
     {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
         ast(6), annotation_list(6), None))},
@@ -1761,8 +1815,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(2), ast(4), ast(1))},
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(1), ast(3), None)},
-    {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), [])},
-    {'ast': lambda _pos, ast, stmt_list: IfStatementAst(_pos, ast(2), stmt_list(4), stmt_list(8))},
+    {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), None)},
+    {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), ast(5))},
     {'ast': lambda _pos, ast, stmt_list: WhileStatementAst(_pos, ast(2), stmt_list(4))}] + [
     {'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
@@ -1857,5 +1911,19 @@ def add_preamble_to_ast(program_ast):
   """
   preamble_ast = make_preamble_ast()
   assert isinstance(preamble_ast, TopLevelStatementAst)
-  preamble_pos = TreePosition(program_ast.pos.word, 0, 0)
-  return TopLevelStatementAst(preamble_pos, preamble_ast.stmt_list + program_ast.stmt_list)
+  return TopLevelStatementAst(program_ast.pos, AbstractScopeAst(
+    preamble_ast.pos, preamble_ast.root_scope.stmt_list + program_ast.root_scope.stmt_list))
+
+
+def is_block_terminated(block, symbol_table):
+  """
+  :param ir.Block block:
+  :param SymbolTable symbol_table:
+  :rtype: bool
+  """
+  if block.is_terminated:
+    return True
+  # could be inlined, then we are also terminated if inside the collect_return_block
+  if symbol_table.current_func.is_inline and block == symbol_table.current_func_inline_return_collect_block:
+    return True
+  return False
