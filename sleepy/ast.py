@@ -10,9 +10,10 @@ from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
-  make_initial_symbol_table, StructType, ConcreteFunction, build_initial_module_ir
+  make_initial_symbol_table, StructType, ConcreteFunction, build_initial_module_ir, UnionType, can_implicit_cast_to, \
+  make_implicit_cast_to_ir_val, make_ir_val_is_type
 
-SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>='}
+SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is'}
 
 
 class AbstractSyntaxTree:
@@ -44,7 +45,7 @@ class AbstractSyntaxTree:
   def _check_func_call_symbol_table(self, func_identifier, func_arg_exprs, symbol_table):
     """
     :param str func_identifier:
-    :param list[ExpressionAst func_arg_exprs:
+    :param list[ExpressionAst] func_arg_exprs:
     :param SymbolTable symbol_table:
     :rtype: ConcreteFunction
     """
@@ -70,7 +71,14 @@ class AbstractSyntaxTree:
         concrete_func.arg_identifiers, concrete_func.arg_mutables, called_mutables):
       if not called_mutable and arg_mutable:
         self.raise_error('Cannot call function %r declared with mutable parameter %r with immutable argument' % (
-          func_identifier, arg_identifier))
+            func_identifier, arg_identifier))
+
+    for func_arg_expr, arg_type_assertion in zip(func_arg_exprs, concrete_func.arg_type_assertions):
+      if isinstance(func_arg_expr, VariableExpressionAst):
+        var_symbol = symbol_table[func_arg_expr.var_identifier]
+        assert isinstance(var_symbol, VariableSymbol)
+        symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_asserted_var_type(arg_type_assertion)
+
     return concrete_func
 
   def _make_func_call_ir(self, func_identifier, func_arg_exprs, builder, symbol_table):
@@ -146,19 +154,6 @@ class StatementAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
-  def make_type(self, type_identifier, symbol_table):
-    """
-    :param str type_identifier:
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    if type_identifier not in symbol_table:
-      self.raise_error('Unknown type identifier %r' % type_identifier)
-    type_symbol = symbol_table[type_identifier]
-    if not isinstance(type_symbol, TypeSymbol):
-      self.raise_error('%r is not a type, but a %r' % (type_identifier, type(type_symbol)))
-    return type_symbol.type
-
   def make_var_is_mutable(self, arg_name, arg_type, arg_annotation_list, default):
     """
     :param str arg_name:
@@ -221,7 +216,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
       var_symbol = scope_symbol_table[identifier_name]
       assert isinstance(var_symbol, VariableSymbol)
       assert var_symbol.ir_alloca is None
-      var_symbol.ir_alloca = builder.alloca(var_symbol.var_type.ir_type, name=identifier_name)
+      var_symbol.ir_alloca = builder.alloca(var_symbol.declared_var_type.ir_type, name=identifier_name)
     return builder
 
   def build_scope_body_expr_ir(self, module, builder, scope_symbol_table):
@@ -312,27 +307,27 @@ class FunctionDeclarationAst(StatementAst):
   allowed_annotation_identifiers = {'Inline'}
   allowed_arg_annotation_identifiers = {'Const', 'Mutable'}
 
-  def __init__(self, pos, identifier, arg_identifiers, arg_type_identifiers, arg_annotations, return_type_identifier,
+  def __init__(self, pos, identifier, arg_identifiers, arg_types, arg_annotations, return_type,
                return_annotation_list, body_scope):
     """
     :param TreePosition pos:
     :param str identifier:
     :param list[str] arg_identifiers:
-    :param list[str|None] arg_type_identifiers:
+    :param list[TypeAst] arg_types:
     :param list[list[AnnotationAst]] arg_annotations:
-    :param str|None return_type_identifier:
+    :param TypeAst|None return_type:
     :param list[AnnotationAst]|None return_annotation_list:
     :param AbstractScopeAst|None body_scope: body, or None if extern function.
     """
     super().__init__(pos)
-    assert len(arg_identifiers) == len(arg_type_identifiers) == len(arg_annotations)
-    assert (return_type_identifier is None) == (return_annotation_list is None)
+    assert len(arg_identifiers) == len(arg_types) == len(arg_annotations)
+    assert (return_type is None) == (return_annotation_list is None)
     assert body_scope is None or isinstance(body_scope, AbstractScopeAst)
     self.identifier = identifier
     self.arg_identifiers = arg_identifiers
-    self.arg_type_identifiers = arg_type_identifiers
+    self.arg_types = arg_types
     self.arg_annotations = arg_annotations
-    self.return_type_identifier = return_type_identifier
+    self.return_type = return_type
     self.return_annotation_list = return_annotation_list
     self.body_scope = body_scope
 
@@ -355,7 +350,7 @@ class FunctionDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: list[Type]
     """
-    arg_types = [self.make_type(identifier, symbol_table=symbol_table) for identifier in self.arg_type_identifiers]
+    arg_types = [arg_type.make_type(symbol_table=symbol_table) for arg_type in self.arg_types]
     if any(arg_type is None for arg_type in arg_types):
       self.raise_error('Need to specify all parameter types of function %r' % self.identifier)
     all_annotation_list = (
@@ -374,10 +369,10 @@ class FunctionDeclarationAst(StatementAst):
     :param SymbolTable symbol_table:
     """
     arg_types = self.make_arg_types(symbol_table=symbol_table)
-    if self.return_type_identifier is None:
+    if self.return_type is None:
       return_type = SLEEPY_VOID
     else:
-      return_type = self.make_type(self.return_type_identifier, symbol_table=symbol_table)
+      return_type = self.return_type.make_type(symbol_table=symbol_table)
     if return_type is None:
       self.raise_error('Need to specify return type of function %r' % self.identifier)
     if return_type == SLEEPY_VOID:
@@ -402,7 +397,7 @@ class FunctionDeclarationAst(StatementAst):
     func_symbol.add_concrete_func(
       ConcreteFunction(
         None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
-        arg_types=arg_types, arg_mutables=arg_mutables, is_inline=self.is_inline))
+        arg_types=arg_types, arg_mutables=arg_mutables, arg_type_assertions=arg_types, is_inline=self.is_inline))
     # build body symbols to check their types
     if not self.is_extern:
       self._build_body_symbol_table(parent_symbol_table=symbol_table)
@@ -540,9 +535,9 @@ class FunctionDeclarationAst(StatementAst):
     :rtype: str
     """
     return (
-      'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_type_identifiers=%r, '
-      'return_type_identifier=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_type_identifiers,
-      self.return_type_identifier, 'extern' if self.is_extern else self.body_scope))
+      'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
+      'return_type=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_types,
+      self.return_type, 'extern' if self.is_extern else self.body_scope))
 
 
 class CallStatementAst(StatementAst):
@@ -610,7 +605,7 @@ class ReturnStatementAst(StatementAst):
       return_val_type = self.return_exprs[0].make_val_type(symbol_table=symbol_table)
       if return_val_type == SLEEPY_VOID:
         self.raise_error('Cannot use void return value')
-      if return_val_type != symbol_table.current_func.return_type:
+      if not can_implicit_cast_to(return_val_type, symbol_table.current_func.return_type):
         if symbol_table.current_func.return_type == SLEEPY_VOID:
           self.raise_error('Function declared to return void, but return value is of type %r' % (
             return_val_type))
@@ -635,7 +630,10 @@ class ReturnStatementAst(StatementAst):
     :rtype: ir.IRBuilder
     """
     if len(self.return_exprs) == 1:
+      return_val_type = self.return_exprs[0].make_val_type(symbol_table=symbol_table)
       ir_val, builder = self.return_exprs[0].make_ir_val(builder=builder, symbol_table=symbol_table)
+      ir_val, builder = make_implicit_cast_to_ir_val(
+        return_val_type, symbol_table.current_func.return_type, ir_val, builder=builder)
       if symbol_table.current_func.is_inline:
         assert symbol_table.current_func_inline_return_ir_alloca is not None
         builder.store(ir_val, symbol_table.current_func_inline_return_ir_alloca)
@@ -716,7 +714,7 @@ class StructDeclarationAst(StatementAst):
       declared_symbol = body_symbol_table[declared_identifier]
       assert isinstance(declared_symbol, VariableSymbol)
       member_identifiers.append(declared_identifier)
-      member_types.append(declared_symbol.var_type)
+      member_types.append(declared_symbol.declared_var_type)
     member_mutables = [False] * len(member_identifiers)
     assert len(member_identifiers) == len(member_types) == len(member_mutables) == len(self.stmt_list)
 
@@ -727,7 +725,8 @@ class StructDeclarationAst(StatementAst):
     # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
     constructor.add_concrete_func(ConcreteFunction(
       ir_func=None, return_type=struct_type, return_mutable=True,
-      arg_types=member_types, arg_identifiers=member_identifiers, arg_mutables=member_mutables))
+      arg_types=member_types, arg_identifiers=member_identifiers, arg_type_assertions=member_types,
+      arg_mutables=member_mutables))
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
@@ -755,13 +754,13 @@ class StructDeclarationAst(StatementAst):
       member_identifier = stmt.var_target.var_identifier
       ir_func_arg.name = member_identifier
       gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
-      member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, '%s_ptr' % member_identifier)
+      member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
       constructor_builder.store(ir_func_arg, member_ptr)
 
     if self.is_pass_by_ref():
       constructor_builder.ret(self_ir_alloca)
     else:  # pass by value
-      constructor_builder.ret(constructor_builder.load(self_ir_alloca, 'self'))
+      constructor_builder.ret(constructor_builder.load(self_ir_alloca, name='self'))
     assert is_block_terminated(constructor_block, symbol_table=symbol_table)
 
   def build_expr_ir(self, module, builder, symbol_table):
@@ -797,18 +796,18 @@ class AssignStatementAst(StatementAst):
   """
   allowed_annotation_identifiers = frozenset({'Const', 'Mutable'})
 
-  def __init__(self, pos, var_target, var_val, var_type_identifier):
+  def __init__(self, pos, var_target, var_val, declared_var_type):
     """
     :param TreePosition pos:
     :param TargetAst var_target:
     :param ExpressionAst var_val:
-    :param str|None var_type_identifier:
+    :param TypeAst|None declared_var_type:
     """
     super().__init__(pos)
     assert isinstance(var_target, TargetAst)
     self.var_target = var_target
     self.var_val = var_val
-    self.var_type_identifier = var_type_identifier
+    self.declared_var_type = declared_var_type
 
   def is_declaration(self, symbol_table):
     """
@@ -825,23 +824,25 @@ class AssignStatementAst(StatementAst):
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign non-variable %r to a variable' % var_identifier)
     ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
-    if symbol.var_type != ptr_type:
+    if symbol.declared_var_type != ptr_type:
       self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
-        var_identifier, symbol.var_type, ptr_type))
+        var_identifier, symbol.declared_var_type, ptr_type))
 
   def build_symbol_table(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     """
-    if self.var_type_identifier is not None:
-      declared_type = self.make_type(self.var_type_identifier, symbol_table=symbol_table)
+    if self.declared_var_type is not None:
+      declared_type = self.declared_var_type.make_type(symbol_table=symbol_table)
     else:
       declared_type = None
     val_type = self.var_val.make_val_type(symbol_table=symbol_table)
     if val_type == SLEEPY_VOID:
       self.raise_error('Cannot assign void to variable')
-    if declared_type is not None and declared_type != val_type:
-      self.raise_error('Cannot assign variable with declared type %r a value of type %r' % (declared_type, val_type))
+    if declared_type is not None:
+      if not can_implicit_cast_to(val_type, declared_type):
+        self.raise_error('Cannot assign variable with declared type %r a value of type %r' % (declared_type, val_type))
+      val_type = declared_type  # implicitly cast to the declared type
     declared_mutable = self.make_var_is_mutable('left-hand-side', val_type, self.annotations, default=None)
     val_mutable = self.var_val.is_val_mutable(symbol_table=symbol_table)
 
@@ -858,9 +859,12 @@ class AssignStatementAst(StatementAst):
       symbol_table.current_scope_identifiers.append(var_identifier)
     else:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
-      ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
-      if ptr_type != val_type:
-        self.raise_error('Cannot redefine variable of type %r with new type %r' % (ptr_type, val_type))
+      existing_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
+      assert existing_type is not None
+      if not can_implicit_cast_to(val_type, existing_type):
+        self.raise_error('Cannot redefine variable of type %r with new type %r' % (existing_type, val_type))
+      if declared_type is not None and declared_type != existing_type:
+        self.raise_error('Cannot redeclare variable of type %r with new type %r' % (existing_type, declared_type))
       if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
         self.raise_error('Cannot reassign member of a non-mutable variable')
       if declared_mutable is None:
@@ -871,7 +875,7 @@ class AssignStatementAst(StatementAst):
         else:
           self.raise_error('Cannot redefine a variable declared as mutable to non-mutable')
     if declared_mutable and not val_mutable:
-      self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % val_type)
+      self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % declared_type)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -880,7 +884,10 @@ class AssignStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: ir.IRBuilder
     """
+    ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
+    var_type = self.var_val.make_val_type(symbol_table=symbol_table)
     ir_val, builder = self.var_val.make_ir_val(builder=builder, symbol_table=symbol_table)
+    ir_val, builder = make_implicit_cast_to_ir_val(var_type, ptr_type, ir_val, builder=builder)
     ir_ptr = self.var_target.make_ir_ptr(builder, symbol_table=symbol_table)
     builder.store(ir_val, ir_ptr)
     return builder
@@ -889,8 +896,8 @@ class AssignStatementAst(StatementAst):
     """
     :rtype: str
     """
-    return 'AssignStatementAst(var_target=%r, var_val=%r, var_type_identifier=%r)' % (
-      self.var_target, self.var_val, self.var_type_identifier)
+    return 'AssignStatementAst(var_target=%r, var_val=%r, var_type=%r)' % (
+      self.var_target, self.var_val, self.declared_var_type)
 
 
 class IfStatementAst(StatementAst):
@@ -1092,12 +1099,19 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     assert op in SLOPPY_OP_TYPES
     self.op = op
     self.left_expr, self.right_expr = left_expr, right_expr
+    if self.op == 'is':
+      assert isinstance(self.right_expr, VariableExpressionAst)
 
   def make_val_type(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: Type
     """
+    if self.op == 'is':
+      assert isinstance(self.right_expr, VariableExpressionAst)
+      type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
+      type_expr.make_type(symbol_table=symbol_table)  # just check that type exists
+      return SLEEPY_BOOL
     operand_exprs = [self.left_expr, self.right_expr]
     concrete_func = self._check_func_call_symbol_table(
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
@@ -1116,6 +1130,13 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: (ir.values.Value, ir.IRBuilder)
     """
+    if self.op == 'is':
+      assert isinstance(self.right_expr, VariableExpressionAst)
+      check_type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
+      check_type = check_type_expr.make_type(symbol_table=symbol_table)
+      val_type = self.left_expr.make_val_type(symbol_table=symbol_table)
+      ir_val, builder = self.left_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
+      return make_ir_val_is_type(ir_val, val_type, check_type, builder=builder)
     operand_exprs = [self.left_expr, self.right_expr]
     return self._make_func_call_ir(
       func_identifier=self.op, func_arg_exprs=operand_exprs, builder=builder, symbol_table=symbol_table)
@@ -1248,7 +1269,7 @@ class VariableExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    return self.get_var_symbol(symbol_table=symbol_table).var_type
+    return self.get_var_symbol(symbol_table=symbol_table).declared_var_type
 
   def is_val_mutable(self, symbol_table):
     """
@@ -1464,7 +1485,7 @@ class VariableTargetAst(TargetAst):
     symbol = symbol_table[self.var_identifier]
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign to non-variable %r' % self.var_identifier)
-    return symbol.var_type
+    return symbol.asserted_var_type
 
   def is_ptr_mutable(self, symbol_table):
     """
@@ -1566,6 +1587,87 @@ class MemberTargetAst(TargetAst):
     return 'MemberTargetAst(parent_target=%r, member_identifier=%r)' % (self.parent_target, self.member_identifier)
 
 
+class TypeAst(AbstractSyntaxTree):
+  """
+  Type.
+  """
+  def __init__(self, pos):
+    """
+    :param TreePosition pos:
+    """
+    super().__init__(pos)
+
+  def make_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    raise NotImplementedError()
+
+  def __repr__(self):
+    return 'TypeAst()'
+
+
+class IdentifierTypeAst(TypeAst):
+  """
+  IdentifierType -> identifier.
+  """
+  def __init__(self, pos, type_identifier):
+    """
+    :param TreePosition pos:
+    :param str type_identifier:
+    """
+    super().__init__(pos)
+    self.type_identifier = type_identifier
+
+  def make_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    if self.type_identifier not in symbol_table:
+      self.raise_error('Unknown type identifier %r' % self.type_identifier)
+    type_symbol = symbol_table[self.type_identifier]
+    if not isinstance(type_symbol, TypeSymbol):
+      self.raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)))
+    return type_symbol.type
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'IdentifierType(type_identifier=%r)' % self.type_identifier
+
+
+class UnionTypeAst(TypeAst):
+  """
+  IdentifierType -> identifier.
+  """
+  def __init__(self, pos, variant_types):
+    """
+    :param TreePosition pos:
+    :param list[TypeAst] variant_types:
+    """
+    super().__init__(pos)
+    self.variant_types = variant_types
+
+  def make_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    if not all(isinstance(variant_type, IdentifierTypeAst) for variant_type in self.variant_types):
+      self.raise_error('Union types cannot be nested')
+    concrete_variant_types = [variant_type.make_type(symbol_table=symbol_table) for variant_type in self.variant_types]
+    return UnionType(concrete_variant_types, list(range(len(concrete_variant_types))))
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'UnionTypeAst(variant_types=%r)' % self.variant_types
+
+
 class AnnotationAst(AbstractSyntaxTree):
   """
   Annotation.
@@ -1619,13 +1721,13 @@ def parse_char(value):
 
 SLEEPY_LEXER = LexerGenerator(
   [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')',
-    '->', '@', 'bool_op', 'sum_op', 'prod_op', '=', 'identifier',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '|',
+    '->', '@', 'cmp_op', 'sum_op', 'prod_op', '=', 'identifier',
     'int', 'double', 'char',
     None, None
   ], [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)',
-    '\\->', '@', '==|!=|<=?|>=?', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
+    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\|',
+    '\\->', '@', '==|!=|<=?|>=?|is', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
     '#[^\n]*\n', '[ \n\t]+'
   ])
@@ -1645,7 +1747,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'if', 'Expr', 'Scope'),
   Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'),
   Production('Stmt', 'while', 'Expr', '{', 'StmtList', '}'),
-  Production('Expr', 'Expr', 'bool_op', 'SumExpr'),
+  Production('Expr', 'Expr', 'cmp_op', 'SumExpr'),
   Production('Expr', 'SumExpr'),
   Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'),
   Production('SumExpr', 'ProdExpr'),
@@ -1678,38 +1780,40 @@ SLEEPY_GRAMMAR = Grammar(
   Production('ExprList', 'ExprList+'),
   Production('ExprList+', 'Expr'),
   Production('ExprList+', 'Expr', ',', 'ExprList+'),
-  Production('Type', 'identifier'),
+  Production('Type', 'Type', '|', 'IdentifierType'),
+  Production('Type', 'IdentifierType'),
+  Production('IdentifierType', 'identifier'),
+  Production('IdentifierType', '(', 'Type', ')'),
   Production('ReturnType'),
   Production('ReturnType', '->', 'AnnotationList', 'Type'),
-  Production('Op', 'bool_op'),
+  Production('Op', 'cmp_op'),
   Production('Op', 'sum_op'),
   Production('Op', 'prod_op')
 )
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
   syn_attrs={
-    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'type_identifier', 'annotation_list',
+    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
     'op', 'number'},
   prod_attr_rules=[
     {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, AbstractScopeAst(_pos, stmt_list(1)))},
     {'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list(2))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier, ast: (
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
       FunctionDeclarationAst(
-        _pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
-        type_identifier(6), annotation_list(6), ast(7)))},
-    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, type_identifier, ast: (
+        _pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6),
+        ast(7)))},
+    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast: (
       FunctionDeclarationAst(
-        _pos, op(2), identifier_list(4), type_list(4), annotation_list(4), type_identifier(6),
-        annotation_list(6), ast(7)))},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, type_identifier: (
+        _pos, op(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6), ast(7)))},
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
-        type_identifier(6), annotation_list(6), None))},
+        ast(6), annotation_list(6), None))},
     {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
     {'ast': lambda _pos, identifier, val_list: CallStatementAst(_pos, identifier(1), val_list(3))},
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
-    {'ast': lambda _pos, ast, type_identifier: AssignStatementAst(_pos, ast(2), ast(4), type_identifier(1))},
+    {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(2), ast(4), ast(1))},
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(1), ast(3), None)},
     {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), None)},
     {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), ast(5))},
@@ -1739,27 +1843,30 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
     {
       'identifier_list': lambda identifier: [identifier(3)],
-      'type_list': lambda type_identifier: [type_identifier(2)],
+      'type_list': lambda ast: [ast(2)],
       'annotation_list': lambda annotation_list: [annotation_list(1)]
     },
     {
       'identifier_list': lambda identifier, identifier_list: [identifier(3)] + identifier_list(5),
-      'type_list': lambda type_identifier, type_list: [type_identifier(2)] + type_list(5),
+      'type_list': lambda ast, type_list: [ast(2)] + type_list(5),
       'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(5)
     },
     {'val_list': []},
     {'val_list': 'val_list.1'},
     {'val_list': lambda ast: [ast(1)]},
     {'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
-    {'type_identifier': 'identifier.1'},
-    {'type_identifier': None, 'annotation_list': None},
-    {'type_identifier': 'type_identifier.3', 'annotation_list': 'annotation_list.2'},
+    {'ast': lambda _pos, ast: UnionTypeAst(_pos, [ast(1), ast(3)])},
+    {'ast': 'ast.1'},
+    {'ast': lambda _pos, identifier: IdentifierTypeAst(_pos, identifier(1))},
+    {'ast': 'ast.2'},
+    {'ast': None, 'annotation_list': None},
+    {'ast': 'ast.3', 'annotation_list': 'annotation_list.2'},
     {'op': 'op.1'},
     {'op': 'op.1'},
     {'op': 'op.1'}
   ],
   terminal_attr_rules={
-    'bool_op': {'op': lambda value: value},
+    'cmp_op': {'op': lambda value: value},
     'sum_op': {'op': lambda value: value},
     'prod_op': {'op': lambda value: value},
     'identifier': {'identifier': lambda value: value},

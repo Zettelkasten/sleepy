@@ -9,8 +9,9 @@ from llvmlite import ir
 from nose.tools import assert_equal, assert_almost_equal, assert_raises
 
 from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnStatementAst, \
-  BinaryOperatorExpressionAst, ConstantExpressionAst, VariableExpressionAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER, \
-  add_preamble_to_ast
+  BinaryOperatorExpressionAst, ConstantExpressionAst, VariableExpressionAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, \
+  SLEEPY_PARSER, \
+  add_preamble_to_ast, IdentifierTypeAst
 from sleepy.grammar import TreePosition, SemanticError
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, SymbolTable, make_initial_symbol_table, \
@@ -1079,6 +1080,80 @@ def test_if_scope_leak_var():
     """
     with assert_raises(SemanticError):
       _test_compile_program(engine, program)
+
+      
+def test_union():
+  with make_execution_engine() as engine:
+    program = """
+    struct MathError { }
+    func safe_sqrt(Double x) -> Double|MathError {
+      if x < 0.0 {
+        return MathError();
+      }
+      extern_func sqrt(Double x) -> Double;
+      return sqrt(x);
+    }
+    func main() {
+      a = safe_sqrt(-123.0);
+      b = safe_sqrt(1.0);
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main()
+
+
+def test_union_is_operator():
+  with make_execution_engine() as engine:
+    program = """
+    struct Foo { Int lol = 1; }  # 1
+    struct Bar { Int fav = 42; }  # 2
+    func main_foo() -> Int {
+      Bar|Foo value = Foo(0);
+      if value is Foo { return 1; }
+      if value is Bar { return 2; }
+      return 0;
+    }
+    func main_bar() -> Int {
+      Bar|Foo value = Bar(-123);
+      if value is Foo { return 1; }
+      if value is Bar { return 2; }
+      return 0;
+    }
+    """
+    main_foo = _test_compile_program(engine, program, main_func_identifier='main_foo')
+    main_bar = _test_compile_program(engine, program, main_func_identifier='main_bar')
+    assert_equal(main_foo(), 1)
+    assert_equal(main_bar(), 2)
+
+
+def test_assign_to_union():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      Double|Int sth = 42;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main()
+
+
+def test_assign_to_union2():
+  with make_execution_engine() as engine:
+    program = """
+    struct MathError { }
+    func safe_sqrt(Double x) -> Double|MathError {
+      if x < 0.0 { return MathError(); }
+      extern_func sqrt(Double x) -> Double;
+      return sqrt(x);
+    }
+    func main() {
+      a = safe_sqrt(-123.0);
+      a = 5.0;
+      Double|MathError a = MathError();  # can also explicitly specify type again
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main()
 
 
 if __name__ == "__main__":
