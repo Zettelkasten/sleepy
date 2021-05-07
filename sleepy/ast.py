@@ -524,9 +524,7 @@ class FunctionDeclarationAst(StatementAst):
     body_builder = self.body_scope.build_scope_body_expr_ir(
       module=module, builder=body_builder, scope_symbol_table=body_symbol_table)
     # maybe add implicit return
-    if body_builder is not None:
-      should_return = not concrete_func.is_inline or (body_builder.block != inline_return_collect_block)
-      if should_return and not body_builder.block.is_terminated:
+    if body_builder is not None and not is_block_terminated(body_builder.block, symbol_table=body_symbol_table):
         return_pos = TreePosition(
           self.pos.word,
           self.pos.from_pos if len(self.body_scope.stmt_list) == 0 else self.body_scope.stmt_list[-1].pos.to_pos,
@@ -765,7 +763,7 @@ class StructDeclarationAst(StatementAst):
       constructor_builder.ret(self_ir_alloca)
     else:  # pass by value
       constructor_builder.ret(constructor_builder.load(self_ir_alloca, 'self'))
-    assert constructor_block.is_terminated
+    assert is_block_terminated(constructor_block, symbol_table=symbol_table)
 
   def build_expr_ir(self, module, builder, symbol_table):
     """
@@ -947,18 +945,20 @@ class IfStatementAst(StatementAst):
     true_builder = self.true_scope.build_scope_body_expr_ir(
       module, builder=true_builder, scope_symbol_table=true_symbol_table)
     true_block = true_builder.block
+    true_terminated = is_block_terminated(true_block, symbol_table=true_symbol_table)
     false_builder = self.false_scope.build_scope_var_expr_ir(
       module=module, builder=false_builder, parent_symbol_table=symbol_table, scope_symbol_table=false_symbol_table)
     false_builder = self.false_scope.build_scope_body_expr_ir(
       module, builder=false_builder, scope_symbol_table=false_symbol_table)
     false_block = false_builder.block
+    false_terminated = is_block_terminated(false_block, symbol_table=false_symbol_table)
 
-    if not true_block.is_terminated or not false_block.is_terminated:
+    if not (true_terminated and false_terminated):
       continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
       continue_builder = ir.IRBuilder(continue_block)
-      if not true_block.is_terminated:
+      if not true_terminated:
         true_builder.branch(continue_block)
-      if not false_block.is_terminated:
+      if not false_terminated:
         false_builder.branch(continue_block)
       return continue_builder
     else:
@@ -1806,3 +1806,17 @@ def add_preamble_to_ast(program_ast):
   assert isinstance(preamble_ast, TopLevelStatementAst)
   return TopLevelStatementAst(program_ast.pos, AbstractScopeAst(
     preamble_ast.pos, preamble_ast.root_scope.stmt_list + program_ast.root_scope.stmt_list))
+
+
+def is_block_terminated(block, symbol_table):
+  """
+  :param ir.Block block:
+  :param SymbolTable symbol_table:
+  :rtype: bool
+  """
+  if block.is_terminated:
+    return True
+  # could be inlined, then we are also terminated if inside the collect_return_block
+  if symbol_table.current_func.is_inline and block == symbol_table.current_func_inline_return_collect_block:
+    return True
+  return False
