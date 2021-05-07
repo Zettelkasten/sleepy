@@ -1050,7 +1050,7 @@ def test_func_inline_own_symbol_table():
 def test_if_scope():
   with make_execution_engine() as engine:
     program = """
-    func main(Bool case) -> Int {
+    func main(Bool case) -> Bool {
       Bool result = False();
       if case {
         Bool bar = True();
