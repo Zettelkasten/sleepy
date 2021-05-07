@@ -207,19 +207,17 @@ class AbstractScopeAst(AbstractSyntaxTree):
       expr.build_symbol_table(symbol_table=scope_symbol_table)
     return scope_symbol_table
 
-  def build_scope_var_expr_ir(self, module, builder, parent_symbol_table, scope_symbol_table):
+  def build_scope_var_expr_ir(self, module, builder, scope_symbol_table):
     """
     :param ir.Module module:
     :param ir.IRBuilder builder:
-    :param SymbolTable parent_symbol_table:
     :param SymbolTable scope_symbol_table:
     :rtype: ir.IRBuilder
     """
-    new_scope_vars = [
-      identifier for identifier in scope_symbol_table.current_scope_identifiers
-      if isinstance(scope_symbol_table[identifier], VariableSymbol)
-      if identifier not in parent_symbol_table.current_scope_identifiers]
-    for identifier_name in new_scope_vars:
+    assert all(
+      var_identifier in scope_symbol_table.current_scope_identifiers
+      for var_identifier in scope_symbol_table.current_scope_new_declared_var_identifiers)
+    for identifier_name in scope_symbol_table.current_scope_new_declared_var_identifiers:
       var_symbol = scope_symbol_table[identifier_name]
       assert isinstance(var_symbol, VariableSymbol)
       assert var_symbol.ir_alloca is None
@@ -486,7 +484,9 @@ class FunctionDeclarationAst(StatementAst):
         concrete_func.arg_identifiers, concrete_func.arg_types, concrete_func.arg_mutables):
       body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
       assert arg_identifier not in body_symbol_table.current_scope_identifiers
+      assert arg_identifier not in body_symbol_table.current_scope_new_declared_var_identifiers
       body_symbol_table.current_scope_identifiers.append(arg_identifier)
+      body_symbol_table.current_scope_new_declared_var_identifiers.append(arg_identifier)
     self.body_scope.build_scope_symbol_table(scope_symbol_table=body_symbol_table)
     return body_symbol_table
 
@@ -510,8 +510,7 @@ class FunctionDeclarationAst(StatementAst):
 
     # create all function body variables
     body_builder = self.body_scope.build_scope_var_expr_ir(
-      module=module, builder=body_builder, parent_symbol_table=parent_symbol_table,
-      scope_symbol_table=body_symbol_table)
+      module=module, builder=body_builder, scope_symbol_table=body_symbol_table)
     # set function argument values
     for arg_identifier, ir_arg in zip(concrete_func.arg_identifiers, ir_func_args):
       assert arg_identifier in body_symbol_table  # set in _build_body_symbol_table
@@ -855,6 +854,7 @@ class AssignStatementAst(StatementAst):
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
       symbol = VariableSymbol(None, var_type=val_type, mutable=declared_mutable)
       symbol_table[var_identifier] = symbol
+      symbol_table.current_scope_new_declared_var_identifiers.append(var_identifier)
       symbol_table.current_scope_identifiers.append(var_identifier)
     else:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
@@ -941,13 +941,13 @@ class IfStatementAst(StatementAst):
     self.false_scope.build_scope_symbol_table(scope_symbol_table=false_symbol_table)
 
     true_builder = self.true_scope.build_scope_var_expr_ir(
-      module=module, builder=true_builder, parent_symbol_table=symbol_table, scope_symbol_table=true_symbol_table)
+      module=module, builder=true_builder, scope_symbol_table=true_symbol_table)
     true_builder = self.true_scope.build_scope_body_expr_ir(
       module, builder=true_builder, scope_symbol_table=true_symbol_table)
     true_block = true_builder.block
     true_terminated = is_block_terminated(true_block, symbol_table=true_symbol_table)
     false_builder = self.false_scope.build_scope_var_expr_ir(
-      module=module, builder=false_builder, parent_symbol_table=symbol_table, scope_symbol_table=false_symbol_table)
+      module=module, builder=false_builder, scope_symbol_table=false_symbol_table)
     false_builder = self.false_scope.build_scope_body_expr_ir(
       module, builder=false_builder, scope_symbol_table=false_symbol_table)
     false_block = false_builder.block
@@ -1492,7 +1492,7 @@ class VariableTargetAst(TargetAst):
     assert self.var_identifier in symbol_table
     symbol = symbol_table[self.var_identifier]
     assert isinstance(symbol, VariableSymbol)
-    assert symbol.ir_alloca is not None  # ir_alloca is set in FunctionDeclarationAst
+    assert symbol.ir_alloca is not None  # ir_alloca is set in AbstractScopeAst
     return symbol.ir_alloca
 
   def __repr__(self):

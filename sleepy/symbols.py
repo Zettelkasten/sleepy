@@ -351,6 +351,7 @@ class SymbolTable:
       self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
       self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
+    self.current_scope_new_declared_var_identifiers = []  # type: List[str]
     if self.current_func is None or not self.current_func.is_inline:
       assert self.current_func_inline_return_ir_alloca is self.current_func_inline_return_collect_block is None
 
@@ -386,6 +387,7 @@ class SymbolTable:
     :param ConcreteFunction new_current_func:
     :rtype: SymbolTable
     """
+    assert new_current_func is not None
     return SymbolTable(self, copy_new_current_func=new_current_func)
 
   def __repr__(self):
