@@ -563,6 +563,35 @@ class SymbolTable:
     return ir_func_name
 
 
+class CodegenContext:
+  """
+  Used to keep track where code is currently generated, as well as its current state
+  (the current declared symbols, the builder emitting more ir, etc.).
+  """
+  def __init__(self, symbol_table, builder):
+    """
+    :param SymbolTable symbol_table:
+    :param ir.IRBuilder|None builder:
+    """
+    self.symbol_table = symbol_table
+    self.builder = builder
+
+  @property
+  def emits_ir(self):
+    """
+    :rtype: bool
+    """
+    return self.builder is not None
+
+  @property
+  def module(self):
+    """
+    :rtype: ir.Module
+    """
+    assert self.emits_ir
+    return self.builder.module
+
+
 def _make_builtin_op_arg_names(op, op_arg_types):
   """
   :param str op:
