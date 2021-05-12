@@ -736,6 +736,7 @@ class AssignStatementAst(StatementAst):
     else:
       declared_type = None
     val_type = self.var_val.make_val_type(symbol_table=symbol_table)
+    orig_val_type = val_type
     if val_type == SLEEPY_VOID:
       self.raise_error('Cannot assign void to variable')
     if declared_type is not None:
@@ -780,7 +781,7 @@ class AssignStatementAst(StatementAst):
 
     if context.emits_ir:
       ir_val = self.var_val.make_ir_val(symbol_table=symbol_table, context=context)
-      ir_val = make_implicit_cast_to_ir_val(val_type, target_type, ir_val, context=context)
+      ir_val = make_implicit_cast_to_ir_val(orig_val_type, target_type, ir_val, context=context)
       ir_ptr = self.var_target.make_ir_ptr(symbol_table=symbol_table, context=context)
       context.builder.store(ir_val, ir_ptr)
 
