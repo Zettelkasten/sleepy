@@ -138,7 +138,7 @@ def test_lerp():
       return x1 + diff * time;
     }
     """
-    lerp = _test_compile_program(engine, program, main_func_identifier='lerp')
+    lerp = _test_compile_program(engine, program, main_func_identifier='lerp', add_preamble=False)
     assert_equal(lerp(0.0, 1.0, 0.3), 0.3)
     assert_equal(lerp(7.5, 3.2, 0.0), 7.5)
     assert_equal(lerp(7.5, 3.2, 1.0), 3.2)
@@ -154,7 +154,7 @@ def test_call_other_func():
       return square(x1 - y1) + square(x2 - y2);
     }
     """
-    dist_squared = _test_compile_program(engine, program, main_func_identifier='dist_squared')
+    dist_squared = _test_compile_program(engine, program, main_func_identifier='dist_squared', add_preamble=False)
     assert_almost_equal(dist_squared(0.0, 0.0, 1.0, 0.0), 1.0)
     assert_almost_equal(dist_squared(3.0, 0.0, 0.0, 4.0), 25.0)
     assert_almost_equal(dist_squared(1.0, 2.0, 3.0, 4.0), (1.0 - 3.0)**2 + (2.0 - 4.0)**2)
@@ -170,7 +170,7 @@ def test_global_var():
       return 4/3 * PI * cube(radius);
     }
     """
-    ball_volume = _test_compile_program(engine, program, main_func_identifier='ball_volume')
+    ball_volume = _test_compile_program(engine, program, main_func_identifier='ball_volume', add_preamble=False)
     for radius in [0.0, 2.0, 3.0, 124.343]:
       assert_almost_equal(ball_volume(radius), 4.0 / 3.0 * 3.1415 * radius ** 3.0)
 
@@ -184,7 +184,7 @@ def test_simple_mutable_assign():
       return x;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = _test_compile_program(engine, program, add_preamble=False)
     assert_equal(main(3), 3 + 2)
 
 
@@ -203,7 +203,7 @@ def test_nested_func_call():
       return volume1 / volume2;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = _test_compile_program(engine, program, add_preamble=False)
     with warnings.catch_warnings():
       warnings.filterwarnings('ignore')
       for radius1 in [0.0, 2.0, 3.0, 124.343]:
@@ -223,7 +223,7 @@ def test_simple_if():
       }
     }
     """
-    branch = _test_compile_program(engine, program, main_func_identifier='branch')
+    branch = _test_compile_program(engine, program, main_func_identifier='branch', add_preamble=False)
     assert_equal(branch(0, 42, -13), -13)
     assert_equal(branch(1, 42, -13), 42)
 
@@ -239,7 +239,7 @@ def test_simple_if_max():
       }
     }
     """
-    max_ = _test_compile_program(engine, program, main_func_identifier='max')
+    max_ = _test_compile_program(engine, program, main_func_identifier='max', add_preamble=False)
     assert_equal(max_(13, 18), 18)
     assert_equal(max_(-3, 4.23), 4.23)
     assert_equal(max_(0, 0), 0)
@@ -249,7 +249,7 @@ def test_simple_if_max():
 def test_simple_if_abs():
   with make_execution_engine() as engine:
     program = """ func abs(Double x) -> Double { if x < 0.0 { return -x; } else { return x; } } """
-    abs_ = _test_compile_program(engine, program, main_func_identifier='abs')
+    abs_ = _test_compile_program(engine, program, main_func_identifier='abs', add_preamble=False)
     assert_equal(abs_(3.1415), 3.1415)
     assert_equal(abs_(0.0), 0.0)
     assert_equal(abs_(-5.1), 5.1)
@@ -271,7 +271,7 @@ def test_if_assign():
       return res;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = _test_compile_program(engine, program, add_preamble=False)
     assert_equal(main(0, 4, 6), 10)
     assert_equal(main(1, 5, -3), 8)
     assert_equal(main(2, 0, 1), 1)
@@ -289,7 +289,7 @@ def test_simple_simple_recursion_factorial():
       }
     }
     """
-    fac = _test_compile_program(engine, program, main_func_identifier='fac')
+    fac = _test_compile_program(engine, program, main_func_identifier='fac', add_preamble=False)
     assert_equal(fac(3), 3 * 2 * 1)
     assert_equal(fac(9), math.prod(range(1, 9 + 1)))
     assert_equal(fac(0), 0)
@@ -314,7 +314,7 @@ def test_simple_simple_recursion_fibonacci():
       }
     }
     """
-    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci')
+    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', add_preamble=False)
     for n in range(1, 15):
       assert_equal(fib(n), _reference_fibonacci(n))
 
@@ -335,7 +335,7 @@ def test_simple_simple_iterative_fibonacci():
       return current_fib;
     }
     """
-    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci')
+    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', add_preamble=False)
     for n in list(range(1, 15)) + [20]:
       assert_equal(fib(n), _reference_fibonacci(n))
 
@@ -350,7 +350,7 @@ def test_extern_func():
     }
     """
 
-    cos_ = _test_compile_program(engine, program)
+    cos_ = _test_compile_program(engine, program, add_preamble=False)
     for x in [0, 1, 2, 3, math.pi]:
       assert_almost_equal(cos_(x), math.cos(x))
 
