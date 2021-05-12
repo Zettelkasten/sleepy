@@ -90,6 +90,8 @@ class AbstractSyntaxTree:
     :rtype: ir.values.Value|None
     """
     assert context.emits_ir
+    self._check_func_call_symbol_table(
+      func_identifier=func_identifier, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
     assert func_identifier in symbol_table
     func_symbol = symbol_table[func_identifier]
     if isinstance(func_symbol, TypeSymbol):

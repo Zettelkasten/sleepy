@@ -651,7 +651,7 @@ def test_call_mutable_with_const_var():
     program = """
     @RefType struct Counter { Int val = 0; }
     func inc(@Mutable Counter c) { c.val = c.val + 1; }
-    func inc_wrapper(Counter c) { inc(c); }
+    func inc_wrapper(Counter c) { inc(c); }  # <-- cannot call a function taking sth mutable with const argument!
     func main() {
       c = Counter(0);
       inc_wrapper(c);
