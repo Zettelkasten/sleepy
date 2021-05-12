@@ -64,25 +64,6 @@ do_stuff(7.5);
   _test_parse_ast(program3)
 
 
-def _get_py_func_from_ast(engine, ast):
-  """
-  :param ExecutionEngine engine:
-  :param FunctionDeclarationAst ast:
-  :rtype: Callable
-  """
-  assert isinstance(ast, FunctionDeclarationAst)
-  module = ir.Module(name='_test_last_declared_func')
-  symbol_table = make_initial_symbol_table()  # type: SymbolTable
-  ast.build_symbol_table(symbol_table=symbol_table)
-  build_initial_module_ir(module=module, symbol_table=symbol_table)
-  ast.build_expr_ir(module=module, builder=None, symbol_table=symbol_table)
-  assert ast.identifier in symbol_table
-  func_symbol = symbol_table[ast.identifier]
-  assert isinstance(func_symbol, FunctionSymbol)
-  compile_ir(engine, module)
-  return func_symbol.get_single_concrete_func().make_py_func(engine)
-
-
 def _test_compile_program(engine, program, main_func_identifier='main', optimize=True, add_preamble=True):
   """
   :param ExecutionEngine engine:
