@@ -10,8 +10,8 @@ from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
-  make_initial_symbol_table, StructType, ConcreteFunction, build_initial_module_ir, UnionType, can_implicit_cast_to, \
-  make_implicit_cast_to_ir_val, make_ir_val_is_type
+  StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
+  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is'}
 
@@ -81,14 +81,15 @@ class AbstractSyntaxTree:
 
     return concrete_func
 
-  def _make_func_call_ir(self, func_identifier, func_arg_exprs, builder, symbol_table):
+  def _make_func_call_ir(self, func_identifier, func_arg_exprs, symbol_table, context):
     """
     :param str func_identifier:
     :param list[ExpressionAst] func_arg_exprs:
-    :param IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: tuple[ir.values.Value|None,IRBuilder]
+    :param CodegenContext context:
+    :rtype: ir.values.Value|None
     """
+    assert context.emits_ir
     assert func_identifier in symbol_table
     func_symbol = symbol_table[func_identifier]
     if isinstance(func_symbol, TypeSymbol):
@@ -100,17 +101,17 @@ class AbstractSyntaxTree:
     assert len(concrete_func.arg_types) == len(func_arg_exprs)
     ir_func_args = []  # type: List[ir.values.Value]
     for func_arg_expr in func_arg_exprs:
-      ir_func_arg, builder = func_arg_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
+      ir_func_arg = func_arg_expr.make_ir_val(symbol_table=symbol_table, context=context)
       ir_func_args.append(ir_func_arg)
     assert len(ir_func_args) == len(func_arg_exprs)
     if concrete_func.is_inline:
       assert callable(concrete_func.make_inline_func_call_ir)
-      return concrete_func.make_inline_func_call_ir(ir_func_args=ir_func_args, body_builder=builder)
+      return concrete_func.make_inline_func_call_ir(ir_func_args=ir_func_args, caller_context=context)
     else:
       ir_func = concrete_func.ir_func
       assert ir_func is not None
       assert len(ir_func.args) == len(func_arg_exprs)
-      return builder.call(ir_func, ir_func_args, name='call_%s' % func_identifier), builder
+      return context.builder.call(ir_func, ir_func_args, name='call_%s' % func_identifier)
 
   def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
     """
@@ -139,18 +140,10 @@ class StatementAst(AbstractSyntaxTree):
     """
     super().__init__(pos)
 
-  def build_symbol_table(self, symbol_table):
+  def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
-    """
-    raise NotImplementedError()
-
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable symbol_table:
-    :rtype: ir.IRBuilder
+    :param CodegenContext context:
     """
     raise NotImplementedError()
 
@@ -193,42 +186,13 @@ class AbstractScopeAst(AbstractSyntaxTree):
     super().__init__(pos)
     self.stmt_list = stmt_list
 
-  def build_scope_symbol_table(self, scope_symbol_table):
+  def build_scope_ir(self, scope_symbol_table, scope_context):
     """
     :param SymbolTable scope_symbol_table:
-    :rtype: SymbolTable
+    :param CodegenContext scope_context:
     """
-    for expr in self.stmt_list:
-      expr.build_symbol_table(symbol_table=scope_symbol_table)
-    return scope_symbol_table
-
-  def build_scope_var_expr_ir(self, module, builder, scope_symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable scope_symbol_table:
-    :rtype: ir.IRBuilder
-    """
-    assert all(
-      var_identifier in scope_symbol_table.current_scope_identifiers
-      for var_identifier in scope_symbol_table.current_scope_new_declared_var_identifiers)
-    for identifier_name in scope_symbol_table.current_scope_new_declared_var_identifiers:
-      var_symbol = scope_symbol_table[identifier_name]
-      assert isinstance(var_symbol, VariableSymbol)
-      assert var_symbol.ir_alloca is None
-      var_symbol.ir_alloca = builder.alloca(var_symbol.declared_var_type.ir_type, name=identifier_name)
-    return builder
-
-  def build_scope_body_expr_ir(self, module, builder, scope_symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable scope_symbol_table:
-    :rtype: ir.IRBuilder
-    """
-    for expr in self.stmt_list:
-      builder = expr.build_expr_ir(module=module, builder=builder, symbol_table=scope_symbol_table)
-    return builder
+    for stmt in self.stmt_list:
+      stmt.build_ir(symbol_table=scope_symbol_table, context=scope_context)
 
   def __repr__(self):
     """
@@ -237,7 +201,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
     return 'AbstractScopeAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
 
 
-class TopLevelStatementAst(StatementAst):
+class TopLevelAst(AbstractSyntaxTree):
   """
   TopLevelExpr.
   """
@@ -250,21 +214,6 @@ class TopLevelStatementAst(StatementAst):
     super().__init__(pos)
     self.root_scope = root_scope
 
-  def build_symbol_table(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    """
-    pass
-
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable symbol_table:
-    :rtype: ir.IRBuilder
-    """
-    return builder
-
   def make_module_ir_and_symbol_table(self, module_name):
     """
     :param str module_name:
@@ -275,20 +224,16 @@ class TopLevelStatementAst(StatementAst):
     ir_io_func = ir.Function(module, io_func_type, name='io')
     root_block = ir_io_func.append_basic_block(name='entry')
     root_builder = ir.IRBuilder(root_block)
+    symbol_table = SymbolTable()
+    context = CodegenContext(builder=root_builder)
 
-    symbol_table = make_initial_symbol_table()
-    self.root_scope.build_scope_symbol_table(scope_symbol_table=symbol_table)
-
-    build_initial_module_ir(module=module, symbol_table=symbol_table)
+    build_initial_ir(symbol_table=symbol_table, context=context)
     assert symbol_table.ir_func_malloc is not None and symbol_table.ir_func_free is not None
-    declared_vars = [
-      identifier for identifier in symbol_table.current_scope_identifiers
-      if isinstance(symbol_table[identifier], VariableSymbol)]
-    if len(declared_vars) > 0:
-      self.raise_error('Cannot declare variables in top-level scope, but got: %r' % ', '.join(declared_vars))
-    self.root_scope.build_scope_body_expr_ir(module=module, builder=root_builder, scope_symbol_table=symbol_table)
-    assert not root_block.is_terminated
+    self.root_scope.build_scope_ir(scope_symbol_table=symbol_table, scope_context=context)
+
+    assert not context.is_terminated
     root_builder.ret_void()
+    context.is_terminated = True
 
     return module, symbol_table
 
@@ -296,7 +241,7 @@ class TopLevelStatementAst(StatementAst):
     """
     :rtype: str
     """
-    return 'TopLevelStatementAst(%s)' % self.root_scope
+    return 'TopLevelAst(%s)' % self.root_scope
 
 
 class FunctionDeclarationAst(StatementAst):
@@ -364,9 +309,10 @@ class FunctionDeclarationAst(StatementAst):
             arg_annotation.identifier, ', '.join(self.allowed_arg_annotation_identifiers)))
     return arg_types
 
-  def build_symbol_table(self, symbol_table):
+  def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     """
     arg_types = self.make_arg_types(symbol_table=symbol_table)
     if self.return_type is None:
@@ -394,13 +340,61 @@ class FunctionDeclarationAst(StatementAst):
       for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
     if self.is_inline and self.is_extern:
       self.raise_error('Extern function %r cannot be inlined' % self.identifier)
-    func_symbol.add_concrete_func(
-      ConcreteFunction(
-        None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
-        arg_types=arg_types, arg_mutables=arg_mutables, arg_type_assertions=arg_types, is_inline=self.is_inline))
-    # build body symbols to check their types
-    if not self.is_extern:
-      self._build_body_symbol_table(parent_symbol_table=symbol_table)
+    concrete_func = ConcreteFunction(
+      None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
+      arg_types=arg_types, arg_mutables=arg_mutables, arg_type_assertions=arg_types, is_inline=self.is_inline)
+    if context.emits_ir and not self.is_inline:
+      ir_func_type = concrete_func.make_ir_function_type()
+      ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
+      concrete_func.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
+
+    func_symbol.add_concrete_func(concrete_func)
+    if self.is_extern:
+      return
+
+    if self.is_inline:
+      def make_inline_func_call_ir(ir_func_args, caller_context):
+        """
+        :param list[ir.values.Value] ir_func_args:
+        :param CodegenContext caller_context:
+        :rtype: ir.values.Value|None
+        """
+        assert len(ir_func_args) == len(self.arg_identifiers)
+        assert caller_context.emits_ir
+        assert not caller_context.is_terminated
+        inline_context = CodegenContext(caller_context.builder)
+        if concrete_func.return_type == SLEEPY_VOID:
+          return_val_ir_alloca = None
+        else:
+          return_val_ir_alloca = inline_context.builder.alloca(
+            concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
+        collect_block = inline_context.builder.append_basic_block('collect_return_%s_block' % self.identifier)
+        self._build_body_ir(
+          parent_symbol_table=symbol_table, body_context=inline_context, ir_func_args=ir_func_args,
+          inline_return_collect_block=collect_block, inline_return_ir_alloca=return_val_ir_alloca)
+        assert inline_context.is_terminated
+        assert not collect_block.is_terminated
+        collect_context = CodegenContext(ir.IRBuilder(collect_block))
+        if concrete_func.return_type == SLEEPY_VOID:
+          return_val = None
+        else:
+          return_val = collect_context.builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
+        caller_context.builder = collect_context.builder
+        assert not caller_context.is_terminated
+        return return_val
+
+      concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
+      # check symbol tables without emitting ir
+      self._build_body_ir(parent_symbol_table=symbol_table, body_context=CodegenContext(None))
+    else:
+      assert not self.is_inline
+      if context.emits_ir:
+        body_block = concrete_func.ir_func.append_basic_block(name='entry')
+        body_context = CodegenContext(ir.IRBuilder(body_block))
+      else:
+        body_context = CodegenContext(None)
+      self._build_body_ir(
+        parent_symbol_table=symbol_table, body_context=body_context, ir_func_args=concrete_func.ir_func.args)
 
   def _get_concrete_func(self, parent_symbol_table):
     """
@@ -414,121 +408,54 @@ class FunctionDeclarationAst(StatementAst):
     assert func_symbol.has_concrete_func(arg_types)
     return func_symbol.get_concrete_func(arg_types)
 
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable symbol_table:
-    :rtype: ir.IRBuilder
-    """
-    concrete_func = self._get_concrete_func(parent_symbol_table=symbol_table)
-    if not self.is_inline:
-      ir_func_type = concrete_func.make_ir_function_type()
-      ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
-      concrete_func.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
-
-    if self.is_extern:
-      return builder
-
-    if self.is_inline:
-      def make_inline_func_call_ir(ir_func_args, body_builder):
-        """
-        :param list[ir.values.Value] ir_func_args:
-        :param ir.IRBuilder body_builder:
-        :rtype: (ir.values.Value|None, ir.IRBuilder)
-        """
-        assert self.is_inline
-        assert len(ir_func_args) == len(self.arg_identifiers)
-        if concrete_func.return_type == SLEEPY_VOID:
-          return_val_ir_alloca = None
-        else:
-          return_val_ir_alloca = body_builder.alloca(
-            concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
-        collect_block = body_builder.append_basic_block('collect_return_%s_block' % self.identifier)
-        self._build_body_ir(
-          ir_func_args=ir_func_args, module=module, body_builder=body_builder, parent_symbol_table=symbol_table,
-          inline_return_collect_block=collect_block, inline_return_ir_alloca=return_val_ir_alloca)
-        collect_builder = ir.IRBuilder(collect_block)
-        if concrete_func.return_type == SLEEPY_VOID:
-          return_val = None
-        else:
-          return_val = collect_builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
-        return return_val, collect_builder
-
-      concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
-    else:
-      assert not self.is_inline
-      block = concrete_func.ir_func.append_basic_block(name='entry')
-      concrete_func = self._get_concrete_func(parent_symbol_table=symbol_table)
-      body_builder = ir.IRBuilder(block)
-      self._build_body_ir(
-        ir_func_args=concrete_func.ir_func.args, module=module, body_builder=body_builder, parent_symbol_table=symbol_table)
-
-    return builder
-
-  def _build_body_symbol_table(self, parent_symbol_table):
-    """
-    :param SymbolTable parent_symbol_table:
-    :rtype: SymbolTable
-    """
-    assert not self.is_extern
-    concrete_func = self._get_concrete_func(parent_symbol_table=parent_symbol_table)
-    assert self.is_inline == concrete_func.is_inline
-    body_symbol_table = parent_symbol_table.copy_with_new_current_func(concrete_func)
-    for arg_identifier, arg_type, arg_mutable in zip(
-        concrete_func.arg_identifiers, concrete_func.arg_types, concrete_func.arg_mutables):
-      body_symbol_table[arg_identifier] = VariableSymbol(None, arg_type, arg_mutable)
-      assert arg_identifier not in body_symbol_table.current_scope_identifiers
-      assert arg_identifier not in body_symbol_table.current_scope_new_declared_var_identifiers
-      body_symbol_table.current_scope_identifiers.append(arg_identifier)
-      body_symbol_table.current_scope_new_declared_var_identifiers.append(arg_identifier)
-    self.body_scope.build_scope_symbol_table(scope_symbol_table=body_symbol_table)
-    return body_symbol_table
-
-  def _build_body_ir(self, ir_func_args, module, body_builder, parent_symbol_table, inline_return_collect_block=None,
+  def _build_body_ir(self, parent_symbol_table, body_context, ir_func_args=None, inline_return_collect_block=None,
                      inline_return_ir_alloca=None):
     """
-    :param list[ir.values.Value] ir_func_args:
-    :param ir.Module module:
-    :param ir.IRBuilder body_builder:
-    :param SymbolTable parent_symbol_table:
+    :param SymbolTable parent_symbol_table: of the parent function, NOT of the caller.
+    :param CodegenContext body_context:
+    :param list[ir.values.Value]|None ir_func_args:
     :param None|ir.Block inline_return_collect_block:
     :param None|ir.instructions.AllocaInstr inline_return_ir_alloca:
     """
     assert not self.is_extern
     concrete_func = self._get_concrete_func(parent_symbol_table=parent_symbol_table)
-    assert (inline_return_collect_block is not None) == self.is_inline == concrete_func.is_inline
-    assert len(ir_func_args) == len(concrete_func.arg_identifiers)
-    body_symbol_table = self._build_body_symbol_table(parent_symbol_table=parent_symbol_table)
+    assert self.is_inline == concrete_func.is_inline
+    body_symbol_table = parent_symbol_table.copy_with_new_current_func(concrete_func)
     body_symbol_table.current_func_inline_return_collect_block = inline_return_collect_block
     body_symbol_table.current_func_inline_return_ir_alloca = inline_return_ir_alloca
 
-    # create all function body variables
-    body_builder = self.body_scope.build_scope_var_expr_ir(
-      module=module, builder=body_builder, scope_symbol_table=body_symbol_table)
+    # add arguments as variables
+    for arg_identifier, arg_type, arg_mutable in zip(
+        concrete_func.arg_identifiers, concrete_func.arg_types, concrete_func.arg_mutables):
+      var_symbol = VariableSymbol(None, arg_type, arg_mutable)
+      var_symbol.build_ir_alloca(context=body_context, identifier=arg_identifier)
+      assert arg_identifier not in body_symbol_table.current_scope_identifiers
+      body_symbol_table.current_scope_identifiers.append(arg_identifier)
+      body_symbol_table[arg_identifier] = var_symbol
     # set function argument values
-    for arg_identifier, ir_arg in zip(concrete_func.arg_identifiers, ir_func_args):
-      assert arg_identifier in body_symbol_table  # set in _build_body_symbol_table
-      arg_symbol = body_symbol_table[arg_identifier]
-      assert isinstance(arg_symbol, VariableSymbol)
-      ir_arg.name = arg_identifier
-      assert arg_symbol.ir_alloca is not None  # set by ScopeAst
-      body_builder.store(ir_arg, arg_symbol.ir_alloca)
+    if body_context.emits_ir:
+      assert ir_func_args is not None
+      assert len(ir_func_args) == len(concrete_func.arg_identifiers)
+      for arg_identifier, ir_arg in zip(concrete_func.arg_identifiers, ir_func_args):
+        arg_symbol = body_symbol_table[arg_identifier]
+        assert isinstance(arg_symbol, VariableSymbol)
+        ir_arg.name = arg_identifier
+        assert arg_symbol.ir_alloca is not None
+        body_context.builder.store(ir_arg, arg_symbol.ir_alloca)
     # build function body
-    body_builder = self.body_scope.build_scope_body_expr_ir(
-      module=module, builder=body_builder, scope_symbol_table=body_symbol_table)
+    self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
     # maybe add implicit return
-    if body_builder is not None and not is_block_terminated(body_builder.block, symbol_table=body_symbol_table):
-        return_pos = TreePosition(
-          self.pos.word,
-          self.pos.from_pos if len(self.body_scope.stmt_list) == 0 else self.body_scope.stmt_list[-1].pos.to_pos,
-          self.pos.to_pos)
-        return_ast = ReturnStatementAst(return_pos, [])
-        if concrete_func.return_type != SLEEPY_VOID:
-          return_ast.raise_error(
-            'Not all branches within function declaration of %r return something' % self.identifier)
-        return_ast.build_symbol_table(symbol_table=body_symbol_table)  # for error checking
-        return_ast.build_expr_ir(module=module, builder=body_builder, symbol_table=body_symbol_table)
+    if not body_context.is_terminated:
+      return_pos = TreePosition(
+        self.pos.word,
+        self.pos.from_pos if len(self.body_scope.stmt_list) == 0 else self.body_scope.stmt_list[-1].pos.to_pos,
+        self.pos.to_pos)
+      return_ast = ReturnStatementAst(return_pos, [])
+      if concrete_func.return_type != SLEEPY_VOID:
+        return_ast.raise_error(
+          'Not all branches within function declaration of %r return something' % self.identifier)
+      return_ast.build_ir(symbol_table=body_symbol_table, context=body_context)
+    assert body_context.is_terminated
 
   def __repr__(self):
     """
@@ -554,25 +481,18 @@ class CallStatementAst(StatementAst):
     self.func_identifier = func_identifier
     self.func_arg_exprs = func_arg_exprs
 
-  def build_symbol_table(self, symbol_table):
+  def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     """
-    # just verify that the argument types are correctly specified, but do not alter symbol_table
-    self._check_func_call_symbol_table(
-      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
-
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable symbol_table:
-    :rtype: ir.IRBuilder
-    """
-    _, builder = self._make_func_call_ir(
-      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, builder=builder,
-      symbol_table=symbol_table)
-    return builder
+    if context.emits_ir:
+      self._make_func_call_ir(
+        func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs,
+        symbol_table=symbol_table, context=context)
+    else:
+      self._check_func_call_symbol_table(
+        func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
 
   def __repr__(self):
     """
@@ -594,15 +514,19 @@ class ReturnStatementAst(StatementAst):
     self.return_exprs = return_exprs
     assert len(return_exprs) <= 1, 'returning of multiple values is not support yet'
 
-  def build_symbol_table(self, symbol_table):
+  def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     """
-    # Check that return typ matches.
     if symbol_table.current_func is None:
       self.raise_error('Can only use return inside a function declaration')
+    if context.is_terminated:
+      self.raise_error('Cannot return from function after having returned already')
+
     if len(self.return_exprs) == 1:
-      return_val_type = self.return_exprs[0].make_val_type(symbol_table=symbol_table)
+      return_expr = self.return_exprs[0]
+      return_val_type = return_expr.make_val_type(symbol_table=symbol_table)
       if return_val_type == SLEEPY_VOID:
         self.raise_error('Cannot use void return value')
       if not can_implicit_cast_to(return_val_type, symbol_table.current_func.return_type):
@@ -612,49 +536,37 @@ class ReturnStatementAst(StatementAst):
         else:
           self.raise_error('Function declared to return type %r, but return value is of type %r' % (
             symbol_table.current_func.return_type, return_val_type))
-      return_val_mutable = self.return_exprs[0].is_val_mutable(symbol_table=symbol_table)
+      return_val_mutable = return_expr.is_val_mutable(symbol_table=symbol_table)
       if not return_val_mutable and symbol_table.current_func.return_mutable:
         self.raise_error(
           'Function declared to return a mutable type %r, but return value is not mutable' % return_val_type)
+
+      if context.emits_ir:
+        ir_val = return_expr.make_ir_val(symbol_table=symbol_table, context=context)
+        ir_val = make_implicit_cast_to_ir_val(
+          return_val_type, symbol_table.current_func.return_type, ir_val, context=context)
+        if symbol_table.current_func.is_inline:
+          assert symbol_table.current_func_inline_return_ir_alloca is not None
+          context.builder.store(ir_val, symbol_table.current_func_inline_return_ir_alloca)
+        else:
+          context.builder.ret(ir_val)
     else:
       assert len(self.return_exprs) == 0
       if symbol_table.current_func.return_type != SLEEPY_VOID:
         self.raise_error('Function declared to return a value of type %r, but returned void' % (
           symbol_table.current_func.return_type))
+      if context.emits_ir:
+        if symbol_table.current_func.is_inline:
+          assert symbol_table.current_func_inline_return_ir_alloca is None
+        else:
+          context.builder.ret_void()
 
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable symbol_table:
-    :rtype: ir.IRBuilder
-    """
-    if len(self.return_exprs) == 1:
-      return_val_type = self.return_exprs[0].make_val_type(symbol_table=symbol_table)
-      ir_val, builder = self.return_exprs[0].make_ir_val(builder=builder, symbol_table=symbol_table)
-      ir_val, builder = make_implicit_cast_to_ir_val(
-        return_val_type, symbol_table.current_func.return_type, ir_val, builder=builder)
-      if symbol_table.current_func.is_inline:
-        assert symbol_table.current_func_inline_return_ir_alloca is not None
-        builder.store(ir_val, symbol_table.current_func_inline_return_ir_alloca)
-      else:
-        assert not symbol_table.current_func.is_inline
-        builder.ret(ir_val)
-    else:
-      assert len(self.return_exprs) == 0
-      if symbol_table.current_func.is_inline:
-        assert symbol_table.current_func_inline_return_ir_alloca is None
-      else:
-        assert not symbol_table.current_func.is_inline
-        builder.ret_void()
-    if symbol_table.current_func.is_inline:
+    if context.emits_ir and symbol_table.current_func.is_inline:
       collect_block = symbol_table.current_func_inline_return_collect_block
       assert collect_block is not None
-      builder.branch(collect_block)
-      return ir.IRBuilder(collect_block)
-    else:
-      assert not symbol_table.current_func.is_inline
-      return builder
+      context.builder.branch(collect_block)
+      context.builder = ir.IRBuilder(collect_block)
+    context.is_terminated = True
 
   def __repr__(self):
     """
@@ -752,7 +664,7 @@ class StructDeclarationAst(StatementAst):
       assert isinstance(stmt, AssignStatementAst)
       assert isinstance(stmt.var_target, VariableTargetAst)
       member_identifier = stmt.var_target.var_identifier
-      ir_func_arg.name = member_identifier
+      ir_func_arg.identifier = member_identifier
       gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
       member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
       constructor_builder.store(ir_func_arg, member_ptr)
@@ -828,9 +740,10 @@ class AssignStatementAst(StatementAst):
       self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
         var_identifier, symbol.declared_var_type, ptr_type))
 
-  def build_symbol_table(self, symbol_table):
+  def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     """
     if self.declared_var_type is not None:
       declared_type = self.declared_var_type.make_type(symbol_table=symbol_table)
@@ -854,9 +767,10 @@ class AssignStatementAst(StatementAst):
         declared_mutable = False
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
       symbol = VariableSymbol(None, var_type=val_type, mutable=declared_mutable)
+      symbol.build_ir_alloca(context=context, identifier=var_identifier)
       symbol_table[var_identifier] = symbol
-      symbol_table.current_scope_new_declared_var_identifiers.append(var_identifier)
       symbol_table.current_scope_identifiers.append(var_identifier)
+      target_type = val_type
     else:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
       existing_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
@@ -874,23 +788,15 @@ class AssignStatementAst(StatementAst):
           self.raise_error('Cannot redefine a variable declared as non-mutable to mutable')
         else:
           self.raise_error('Cannot redefine a variable declared as mutable to non-mutable')
+      target_type = existing_type
     if declared_mutable and not val_mutable:
       self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % declared_type)
 
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable symbol_table:
-    :rtype: ir.IRBuilder
-    """
-    ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
-    var_type = self.var_val.make_val_type(symbol_table=symbol_table)
-    ir_val, builder = self.var_val.make_ir_val(builder=builder, symbol_table=symbol_table)
-    ir_val, builder = make_implicit_cast_to_ir_val(var_type, ptr_type, ir_val, builder=builder)
-    ir_ptr = self.var_target.make_ir_ptr(builder, symbol_table=symbol_table)
-    builder.store(ir_val, ir_ptr)
-    return builder
+    if context.emits_ir:
+      ir_val = self.var_val.make_ir_val(symbol_table=symbol_table, context=context)
+      ir_val = make_implicit_cast_to_ir_val(val_type, target_type, ir_val, context=context)
+      ir_ptr = self.var_target.make_ir_ptr(symbol_table=symbol_table, context=context)
+      context.builder.store(ir_val, ir_ptr)
 
   def __repr__(self):
     """
@@ -918,58 +824,42 @@ class IfStatementAst(StatementAst):
       false_scope = AbstractScopeAst(TreePosition(pos.word, pos.to_pos, pos.to_pos), [])
     self.true_scope, self.false_scope = true_scope, false_scope
 
-  def build_symbol_table(self, symbol_table):
+  def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     """
     cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
     if not cond_type == SLEEPY_BOOL:
       self.raise_error('Condition use expression of type %r as if-condition' % cond_type)
-    # build branch symbol tables just for type checking
-    true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
-    self.true_scope.build_scope_symbol_table(scope_symbol_table=true_symbol_table)
-    self.false_scope.build_scope_symbol_table(scope_symbol_table=false_symbol_table)
-
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable symbol_table:
-    :rtype: ir.IRBuilder|None
-    """
-    ir_cond, builder = self.condition_val.make_ir_val(builder=builder, symbol_table=symbol_table)
-    true_block = builder.append_basic_block('true_branch')  # type: ir.Block
-    false_block = builder.append_basic_block('false_branch')  # type: ir.Block
-    builder.cbranch(ir_cond, true_block, false_block)
-    true_builder, false_builder = ir.IRBuilder(true_block), ir.IRBuilder(false_block)
 
     true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
-    self.true_scope.build_scope_symbol_table(scope_symbol_table=true_symbol_table)
-    self.false_scope.build_scope_symbol_table(scope_symbol_table=false_symbol_table)
-
-    true_builder = self.true_scope.build_scope_var_expr_ir(
-      module=module, builder=true_builder, scope_symbol_table=true_symbol_table)
-    true_builder = self.true_scope.build_scope_body_expr_ir(
-      module, builder=true_builder, scope_symbol_table=true_symbol_table)
-    true_block = true_builder.block
-    true_terminated = is_block_terminated(true_block, symbol_table=true_symbol_table)
-    false_builder = self.false_scope.build_scope_var_expr_ir(
-      module=module, builder=false_builder, scope_symbol_table=false_symbol_table)
-    false_builder = self.false_scope.build_scope_body_expr_ir(
-      module, builder=false_builder, scope_symbol_table=false_symbol_table)
-    false_block = false_builder.block
-    false_terminated = is_block_terminated(false_block, symbol_table=false_symbol_table)
-
-    if not (true_terminated and false_terminated):
-      continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
-      continue_builder = ir.IRBuilder(continue_block)
-      if not true_terminated:
-        true_builder.branch(continue_block)
-      if not false_terminated:
-        false_builder.branch(continue_block)
-      return continue_builder
+    if context.emits_ir:
+      ir_cond = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
+      true_block = context.builder.append_basic_block('true_branch')  # type: ir.Block
+      false_block = context.builder.append_basic_block('false_branch')  # type: ir.Block
+      context.builder.cbranch(ir_cond, true_block, false_block)
+      true_context = CodegenContext(ir.IRBuilder(true_block))
+      false_context = CodegenContext(ir.IRBuilder(false_block))
     else:
-      return None
+      true_context, false_context = CodegenContext(None), CodegenContext(None)
+
+    self.true_scope.build_scope_ir(scope_symbol_table=true_symbol_table, scope_context=true_context)
+    self.false_scope.build_scope_ir(scope_symbol_table=false_symbol_table, scope_context=false_context)
+
+    if true_context.is_terminated and false_context.is_terminated:
+      context.is_terminated = True
+      if context.emits_ir:
+        context.builder = None
+    else:
+      assert not true_context.is_terminated or not false_context.is_terminated
+      if context.emits_ir:
+        continue_block = context.builder.append_basic_block('continue_branch')  # type: ir.Block
+        if not true_context.is_terminated:
+          true_context.builder.branch(continue_block)
+        if not false_context.is_terminated:
+          false_context.builder.branch(continue_block)
+        context.builder = ir.IRBuilder(continue_block)
 
   def __repr__(self):
     """
@@ -993,49 +883,33 @@ class WhileStatementAst(StatementAst):
     self.condition_val = condition_val
     self.stmt_list = stmt_list
 
-  def build_symbol_table(self, symbol_table):
+  def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     """
     # TODO: Make this a separate scope. Also see IfExpressionAst.
     cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
     if not cond_type == SLEEPY_BOOL:
       self.raise_error('Condition use expression of type %r as while-condition' % cond_type)
+
+    if context.emits_ir:
+      cond_ir = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
+      body_block = context.builder.append_basic_block('while_body')  # type: ir.Block
+      continue_block = context.builder.append_basic_block('continue_branch')  # type: ir.Block
+      context.builder.cbranch(cond_ir, body_block, continue_block)
+      body_context = CodegenContext(ir.IRBuilder(body_block))
+      context.builder = ir.IRBuilder(continue_block)
+    else:
+      body_context = CodegenContext(None)
+    assert context.emits_ir == body_context.emits_ir
+
+    body_symbol_table = symbol_table.copy()
     for stmt in self.stmt_list:
-      stmt.build_symbol_table(symbol_table=symbol_table)
-
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable symbol_table:
-    :rtype: ir.IRBuilder|None
-    """
-    def make_condition_ir(builder_, symbol_table_):
-      """
-      :param ir.IRBuilder builder_:
-      :param SymbolTable symbol_table_:
-      :rtype: (ir.values.Value, ir.IRBuilder)
-      """
-      return self.condition_val.make_ir_val(builder=builder_, symbol_table=symbol_table_)
-
-    cond_ir, builder = make_condition_ir(builder_=builder, symbol_table_=symbol_table)
-    body_block = builder.append_basic_block('while_body')  # type: ir.Block
-    continue_block = builder.append_basic_block('continue_branch')  # type: ir.Block
-    builder.cbranch(cond_ir, body_block, continue_block)
-    body_builder = ir.IRBuilder(body_block)
-
-    body_symbol_table = symbol_table.copy()  # type: SymbolTable
-
-    for stmt in self.stmt_list:
-      body_builder = stmt.build_expr_ir(module, builder=body_builder, symbol_table=body_symbol_table)
-    if not body_builder.block.is_terminated:
-      assert body_builder is not None
-      body_cond_ir, body_builder = make_condition_ir(builder_=body_builder, symbol_table_=body_symbol_table)
-      body_builder.cbranch(body_cond_ir, body_block, continue_block)
-
-    continue_builder = ir.IRBuilder(continue_block)
-    return continue_builder
+      stmt.build_ir(symbol_table=body_symbol_table, context=body_context)
+    if not body_context.is_terminated and body_context.emits_ir:
+      body_cond_ir = self.condition_val.make_ir_val(symbol_table=symbol_table, context=body_context)
+      body_context.builder.cbranch(body_cond_ir, body_block, continue_block)
 
   def __repr__(self):
     """
@@ -1068,13 +942,14 @@ class ExpressionAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
-  def make_ir_val(self, builder, symbol_table):
+  def make_ir_val(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: (ir.values.Value, ir.IRBuilder)
-    :return: The value this expression is evaluated to + the builder of the context after this is executed
+    :param CodegenContext context:
+    :rtype: ir.values.Value
+    :return: The value this expression is evaluated to
     """
+    assert context.emits_ir
     raise NotImplementedError()
 
   def __repr__(self):
@@ -1124,22 +999,25 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     """
     return False
 
-  def make_ir_val(self, builder, symbol_table):
+  def make_ir_val(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: (ir.values.Value, ir.IRBuilder)
+    :param CodegenContext context:
+    :rtype: ir.values.Value
     """
+    assert context.emits_ir
     if self.op == 'is':
       assert isinstance(self.right_expr, VariableExpressionAst)
       check_type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
       check_type = check_type_expr.make_type(symbol_table=symbol_table)
       val_type = self.left_expr.make_val_type(symbol_table=symbol_table)
-      ir_val, builder = self.left_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
-      return make_ir_val_is_type(ir_val, val_type, check_type, builder=builder)
+      ir_val = self.left_expr.make_ir_val(symbol_table=symbol_table, context=context)
+      return make_ir_val_is_type(ir_val, val_type, check_type, context=context)
     operand_exprs = [self.left_expr, self.right_expr]
-    return self._make_func_call_ir(
-      func_identifier=self.op, func_arg_exprs=operand_exprs, builder=builder, symbol_table=symbol_table)
+    return_val = self._make_func_call_ir(
+      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
+    assert return_val is not None
+    return return_val
 
   def __repr__(self):
     """
@@ -1180,15 +1058,16 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     return False
 
-  def make_ir_val(self, builder, symbol_table):
+  def make_ir_val(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: (ir.values.Value, ir.IRBuilder)
+    :param CodegenContext context:
+    :rtype: ir.values.Value
     """
+    assert context.emits_ir
     operand_exprs = [self.expr]
     return self._make_func_call_ir(
-      func_identifier=self.op, func_arg_exprs=operand_exprs, builder=builder, symbol_table=symbol_table)
+      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
 
   def __repr__(self):
     """
@@ -1225,13 +1104,14 @@ class ConstantExpressionAst(ExpressionAst):
     """
     return False
 
-  def make_ir_val(self, builder, symbol_table):
+  def make_ir_val(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: (ir.values.Value, ir.IRBuilder)
+    :param CodegenContext context:
+    :rtype: ir.values.Value
     """
-    return ir.Constant(self.constant_type.ir_type, self.constant_val), builder
+    assert context.emits_ir
+    return ir.Constant(self.constant_type.ir_type, self.constant_val)
 
   def __repr__(self):
     """
@@ -1278,14 +1158,15 @@ class VariableExpressionAst(ExpressionAst):
     """
     return self.get_var_symbol(symbol_table=symbol_table).mutable
 
-  def make_ir_val(self, builder, symbol_table):
+  def make_ir_val(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: (ir.values.Value, ir.IRBuilder)
+    :param CodegenContext context:
+    :rtype: ir.values.Value
     """
+    assert context.emits_ir
     symbol = self.get_var_symbol(symbol_table=symbol_table)
-    return builder.load(symbol.ir_alloca, name=self.var_identifier), builder
+    return context.builder.load(symbol.ir_alloca, name=self.var_identifier)
 
   def __repr__(self):
     """
@@ -1339,15 +1220,16 @@ class CallExpressionAst(ExpressionAst):
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
     return concrete_func.return_mutable
 
-  def make_ir_val(self, builder, symbol_table):
+  def make_ir_val(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: (ir.values.Value, ir.IRBuilder)
+    :param CodegenContext context:
+    :rtype: ir.values.Value
     """
+    assert context.emits_ir
     return self._make_func_call_ir(
-      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, builder=builder,
-      symbol_table=symbol_table)
+      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs,
+      symbol_table=symbol_table, context=context)
 
   def __repr__(self):
     """
@@ -1378,25 +1260,24 @@ class MemberExpressionAst(ExpressionAst):
     parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
     return self._make_member_val_type(parent_type, self.member_identifier, symbol_table)
 
-  def make_ir_val(self, builder, symbol_table):
+  def make_ir_val(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
-    :rtype: (ir.values.Value, ir.IRBuilder)
+    :param CodegenContext context:
+    :rtype: ir.values.Value
     """
+    assert context.emits_ir
     parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
     assert isinstance(parent_type, StructType)
-    parent_ir_val, builder = self.parent_val_expr.make_ir_val(builder=builder, symbol_table=symbol_table)
+    parent_ir_val = self.parent_val_expr.make_ir_val(symbol_table=symbol_table, context=context)
     if parent_type.is_pass_by_ref():
       member_num = parent_type.get_member_num(self.member_identifier)
       gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
-      member_ptr = builder.gep(parent_ir_val, gep_indices, name='member_ptr_%s' % self.member_identifier)
-      return builder.load(member_ptr, name='member_%s' % self.member_identifier), builder
+      member_ptr = context.builder.gep(parent_ir_val, gep_indices, name='member_ptr_%s' % self.member_identifier)
+      return context.builder.load(member_ptr, name='member_%s' % self.member_identifier)
     else:  # pass by value
-      return (
-        builder.extract_value(
-          parent_ir_val, parent_type.get_member_num(self.member_identifier), name='member_%s' % self.member_identifier),
-        builder)
+      return context.builder.extract_value(
+          parent_ir_val, parent_type.get_member_num(self.member_identifier), name='member_%s' % self.member_identifier)
 
   def is_val_mutable(self, symbol_table):
     """
@@ -1448,12 +1329,13 @@ class TargetAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
-  def make_ir_ptr(self, builder, symbol_table):
+  def make_ir_ptr(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     :rtype: ir.instructions.Instruction
     """
+    assert context.emits_ir
     raise NotImplementedError()
 
   def __repr__(self):
@@ -1504,16 +1386,17 @@ class VariableTargetAst(TargetAst):
     """
     return True
 
-  def make_ir_ptr(self, builder, symbol_table):
+  def make_ir_ptr(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     :rtype: ir.instructions.Instruction
     """
+    assert context.emits_ir
     assert self.var_identifier in symbol_table
     symbol = symbol_table[self.var_identifier]
     assert isinstance(symbol, VariableSymbol)
-    assert symbol.ir_alloca is not None  # ir_alloca is set in AbstractScopeAst
+    assert symbol.ir_alloca is not None
     return symbol.ir_alloca
 
   def __repr__(self):
@@ -1564,21 +1447,22 @@ class MemberTargetAst(TargetAst):
     """
     return self.parent_target.is_ptr_mutable(symbol_table=symbol_table)
 
-  def make_ir_ptr(self, builder, symbol_table):
+  def make_ir_ptr(self, symbol_table, context):
     """
-    :param ir.IRBuilder builder:
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     :rtype: ir.instructions.Instruction
     """
+    assert context.emits_ir
     parent_type = self.parent_target.make_ptr_type(symbol_table=symbol_table)
     assert isinstance(parent_type, StructType)
     member_num = parent_type.get_member_num(self.member_identifier)
-    parent_ptr = self.parent_target.make_ir_ptr(builder=builder, symbol_table=symbol_table)
+    parent_ptr = self.parent_target.make_ir_ptr(symbol_table=symbol_table, context=context)
     if parent_type.is_pass_by_ref():  # parent_ptr has type struct**
       # dereference to get struct*.
-      parent_ptr = builder.load(parent_ptr, 'load_struct')
+      parent_ptr = context.builder.load(parent_ptr, 'load_struct')
     gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
-    return builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+    return context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
 
   def __repr__(self):
     """
@@ -1796,7 +1680,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
     'op', 'number'},
   prod_attr_rules=[
-    {'ast': lambda _pos, stmt_list: TopLevelStatementAst(_pos, AbstractScopeAst(_pos, stmt_list(1)))},
+    {'ast': lambda _pos, stmt_list: TopLevelAst(_pos, AbstractScopeAst(_pos, stmt_list(1)))},
     {'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list(2))},
     {'stmt_list': []},
     {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
@@ -1882,12 +1766,12 @@ def make_program_ast(program, add_preamble=True):
   """
   :param str program:
   :param bool add_preamble:
-  :rtype: TopLevelStatementAst
+  :rtype: TopLevelAst
   """
   tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
   _, root_eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
   program_ast = root_eval['ast']
-  assert isinstance(program_ast, TopLevelStatementAst)
+  assert isinstance(program_ast, TopLevelAst)
   if add_preamble:
     program_ast = add_preamble_to_ast(program_ast)
   return program_ast
@@ -1895,7 +1779,7 @@ def make_program_ast(program, add_preamble=True):
 
 def make_preamble_ast():
   """
-  :rtype: TopLevelStatementAst
+  :rtype: TopLevelAst
   """
   import os
   preamble_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'std/preamble.slp')
@@ -1906,24 +1790,11 @@ def make_preamble_ast():
 
 def add_preamble_to_ast(program_ast):
   """
-  :param TopLevelStatementAst program_ast:
-  :rtype: TopLevelStatementAst
+  :param TopLevelAst program_ast:
+  :rtype: TopLevelAst
   """
   preamble_ast = make_preamble_ast()
-  assert isinstance(preamble_ast, TopLevelStatementAst)
-  return TopLevelStatementAst(program_ast.pos, AbstractScopeAst(
+  assert isinstance(preamble_ast, TopLevelAst)
+  return TopLevelAst(program_ast.pos, AbstractScopeAst(
     preamble_ast.pos, preamble_ast.root_scope.stmt_list + program_ast.root_scope.stmt_list))
 
-
-def is_block_terminated(block, symbol_table):
-  """
-  :param ir.Block block:
-  :param SymbolTable symbol_table:
-  :rtype: bool
-  """
-  if block.is_terminated:
-    return True
-  # could be inlined, then we are also terminated if inside the collect_return_block
-  if symbol_table.current_func.is_inline and block == symbol_table.current_func_inline_return_collect_block:
-    return True
-  return False

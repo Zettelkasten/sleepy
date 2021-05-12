@@ -171,27 +171,29 @@ class UnionType(Type):
     assert variant_type in self.possible_types
     return self.possible_types.index(variant_type)
   
-  def make_tag_ptr(self, union_ir_alloca, builder):
+  def make_tag_ptr(self, union_ir_alloca, context):
     """
     :param ir.instructions.AllocaInstr union_ir_alloca:
-    :param ir.IRBuilder builder:
+    :param CodegenContext context:
     :rtype: ir.instructions.Instruction
     """
+    assert context.emits_ir
     tag_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
-    return builder.gep(union_ir_alloca, tag_gep_indices, name='%s_tag_ptr' % self.identifier)
+    return context.builder.gep(union_ir_alloca, tag_gep_indices, name='%s_tag_ptr' % self.identifier)
 
-  def make_untagged_union_ptr(self, union_ir_alloca, variant_type, builder):
+  def make_untagged_union_ptr(self, union_ir_alloca, variant_type, context):
     """
     :param ir.instructions.AllocaInstr union_ir_alloca:
     :param Type variant_type:
-    :param ir.IRBuilder builder:
+    :param CodegenContext context:
     :rtype: ir.instructions.Instruction
     """
+    assert context.emits_ir
     assert variant_type in self.possible_types
     untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1))
-    untagged_union_ptr = builder.gep(
+    untagged_union_ptr = context.builder.gep(
       union_ir_alloca, untagged_union_gep_indices, name='%s_untagged_union_ptr' % self.identifier)
-    return builder.bitcast(
+    return context.builder.bitcast(
       untagged_union_ptr, ir.types.PointerType(variant_type.ir_type),
       name='%s_untagged_union_ptr_cast' % self.identifier)
 
@@ -265,25 +267,26 @@ def can_implicit_cast_to(from_type, to_type):
   return to_type.contains(from_type)
 
 
-def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, builder):
+def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context):
   """
   :param Type from_type:
   :param Type to_type:
   :param ir.values.Value from_ir_val:
-  :param ir.IRBuilder builder:
-  :rtype: tuple[ir.values.Value,ir.IRBuilder]
+  :param CodegenContext context:
+  :rtype: ir.values.Value
   """
+  assert context.emits_ir
   assert can_implicit_cast_to(from_type, to_type)
   if from_type == to_type:
-    return from_ir_val, builder
+    return from_ir_val
   assert isinstance(to_type, UnionType)
   assert not to_type.is_pass_by_ref()
   assert not isinstance(from_type, UnionType), 'not implemented yet'
   variant_num = to_type.get_variant_num(from_type)
-  ir_alloca = builder.alloca(to_type.ir_type, name=to_type.identifier)
-  builder.store(ir.Constant(to_type.tag_ir_type, variant_num), to_type.make_tag_ptr(ir_alloca, builder=builder))
-  builder.store(from_ir_val, to_type.make_untagged_union_ptr(ir_alloca, from_type, builder=builder))
-  return builder.load(ir_alloca), builder
+  ir_alloca = context.builder.alloca(to_type.ir_type, name=to_type.identifier)
+  context.builder.store(ir.Constant(to_type.tag_ir_type, variant_num), to_type.make_tag_ptr(ir_alloca, context=context))
+  context.builder.store(from_ir_val, to_type.make_untagged_union_ptr(ir_alloca, from_type, context=context))
+  return context.builder.load(ir_alloca)
 
 
 def make_ir_val_is_type(ir_val, known_type, check_type, builder):
@@ -333,6 +336,16 @@ class VariableSymbol(Symbol):
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
     new_var_symbol.asserted_var_type = asserted_var_type
     return new_var_symbol
+
+  def build_ir_alloca(self, context, identifier):
+    """
+    :param CodegenContext context:
+    :param str identifier:
+    """
+    assert self.ir_alloca is None
+    if not context.emits_ir:
+      return
+    self.ir_alloca = context.builder.alloca(self.declared_var_type.ir_type, name=identifier)
 
 
 class ConcreteFunction:
@@ -396,11 +409,12 @@ class ConcreteFunction:
     assert callable(py_func)
     return py_func
 
-  def make_inline_func_call_ir(self, ir_func_args, body_builder):
+  def make_inline_func_call_ir(self, ir_func_args, caller_context):
     """
     :param list[ir.values.Value] ir_func_args:
-    :param ir.IRBuilder body_builder:
-    :rtype: (ir.values.Value|None, ir.IRBuilder)
+    :param CodegenContext caller_context:
+    :rtype: ir.values.Value|None
+    :return: the return value of this function call, or None if it is a void function
     """
     assert self.is_inline
     raise NotImplementedError()
@@ -502,7 +516,6 @@ class SymbolTable:
       self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
       self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
-    self.current_scope_new_declared_var_identifiers = []  # type: List[str]
     if self.current_func is None or not self.current_func.is_inline:
       assert self.current_func_inline_return_ir_alloca is self.current_func_inline_return_collect_block is None
 
@@ -565,23 +578,16 @@ class SymbolTable:
 
 class CodegenContext:
   """
-  Used to keep track where code is currently generated, as well as its current state
-  (the current declared symbols, the builder emitting more ir, etc.).
+  Used to keep track where code is currently generated.
+  This is essentially a pointer to an ir.IRBuilder.
   """
-  def __init__(self, symbol_table, builder):
+  def __init__(self, builder):
     """
-    :param SymbolTable symbol_table:
     :param ir.IRBuilder|None builder:
     """
-    self.symbol_table = symbol_table
     self.builder = builder
-
-  @property
-  def emits_ir(self):
-    """
-    :rtype: bool
-    """
-    return self.builder is not None
+    self.emits_ir = builder is not None  # type: bool
+    self.is_terminated = False
 
   @property
   def module(self):
@@ -589,7 +595,24 @@ class CodegenContext:
     :rtype: ir.Module
     """
     assert self.emits_ir
+    assert self.builder is not None
     return self.builder.module
+
+  @property
+  def block(self):
+    """
+    :rtype: ir.Block
+    """
+    assert self.emits_ir
+    assert self.builder is not None
+    return self.builder.block
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'CodegenContext(builder=%r, emits_ir=%r, is_terminated=%r)' % (
+      self.builder, self.emits_ir, self.is_terminated)
 
 
 def _make_builtin_op_arg_names(op, op_arg_types):
@@ -631,14 +654,16 @@ assert all(len(arg_types) == len(return_types) for arg_types, return_types in (
   zip(SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES)))
 
 
-def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, body_builder):
+def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
   """
   :param str op:
   :param list[Type] op_arg_types:
   :param list[ir.values.Value] ir_func_args:
-  :param ir.IRBuilder body_builder:
-  :rtype: (ir.values.Value, ir.IRBuilder)
+  :param CodegenContext caller_context:
+  :rtype: ir.values.Value
   """
+  assert caller_context.emits_ir
+  assert not caller_context.is_terminated
   op_arg_types = tuple(op_arg_types)
   assert len(op_arg_types) == len(ir_func_args)
 
@@ -656,11 +681,12 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, body_builder):
     """
     :param Dict[Tuple[Type],Callable] type_instr:
     :param str instr_name:
-    :rtype: (ir.values.Value, ir.IRBuilder)
+    :rtype: ir.values.Value
     """
     assert op_arg_types in type_instr
-    return type_instr[op_arg_types](*ir_func_args, name=instr_name), body_builder
+    return type_instr[op_arg_types](*ir_func_args, name=instr_name)
 
+  body_builder = caller_context.builder
   if op == '*':
     return make_binary_op(
       {SLEEPY_DOUBLE: body_builder.fmul, SLEEPY_INT: body_builder.mul, SLEEPY_LONG: body_builder.mul}, instr_name='mul')
@@ -697,11 +723,11 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, body_builder):
   assert False, 'Operator %s not handled!' % op
 
 
-def make_initial_symbol_table():
+def build_initial_ir(symbol_table, context):
   """
-  :rtype: SymbolTable
+  :param SymbolTable symbol_table:
+  :param CodegenContext context:
   """
-  symbol_table = SymbolTable()
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table
     symbol_table[type_identifier] = TypeSymbol(inbuilt_type, constructor_symbol=None)
@@ -721,26 +747,21 @@ def make_initial_symbol_table():
         arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), arg_type_assertions=op_arg_types,
         is_inline=True)
       func_symbol.add_concrete_func(concrete_func)
-  return symbol_table
 
+  if context.emits_ir:
+    module = context.builder.module
+    symbol_table.ir_func_malloc = ir.Function(
+      module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
+    symbol_table.ir_func_free = ir.Function(
+      module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
 
-def build_initial_module_ir(module, symbol_table):
-  """
-  :param ir.Module module:
-  :param SymbolTable symbol_table:
-  """
-  symbol_table.ir_func_malloc = ir.Function(
-    module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
-  symbol_table.ir_func_free = ir.Function(
-    module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
-
-  for op, op_arg_type_list, op_return_type_list in zip(
-    SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):
-    assert op in symbol_table
-    func_symbol = symbol_table[op]
-    assert isinstance(func_symbol, FunctionSymbol)
-    for op_arg_types, op_return_type in zip(op_arg_type_list, op_return_type_list):
-      assert func_symbol.has_concrete_func(op_arg_types)
-      concrete_func = func_symbol.get_concrete_func(op_arg_types)
-      from functools import partial
-      concrete_func.make_inline_func_call_ir = partial(_make_builtin_op_ir_val, op, op_arg_types)
+    for op, op_arg_type_list, op_return_type_list in zip(
+      SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):
+      assert op in symbol_table
+      func_symbol = symbol_table[op]
+      assert isinstance(func_symbol, FunctionSymbol)
+      for op_arg_types, op_return_type in zip(op_arg_type_list, op_return_type_list):
+        assert func_symbol.has_concrete_func(op_arg_types)
+        concrete_func = func_symbol.get_concrete_func(op_arg_types)
+        from functools import partial
+        concrete_func.make_inline_func_call_ir = partial(_make_builtin_op_ir_val, op, op_arg_types)

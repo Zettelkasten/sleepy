@@ -8,21 +8,18 @@ import unittest
 from llvmlite import ir
 from nose.tools import assert_equal, assert_almost_equal, assert_raises
 
-from sleepy.ast import TopLevelStatementAst, FunctionDeclarationAst, ReturnStatementAst, \
-  BinaryOperatorExpressionAst, ConstantExpressionAst, VariableExpressionAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, \
-  SLEEPY_PARSER, \
-  add_preamble_to_ast, IdentifierTypeAst
-from sleepy.grammar import TreePosition, SemanticError
+from sleepy.ast import TopLevelAst, FunctionDeclarationAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, \
+  SLEEPY_PARSER, add_preamble_to_ast
+from sleepy.grammar import SemanticError
 from sleepy.jit import make_execution_engine, compile_ir
-from sleepy.symbols import SLEEPY_DOUBLE, FunctionSymbol, SymbolTable, make_initial_symbol_table, \
-  build_initial_module_ir
+from sleepy.symbols import FunctionSymbol, SymbolTable
 
 
 def _test_parse_ast(program, add_preamble=True):
   """
   :param str program:
   :param bool add_preamble:
-  :rtype: TopLevelStatementAst
+  :rtype: TopLevelAst
   """
   print('---- input program:')
   print(program)
@@ -35,10 +32,10 @@ def _test_parse_ast(program, add_preamble=True):
   print(analysis)
   print('---- abstract syntax tree (without preamble):')
   print(ast)
-  assert isinstance(ast, TopLevelStatementAst)
+  assert isinstance(ast, TopLevelAst)
   if add_preamble:
     ast = add_preamble_to_ast(ast)
-    assert isinstance(ast, TopLevelStatementAst)
+    assert isinstance(ast, TopLevelAst)
   return ast
 
 
@@ -314,7 +311,7 @@ def test_simple_simple_recursion_fibonacci():
       }
     }
     """
-    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', add_preamble=False)
+    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', add_preamble=True)
     for n in range(1, 15):
       assert_equal(fib(n), _reference_fibonacci(n))
 
@@ -930,7 +927,7 @@ def test_func_inline():
       return what + 5;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = _test_compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 42 + 5)
 
 
@@ -949,7 +946,7 @@ def test_func_inline_with_branching():
       return ternary(cond, if_true, if_false);
     }
     """
-    main = _test_compile_program(engine, program)
+    main = _test_compile_program(engine, program, add_preamble=False)
     assert_equal(main(True, 51, -43), 51)
     assert_equal(main(False, 51, -43), -43)
 
@@ -969,6 +966,7 @@ def test_func_inline_nested():
     assert_equal(main(True, 51, -43), 51 + 42)
     assert_equal(main(False, 51, -43), -43 + 42)
 
+
 def test_func_inline_sequence():
   with make_execution_engine() as engine:
     program = """
@@ -979,7 +977,7 @@ def test_func_inline_sequence():
       return d;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = _test_compile_program(engine, program, add_preamble=False)
     assert_equal(main(4, 6), 4 + 6 + 6)
     assert_equal(main(2, 4), 2 + 4 + 4)
 
