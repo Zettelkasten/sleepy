@@ -1041,6 +1041,23 @@ def test_func_inline_recursive():
       _test_compile_program(engine, program)
 
 
+def test_func_inline_recursive_indirect():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func foo(Int a) -> Int {
+      @Inline func bar(Int b) -> Int {
+        return foo(b) + 3;
+      }
+      return 2 * bar(a);
+    }
+    func main(Int x) {
+      foo(x);
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 def test_if_scope():
   with make_execution_engine() as engine:
     program = """
