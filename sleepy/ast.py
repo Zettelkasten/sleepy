@@ -107,6 +107,9 @@ class AbstractSyntaxTree:
       ir_func_args.append(ir_func_arg)
     assert len(ir_func_args) == len(func_arg_exprs)
     if concrete_func.is_inline:
+      if concrete_func in context.inline_func_call_stack:
+        self.raise_error('An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
+          ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func))
       assert callable(concrete_func.make_inline_func_call_ir)
       return concrete_func.make_inline_func_call_ir(ir_func_args=ir_func_args, caller_context=context)
     else:
@@ -364,15 +367,14 @@ class FunctionDeclarationAst(StatementAst):
         assert len(ir_func_args) == len(self.arg_identifiers)
         assert caller_context.emits_ir
         assert not caller_context.is_terminated
-        inline_context = caller_context.copy()
         if concrete_func.return_type == SLEEPY_VOID:
           return_val_ir_alloca = None
         else:
-          return_val_ir_alloca = inline_context.builder.alloca(
+          return_val_ir_alloca = caller_context.builder.alloca(
             concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
-        collect_block = inline_context.builder.append_basic_block('collect_return_%s_block' % self.identifier)
-        inline_context.current_func_inline_return_ir_alloca = return_val_ir_alloca
-        inline_context.current_func_inline_return_collect_block = collect_block
+        collect_block = caller_context.builder.append_basic_block('collect_return_%s_block' % self.identifier)
+        inline_context = caller_context.copy_with_inline_func(
+          concrete_func, return_ir_alloca=return_val_ir_alloca, return_collect_block=collect_block)
         self._build_body_ir(
           parent_symbol_table=symbol_table, body_context=inline_context, ir_func_args=ir_func_args)
         assert inline_context.is_terminated

@@ -1027,6 +1027,20 @@ def test_func_inline_own_symbol_table():
     assert_equal(main(4), 4 + (4 + 5))
 
 
+def test_func_inline_recursive():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func foo(Int a) -> Int {
+      return 2 * foo(a);
+    }
+    func main(Int x) {
+      foo(x);
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 def test_if_scope():
   with make_execution_engine() as engine:
     program = """

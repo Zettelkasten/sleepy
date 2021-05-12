@@ -587,12 +587,16 @@ class CodegenContext:
   
       self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
       self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
+      self.inline_func_call_stack = []  # type: List[ConcreteFunction]
     else:
       self.emits_ir = copy_from.emits_ir
       self.is_terminated = copy_from.is_terminated
       
       self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
       self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
+      self.inline_func_call_stack = copy_from.inline_func_call_stack.copy()  # type: List[ConcreteFunction]
+
+    assert all(inline_func.is_inline for inline_func in self.inline_func_call_stack)
 
   @property
   def module(self):
@@ -638,6 +642,20 @@ class CodegenContext:
     """
     new_context = self.copy_with_builder(None)
     new_context.emits_ir = False
+    return new_context
+
+  def copy_with_inline_func(self, concrete_func, return_ir_alloca, return_collect_block):
+    """
+    :param ConcreteFunction concrete_func:
+    :param ir.instructions.AllocaInstr return_ir_alloca:
+    :param ir.Block return_collect_block:
+    """
+    assert concrete_func.is_inline
+    assert concrete_func not in self.inline_func_call_stack
+    new_context = self.copy()
+    new_context.current_func_inline_return_ir_alloca = return_ir_alloca
+    new_context.current_func_inline_return_collect_block = return_collect_block
+    new_context.inline_func_call_stack.append(concrete_func)
     return new_context
 
 
