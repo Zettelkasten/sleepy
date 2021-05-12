@@ -1060,6 +1060,23 @@ def test_if_scope_leak_var():
     with assert_raises(SemanticError):
       _test_compile_program(engine, program)
 
+
+def test_scope_declare_variable_multiple_times():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Bool case) {
+      if case {
+        Int fav_num = 123456;
+      } else {
+        Double fav_num = 4.0;
+      }
+      Bool fav_num = True();
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main(True)
+    main(False)
+
       
 def test_union():
   with make_execution_engine() as engine:
