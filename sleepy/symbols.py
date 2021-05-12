@@ -574,16 +574,25 @@ class CodegenContext:
   Used to keep track where code is currently generated.
   This is essentially a pointer to an ir.IRBuilder.
   """
-  def __init__(self, builder):
+  def __init__(self, builder, copy_from=None):
     """
     :param ir.IRBuilder|None builder:
+    :param CodegenContext copy_from:
     """
     self.builder = builder
-    self.emits_ir = builder is not None  # type: bool
-    self.is_terminated = False
-
-    self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
-    self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
+    
+    if copy_from is None:
+      self.emits_ir = builder is not None  # type: bool
+      self.is_terminated = False
+  
+      self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
+      self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
+    else:
+      self.emits_ir = copy_from.emits_ir
+      self.is_terminated = copy_from.is_terminated
+      
+      self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
+      self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
 
   @property
   def module(self):
@@ -615,12 +624,7 @@ class CodegenContext:
     :param ir.IRBuilder|None new_builder:
     :rtype: CodegenContext
     """
-    new_context = CodegenContext(new_builder)
-    new_context.emits_ir = self.emits_ir
-    new_context.is_terminated = self.is_terminated
-    new_context.current_func_inline_return_ir_alloca = self.current_func_inline_return_ir_alloca
-    new_context.current_func_inline_return_collect_block = self.current_func_inline_return_collect_block
-    return new_context
+    return CodegenContext(builder=new_builder, copy_from=self)
 
   def copy(self):
     """
