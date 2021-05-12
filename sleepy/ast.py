@@ -602,28 +602,30 @@ class StructDeclarationAst(StatementAst):
       self.raise_error('Cannot apply annotation %r and %r at the same time' % ('ValType', 'RefType'))
     return ref_type  # fall back to pass by value.
 
-  def build_symbol_table(self, symbol_table):
+  def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     """
     if self.struct_identifier in symbol_table.current_scope_identifiers:
       self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
-    body_symbol_table = symbol_table.copy()
-    body_symbol_table.current_scope_identifiers = []
+    struct_symbol_table = symbol_table.copy()
+    struct_symbol_table.current_scope_identifiers = []
+    struct_context = CodegenContext(None)
     for member_num, stmt in enumerate(self.stmt_list):
       if not isinstance(stmt, AssignStatementAst):
         stmt.raise_error('Can only use declare statements within a struct declaration')
       if not isinstance(stmt.var_target, VariableTargetAst):
         stmt.raise_error('Can only declare variables within a struct declaration')
-      stmt.build_symbol_table(symbol_table=body_symbol_table)
-      if len(body_symbol_table.current_scope_identifiers) != member_num + 1:
+      stmt.build_ir(symbol_table=struct_symbol_table, context=struct_context)
+      if len(struct_symbol_table.current_scope_identifiers) != member_num + 1:
         stmt.raise_error(
           'Cannot declare member %r multiple times in struct declaration' % stmt.var_target.var_identifier)
-    assert len(self.stmt_list) == len(body_symbol_table.current_scope_identifiers)
+    assert len(self.stmt_list) == len(struct_symbol_table.current_scope_identifiers)
     member_identifiers, member_types = [], []
-    for stmt, declared_identifier in zip(self.stmt_list, body_symbol_table.current_scope_identifiers):
-      assert declared_identifier in body_symbol_table
-      declared_symbol = body_symbol_table[declared_identifier]
+    for stmt, declared_identifier in zip(self.stmt_list, struct_symbol_table.current_scope_identifiers):
+      assert declared_identifier in struct_symbol_table
+      declared_symbol = struct_symbol_table[declared_identifier]
       assert isinstance(declared_symbol, VariableSymbol)
       member_identifiers.append(declared_identifier)
       member_types.append(declared_symbol.declared_var_type)
@@ -632,14 +634,19 @@ class StructDeclarationAst(StatementAst):
 
     struct_type = StructType(
       self.struct_identifier, member_identifiers, member_types, member_mutables, pass_by_ref=self.is_pass_by_ref())
-    constructor = FunctionSymbol()
-    # ir_func will be set in build_expr_ir
-    # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
-    constructor.add_concrete_func(ConcreteFunction(
+    constructor_symbol = FunctionSymbol()
+    constructor = ConcreteFunction(
       ir_func=None, return_type=struct_type, return_mutable=True,
       arg_types=member_types, arg_identifiers=member_identifiers, arg_type_assertions=member_types,
-      arg_mutables=member_mutables))
-    symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor)
+      arg_mutables=member_mutables)
+    if context.emits_ir:
+      ir_func_type = constructor.make_ir_function_type()
+      ir_func_name = symbol_table.make_ir_func_name(self.struct_identifier, extern=False, concrete_func=constructor)
+      constructor.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
+      self._make_constructor_body_ir(constructor, symbol_table=symbol_table)
+    # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
+    constructor_symbol.add_concrete_func(constructor)
+    symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor_symbol)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
   def _make_constructor_body_ir(self, constructor, symbol_table):
@@ -673,27 +680,6 @@ class StructDeclarationAst(StatementAst):
       constructor_builder.ret(self_ir_alloca)
     else:  # pass by value
       constructor_builder.ret(constructor_builder.load(self_ir_alloca, name='self'))
-    assert is_block_terminated(constructor_block, symbol_table=symbol_table)
-
-  def build_expr_ir(self, module, builder, symbol_table):
-    """
-    :param ir.Module module:
-    :param ir.IRBuilder builder:
-    :param SymbolTable symbol_table:
-    :rtype: ir.IRBuilder
-    """
-    assert self.struct_identifier in symbol_table
-    struct_symbol = symbol_table[self.struct_identifier]
-    assert isinstance(struct_symbol, TypeSymbol)
-    assert isinstance(struct_symbol.type, StructType)
-    constructor = struct_symbol.constructor_symbol.get_concrete_func(arg_types=struct_symbol.type.member_types)
-    assert constructor is not None
-    assert struct_symbol.type == constructor.return_type
-    ir_func_type = constructor.make_ir_function_type()
-    ir_func_name = symbol_table.make_ir_func_name(self.struct_identifier, extern=False, concrete_func=constructor)
-    constructor.ir_func = ir.Function(module, ir_func_type, name=ir_func_name)
-    self._make_constructor_body_ir(constructor, symbol_table=symbol_table)
-    return builder
 
   def __repr__(self):
     """
