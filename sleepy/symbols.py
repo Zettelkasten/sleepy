@@ -496,8 +496,6 @@ class SymbolTable:
       assert copy_new_current_func is None
       self.symbols = {}  # type: Dict[str, Symbol]
       self.current_func = None  # type: Optional[ConcreteFunction]
-      self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
-      self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
       self.current_scope_identifiers = []  # type: List[str]
       self.ir_func_malloc = None  # type: Optional[ir.Function]
       self.ir_func_free = None  # type: Optional[ir.Function]
@@ -506,19 +504,13 @@ class SymbolTable:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
       if copy_new_current_func is None:
         self.current_func = copy_from.current_func  # type: Optional[ConcreteFunction]
-        self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
-        self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
         self.current_scope_identifiers = copy_from.current_scope_identifiers.copy()  # type: List[str]
       else:
         self.current_func = copy_new_current_func  # type: Optional[ConcreteFunction]
-        self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
-        self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
         self.current_scope_identifiers = []  # type: List[str]
       self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
       self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
-    if self.current_func is None or not self.current_func.is_inline:
-      assert self.current_func_inline_return_ir_alloca is self.current_func_inline_return_collect_block is None
 
   def __setitem__(self, identifier, symbol):
     """
@@ -590,6 +582,9 @@ class CodegenContext:
     self.emits_ir = builder is not None  # type: bool
     self.is_terminated = False
 
+    self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
+    self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
+
   @property
   def module(self):
     """
@@ -614,6 +609,32 @@ class CodegenContext:
     """
     return 'CodegenContext(builder=%r, emits_ir=%r, is_terminated=%r)' % (
       self.builder, self.emits_ir, self.is_terminated)
+
+  def copy_with_builder(self, new_builder):
+    """
+    :param ir.IRBuilder|None new_builder:
+    :rtype: CodegenContext
+    """
+    new_context = CodegenContext(new_builder)
+    new_context.emits_ir = self.emits_ir
+    new_context.is_terminated = self.is_terminated
+    new_context.current_func_inline_return_ir_alloca = self.current_func_inline_return_ir_alloca
+    new_context.current_func_inline_return_collect_block = self.current_func_inline_return_collect_block
+    return new_context
+
+  def copy(self):
+    """
+    :rtype: CodegenContext
+    """
+    return self.copy_with_builder(self.builder)
+
+  def copy_without_builder(self):
+    """
+    :rtype: CodegenContext
+    """
+    new_context = self.copy_with_builder(None)
+    new_context.emits_ir = False
+    return new_context
 
 
 def _make_builtin_op_arg_names(op, op_arg_types):

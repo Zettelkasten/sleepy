@@ -364,37 +364,38 @@ class FunctionDeclarationAst(StatementAst):
         assert len(ir_func_args) == len(self.arg_identifiers)
         assert caller_context.emits_ir
         assert not caller_context.is_terminated
-        inline_context = CodegenContext(caller_context.builder)
+        inline_context = caller_context.copy()
         if concrete_func.return_type == SLEEPY_VOID:
           return_val_ir_alloca = None
         else:
           return_val_ir_alloca = inline_context.builder.alloca(
             concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
         collect_block = inline_context.builder.append_basic_block('collect_return_%s_block' % self.identifier)
+        inline_context.current_func_inline_return_ir_alloca = return_val_ir_alloca
+        inline_context.current_func_inline_return_collect_block = collect_block
         self._build_body_ir(
-          parent_symbol_table=symbol_table, body_context=inline_context, ir_func_args=ir_func_args,
-          inline_return_collect_block=collect_block, inline_return_ir_alloca=return_val_ir_alloca)
+          parent_symbol_table=symbol_table, body_context=inline_context, ir_func_args=ir_func_args)
         assert inline_context.is_terminated
         assert not collect_block.is_terminated
-        collect_context = CodegenContext(ir.IRBuilder(collect_block))
+        # use the caller_context instead of reusing the inline_context because the inline_context will be terminated
+        caller_context.builder = ir.IRBuilder(collect_block)
         if concrete_func.return_type == SLEEPY_VOID:
           return_val = None
         else:
-          return_val = collect_context.builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
-        caller_context.builder = collect_context.builder
+          return_val = caller_context.builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
         assert not caller_context.is_terminated
         return return_val
 
       concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
       # check symbol tables without emitting ir
-      self._build_body_ir(parent_symbol_table=symbol_table, body_context=CodegenContext(None))
+      self._build_body_ir(parent_symbol_table=symbol_table, body_context=context.copy_without_builder())
     else:
       assert not self.is_inline
       if context.emits_ir:
         body_block = concrete_func.ir_func.append_basic_block(name='entry')
-        body_context = CodegenContext(ir.IRBuilder(body_block))
+        body_context = context.copy_with_builder(ir.IRBuilder(body_block))
       else:
-        body_context = CodegenContext(None)
+        body_context = context.copy_without_builder()
       self._build_body_ir(
         parent_symbol_table=symbol_table, body_context=body_context, ir_func_args=concrete_func.ir_func.args)
 
@@ -410,21 +411,16 @@ class FunctionDeclarationAst(StatementAst):
     assert func_symbol.has_concrete_func(arg_types)
     return func_symbol.get_concrete_func(arg_types)
 
-  def _build_body_ir(self, parent_symbol_table, body_context, ir_func_args=None, inline_return_collect_block=None,
-                     inline_return_ir_alloca=None):
+  def _build_body_ir(self, parent_symbol_table, body_context, ir_func_args=None):
     """
     :param SymbolTable parent_symbol_table: of the parent function, NOT of the caller.
     :param CodegenContext body_context:
     :param list[ir.values.Value]|None ir_func_args:
-    :param None|ir.Block inline_return_collect_block:
-    :param None|ir.instructions.AllocaInstr inline_return_ir_alloca:
     """
     assert not self.is_extern
     concrete_func = self._get_concrete_func(parent_symbol_table=parent_symbol_table)
     assert self.is_inline == concrete_func.is_inline
     body_symbol_table = parent_symbol_table.copy_with_new_current_func(concrete_func)
-    body_symbol_table.current_func_inline_return_collect_block = inline_return_collect_block
-    body_symbol_table.current_func_inline_return_ir_alloca = inline_return_ir_alloca
 
     # add arguments as variables
     for arg_identifier, arg_type, arg_mutable in zip(
@@ -548,9 +544,10 @@ class ReturnStatementAst(StatementAst):
         ir_val = make_implicit_cast_to_ir_val(
           return_val_type, symbol_table.current_func.return_type, ir_val, context=context)
         if symbol_table.current_func.is_inline:
-          assert symbol_table.current_func_inline_return_ir_alloca is not None
-          context.builder.store(ir_val, symbol_table.current_func_inline_return_ir_alloca)
+          assert context.current_func_inline_return_ir_alloca is not None
+          context.builder.store(ir_val, context.current_func_inline_return_ir_alloca)
         else:
+          assert context.current_func_inline_return_ir_alloca is None
           context.builder.ret(ir_val)
     else:
       assert len(self.return_exprs) == 0
@@ -559,12 +556,12 @@ class ReturnStatementAst(StatementAst):
           symbol_table.current_func.return_type))
       if context.emits_ir:
         if symbol_table.current_func.is_inline:
-          assert symbol_table.current_func_inline_return_ir_alloca is None
+          assert context.current_func_inline_return_ir_alloca is None
         else:
           context.builder.ret_void()
 
     if context.emits_ir and symbol_table.current_func.is_inline:
-      collect_block = symbol_table.current_func_inline_return_collect_block
+      collect_block = context.current_func_inline_return_collect_block
       assert collect_block is not None
       context.builder.branch(collect_block)
       context.builder = ir.IRBuilder(collect_block)
@@ -613,7 +610,7 @@ class StructDeclarationAst(StatementAst):
       self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
     struct_symbol_table = symbol_table.copy()
     struct_symbol_table.current_scope_identifiers = []
-    struct_context = CodegenContext(None)
+    struct_context = context.copy_without_builder()
     for member_num, stmt in enumerate(self.stmt_list):
       if not isinstance(stmt, AssignStatementAst):
         stmt.raise_error('Can only use declare statements within a struct declaration')
@@ -828,10 +825,10 @@ class IfStatementAst(StatementAst):
       true_block = context.builder.append_basic_block('true_branch')  # type: ir.Block
       false_block = context.builder.append_basic_block('false_branch')  # type: ir.Block
       context.builder.cbranch(ir_cond, true_block, false_block)
-      true_context = CodegenContext(ir.IRBuilder(true_block))
-      false_context = CodegenContext(ir.IRBuilder(false_block))
+      true_context = context.copy_with_builder(ir.IRBuilder(true_block))
+      false_context = context.copy_with_builder(ir.IRBuilder(false_block))
     else:
-      true_context, false_context = CodegenContext(None), CodegenContext(None)
+      true_context, false_context = context.copy_without_builder(), context.copy_without_builder()
 
     self.true_scope.build_scope_ir(scope_symbol_table=true_symbol_table, scope_context=true_context)
     self.false_scope.build_scope_ir(scope_symbol_table=false_symbol_table, scope_context=false_context)
@@ -887,10 +884,10 @@ class WhileStatementAst(StatementAst):
       body_block = context.builder.append_basic_block('while_body')  # type: ir.Block
       continue_block = context.builder.append_basic_block('continue_branch')  # type: ir.Block
       context.builder.cbranch(cond_ir, body_block, continue_block)
-      body_context = CodegenContext(ir.IRBuilder(body_block))
+      body_context = context.copy_with_builder(ir.IRBuilder(body_block))
       context.builder = ir.IRBuilder(continue_block)
     else:
-      body_context = CodegenContext(None)
+      body_context = context.copy_without_builder()
     assert context.emits_ir == body_context.emits_ir
 
     body_symbol_table = symbol_table.copy()
