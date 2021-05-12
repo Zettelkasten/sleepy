@@ -289,14 +289,15 @@ def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context):
   return context.builder.load(ir_alloca)
 
 
-def make_ir_val_is_type(ir_val, known_type, check_type, builder):
+def make_ir_val_is_type(ir_val, known_type, check_type, context):
   """
   :param ir.values.Value ir_val:
   :param Type known_type:
   :param Type check_type:
-  :param ir.IRBuilder builder:
-  :rtype: tuple[ir.values.Value, ir.IRBuilder]
+  :param CodegenContext context:
+  :rtype: ir.values.Value
   """
+  assert context.emits_ir
   if known_type == check_type:
     return True
   if not isinstance(known_type, UnionType):
@@ -304,10 +305,10 @@ def make_ir_val_is_type(ir_val, known_type, check_type, builder):
   if not known_type.contains(check_type):
     return False
   assert not isinstance(check_type, UnionType), 'not implemented yet'
-  union_tag = builder.extract_value(ir_val, 0)
-  cmp_val = builder.icmp_signed(
+  union_tag = context.builder.extract_value(ir_val, 0)
+  cmp_val = context.builder.icmp_signed(
     '==', union_tag, ir.Constant(known_type.tag_ir_type, known_type.get_variant_num(check_type)))
-  return cmp_val, builder
+  return cmp_val
 
 
 class VariableSymbol(Symbol):
