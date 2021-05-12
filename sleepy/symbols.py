@@ -671,7 +671,7 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
     """
     :param Dict[Type,Callable] single_type_instr:
     :param str instr_name:
-    :rtype: (ir.values.Value, ir.IRBuilder)
+    :rtype: ir.values.Value
     """
     assert len(op_arg_types) == len(ir_func_args) == 2
     type_instr = {(arg_type, arg_type): instr for arg_type, instr in single_type_instr.items()}
@@ -695,12 +695,12 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
   if op == '+':
     if len(op_arg_types) == 1:
       assert len(ir_func_args) == 1
-      return ir_func_args[0], body_builder
+      return ir_func_args[0]
     assert len(op_arg_types) == len(ir_func_args) == 2
     left_type, right_type = op_arg_types
     left_val, right_val = ir_func_args
     if left_type == SLEEPY_DOUBLE_PTR and right_type == SLEEPY_INT:
-      return body_builder.gep(left_val, (right_val,), name='add'), body_builder
+      return body_builder.gep(left_val, (right_val,), name='add')
     return make_binary_op(
       {SLEEPY_DOUBLE: body_builder.fadd, SLEEPY_INT: body_builder.add, SLEEPY_LONG: body_builder.add}, instr_name='add')
   if op == '-':
@@ -709,9 +709,9 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
       val_type, ir_val = op_arg_types[0], ir_func_args[0]
       constant_minus_one = ir.Constant(val_type.ir_type, -1)
       if val_type == SLEEPY_DOUBLE:
-        return body_builder.fmul(constant_minus_one, ir_val, name='neg'), body_builder
+        return body_builder.fmul(constant_minus_one, ir_val, name='neg')
       if val_type in {SLEEPY_INT, SLEEPY_LONG}:
-        return body_builder.mul(constant_minus_one, ir_val, name='neg'), body_builder
+        return body_builder.mul(constant_minus_one, ir_val, name='neg')
     return make_binary_op(
       {SLEEPY_DOUBLE: body_builder.fsub, SLEEPY_INT: body_builder.sub, SLEEPY_LONG: body_builder.sub}, instr_name='sub')
   if op in {'==', '!=', '<', '>', '<=', '>='}:
