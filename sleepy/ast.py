@@ -722,7 +722,7 @@ class AssignStatementAst(StatementAst):
     symbol = symbol_table[var_identifier]
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign non-variable %r to a variable' % var_identifier)
-    ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
+    ptr_type = self.var_target.make_narrowed_ptr_type(symbol_table=symbol_table)
     if symbol.narrowed_var_type != ptr_type:
       self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
         var_identifier, symbol.narrowed_var_type, ptr_type))
@@ -747,7 +747,6 @@ class AssignStatementAst(StatementAst):
 
     if self.is_declaration(symbol_table=symbol_table):
       assert isinstance(self.var_target, VariableTargetAst)
-      assert isinstance(self.var_target, VariableTargetAst)
       var_identifier = self.var_target.var_identifier
       assert var_identifier not in symbol_table.current_scope_identifiers
       if stated_type is not None:
@@ -763,7 +762,7 @@ class AssignStatementAst(StatementAst):
       symbol_table.current_scope_identifiers.append(var_identifier)
     else:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
-      declared_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
+      declared_type = self.var_target.make_declared_ptr_type(symbol_table=symbol_table)
       assert declared_type is not None
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
           self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
@@ -781,6 +780,15 @@ class AssignStatementAst(StatementAst):
     assert declared_type is not None
     if declared_mutable and not val_mutable:
       self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % stated_type)
+
+    # if we assign to a variable, narrow type to val_type
+    if isinstance(self.var_target, VariableTargetAst):
+      assert self.var_target.var_identifier in symbol_table
+      symbol = symbol_table[self.var_target.var_identifier]
+      assert isinstance(symbol, VariableSymbol)
+      narrowed_symbol = symbol.copy_with_narrowed_type(val_type)
+      assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
+      symbol_table[self.var_target.var_identifier] = narrowed_symbol
 
     if context.emits_ir:
       ir_val = self.var_val.make_ir_val(symbol_table=symbol_table, context=context)
@@ -1302,7 +1310,14 @@ class TargetAst(AbstractSyntaxTree):
     """
     super().__init__(pos)
 
-  def make_ptr_type(self, symbol_table):
+  def make_declared_ptr_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    raise NotImplementedError()
+
+  def make_narrowed_ptr_type(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: Type
@@ -1351,7 +1366,19 @@ class VariableTargetAst(TargetAst):
     super().__init__(pos)
     self.var_identifier = var_identifier
 
-  def make_ptr_type(self, symbol_table):
+  def make_declared_ptr_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    if self.var_identifier not in symbol_table:
+      self.raise_error('Cannot reference variable %r before declaration' % self.var_identifier)
+    symbol = symbol_table[self.var_identifier]
+    if not isinstance(symbol, VariableSymbol):
+      self.raise_error('Cannot assign to non-variable %r' % self.var_identifier)
+    return symbol.declared_var_type
+
+  def make_narrowed_ptr_type(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: Type
@@ -1414,20 +1441,27 @@ class MemberTargetAst(TargetAst):
     self.parent_target = parent_target
     self.member_identifier = member_identifier
 
-  def make_ptr_type(self, symbol_table):
+  def make_declared_ptr_type(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    parent_type = self.parent_target.make_ptr_type(symbol_table=symbol_table)
+    parent_type = self.parent_target.make_narrowed_ptr_type(symbol_table=symbol_table)
     return self._make_member_val_type(parent_type, member_identifier=self.member_identifier, symbol_table=symbol_table)
+
+  def make_narrowed_ptr_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    return self.make_declared_ptr_type(symbol_table=symbol_table)
 
   def is_ptr_mutable(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: bool
     """
-    parent_type = self.parent_target.make_ptr_type(symbol_table=symbol_table)
+    parent_type = self.parent_target.make_narrowed_ptr_type(symbol_table=symbol_table)
     assert isinstance(parent_type, StructType)
     assert self.member_identifier in parent_type.member_identifiers
     member_num = parent_type.get_member_num(self.member_identifier)
@@ -1448,7 +1482,7 @@ class MemberTargetAst(TargetAst):
     :rtype: ir.instructions.Instruction
     """
     assert context.emits_ir
-    parent_type = self.parent_target.make_ptr_type(symbol_table=symbol_table)
+    parent_type = self.parent_target.make_narrowed_ptr_type(symbol_table=symbol_table)
     assert isinstance(parent_type, StructType)
     member_num = parent_type.get_member_num(self.member_identifier)
     parent_ptr = self.parent_target.make_ir_ptr(symbol_table=symbol_table, context=context)
