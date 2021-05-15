@@ -347,7 +347,7 @@ class FunctionDeclarationAst(StatementAst):
       self.raise_error('Extern function %r cannot be inlined' % self.identifier)
     concrete_func = ConcreteFunction(
       None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
-      arg_types=arg_types, arg_mutables=arg_mutables, arg_type_assertions=arg_types, is_inline=self.is_inline)
+      arg_types=arg_types, arg_mutables=arg_mutables, arg_type_narrowings=arg_types, is_inline=self.is_inline)
     if context.emits_ir and not self.is_inline:
       ir_func_type = concrete_func.make_ir_function_type()
       ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
@@ -638,7 +638,7 @@ class StructDeclarationAst(StatementAst):
     constructor_symbol = FunctionSymbol()
     constructor = ConcreteFunction(
       ir_func=None, return_type=struct_type, return_mutable=True,
-      arg_types=member_types, arg_identifiers=member_identifiers, arg_type_assertions=member_types,
+      arg_types=member_types, arg_identifiers=member_identifiers, arg_type_narrowings=member_types,
       arg_mutables=member_mutables)
     if context.emits_ir:
       ir_func_type = constructor.make_ir_function_type()
@@ -822,7 +822,7 @@ class IfStatementAst(StatementAst):
       self.raise_error('Condition use expression of type %r as if-condition' % cond_type)
 
     true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
-    make_type_assertions_from_valid_cond_ast(self.condition_val, symbol_table=true_symbol_table)
+    make_narrow_type_from_valid_cond_ast(self.condition_val, symbol_table=true_symbol_table)
     # TODO: Assert the opposite for the false branch
 
     if context.emits_ir:
@@ -1581,7 +1581,7 @@ def annotate_ast(ast, annotation_list):
   return ast
 
 
-def make_type_assertions_from_valid_cond_ast(valid_expr_ast, symbol_table):
+def make_narrow_type_from_valid_cond_ast(valid_expr_ast, symbol_table):
   """
   :param ExpressionAst valid_expr_ast:
   :param SymbolTable symbol_table:

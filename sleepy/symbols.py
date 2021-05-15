@@ -125,6 +125,7 @@ class UnionType(Type):
     :param list[int] possible_type_nums:
     """
     assert len(possible_types) == len(possible_type_nums)
+    assert SLEEPY_VOID not in possible_types
     self.possible_types = possible_types
     self.possible_type_nums = possible_type_nums
     self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
@@ -277,6 +278,8 @@ def can_implicit_cast_to(from_type, to_type):
   """
   if from_type == to_type:
     return True
+  if from_type == SLEEPY_VOID or to_type == SLEEPY_VOID:
+    return False
   if isinstance(from_type, UnionType):
     possible_from_types = from_type.possible_types
   else:
@@ -400,7 +403,7 @@ class ConcreteFunction:
   An actual function implementation.
   """
   def __init__(self, ir_func, return_type, return_mutable, arg_identifiers, arg_types, arg_mutables,
-               arg_type_assertions, is_inline=False):
+               arg_type_narrowings, is_inline=False):
     """
     :param ir.Function|None ir_func:
     :param Type return_type:
@@ -408,19 +411,19 @@ class ConcreteFunction:
     :param list[str] arg_identifiers:
     :param list[Type] arg_types:
     :param list[bool] arg_mutables:
-    :param list[Type] arg_type_assertions:
+    :param list[Type] arg_type_narrowings:
     :param bool is_inline:
     """
     assert ir_func is None or isinstance(ir_func, ir.Function)
     assert isinstance(return_type, Type)
-    assert len(arg_identifiers) == len(arg_types) == len(arg_mutables) == len(arg_type_assertions)
+    assert len(arg_identifiers) == len(arg_types) == len(arg_mutables) == len(arg_type_narrowings)
     self.ir_func = ir_func
     self.return_type = return_type
     self.return_mutable = return_mutable
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
     self.arg_mutables = arg_mutables
-    self.arg_type_narrowings = arg_type_assertions
+    self.arg_type_narrowings = arg_type_narrowings
     self.is_inline = is_inline
 
   def get_c_arg_types(self):
@@ -471,9 +474,9 @@ class ConcreteFunction:
     :rtype str:
     """
     return (
-      'ConcreteFunction(ir_func=%r, return_type=%r, arg_identifiers=%r, arg_types=%r, arg_type_assertions=%r, '
+      'ConcreteFunction(ir_func=%r, return_type=%r, arg_identifiers=%r, arg_types=%r, arg_type_narrowings=%r, '
       'is_inline=%r)' % (
-        self.ir_func, self.return_type, self.arg_identifiers, self.arg_types, self.arg_type_assertions, self.is_inline))
+        self.ir_func, self.return_type, self.arg_identifiers, self.arg_types, self.arg_type_narrowings, self.is_inline))
 
 
 class FunctionSymbol(Symbol):
@@ -834,7 +837,7 @@ def build_initial_ir(symbol_table, context):
       # ir_func will be set in build_initial_module_ir
       concrete_func = ConcreteFunction(
         ir_func=None, return_type=op_return_type, return_mutable=False, arg_identifiers=op_arg_identifiers,
-        arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), arg_type_assertions=op_arg_types,
+        arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), arg_type_narrowings=op_arg_types,
         is_inline=True)
       func_symbol.add_concrete_func(concrete_func)
 
