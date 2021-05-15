@@ -144,7 +144,9 @@ class UnionType(Type):
     super().__init__(ir_type, pass_by_ref=False, c_type=c_type)
 
   def __repr__(self):
-    return self.identifier
+    return 'UnionType(%s)' % ', '.join(
+      '%s:%s' % (possible_type_num, possible_type)
+      for possible_type_num, possible_type in zip(self.possible_type_nums, self.possible_types))
 
   def __eq__(self, other):
     """
@@ -326,15 +328,21 @@ def narrow_type(from_type, narrow_to):
   """
   if from_type == narrow_to:
     return from_type
+  if isinstance(narrow_to, UnionType):
+    narrow_to_types = narrow_to.possible_types
+  else:
+    narrow_to_types = [narrow_to]
   if not isinstance(from_type, UnionType):
-    return SLEEPY_NEVER
-  if not isinstance(narrow_to, UnionType):
-    narrow_to = UnionType(possible_types=[narrow_to], possible_type_nums=[0])
+    if from_type in narrow_to_types:
+      return from_type
+    else:
+      return SLEEPY_NEVER
   possible_types = [
-    possible_type for possible_type in narrow_to.possible_types if possible_type in from_type.possible_types]
+    possible_type for possible_type in from_type.possible_types if possible_type in narrow_to_types]
   possible_type_nums = [
-    type_num for type_num, possible_type in zip(narrow_to.possible_type_nums, narrow_to.possible_types)
-    if possible_type in from_type.possible_types]
+    possible_type_num
+    for possible_type, possible_type_num in zip(from_type.possible_types, from_type.possible_type_nums)
+    if possible_type in narrow_to_types]
   return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums)
 
 
@@ -378,13 +386,13 @@ class VariableSymbol(Symbol):
     self.narrowed_var_type = var_type
     self.mutable = mutable
 
-  def copy_with_narrowed_type(self, asserted_var_type):
+  def copy_with_narrowed_type(self, narrow_to):
     """
-    :param Type asserted_var_type:
+    :param Type narrow_to:
     :rtype: VariableSymbol
     """
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
-    new_var_symbol.narrowed_var_type = asserted_var_type
+    new_var_symbol.narrowed_var_type = narrow_type(self.declared_var_type, narrow_to)
     return new_var_symbol
 
   def build_ir_alloca(self, context, identifier):
@@ -396,6 +404,13 @@ class VariableSymbol(Symbol):
     if not context.emits_ir:
       return
     self.ir_alloca = context.builder.alloca(self.declared_var_type.ir_type, name=identifier)
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r, mutable=%r)' % (
+      self.ir_alloca, self.declared_var_type, self.narrowed_var_type, self.mutable)
 
 
 class ConcreteFunction:
