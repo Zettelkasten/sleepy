@@ -61,7 +61,7 @@ class Type:
 
 class VoidType(Type):
   """
-  Typ returned when nothing is returned.
+  Type returned when nothing is returned.
   """
   def __init__(self):
     super().__init__(ir.VoidType(), pass_by_ref=False, c_type=None)
@@ -134,7 +134,8 @@ class UnionType(Type):
     self.untagged_union_c_type = type(
       '%s_UntaggedCType' % self.identifier, (ctypes.Union,),
       {'_fields_': [('variant%s' % num, possible_type.c_type) for num, possible_type in enumerate(possible_types)]})
-    self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), ctypes.sizeof(self.untagged_union_c_type))
+    # Somehow, you cannot bitcast a byte array to e.g. a double, thus we just use a very large int type here
+    self.untagged_union_ir_type = ir.types.IntType(8 * ctypes.sizeof(self.untagged_union_c_type))
     c_type = type(
       '%s_CType' % self.identifier, (ctypes.Structure,),
       {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
@@ -197,6 +198,19 @@ class UnionType(Type):
       untagged_union_ptr, ir.types.PointerType(variant_type.ir_type),
       name='%s_untagged_union_ptr_cast' % self.identifier)
 
+  def make_extract_val(self, union_ir_val, variant_type, context):
+    """
+    :param ir.values.Value union_ir_val:
+    :param Type variant_type:
+    :param CodegenContext context:
+    :rtype: ir.values.Value
+    """
+    assert context.emits_ir
+    assert variant_type in self.possible_types
+    untagged_union_val = context.builder.extract_value(union_ir_val, 1, name='%s_untagged_union' % self.identifier)
+    return context.builder.bitcast(
+      untagged_union_val, variant_type.ir_type, name='%s_untagged_union_cast' % self.identifier)
+
 
 class StructType(Type):
   """
@@ -241,6 +255,7 @@ class StructType(Type):
 
 
 SLEEPY_VOID = VoidType()
+SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[])
 SLEEPY_DOUBLE = DoubleType()
 SLEEPY_BOOL = BoolType()
 SLEEPY_INT = IntType()
@@ -262,9 +277,13 @@ def can_implicit_cast_to(from_type, to_type):
   """
   if from_type == to_type:
     return True
+  if isinstance(from_type, UnionType):
+    possible_from_types = from_type.possible_types
+  else:
+    possible_from_types = [from_type]
   if not isinstance(to_type, UnionType):
-    return False
-  return to_type.contains(from_type)
+    to_type = UnionType(possible_types=[to_type], possible_type_nums=[0])
+  return all(to_type.contains(possible_from_type) for possible_from_type in possible_from_types)
 
 
 def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context):
@@ -279,14 +298,41 @@ def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context):
   assert can_implicit_cast_to(from_type, to_type)
   if from_type == to_type:
     return from_ir_val
-  assert isinstance(to_type, UnionType)
   assert not to_type.is_pass_by_ref()
-  assert not isinstance(from_type, UnionType), 'not implemented yet'
-  variant_num = to_type.get_variant_num(from_type)
-  ir_alloca = context.builder.alloca(to_type.ir_type, name=to_type.identifier)
-  context.builder.store(ir.Constant(to_type.tag_ir_type, variant_num), to_type.make_tag_ptr(ir_alloca, context=context))
-  context.builder.store(from_ir_val, to_type.make_untagged_union_ptr(ir_alloca, from_type, context=context))
-  return context.builder.load(ir_alloca)
+  if isinstance(to_type, UnionType):
+    assert not isinstance(from_type, UnionType), 'not implemented yet'
+    variant_num = to_type.get_variant_num(from_type)
+    to_ir_alloca = context.builder.alloca(to_type.ir_type, name=str(to_type))
+    context.builder.store(
+      ir.Constant(to_type.tag_ir_type, variant_num), to_type.make_tag_ptr(to_ir_alloca, context=context))
+    context.builder.store(from_ir_val, to_type.make_untagged_union_ptr(to_ir_alloca, from_type, context=context))
+    return context.builder.load(to_ir_alloca)
+  else:
+    assert not isinstance(to_type, UnionType)
+    # this is only possible when from_type is a single-type union
+    assert isinstance(from_type, UnionType)
+    assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
+    return from_type.make_extract_val(from_ir_val, to_type, context=context)
+
+
+def narrow_type(from_type, narrow_to):
+  """
+  :param Type from_type:
+  :param Type narrow_to:
+  :rtype: Type
+  """
+  if from_type == narrow_to:
+    return from_type
+  if not isinstance(from_type, UnionType):
+    return SLEEPY_NEVER
+  if not isinstance(narrow_to, UnionType):
+    narrow_to = UnionType(possible_types=[narrow_to], possible_type_nums=[0])
+  possible_types = [
+    possible_type for possible_type in narrow_to.possible_types if possible_type in from_type.possible_types]
+  possible_type_nums = [
+    type_num for type_num, possible_type in zip(narrow_to.possible_type_nums, narrow_to.possible_types)
+    if possible_type in from_type.possible_types]
+  return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums)
 
 
 def make_ir_val_is_type(ir_val, known_type, check_type, context):
@@ -326,16 +372,16 @@ class VariableSymbol(Symbol):
     assert var_type != SLEEPY_VOID
     self.ir_alloca = ir_alloca
     self.declared_var_type = var_type
-    self.asserted_var_type = var_type
+    self.narrowed_var_type = var_type
     self.mutable = mutable
 
-  def copy_with_asserted_var_type(self, asserted_var_type):
+  def copy_with_narrowed_type(self, asserted_var_type):
     """
     :param Type asserted_var_type:
     :rtype: VariableSymbol
     """
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
-    new_var_symbol.asserted_var_type = asserted_var_type
+    new_var_symbol.narrowed_var_type = asserted_var_type
     return new_var_symbol
 
   def build_ir_alloca(self, context, identifier):
@@ -374,7 +420,7 @@ class ConcreteFunction:
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
     self.arg_mutables = arg_mutables
-    self.arg_type_assertions = arg_type_assertions
+    self.arg_type_narrowings = arg_type_assertions
     self.is_inline = is_inline
 
   def get_c_arg_types(self):

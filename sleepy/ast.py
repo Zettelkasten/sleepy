@@ -11,7 +11,7 @@ from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
-  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext
+  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, narrow_type
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is'}
 
@@ -73,11 +73,11 @@ class AbstractSyntaxTree:
         self.raise_error('Cannot call function %r declared with mutable parameter %r with immutable argument' % (
             func_identifier, arg_identifier))
 
-    for func_arg_expr, arg_type_assertion in zip(func_arg_exprs, concrete_func.arg_type_assertions):
+    for func_arg_expr, narrowed_arg_type in zip(func_arg_exprs, concrete_func.arg_type_narrowings):
       if isinstance(func_arg_expr, VariableExpressionAst):
         var_symbol = symbol_table[func_arg_expr.var_identifier]
         assert isinstance(var_symbol, VariableSymbol)
-        symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_asserted_var_type(arg_type_assertion)
+        symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
 
     return concrete_func
 
@@ -723,9 +723,9 @@ class AssignStatementAst(StatementAst):
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign non-variable %r to a variable' % var_identifier)
     ptr_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
-    if symbol.declared_var_type != ptr_type:
+    if symbol.narrowed_var_type != ptr_type:
       self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
-        var_identifier, symbol.declared_var_type, ptr_type))
+        var_identifier, symbol.narrowed_var_type, ptr_type))
 
   def build_ir(self, symbol_table, context):
     """
@@ -822,6 +822,9 @@ class IfStatementAst(StatementAst):
       self.raise_error('Condition use expression of type %r as if-condition' % cond_type)
 
     true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
+    make_type_assertions_from_valid_cond_ast(self.condition_val, symbol_table=true_symbol_table)
+    # TODO: Assert the opposite for the false branch
+
     if context.emits_ir:
       ir_cond = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
       true_block = context.builder.append_basic_block('true_branch')  # type: ir.Block
@@ -848,6 +851,7 @@ class IfStatementAst(StatementAst):
         if not false_context.is_terminated:
           false_context.builder.branch(continue_block)
         context.builder = ir.IRBuilder(continue_block)
+    # TODO: Add type assertions for continue branch
 
   def __repr__(self):
     """
@@ -1137,7 +1141,7 @@ class VariableExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    return self.get_var_symbol(symbol_table=symbol_table).declared_var_type
+    return self.get_var_symbol(symbol_table=symbol_table).narrowed_var_type
 
   def is_val_mutable(self, symbol_table):
     """
@@ -1355,7 +1359,7 @@ class VariableTargetAst(TargetAst):
     symbol = symbol_table[self.var_identifier]
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign to non-variable %r' % self.var_identifier)
-    return symbol.asserted_var_type
+    return symbol.narrowed_var_type
 
   def is_ptr_mutable(self, symbol_table):
     """
@@ -1575,6 +1579,23 @@ def annotate_ast(ast, annotation_list):
       annotation.raise_error('Cannot add annotation with name %r multiple times' % annotation.identifier)
     ast.annotations.append(annotation)
   return ast
+
+
+def make_type_assertions_from_valid_cond_ast(valid_expr_ast, symbol_table):
+  """
+  :param ExpressionAst valid_expr_ast:
+  :param SymbolTable symbol_table:
+  """
+  # TODO: This is super limited currently: Will only work for if(local_var is Type), nothing more.
+  if isinstance(valid_expr_ast, BinaryOperatorExpressionAst) and valid_expr_ast.op == 'is':
+    var_expr = valid_expr_ast.left_expr
+    if not isinstance(var_expr, VariableExpressionAst):
+      return
+    var_symbol = var_expr.get_var_symbol(symbol_table=symbol_table)
+    assert isinstance(valid_expr_ast.right_expr, VariableExpressionAst)
+    check_type_expr = IdentifierTypeAst(valid_expr_ast.right_expr.pos, valid_expr_ast.right_expr.var_identifier)
+    asserted_type = check_type_expr.make_type(symbol_table=symbol_table)
+    var_symbol.narrowed_var_type = narrow_type(var_symbol.narrowed_var_type, asserted_type)
 
 
 def parse_char(value):
