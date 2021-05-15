@@ -1,7 +1,7 @@
 
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from llvmlite import ir
 
@@ -733,17 +733,15 @@ class AssignStatementAst(StatementAst):
     :param CodegenContext context:
     """
     if self.declared_var_type is not None:
-      declared_type = self.declared_var_type.make_type(symbol_table=symbol_table)
+      stated_type = self.declared_var_type.make_type(symbol_table=symbol_table)  # type: Optional[Type]
     else:
-      declared_type = None
+      stated_type = None  # type: Optional[Type]
     val_type = self.var_val.make_val_type(symbol_table=symbol_table)
-    orig_val_type = val_type
     if val_type == SLEEPY_VOID:
       self.raise_error('Cannot assign void to variable')
-    if declared_type is not None:
-      if not can_implicit_cast_to(val_type, declared_type):
-        self.raise_error('Cannot assign variable with declared type %r a value of type %r' % (declared_type, val_type))
-      val_type = declared_type  # implicitly cast to the declared type
+    if stated_type is not None:
+      if not can_implicit_cast_to(val_type, stated_type):
+        self.raise_error('Cannot assign variable with stated type %r a value of type %r' % (stated_type, val_type))
     declared_mutable = self.make_var_is_mutable('left-hand-side', val_type, self.annotations, default=None)
     val_mutable = self.var_val.is_val_mutable(symbol_table=symbol_table)
 
@@ -751,22 +749,25 @@ class AssignStatementAst(StatementAst):
       assert isinstance(self.var_target, VariableTargetAst)
       var_identifier = self.var_target.var_identifier
       assert var_identifier not in symbol_table.current_scope_identifiers
+      if stated_type is not None:
+        declared_type = stated_type
+      else:
+        declared_type = val_type
       if declared_mutable is None:
         declared_mutable = False
       # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
-      symbol = VariableSymbol(None, var_type=val_type, mutable=declared_mutable)
+      symbol = VariableSymbol(None, var_type=declared_type, mutable=declared_mutable)
       symbol.build_ir_alloca(context=context, identifier=var_identifier)
       symbol_table[var_identifier] = symbol
       symbol_table.current_scope_identifiers.append(var_identifier)
-      target_type = val_type
     else:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
-      existing_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
-      assert existing_type is not None
-      if not can_implicit_cast_to(val_type, existing_type):
-        self.raise_error('Cannot redefine variable of type %r with new type %r' % (existing_type, val_type))
-      if declared_type is not None and declared_type != existing_type:
-        self.raise_error('Cannot redeclare variable of type %r with new type %r' % (existing_type, declared_type))
+      declared_type = self.var_target.make_ptr_type(symbol_table=symbol_table)
+      assert declared_type is not None
+      if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
+          self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
+      if not can_implicit_cast_to(val_type, declared_type):
+        self.raise_error('Cannot redefine variable of type %r with variable of type %r' % (declared_type, val_type))
       if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
         self.raise_error('Cannot reassign member of a non-mutable variable')
       if declared_mutable is None:
@@ -776,13 +777,13 @@ class AssignStatementAst(StatementAst):
           self.raise_error('Cannot redefine a variable declared as non-mutable to mutable')
         else:
           self.raise_error('Cannot redefine a variable declared as mutable to non-mutable')
-      target_type = existing_type
+    assert declared_type is not None
     if declared_mutable and not val_mutable:
-      self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % declared_type)
+      self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % stated_type)
 
     if context.emits_ir:
       ir_val = self.var_val.make_ir_val(symbol_table=symbol_table, context=context)
-      ir_val = make_implicit_cast_to_ir_val(orig_val_type, target_type, ir_val, context=context)
+      ir_val = make_implicit_cast_to_ir_val(val_type, declared_type, ir_val, context=context)
       ir_ptr = self.var_target.make_ir_ptr(symbol_table=symbol_table, context=context)
       context.builder.store(ir_val, ir_ptr)
 
