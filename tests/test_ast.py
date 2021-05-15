@@ -1166,10 +1166,10 @@ def test_union_scope_assertions():
         return x / y;
       }
       Double|MathError div = safe_div(x, y);
-      if div is MathError {
-        return 0.0;
-      } else {
+      if div is Double {
         return div;
+      } else {
+        return 0.0;
       }
     }
     """
