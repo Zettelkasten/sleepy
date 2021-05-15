@@ -307,11 +307,11 @@ def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context):
   if isinstance(to_type, UnionType):
     assert not isinstance(from_type, UnionType), 'not implemented yet'
     variant_num = to_type.get_variant_num(from_type)
-    to_ir_alloca = context.builder.alloca(to_type.ir_type, name=str(to_type))
+    to_ir_alloca = context.builder.alloca(to_type.ir_type, name='tmp_ptr_' + str(to_type))
     context.builder.store(
       ir.Constant(to_type.tag_ir_type, variant_num), to_type.make_tag_ptr(to_ir_alloca, context=context))
     context.builder.store(from_ir_val, to_type.make_untagged_union_ptr(to_ir_alloca, from_type, context=context))
-    return context.builder.load(to_ir_alloca)
+    return context.builder.load(to_ir_alloca, name=str(to_type))
   else:
     assert not isinstance(to_type, UnionType)
     # this is only possible when from_type is a single-type union
