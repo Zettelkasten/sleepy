@@ -1157,12 +1157,12 @@ def test_union_is_operator_simple():
   with make_execution_engine() as engine:
     program = """
     func main() -> Bool {
-      Int|Bool test = 42;
-      test = True();
-      return test is Bool;  # should be True().
+      Int|Double test = 42;
+      test = 1.234;
+      return test is Double;  # should be True().
     }
     """
-    main = _test_compile_program(engine, program)
+    main = _test_compile_program(engine, program, add_preamble=False)
     assert_equal(main(), True)
 
 
