@@ -1153,6 +1153,35 @@ def test_union_is_operator():
     assert_equal(main_bar(), 2)
 
 
+def test_union_is_operator_simple():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Bool {
+      Int|Bool test = 42;
+      test = True();
+      return test is Bool;  # should be True().
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), True)
+
+
+def test_union_is_operator_if_cond():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Bool {
+      Int|Bool test = 42;
+      if test is Bool {
+        return True();
+      } else {
+        return False();
+      }
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), False)
+
+
 def test_union_scope_assertions():
   with make_execution_engine() as engine:
     program = """

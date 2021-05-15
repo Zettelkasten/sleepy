@@ -747,6 +747,7 @@ class AssignStatementAst(StatementAst):
 
     if self.is_declaration(symbol_table=symbol_table):
       assert isinstance(self.var_target, VariableTargetAst)
+      assert isinstance(self.var_target, VariableTargetAst)
       var_identifier = self.var_target.var_identifier
       assert var_identifier not in symbol_table.current_scope_identifiers
       if stated_type is not None:
@@ -1596,7 +1597,7 @@ def make_narrow_type_from_valid_cond_ast(valid_expr_ast, symbol_table):
     assert isinstance(valid_expr_ast.right_expr, VariableExpressionAst)
     check_type_expr = IdentifierTypeAst(valid_expr_ast.right_expr.pos, valid_expr_ast.right_expr.var_identifier)
     asserted_type = check_type_expr.make_type(symbol_table=symbol_table)
-    var_symbol.narrowed_var_type = narrow_type(var_symbol.narrowed_var_type, asserted_type)
+    symbol_table[var_expr.var_identifier] = var_symbol.copy_with_narrowed_type(asserted_type)
 
 
 def parse_char(value):
