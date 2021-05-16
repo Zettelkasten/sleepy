@@ -837,6 +837,7 @@ class IfStatementAst(StatementAst):
 
     if context.emits_ir:
       ir_cond = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
+      assert isinstance(ir_cond, ir.values.Value)
       true_block = context.builder.append_basic_block('true_branch')  # type: ir.Block
       false_block = context.builder.append_basic_block('false_branch')  # type: ir.Block
       context.builder.cbranch(ir_cond, true_block, false_block)

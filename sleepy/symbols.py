@@ -356,11 +356,11 @@ def make_ir_val_is_type(ir_val, known_type, check_type, context):
   """
   assert context.emits_ir
   if known_type == check_type:
-    return True
+    return ir.Constant(ir.IntType(1), True)
   if not isinstance(known_type, UnionType):
-    return False
+    return ir.Constant(ir.IntType(1), False)
   if not known_type.contains(check_type):
-    return False
+    return ir.Constant(ir.IntType(1), False)
   assert not isinstance(check_type, UnionType), 'not implemented yet'
   union_tag = context.builder.extract_value(ir_val, 0)
   cmp_val = context.builder.icmp_signed(
