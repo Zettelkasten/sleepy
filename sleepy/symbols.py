@@ -172,8 +172,8 @@ class UnionType(Type):
     :rtype: int
     """
     assert variant_type in self.possible_types
-    return self.possible_types.index(variant_type)
-  
+    return self.possible_type_nums[self.possible_types.index(variant_type)]
+
   def make_tag_ptr(self, union_ir_alloca, context, name):
     """
     :param ir.instructions.AllocaInstr union_ir_alloca:
