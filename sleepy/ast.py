@@ -544,7 +544,7 @@ class ReturnStatementAst(StatementAst):
       if context.emits_ir:
         ir_val = return_expr.make_ir_val(symbol_table=symbol_table, context=context)
         ir_val = make_implicit_cast_to_ir_val(
-          return_val_type, symbol_table.current_func.return_type, ir_val, context=context)
+          return_val_type, symbol_table.current_func.return_type, ir_val, context=context, name='return_val_cast')
         if symbol_table.current_func.is_inline:
           assert context.current_func_inline_return_ir_alloca is not None
           context.builder.store(ir_val, context.current_func_inline_return_ir_alloca)
@@ -792,7 +792,7 @@ class AssignStatementAst(StatementAst):
 
     if context.emits_ir:
       ir_val = self.var_val.make_ir_val(symbol_table=symbol_table, context=context)
-      ir_val = make_implicit_cast_to_ir_val(val_type, declared_type, ir_val, context=context)
+      ir_val = make_implicit_cast_to_ir_val(val_type, declared_type, ir_val, context=context, name='assign_cast')
       ir_ptr = self.var_target.make_ir_ptr(symbol_table=symbol_table, context=context)
       context.builder.store(ir_val, ir_ptr)
 

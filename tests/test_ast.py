@@ -1162,7 +1162,7 @@ def test_union_is_operator_simple():
       return test is Double;  # should be True().
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = _test_compile_program(engine, program, add_preamble=False, optimize=False)
     assert_equal(main(), True)
 
 
