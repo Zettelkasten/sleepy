@@ -24,14 +24,8 @@ def _test_parse_ast(program, add_preamble=True):
   print('---- input program:')
   print(program)
   tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
-  print('---- tokens:')
-  print(tokens)
   analysis, eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
   ast = eval['ast']
-  print('---- right-most analysis:')
-  print(analysis)
-  print('---- abstract syntax tree (without preamble):')
-  print(ast)
   assert isinstance(ast, TopLevelAst)
   if add_preamble:
     ast = add_preamble_to_ast(ast)
@@ -72,8 +66,6 @@ def _test_compile_program(engine, program, main_func_identifier='main', optimize
   """
   ast = _test_parse_ast(program, add_preamble=add_preamble)
   module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast')
-  print('---- symbol table:')
-  print(symbol_table)
   print('---- module intermediate repr:')
   print(module_ir)
   optimized_module_ir = compile_ir(engine, module_ir, optimize=optimize)
