@@ -135,8 +135,7 @@ class UnionType(Type):
     self.untagged_union_c_type = type(
       '%s_UntaggedCType' % self.identifier, (ctypes.Union,),
       {'_fields_': [('variant%s' % num, possible_type.c_type) for num, possible_type in enumerate(possible_types)]})
-    # Somehow, you cannot bitcast a byte array to e.g. a double, thus we just use a very large int type here
-    self.untagged_union_ir_type = ir.types.IntType(8 * ctypes.sizeof(self.untagged_union_c_type))
+    self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), ctypes.sizeof(self.untagged_union_c_type))
     c_type = type(
       '%s_CType' % self.identifier, (ctypes.Structure,),
       {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
@@ -175,7 +174,7 @@ class UnionType(Type):
     assert variant_type in self.possible_types
     return self.possible_types.index(variant_type)
   
-  def make_tag_ptr(self, union_ir_alloca, context):
+  def make_tag_ptr(self, union_ir_alloca, context, name):
     """
     :param ir.instructions.AllocaInstr union_ir_alloca:
     :param CodegenContext context:
@@ -183,23 +182,24 @@ class UnionType(Type):
     """
     assert context.emits_ir
     tag_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
-    return context.builder.gep(union_ir_alloca, tag_gep_indices, name='%s_tag_ptr' % self.identifier)
+    return context.builder.gep(union_ir_alloca, tag_gep_indices, name=name)
 
-  def make_untagged_union_ptr(self, union_ir_alloca, variant_type, context):
+  def make_untagged_union_ptr(self, union_ir_alloca, variant_type, context, name):
     """
     :param ir.instructions.AllocaInstr union_ir_alloca:
     :param Type variant_type:
     :param CodegenContext context:
+    :param str name:
     :rtype: ir.instructions.Instruction
     """
     assert context.emits_ir
     assert variant_type in self.possible_types
     untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1))
     untagged_union_ptr = context.builder.gep(
-      union_ir_alloca, untagged_union_gep_indices, name='%s_untagged_union_ptr' % self.identifier)
+      union_ir_alloca, untagged_union_gep_indices, name='%s_raw' % name)
     return context.builder.bitcast(
       untagged_union_ptr, ir.types.PointerType(variant_type.ir_type),
-      name='%s_untagged_union_ptr_cast' % self.identifier)
+      name=name)
 
   def make_extract_val(self, union_ir_val, variant_type, context):
     """
@@ -291,12 +291,13 @@ def can_implicit_cast_to(from_type, to_type):
   return all(to_type.contains(possible_from_type) for possible_from_type in possible_from_types)
 
 
-def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context):
+def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context, name):
   """
   :param Type from_type:
   :param Type to_type:
   :param ir.values.Value from_ir_val:
   :param CodegenContext context:
+  :param str name:
   :rtype: ir.values.Value
   """
   assert context.emits_ir
@@ -307,11 +308,13 @@ def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context):
   if isinstance(to_type, UnionType):
     assert not isinstance(from_type, UnionType), 'not implemented yet'
     variant_num = to_type.get_variant_num(from_type)
-    to_ir_alloca = context.builder.alloca(to_type.ir_type, name='tmp_ptr_' + str(to_type))
+    to_ir_alloca = context.builder.alloca(to_type.ir_type, name='%s_ptr' % name)
     context.builder.store(
-      ir.Constant(to_type.tag_ir_type, variant_num), to_type.make_tag_ptr(to_ir_alloca, context=context))
-    context.builder.store(from_ir_val, to_type.make_untagged_union_ptr(to_ir_alloca, from_type, context=context))
-    return context.builder.load(to_ir_alloca, name=str(to_type))
+      ir.Constant(to_type.tag_ir_type, variant_num),
+      to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
+    context.builder.store(
+      from_ir_val, to_type.make_untagged_union_ptr(to_ir_alloca, from_type, context=context, name='%s_val_ptr' % name))
+    return context.builder.load(to_ir_alloca, name=name)
   else:
     assert not isinstance(to_type, UnionType)
     # this is only possible when from_type is a single-type union
@@ -362,9 +365,9 @@ def make_ir_val_is_type(ir_val, known_type, check_type, context):
   if not known_type.contains(check_type):
     return ir.Constant(ir.IntType(1), False)
   assert not isinstance(check_type, UnionType), 'not implemented yet'
-  union_tag = context.builder.extract_value(ir_val, 0)
+  union_tag = context.builder.extract_value(ir_val, 0, name='tmp_is_val')
   cmp_val = context.builder.icmp_signed(
-    '==', union_tag, ir.Constant(known_type.tag_ir_type, known_type.get_variant_num(check_type)))
+    '==', union_tag, ir.Constant(known_type.tag_ir_type, known_type.get_variant_num(check_type)), name='tmp_is_check')
   return cmp_val
 
 
@@ -403,7 +406,7 @@ class VariableSymbol(Symbol):
     assert self.ir_alloca is None
     if not context.emits_ir:
       return
-    self.ir_alloca = context.builder.alloca(self.declared_var_type.ir_type, name=identifier)
+    self.ir_alloca = context.builder.alloca(self.declared_var_type.ir_type, name='%s_ptr' % identifier)
 
   def __repr__(self):
     """
