@@ -201,18 +201,21 @@ class UnionType(Type):
       untagged_union_ptr, ir.types.PointerType(variant_type.ir_type),
       name=name)
 
-  def make_extract_val(self, union_ir_val, variant_type, context):
+  def make_extract_val(self, union_ir_val, variant_type, context, name):
     """
     :param ir.values.Value union_ir_val:
     :param Type variant_type:
     :param CodegenContext context:
+    :param str name:
     :rtype: ir.values.Value
     """
     assert context.emits_ir
     assert variant_type in self.possible_types
-    untagged_union_val = context.builder.extract_value(union_ir_val, 1, name='%s_untagged_union' % self.identifier)
-    return context.builder.bitcast(
-      untagged_union_val, variant_type.ir_type, name='%s_untagged_union_cast' % self.identifier)
+    union_ir_alloca = context.builder.alloca(self.ir_type, name='%s_ptr' % name)
+    context.builder.store(union_ir_val, union_ir_alloca)
+    untagged_union_ptr = self.make_untagged_union_ptr(
+      union_ir_alloca, variant_type=variant_type, context=context, name='%s_val_ptr' % name)
+    return context.builder.load(untagged_union_ptr, name=name)
 
 
 class StructType(Type):
@@ -340,13 +343,7 @@ def narrow_type(from_type, narrow_to):
       return from_type
     else:
       return SLEEPY_NEVER
-  possible_types = [
-    possible_type for possible_type in from_type.possible_types if possible_type in narrow_to_types]
-  possible_type_nums = [
-    possible_type_num
-    for possible_type, possible_type_num in zip(from_type.possible_types, from_type.possible_type_nums)
-    if possible_type in narrow_to_types]
-  return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums)
+  return from_type.copy_with_narrowed_types(narrow_to_types=narrow_to_types)
 
 
 def make_ir_val_is_type(ir_val, known_type, check_type, context):
