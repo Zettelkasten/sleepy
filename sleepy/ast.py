@@ -1572,7 +1572,7 @@ class UnionTypeAst(TypeAst):
     if not all(isinstance(variant_type, IdentifierTypeAst) for variant_type in self.variant_types):
       self.raise_error('Union types cannot be nested')
     concrete_variant_types = [variant_type.make_type(symbol_table=symbol_table) for variant_type in self.variant_types]
-    return UnionType(concrete_variant_types, list(range(len(concrete_variant_types))))
+    return UnionType.from_types(concrete_variant_types)
 
   def __repr__(self):
     """

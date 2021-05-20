@@ -1246,16 +1246,16 @@ def test_assign_union_to_single():
 def test_narrow_type():
   from sleepy.symbols import narrow_type, UnionType, SLEEPY_INT, SLEEPY_BOOL
   assert_equal(narrow_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_INT)
-  assert_equal(narrow_type(UnionType([SLEEPY_INT], [0]), SLEEPY_INT), UnionType([SLEEPY_INT], [0]))
-  assert_equal(narrow_type(SLEEPY_INT, UnionType([SLEEPY_INT], [0])), SLEEPY_INT)
+  assert_equal(narrow_type(UnionType([SLEEPY_INT], [0], 4), SLEEPY_INT), UnionType([SLEEPY_INT], [0], 4))
+  assert_equal(narrow_type(SLEEPY_INT, UnionType([SLEEPY_INT], [0], 4)), SLEEPY_INT)
   assert_equal(
-    narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1]), UnionType([SLEEPY_INT], [0])),
-    UnionType([SLEEPY_INT], [0]))
+    narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4), UnionType([SLEEPY_INT], [0], 4)),
+    UnionType([SLEEPY_INT], [0], 4))
   assert_equal(
-    narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1]), SLEEPY_BOOL), UnionType([SLEEPY_BOOL], [1]))
+    narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4), SLEEPY_BOOL), UnionType([SLEEPY_BOOL], [1], 4))
   assert_equal(
-    narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1]), UnionType([SLEEPY_BOOL], [0])),
-    UnionType([SLEEPY_BOOL], [1]))
+    narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4), UnionType([SLEEPY_BOOL], [0], 1)),
+    UnionType([SLEEPY_BOOL], [1], 4))
 
 
 if __name__ == "__main__":

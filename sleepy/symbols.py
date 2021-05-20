@@ -119,23 +119,26 @@ class UnionType(Type):
   """
   A tagged union, i.e. a type that can be one of a set of different types.
   """
-  def __init__(self, possible_types, possible_type_nums):
+  def __init__(self, possible_types, possible_type_nums, val_size):
     """
     :param list[Type] possible_types:
     :param list[int] possible_type_nums:
+    :param int val_size: size of untagged union in bytes
     """
     assert len(possible_types) == len(possible_type_nums)
     assert SLEEPY_VOID not in possible_types
     self.possible_types = possible_types
     self.possible_type_nums = possible_type_nums
     self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
+    self.val_size = val_size
 
     self.tag_c_type = ctypes.c_uint8
     self.tag_ir_type = ir.types.IntType(8)
+    # TODO: The C Type should match the IR type: Also make this an byte array.
     self.untagged_union_c_type = type(
       '%s_UntaggedCType' % self.identifier, (ctypes.Union,),
       {'_fields_': [('variant%s' % num, possible_type.c_type) for num, possible_type in enumerate(possible_types)]})
-    self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), ctypes.sizeof(self.untagged_union_c_type))
+    self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), val_size)
     c_type = type(
       '%s_CType' % self.identifier, (ctypes.Structure,),
       {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
@@ -153,7 +156,9 @@ class UnionType(Type):
     """
     if not isinstance(other, UnionType):
       return False
-    return self.possible_types == other.possible_types and self.possible_type_nums == other.possible_type_nums
+    return (
+      self.possible_types == other.possible_types and self.possible_type_nums == other.possible_type_nums and
+      self.val_size == other.val_size)
 
   def contains(self, contained_type):
     """
@@ -217,6 +222,30 @@ class UnionType(Type):
       union_ir_alloca, variant_type=variant_type, context=context, name='%s_val_ptr' % name)
     return context.builder.load(untagged_union_ptr, name=name)
 
+  def copy_with_narrowed_types(self, narrow_to_types):
+    """
+    :param list[Type] narrow_to_types:
+    :rtype: UnionType
+    """
+    assert all(possible_type in self.possible_types for possible_type in narrow_to_types)
+    possible_types = [
+      possible_type for possible_type in self.possible_types if possible_type in narrow_to_types]
+    possible_type_nums = [
+      possible_type_num
+      for possible_type, possible_type_num in zip(self.possible_types, self.possible_type_nums)
+      if possible_type in narrow_to_types]
+    return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=self.val_size)
+
+  @classmethod
+  def from_types(cls, possible_types):
+    """
+    :param list[Type] possible_types:
+    :rtype: UnionType
+    """
+    possible_type_nums = list(range(len(possible_types)))
+    val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in possible_types)
+    return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
+
 
 class StructType(Type):
   """
@@ -261,7 +290,7 @@ class StructType(Type):
 
 
 SLEEPY_VOID = VoidType()
-SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[])
+SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
 SLEEPY_DOUBLE = DoubleType()
 SLEEPY_BOOL = BoolType()
 SLEEPY_INT = IntType()
@@ -289,9 +318,11 @@ def can_implicit_cast_to(from_type, to_type):
     possible_from_types = from_type.possible_types
   else:
     possible_from_types = [from_type]
-  if not isinstance(to_type, UnionType):
-    to_type = UnionType(possible_types=[to_type], possible_type_nums=[0])
-  return all(to_type.contains(possible_from_type) for possible_from_type in possible_from_types)
+  if isinstance(to_type, UnionType):
+    possible_to_types = to_type.possible_types
+  else:
+    possible_to_types = [to_type]
+  return all(possible_from_type in possible_to_types for possible_from_type in possible_from_types)
 
 
 def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context, name):
@@ -323,7 +354,7 @@ def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context, name)
     # this is only possible when from_type is a single-type union
     assert isinstance(from_type, UnionType)
     assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
-    return from_type.make_extract_val(from_ir_val, to_type, context=context)
+    return from_type.make_extract_val(from_ir_val, to_type, context=context, name=name)
 
 
 def narrow_type(from_type, narrow_to):
