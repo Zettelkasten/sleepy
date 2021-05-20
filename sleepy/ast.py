@@ -978,6 +978,8 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     self.op = op
     self.left_expr, self.right_expr = left_expr, right_expr
     if self.op == 'is':
+      # TODO: Then it should be a TypeExpressionAst, not a VariableExpressionAst.
+      # Probably it's nicer to make an entire new ExpressionAst for `is` Expressions anyway.
       assert isinstance(self.right_expr, VariableExpressionAst)
 
   def make_val_type(self, symbol_table):
