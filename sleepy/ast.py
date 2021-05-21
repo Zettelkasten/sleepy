@@ -102,8 +102,12 @@ class AbstractSyntaxTree:
     concrete_func = func_symbol.get_concrete_func(called_types)
     assert len(concrete_func.arg_types) == len(func_arg_exprs)
     ir_func_args = []  # type: List[ir.values.Value]
-    for func_arg_expr in func_arg_exprs:
+    for arg_identifier, func_arg_expr, called_arg_type, declared_arg_type in zip(
+        concrete_func.arg_identifiers, func_arg_exprs, called_types, concrete_func.arg_types):
       ir_func_arg = func_arg_expr.make_ir_val(symbol_table=symbol_table, context=context)
+      ir_func_arg = make_implicit_cast_to_ir_val(
+        from_type=called_arg_type, to_type=declared_arg_type, from_ir_val=ir_func_arg, context=context,
+        name='call_arg_%s_cast' % arg_identifier)
       ir_func_args.append(ir_func_arg)
     assert len(ir_func_args) == len(func_arg_exprs)
     if concrete_func.is_inline:
