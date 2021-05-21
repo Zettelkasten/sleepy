@@ -529,6 +529,7 @@ class FunctionSymbol(Symbol):
   """
   A set of declared (static) functions (not a function pointer) with a fixed name.
   Can have one or multiple overloaded concrete functions accepting different parameter types.
+  These functions are managed here by their expanded (i.e. simple, non union types).
   """
   def __init__(self):
     super().__init__()
@@ -539,28 +540,43 @@ class FunctionSymbol(Symbol):
     :param list[Type]|tuple[Type] arg_types:
     :rtype: bool
     """
-    return tuple(arg_types) in self.concrete_funcs
+    all_expanded_arg_types = self._iter_expanded_possible_arg_types(arg_types)
+    return any(expanded_arg_types in self.concrete_funcs for expanded_arg_types in all_expanded_arg_types)
 
   def get_concrete_func(self, arg_types):
     """
     :param list[Type]|tuple[Type] arg_types:
     :rtype: ConcreteFunction
     """
-    return self.concrete_funcs[tuple(arg_types)]
+    for expanded_arg_types in self._iter_expanded_possible_arg_types(arg_types):
+      if expanded_arg_types in self.concrete_funcs:
+        return self.concrete_funcs[expanded_arg_types]
+    assert False, '%r: %r not found' % (self, arg_types)
 
   def add_concrete_func(self, concrete_func):
     """
     :param ConcreteFunction concrete_func:
     """
     assert not self.has_concrete_func(concrete_func.arg_types)
-    self.concrete_funcs[tuple(concrete_func.arg_types)] = concrete_func
+    for expanded_arg_types in self._iter_expanded_possible_arg_types(concrete_func.arg_types):
+     self.concrete_funcs[expanded_arg_types] = concrete_func
 
   def get_single_concrete_func(self):
     """
     :rtype: ConcreteFunction
     """
-    assert len(self.concrete_funcs) == 1
+    assert len(set(self.concrete_funcs.values())) == 1
     return next(iter(self.concrete_funcs.values()))
+
+  @classmethod
+  def _iter_expanded_possible_arg_types(cls, arg_types):
+    """
+    :param list[Type]|tuple[Type] arg_types:
+    :rtype: Iterator[Tuple[Type]]
+    """
+    import itertools
+    return itertools.product(*[
+      arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type] for arg_type in arg_types])
 
 
 class TypeSymbol(Symbol):

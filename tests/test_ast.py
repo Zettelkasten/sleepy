@@ -1243,6 +1243,24 @@ def test_assign_union_to_single():
     assert_equal(main(), 3)
 
 
+def test_call_union_arg():
+  with make_execution_engine() as engine:
+    program = """
+    func accepts_both(Int|Bool thing) -> Bool {
+      if thing is Int { return thing >= 0; }
+      if thing is Bool { return thing; }
+      return False();  # never happens...
+    }
+    func main(Int a) -> Bool {
+      Int|Bool thing = a;
+      return accepts_both(thing);
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(4), True)
+    assert_equal(main(-7), False)
+
+
 def test_narrow_type():
   from sleepy.symbols import narrow_type, UnionType, SLEEPY_INT, SLEEPY_BOOL
   assert_equal(narrow_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_INT)
