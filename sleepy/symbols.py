@@ -238,12 +238,38 @@ class UnionType(Type):
       if possible_type in narrow_to_types]
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=self.val_size)
 
+  def copy_with_extended_types(self, extended_types, extended_type_nums=None):
+    """
+    :param list[Type] extended_types:
+    :param None|list[int|None] extended_type_nums: suggestions for new extended type nums
+    :rtype: UnionType
+    """
+    assert all(not isinstance(extended_type, UnionType) for extended_type in extended_types)
+    if extended_type_nums is None:
+      extended_type_nums = [None] * len(extended_types)
+    assert len(extended_types) == len(extended_type_nums)
+    new_possible_types = self.possible_types.copy()
+    new_possible_type_nums = self.possible_type_nums.copy()
+    for extended_type, extended_type_num in zip(extended_types, extended_type_nums):
+      if extended_type in new_possible_types:
+        continue
+      new_possible_types.append(extended_type)
+      if extended_type_num is not None and extended_type_num not in new_possible_type_nums:
+        new_possible_type_nums.append(extended_type_num)
+      else:
+        next_type_num = max(new_possible_type_nums) + 1 if len(new_possible_type_nums) > 0 else 0
+        new_possible_type_nums.append(next_type_num)
+    new_val_size = max([self.val_size] + [extended_type.size for extended_type in extended_types])
+    return UnionType(
+      possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=new_val_size)
+
   @classmethod
   def from_types(cls, possible_types):
     """
     :param list[Type] possible_types:
     :rtype: UnionType
     """
+    possible_types = list(dict.fromkeys(possible_types)) # possibly remove duplicates
     possible_type_nums = list(range(len(possible_types)))
     val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in possible_types)
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
@@ -377,6 +403,30 @@ def narrow_type(from_type, narrow_to):
     else:
       return SLEEPY_NEVER
   return from_type.copy_with_narrowed_types(narrow_to_types=narrow_to_types)
+
+
+def get_common_type(possible_types):
+  """
+  :param list[Type] possible_types:
+  :rtype: Type
+  """
+  assert len(possible_types) >= 1
+  common_type = possible_types[0]
+  for i, other_type in enumerate(possible_types):
+    if i == 0 or other_type in possible_types[:i]:
+      continue
+    if isinstance(common_type, UnionType):
+      if isinstance(other_type, UnionType):
+        common_type = common_type.copy_with_extended_types(
+          extended_types=other_type.possible_types, extended_type_nums=other_type.possible_type_nums)
+      else:
+        common_type = common_type.copy_with_extended_types(extended_types=[other_type])
+    else:
+      if isinstance(other_type, UnionType):
+        common_type = other_type.copy_with_extended_types(extended_types=[common_type])
+      else:
+        common_type = UnionType.from_types(possible_types=[common_type, other_type])
+  return common_type
 
 
 def make_ir_val_is_type(ir_val, known_type, check_type, context):
