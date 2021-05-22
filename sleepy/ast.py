@@ -11,7 +11,7 @@ from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_LONG, SLEEPY_VOID, SLEEPY_DOUBLE_PTR, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
-  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, narrow_type
+  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, narrow_type, get_common_type
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is'}
 
@@ -47,7 +47,7 @@ class AbstractSyntaxTree:
     :param str func_identifier:
     :param list[ExpressionAst] func_arg_exprs:
     :param SymbolTable symbol_table:
-    :rtype: ConcreteFunction
+    :rtype: list[ConcreteFunction]
     """
     if func_identifier not in symbol_table:
       self.raise_error('Function %r called before declared' % func_identifier)
@@ -65,21 +65,22 @@ class AbstractSyntaxTree:
       self.raise_error('Cannot call function %r with arguments of types %r, only declared for parameter types: %r' % (
         func_identifier, ', '.join([str(called_type) for called_type in called_types]),
         ', '.join([concrete_func.to_signature_str() for concrete_func in symbol.concrete_funcs.values()])))
-    concrete_func = symbol.get_concrete_func(called_types)
-    called_mutables = [arg_expr.is_val_mutable(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
-    for arg_identifier, arg_mutable, called_mutable in zip(
-        concrete_func.arg_identifiers, concrete_func.arg_mutables, called_mutables):
-      if not called_mutable and arg_mutable:
-        self.raise_error('Cannot call function %r declared with mutable parameter %r with immutable argument' % (
-            func_identifier, arg_identifier))
+    possible_concrete_funcs = symbol.get_concrete_funcs(called_types)
+    for concrete_func in possible_concrete_funcs:
+      called_mutables = [arg_expr.is_val_mutable(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+      for arg_identifier, arg_mutable, called_mutable in zip(
+          concrete_func.arg_identifiers, concrete_func.arg_mutables, called_mutables):
+        if not called_mutable and arg_mutable:
+          self.raise_error('Cannot call function %s%s declared with mutable parameter %r with immutable argument' % (
+              func_identifier, concrete_func.to_signature_str(), arg_identifier))
 
-    for func_arg_expr, narrowed_arg_type in zip(func_arg_exprs, concrete_func.arg_type_narrowings):
-      if isinstance(func_arg_expr, VariableExpressionAst):
-        var_symbol = symbol_table[func_arg_expr.var_identifier]
-        assert isinstance(var_symbol, VariableSymbol)
-        symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
+      for func_arg_expr, narrowed_arg_type in zip(func_arg_exprs, concrete_func.arg_type_narrowings):
+        if isinstance(func_arg_expr, VariableExpressionAst):
+          var_symbol = symbol_table[func_arg_expr.var_identifier]
+          assert isinstance(var_symbol, VariableSymbol)
+          symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
 
-    return concrete_func
+    return possible_concrete_funcs
 
   def _make_func_call_ir(self, func_identifier, func_arg_exprs, symbol_table, context):
     """
@@ -99,7 +100,9 @@ class AbstractSyntaxTree:
     assert isinstance(func_symbol, FunctionSymbol)
     called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
     assert func_symbol.has_concrete_func(called_types)
-    concrete_func = func_symbol.get_concrete_func(called_types)
+    possible_concrete_funcs = func_symbol.get_concrete_funcs(called_types)
+    assert len(possible_concrete_funcs) == 1, 'not supported yet'
+    concrete_func = next(iter(possible_concrete_funcs))
     assert len(concrete_func.arg_types) == len(func_arg_exprs)
     ir_func_args = []  # type: List[ir.values.Value]
     for arg_identifier, func_arg_expr, called_arg_type, declared_arg_type in zip(
@@ -380,7 +383,8 @@ class FunctionDeclarationAst(StatementAst):
         inline_context = caller_context.copy_with_inline_func(
           concrete_func, return_ir_alloca=return_val_ir_alloca, return_collect_block=collect_block)
         self._build_body_ir(
-          parent_symbol_table=symbol_table, body_context=inline_context, ir_func_args=ir_func_args)
+          parent_symbol_table=symbol_table, concrete_func=concrete_func, body_context=inline_context,
+          ir_func_args=ir_func_args)
         assert inline_context.is_terminated
         assert not collect_block.is_terminated
         # use the caller_context instead of reusing the inline_context because the inline_context will be terminated
@@ -394,7 +398,8 @@ class FunctionDeclarationAst(StatementAst):
 
       concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
       # check symbol tables without emitting ir
-      self._build_body_ir(parent_symbol_table=symbol_table, body_context=context.copy_without_builder())
+      self._build_body_ir(
+        parent_symbol_table=symbol_table, concrete_func=concrete_func, body_context=context.copy_without_builder())
     else:
       assert not self.is_inline
       if context.emits_ir:
@@ -403,28 +408,17 @@ class FunctionDeclarationAst(StatementAst):
       else:
         body_context = context.copy_without_builder()
       self._build_body_ir(
-        parent_symbol_table=symbol_table, body_context=body_context, ir_func_args=concrete_func.ir_func.args)
+        parent_symbol_table=symbol_table, concrete_func=concrete_func, body_context=body_context,
+        ir_func_args=concrete_func.ir_func.args)
 
-  def _get_concrete_func(self, parent_symbol_table):
-    """
-    :param SymbolTable parent_symbol_table:
-    :rtype: ConcreteFunction
-    """
-    arg_types = self.make_arg_types(symbol_table=parent_symbol_table)
-    assert self.identifier in parent_symbol_table
-    func_symbol = parent_symbol_table[self.identifier]
-    assert isinstance(func_symbol, FunctionSymbol)
-    assert func_symbol.has_concrete_func(arg_types)
-    return func_symbol.get_concrete_func(arg_types)
-
-  def _build_body_ir(self, parent_symbol_table, body_context, ir_func_args=None):
+  def _build_body_ir(self, parent_symbol_table, concrete_func, body_context, ir_func_args=None):
     """
     :param SymbolTable parent_symbol_table: of the parent function, NOT of the caller.
+    :param ConcreteFunction concrete_func:
     :param CodegenContext body_context:
     :param list[ir.values.Value]|None ir_func_args:
     """
     assert not self.is_extern
-    concrete_func = self._get_concrete_func(parent_symbol_table=parent_symbol_table)
     assert self.is_inline == concrete_func.is_inline
     body_symbol_table = parent_symbol_table.copy_with_new_current_func(concrete_func)
 
@@ -997,9 +991,9 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       type_expr.make_type(symbol_table=symbol_table)  # just check that type exists
       return SLEEPY_BOOL
     operand_exprs = [self.left_expr, self.right_expr]
-    concrete_func = self._check_func_call_symbol_table(
+    possible_concrete_funcs = self._check_func_call_symbol_table(
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
-    return concrete_func.return_type
+    return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
     """
@@ -1056,9 +1050,9 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     :rtype: Type
     """
     operand_exprs = [self.expr]
-    concrete_func = self._check_func_call_symbol_table(
+    possible_concrete_funcs = self._check_func_call_symbol_table(
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
-    return concrete_func.return_type
+    return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
     """
@@ -1216,18 +1210,18 @@ class CallExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    concrete_func = self._check_func_call_symbol_table(
+    possible_concrete_funcs = self._check_func_call_symbol_table(
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
-    return concrete_func.return_type
+    return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    concrete_func = self._check_func_call_symbol_table(
+    possible_concrete_funcs = self._check_func_call_symbol_table(
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
-    return concrete_func.return_mutable
+    return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
     """
