@@ -1314,6 +1314,26 @@ def test_union_folding():
     assert_equal(main(), 42.0)
 
 
+def test_is_operator_incremental():
+  with make_execution_engine() as engine:
+    program = """
+    struct None { }
+    func make_val() -> None|Bool|Double { return 42.0; }
+    func main() -> Bool {
+      None|Bool|Double a = make_val();
+      if a is None {
+        if a is Bool {
+          # this is dead code
+          return False();
+        }
+      }
+      return True();
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), True)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

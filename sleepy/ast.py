@@ -894,6 +894,9 @@ class AssignStatementAst(StatementAst):
       assert self.var_target.var_identifier in symbol_table
       symbol = symbol_table[self.var_target.var_identifier]
       assert isinstance(symbol, VariableSymbol)
+      # first reset all type assumptions because we assigned with something new
+      symbol.narrowed_var_type = symbol.declared_var_type
+      # then narrow it again to the actual value we assigned
       narrowed_symbol = symbol.copy_with_narrowed_type(val_type)
       assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
       symbol_table[self.var_target.var_identifier] = narrowed_symbol
@@ -940,7 +943,7 @@ class IfStatementAst(StatementAst):
       self.raise_error('Condition use expression of type %r as if-condition' % cond_type)
 
     true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
-    make_narrow_type_from_valid_cond_ast(self.condition_val, symbol_table=true_symbol_table)
+    make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=true_symbol_table)
     # TODO: Assert the opposite for the false branch
 
     if context.emits_ir:
@@ -1726,21 +1729,23 @@ def annotate_ast(ast, annotation_list):
   return ast
 
 
-def make_narrow_type_from_valid_cond_ast(valid_expr_ast, symbol_table):
+def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table):
   """
-  :param ExpressionAst valid_expr_ast:
+  :param ExpressionAst cond_expr_ast:
+  :param bool cond_holds:
   :param SymbolTable symbol_table:
   """
   # TODO: This is super limited currently: Will only work for if(local_var is Type), nothing more.
-  if isinstance(valid_expr_ast, BinaryOperatorExpressionAst) and valid_expr_ast.op == 'is':
-    var_expr = valid_expr_ast.left_expr
+  if isinstance(cond_expr_ast, BinaryOperatorExpressionAst) and cond_expr_ast.op == 'is':
+    var_expr = cond_expr_ast.left_expr
     if not isinstance(var_expr, VariableExpressionAst):
       return
     var_symbol = var_expr.get_var_symbol(symbol_table=symbol_table)
-    assert isinstance(valid_expr_ast.right_expr, VariableExpressionAst)
-    check_type_expr = IdentifierTypeAst(valid_expr_ast.right_expr.pos, valid_expr_ast.right_expr.var_identifier)
-    asserted_type = check_type_expr.make_type(symbol_table=symbol_table)
-    symbol_table[var_expr.var_identifier] = var_symbol.copy_with_narrowed_type(asserted_type)
+    assert isinstance(cond_expr_ast.right_expr, VariableExpressionAst)
+    check_type_expr = IdentifierTypeAst(cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.var_identifier)
+    check_type = check_type_expr.make_type(symbol_table=symbol_table)
+    assert cond_holds, 'not implemented'
+    symbol_table[var_expr.var_identifier] = var_symbol.copy_with_narrowed_type(check_type)
 
 
 def parse_char(value):

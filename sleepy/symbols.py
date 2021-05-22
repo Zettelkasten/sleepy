@@ -258,7 +258,6 @@ class UnionType(Type):
     :param list[Type] narrow_to_types:
     :rtype: UnionType
     """
-    assert all(possible_type in self.possible_types for possible_type in narrow_to_types)
     possible_types = [
       possible_type for possible_type in self.possible_types if possible_type in narrow_to_types]
     possible_type_nums = [
@@ -523,7 +522,7 @@ class VariableSymbol(Symbol):
     :rtype: VariableSymbol
     """
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
-    new_var_symbol.narrowed_var_type = narrow_type(self.declared_var_type, narrow_to)
+    new_var_symbol.narrowed_var_type = narrow_type(self.narrowed_var_type, narrow_to)
     return new_var_symbol
 
   def build_ir_alloca(self, context, identifier):
