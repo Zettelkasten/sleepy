@@ -672,8 +672,6 @@ class SymbolTable:
       self.symbols = {}  # type: Dict[str, Symbol]
       self.current_func = None  # type: Optional[ConcreteFunction]
       self.current_scope_identifiers = []  # type: List[str]
-      self.ir_func_malloc = None  # type: Optional[ir.Function]
-      self.ir_func_free = None  # type: Optional[ir.Function]
       self.used_ir_func_names = set()  # type: Set[str]
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
@@ -683,8 +681,6 @@ class SymbolTable:
       else:
         self.current_func = copy_new_current_func  # type: Optional[ConcreteFunction]
         self.current_scope_identifiers = []  # type: List[str]
-      self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
-      self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
 
   def __setitem__(self, identifier, symbol):
@@ -763,6 +759,8 @@ class CodegenContext:
       self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
       self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
       self.inline_func_call_stack = []  # type: List[ConcreteFunction]
+      self.ir_func_malloc = None  # type: Optional[ir.Function]
+      self.ir_func_free = None  # type: Optional[ir.Function]
     else:
       self.emits_ir = copy_from.emits_ir
       self.is_terminated = copy_from.is_terminated
@@ -770,6 +768,8 @@ class CodegenContext:
       self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
       self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
       self.inline_func_call_stack = copy_from.inline_func_call_stack.copy()  # type: List[ConcreteFunction]
+      self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
+      self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
 
     assert all(inline_func.is_inline for inline_func in self.inline_func_call_stack)
 
@@ -953,10 +953,9 @@ def build_initial_ir(symbol_table, context):
 
   if context.emits_ir:
     module = context.builder.module
-    symbol_table.ir_func_malloc = ir.Function(
+    context.ir_func_malloc = ir.Function(
       module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
-    symbol_table.ir_func_free = ir.Function(
-      module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
+    context.ir_func_free = ir.Function(module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
 
   for op, op_arg_type_list, op_return_type_list in zip(
     SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):

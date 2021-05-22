@@ -337,7 +337,7 @@ class TopLevelAst(AbstractSyntaxTree):
     context = CodegenContext(builder=root_builder)
 
     build_initial_ir(symbol_table=symbol_table, context=context)
-    assert symbol_table.ir_func_malloc is not None and symbol_table.ir_func_free is not None
+    assert context.ir_func_malloc is not None and context.ir_func_free is not None
     self.root_scope.build_scope_ir(scope_symbol_table=symbol_table, scope_context=context)
 
     assert not context.is_terminated
@@ -739,25 +739,26 @@ class StructDeclarationAst(StatementAst):
       ir_func_type = constructor.make_ir_function_type()
       ir_func_name = symbol_table.make_ir_func_name(self.struct_identifier, extern=False, concrete_func=constructor)
       constructor.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
-      self._make_constructor_body_ir(constructor, symbol_table=symbol_table)
+      self._make_constructor_body_ir(constructor, symbol_table=symbol_table, context=context)
     # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
     constructor_symbol.add_concrete_func(constructor)
     symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor_symbol)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
-  def _make_constructor_body_ir(self, constructor, symbol_table):
+  def _make_constructor_body_ir(self, constructor, symbol_table, context):
     """
     :param ConcreteFunction constructor:
     :param SymbolTable symbol_table:
+    :param CodegenContext context:
     """
     # TODO: Make this a new scope.
     struct_type = constructor.return_type
     constructor_block = constructor.ir_func.append_basic_block(name='entry')
     constructor_builder = ir.IRBuilder(constructor_block)
     if self.is_pass_by_ref():  # use malloc
-      assert symbol_table.ir_func_malloc is not None
+      assert context.ir_func_malloc is not None
       self_ir_alloca_raw = constructor_builder.call(
-        symbol_table.ir_func_malloc, [struct_type.make_ir_size()], name='self_raw_ptr')
+        context.ir_func_malloc, [struct_type.make_ir_size()], name='self_raw_ptr')
       self_ir_alloca = constructor_builder.bitcast(self_ir_alloca_raw, struct_type.ir_type, name='self')
       # TODO: eventually free memory again
     else:  # pass by value, use alloca
