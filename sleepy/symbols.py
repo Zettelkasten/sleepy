@@ -208,6 +208,15 @@ class UnionType(Type):
       untagged_union_ptr, ir.types.PointerType(variant_type.ir_type),
       name=name)
 
+  def make_extract_tag(self, union_ir_val, context, name):
+    """
+    :param ir.values.Value union_ir_val:
+    :param CodegenContext context:
+    :param str name:
+    :rtype: ir.values.Value
+    """
+    return context.builder.extract_value(union_ir_val, 0, name=name)
+
   def make_extract_val(self, union_ir_val, variant_type, context, name):
     """
     :param ir.values.Value union_ir_val:
