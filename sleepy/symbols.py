@@ -19,6 +19,7 @@ class Symbol:
     """
     Initialize the symbol.
     """
+    self.base = None  # type: Optional[Symbol]
 
 
 class Type:
@@ -545,6 +546,7 @@ class VariableSymbol(Symbol):
     :rtype: VariableSymbol
     """
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
+    new_var_symbol.base = self if self.base is None else self.base
     new_var_symbol.narrowed_var_type = narrow_type(self.narrowed_var_type, narrow_to)
     return new_var_symbol
 
@@ -554,6 +556,7 @@ class VariableSymbol(Symbol):
     :rtype: VariableSymbol
     """
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
+    new_var_symbol.base = self if self.base is None else self.base
     new_var_symbol.narrowed_var_type = exclude_type(self.narrowed_var_type, excluded)
     return new_var_symbol
 
