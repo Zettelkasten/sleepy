@@ -977,7 +977,6 @@ class IfStatementAst(StatementAst):
         if not false_context.is_terminated:
           false_context.builder.branch(continue_block)
         context.builder = ir.IRBuilder(continue_block)
-    # TODO: Add type assertions for continue branch
 
   def __repr__(self):
     """
@@ -991,49 +990,51 @@ class WhileStatementAst(StatementAst):
   """
   Stmt -> while Expr { StmtList }
   """
-  def __init__(self, pos, condition_val, stmt_list):
+  def __init__(self, pos, condition_val, body_scope):
     """
     :param TreePosition pos:
     :param ExpressionAst condition_val:
-    :param list[StatementAst] stmt_list:
+    :param AbstractScopeAst body_scope:
     """
     super().__init__(pos)
     self.condition_val = condition_val
-    self.stmt_list = stmt_list
+    self.body_scope = body_scope
 
   def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
     :param CodegenContext context:
     """
-    # TODO: Make this a separate scope. Also see IfExpressionAst.
     cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
     if not cond_type == SLEEPY_BOOL:
       self.raise_error('Condition use expression of type %r as while-condition' % cond_type)
+
+    body_symbol_table = symbol_table.copy()
+    make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=body_symbol_table)
 
     if context.emits_ir:
       cond_ir = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
       body_block = context.builder.append_basic_block('while_body')  # type: ir.Block
       continue_block = context.builder.append_basic_block('continue_branch')  # type: ir.Block
       context.builder.cbranch(cond_ir, body_block, continue_block)
-      body_context = context.copy_with_builder(ir.IRBuilder(body_block))
       context.builder = ir.IRBuilder(continue_block)
+
+      body_context = context.copy_with_builder(ir.IRBuilder(body_block))
+      self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
+      if not body_context.is_terminated:
+        body_cond_ir = self.condition_val.make_ir_val(symbol_table=symbol_table, context=body_context)
+        body_context.builder.cbranch(body_cond_ir, body_block, continue_block)
     else:
       body_context = context.copy_without_builder()
-    assert context.emits_ir == body_context.emits_ir
+      self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
 
-    body_symbol_table = symbol_table.copy()
-    for stmt in self.stmt_list:
-      stmt.build_ir(symbol_table=body_symbol_table, context=body_context)
-    if not body_context.is_terminated and body_context.emits_ir:
-      body_cond_ir = self.condition_val.make_ir_val(symbol_table=symbol_table, context=body_context)
-      body_context.builder.cbranch(body_cond_ir, body_block, continue_block)
+    make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=symbol_table)
 
   def __repr__(self):
     """
     :rtype: str
     """
-    return 'WhileStatementAst(condition_val=%r, stmt_list=%r)' % (self.condition_val, self.stmt_list)
+    return 'WhileStatementAst(condition_val=%r, body_scope=%r)' % (self.condition_val, self.body_scope)
 
 
 class ExpressionAst(AbstractSyntaxTree):
@@ -1795,7 +1796,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'Target', '=', 'Expr', ';'),
   Production('Stmt', 'if', 'Expr', 'Scope'),
   Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'),
-  Production('Stmt', 'while', 'Expr', '{', 'StmtList', '}'),
+  Production('Stmt', 'while', 'Expr', 'Scope'),
   Production('Expr', 'Expr', 'cmp_op', 'SumExpr'),
   Production('Expr', 'SumExpr'),
   Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'),
@@ -1866,7 +1867,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(1), ast(3), None)},
     {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), None)},
     {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), ast(5))},
-    {'ast': lambda _pos, ast, stmt_list: WhileStatementAst(_pos, ast(2), stmt_list(4))}] + [
+    {'ast': lambda _pos, ast: WhileStatementAst(_pos, ast(2), ast(3))}] + [
     {'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
     {'ast': 'ast.1'}] * 3 + [
     {'ast': lambda _pos, ast, identifier: MemberExpressionAst(_pos, ast(1), identifier(3))},
