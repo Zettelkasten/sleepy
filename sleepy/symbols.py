@@ -605,6 +605,13 @@ class ConcreteFunction:
     assert callable(py_func)
     return py_func
 
+  @property
+  def returns_void(self):
+    """
+    :rtype: bool
+    """
+    return self.return_type == SLEEPY_VOID
+
   def make_inline_func_call_ir(self, ir_func_args, caller_context):
     """
     :param list[ir.values.Value] ir_func_args:
@@ -631,9 +638,13 @@ class FunctionSymbol(Symbol):
   Can have one or multiple overloaded concrete functions accepting different parameter types.
   These functions are managed here by their expanded (i.e. simple, non union types).
   """
-  def __init__(self):
+  def __init__(self, returns_void):
+    """
+    :param bool returns_void:
+    """
     super().__init__()
     self.concrete_funcs = {}  # type: Dict[Tuple[Type], ConcreteFunction]
+    self.returns_void = returns_void
 
   def has_concrete_func(self, arg_types):
     """
@@ -661,6 +672,7 @@ class FunctionSymbol(Symbol):
     :param ConcreteFunction concrete_func:
     """
     assert not self.has_concrete_func(concrete_func.arg_types)
+    assert concrete_func.returns_void == self.returns_void
     for expanded_arg_types in self._iter_expanded_possible_arg_types(concrete_func.arg_types):
      self.concrete_funcs[expanded_arg_types] = concrete_func
 
@@ -999,7 +1011,7 @@ def build_initial_ir(symbol_table, context):
   for op, op_arg_type_list, op_return_type_list in zip(
     SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):
     assert op not in symbol_table
-    func_symbol = FunctionSymbol()
+    func_symbol = FunctionSymbol(returns_void=False)
     symbol_table[op] = func_symbol
     for op_arg_types, op_return_type in zip(op_arg_type_list, op_return_type_list):
       assert not func_symbol.has_concrete_func(op_arg_types)

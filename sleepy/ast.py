@@ -439,11 +439,14 @@ class FunctionDeclarationAst(StatementAst):
       if not isinstance(func_symbol, FunctionSymbol):
         self.raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier)
     else:
-      func_symbol = FunctionSymbol()
+      func_symbol = FunctionSymbol(returns_void=(return_type == SLEEPY_VOID))
       symbol_table[self.identifier] = func_symbol
     if func_symbol.has_concrete_func(arg_types):
       self.raise_error('Cannot override definition of function %r with parameter types %r' % (
         self.identifier, ', '.join([str(arg_type) for arg_type in arg_types])))
+    if func_symbol.returns_void != (return_type == SLEEPY_VOID):
+      self.raise_error(
+        'Function declared with name %r must consistently return a value or consistently return void' % self.identifier)
     arg_mutables = [
       self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
       for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
@@ -730,7 +733,7 @@ class StructDeclarationAst(StatementAst):
 
     struct_type = StructType(
       self.struct_identifier, member_identifiers, member_types, member_mutables, pass_by_ref=self.is_pass_by_ref())
-    constructor_symbol = FunctionSymbol()
+    constructor_symbol = FunctionSymbol(returns_void=False)
     constructor = ConcreteFunction(
       ir_func=None, return_type=struct_type, return_mutable=True,
       arg_types=member_types, arg_identifiers=member_identifiers, arg_type_narrowings=member_types,
