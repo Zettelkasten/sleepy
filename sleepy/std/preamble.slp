@@ -3,10 +3,7 @@ func print(Double double) { extern_func print_double(Double d); print_double(dou
 func print(Int int) { extern_func print_int(Int i); print_int(int); }
 @Inline func print(Bool bool) { if bool { print('T'); } else { print('F'); } }
 @Inline func print_line() { print('\n'); }
-@Inline func print_line(Char char) { print(char); print_line(); }
-@Inline func print_line(Double double) { print(double); print_line(); }
-@Inline func print_line(Int int) { print(int); print_line(); }
-@Inline func print_line(Bool bool) { print(bool); print_line(); }
+@Inline func print_line(Char|Double|Int|Bool char) { print(char); print_line(); }
 extern_func allocate(Int size) -> DoublePtr;
 extern_func deallocate(DoublePtr ptr);
 extern_func load(DoublePtr ptr) -> Double;
