@@ -595,15 +595,17 @@ class FunctionSymbol(Symbol):
     all_expanded_arg_types = self._iter_expanded_possible_arg_types(arg_types)
     return any(expanded_arg_types in self.concrete_funcs for expanded_arg_types in all_expanded_arg_types)
 
-  def get_concrete_func(self, arg_types):
+  def get_concrete_funcs(self, arg_types):
     """
     :param list[Type]|tuple[Type] arg_types:
-    :rtype: ConcreteFunction
+    :rtype: list[ConcreteFunction]
     """
+    possible_concrete_funcs = []
     for expanded_arg_types in self._iter_expanded_possible_arg_types(arg_types):
-      if expanded_arg_types in self.concrete_funcs:
-        return self.concrete_funcs[expanded_arg_types]
-    assert False, '%r: %r not found' % (self, arg_types)
+      concrete_func = self.concrete_funcs[expanded_arg_types]
+      if expanded_arg_types in self.concrete_funcs and concrete_func not in possible_concrete_funcs:
+        possible_concrete_funcs.append(concrete_func)
+    return possible_concrete_funcs
 
   def add_concrete_func(self, concrete_func):
     """
@@ -939,6 +941,13 @@ def build_initial_ir(symbol_table, context):
     assert type_identifier not in symbol_table
     symbol_table[type_identifier] = TypeSymbol(inbuilt_type, constructor_symbol=None)
 
+  if context.emits_ir:
+    module = context.builder.module
+    symbol_table.ir_func_malloc = ir.Function(
+      module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
+    symbol_table.ir_func_free = ir.Function(
+      module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
+
   for op, op_arg_type_list, op_return_type_list in zip(
     SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):
     assert op not in symbol_table
@@ -953,22 +962,7 @@ def build_initial_ir(symbol_table, context):
         ir_func=None, return_type=op_return_type, return_mutable=False, arg_identifiers=op_arg_identifiers,
         arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), arg_type_narrowings=op_arg_types,
         is_inline=True)
-      func_symbol.add_concrete_func(concrete_func)
-
-  if context.emits_ir:
-    module = context.builder.module
-    symbol_table.ir_func_malloc = ir.Function(
-      module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
-    symbol_table.ir_func_free = ir.Function(
-      module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
-
-    for op, op_arg_type_list, op_return_type_list in zip(
-      SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):
-      assert op in symbol_table
-      func_symbol = symbol_table[op]
-      assert isinstance(func_symbol, FunctionSymbol)
-      for op_arg_types, op_return_type in zip(op_arg_type_list, op_return_type_list):
-        assert func_symbol.has_concrete_func(op_arg_types)
-        concrete_func = func_symbol.get_concrete_func(op_arg_types)
+      if context.emits_ir:
         from functools import partial
         concrete_func.make_inline_func_call_ir = partial(_make_builtin_op_ir_val, op, op_arg_types)
+      func_symbol.add_concrete_func(concrete_func)
