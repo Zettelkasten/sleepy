@@ -1280,6 +1280,26 @@ def test_call_multiple_concrete_funcs_with_union_arg():
     assert_equal(main(), False)
 
 
+def test_call_multiple_concrete_void_funcs_with_union_arg():
+  with make_execution_engine() as engine:
+    program = """
+    func const() -> Bool|Int {
+      # here declared separately such that the compiler does not know that it will actually always be an Int
+      # in the future, we will probably add assertions so that the compiler does know that, but this will do for now.
+      return 1 == 1;
+    }
+    func cool_func(Int x) { }
+    func cool_func(Bool x) { }
+    func main() -> Bool {
+      Bool|Int alpha = const();
+      cool_func(alpha);
+      return True();
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), True)
+
+
 def test_union_folding():
   with make_execution_engine() as engine:
     program = """

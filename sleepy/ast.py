@@ -156,10 +156,12 @@ class AbstractSyntaxTree:
         dtype=ir.values.BlockAddress)
 
       # Go through all concrete functions, and add one block for each
-      concrete_func_blocks = [context.builder.append_basic_block("call_%s_%s" % (
-        func_identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))
-        for concrete_func in possible_concrete_funcs]  # type: List[ir.Block]
-      for concrete_func, concrete_func_block in zip(possible_concrete_funcs, concrete_func_blocks):
+      concrete_func_caller_contexts = [
+        context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
+          func_identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))))
+        for concrete_func in possible_concrete_funcs]
+      for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
+        concrete_func_block = concrete_caller_context.block
         concrete_func_block_address = ir.values.BlockAddress(context.builder.function, concrete_func_block)
         concrete_func_distinguishing_args = [concrete_func.arg_types[arg_num] for arg_num in distinguishing_arg_nums]
         concrete_func_possible_types_per_arg = [
@@ -199,28 +201,35 @@ class AbstractSyntaxTree:
         list(block_addresses_distinguished_mapping.flatten())))
       ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
       indirect_branch = context.builder.branch_indirect(ir_call_block_target)
-      for concrete_func_block in concrete_func_blocks:
-        indirect_branch.add_destination(concrete_func_block)
+      for concrete_caller_context in concrete_func_caller_contexts:
+        indirect_branch.add_destination(concrete_caller_context.block)
 
       # Execute the concrete functions and collect their return value
-      common_return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
       collect_block = context.builder.append_basic_block("collect_%s_overload" % func_identifier)
       context.builder = ir.IRBuilder(collect_block)
-      collect_return_ir_phi = context.builder.phi(
-        common_return_type.ir_type, name="collect_%s_overload_return" % func_identifier)
-
-      # Execute the concrete function
-      for concrete_func, concrete_func_block in zip(possible_concrete_funcs, concrete_func_blocks):
-        concrete_caller_context = context.copy_with_builder(ir.IRBuilder(concrete_func_block))
+      concrete_func_return_ir_vals = []  # type: List[ir.values.Value]
+      for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
         concrete_calling_arg_types = [
           narrow_type(calling_arg_type, concrete_arg_type)
           for calling_arg_type, concrete_arg_type in zip(calling_arg_types, concrete_func.arg_types)]
-        concrete_return_val_ir = make_call_func(
+        concrete_return_ir_val = make_call_func(
           concrete_func, concrete_calling_arg_types=concrete_calling_arg_types, caller_context=concrete_caller_context)
+        concrete_func_return_ir_vals.append(concrete_return_ir_val)
         assert not concrete_caller_context.is_terminated
         concrete_caller_context.builder.branch(collect_block)
-        collect_return_ir_phi.add_incoming(concrete_return_val_ir, concrete_caller_context.block)
-      return collect_return_ir_phi
+        assert concrete_func.returns_void == func_symbol.returns_void
+      assert len(possible_concrete_funcs) == len(concrete_func_return_ir_vals)
+
+      if func_symbol.returns_void:
+        return None
+      else:
+        common_return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
+        collect_return_ir_phi = context.builder.phi(
+          common_return_type.ir_type, name="collect_%s_overload_return" % func_identifier)
+        for concrete_return_ir_val, concrete_caller_context in zip(
+            concrete_func_return_ir_vals, concrete_func_caller_contexts):
+          collect_return_ir_phi.add_incoming(concrete_return_ir_val, concrete_caller_context.block)
+        return collect_return_ir_phi
 
   def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
     """
