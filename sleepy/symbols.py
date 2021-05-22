@@ -602,7 +602,7 @@ class FunctionSymbol(Symbol):
     :rtype: bool
     """
     all_expanded_arg_types = self._iter_expanded_possible_arg_types(arg_types)
-    return any(expanded_arg_types in self.concrete_funcs for expanded_arg_types in all_expanded_arg_types)
+    return all(expanded_arg_types in self.concrete_funcs for expanded_arg_types in all_expanded_arg_types)
 
   def get_concrete_funcs(self, arg_types):
     """
