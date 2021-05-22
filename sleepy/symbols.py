@@ -191,6 +191,18 @@ class UnionType(Type):
     tag_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
     return context.builder.gep(union_ir_alloca, tag_gep_indices, name=name)
 
+  def make_untagged_union_void_ptr(self, union_ir_alloca, context, name):
+    """
+    :param ir.instructions.AllocaInstr union_ir_alloca:
+    :param CodegenContext context:
+    :param str name:
+    :rtype: ir.instructions.Instruction
+    """
+    assert context.emits_ir
+    untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1))
+    return context.builder.gep(union_ir_alloca, untagged_union_gep_indices, name=name)
+
+
   def make_untagged_union_ptr(self, union_ir_alloca, variant_type, context, name):
     """
     :param ir.instructions.AllocaInstr union_ir_alloca:
@@ -199,11 +211,9 @@ class UnionType(Type):
     :param str name:
     :rtype: ir.instructions.Instruction
     """
-    assert context.emits_ir
     assert variant_type in self.possible_types
-    untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1))
-    untagged_union_ptr = context.builder.gep(
-      union_ir_alloca, untagged_union_gep_indices, name='%s_raw' % name)
+    untagged_union_ptr = self.make_untagged_union_void_ptr(
+      union_ir_alloca=union_ir_alloca, context=context, name='%s_raw' % name)
     return context.builder.bitcast(
       untagged_union_ptr, ir.types.PointerType(variant_type.ir_type),
       name=name)
@@ -216,6 +226,16 @@ class UnionType(Type):
     :rtype: ir.values.Value
     """
     return context.builder.extract_value(union_ir_val, 0, name=name)
+
+  def make_extract_void_val(self, union_ir_val, context, name):
+    """
+    :param ir.values.Value union_ir_val:
+    :param CodegenContext context:
+    :param str name:
+    :rtype: ir.values.Value
+    """
+    assert context.emits_ir
+    return context.builder.extract_value(union_ir_val, idx=1, name=name)
 
   def make_extract_val(self, union_ir_val, variant_type, context, name):
     """
@@ -377,14 +397,33 @@ def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context, name)
     return from_ir_val
   assert not to_type.is_pass_by_ref()
   if isinstance(to_type, UnionType):
-    assert not isinstance(from_type, UnionType), 'not implemented yet'
-    variant_num = to_type.get_variant_num(from_type)
     to_ir_alloca = context.builder.alloca(to_type.ir_type, name='%s_ptr' % name)
-    context.builder.store(
-      ir.Constant(to_type.tag_ir_type, variant_num),
-      to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
-    context.builder.store(
-      from_ir_val, to_type.make_untagged_union_ptr(to_ir_alloca, from_type, context=context, name='%s_val_ptr' % name))
+    if isinstance(from_type, UnionType):
+      tag_mapping_ir_type = ir.types.VectorType(to_type.tag_ir_type, max(from_type.possible_type_nums) + 1)
+      tag_mapping = [-1] * (max(from_type.possible_type_nums) + 1)
+      for from_variant_num, from_variant_type in zip(from_type.possible_type_nums, from_type.possible_types):
+        assert to_type.contains(from_variant_type)
+        tag_mapping[from_variant_num] = to_type.get_variant_num(from_variant_type)
+      ir_tag_mapping = ir.values.Constant(tag_mapping_ir_type, tag_mapping_ir_type.wrap_constant_value(tag_mapping))
+      ir_from_tag = from_type.make_extract_tag(from_ir_val, context=context, name='%s_from_tag' % name)
+      ir_to_tag = context.builder.extract_element(ir_tag_mapping, ir_from_tag, name='%s_to_tag' % name)
+      context.builder.store(
+        ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
+      assert to_type.val_size >= from_type.val_size
+      ir_from_untagged_union = from_type.make_extract_void_val(from_ir_val, context=context, name='%s_from_val' % name)
+      ir_to_untagged_union_ptr = to_type.make_untagged_union_void_ptr(
+        to_ir_alloca, context=context, name='%s_to_val_raw' % name)
+      ir_to_untagged_union_ptr_casted = context.builder.bitcast(
+        ir_to_untagged_union_ptr, ir.PointerType(to_type.untagged_union_ir_type), name='%s_to_val' % name)
+      context.builder.store(ir_from_untagged_union, ir_to_untagged_union_ptr_casted)
+    else:
+      assert not isinstance(from_type, UnionType)
+      ir_to_tag = ir.Constant(to_type.tag_ir_type, to_type.get_variant_num(from_type))
+      context.builder.store(
+        ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
+      context.builder.store(
+        from_ir_val,
+        to_type.make_untagged_union_ptr(to_ir_alloca, from_type, context=context, name='%s_val_ptr' % name))
     return context.builder.load(to_ir_alloca, name=name)
   else:
     assert not isinstance(to_type, UnionType)

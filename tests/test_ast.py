@@ -1280,6 +1280,20 @@ def test_call_multiple_concrete_funcs_with_union_arg():
     assert_equal(main(), False)
 
 
+def test_union_folding():
+  with make_execution_engine() as engine:
+    program = """
+    struct None { }
+    func main() -> Double {
+      None|Bool|Double a = 42.0;
+      Double|(None|Bool) x = a;
+      return x;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 42.0)
+
+
 def test_narrow_type():
   from sleepy.symbols import narrow_type, UnionType, SLEEPY_INT, SLEEPY_BOOL
   assert_equal(narrow_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_INT)
