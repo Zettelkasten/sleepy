@@ -824,6 +824,13 @@ class SymbolTable:
     self.used_ir_func_names.add(ir_func_name)
     return ir_func_name
 
+  def apply_symbols_from(self, other_symbol_table):
+    """
+    :param SymbolTable other_symbol_table:
+    """
+    for symbol_identifier, other_symbol in other_symbol_table.symbols.items():
+      if symbol_identifier in self and self[symbol_identifier].base == other_symbol.base:
+        self[symbol_identifier] = other_symbol
 
 class CodegenContext:
   """

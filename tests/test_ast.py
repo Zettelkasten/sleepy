@@ -1362,6 +1362,26 @@ def test_union_if_else_type_narrowing():
     assert_almost_equal(main(), sin(42.0))
 
 
+def test_union_if_terminated_branch_type_narrowing():
+  with make_execution_engine() as engine:
+    program = """
+    func make_val() -> Int|Double { return 42.0; }
+    func main() -> Double {
+      val = make_val();
+      if val is Int {
+        return 17.5;
+      }
+      # must be Double
+      extern_func sin(Double a) -> Double;
+      val = sin(val);
+      return val;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    from math import sin
+    assert_almost_equal(main(), sin(42.0))
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

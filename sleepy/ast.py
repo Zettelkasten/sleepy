@@ -960,13 +960,16 @@ class IfStatementAst(StatementAst):
     self.true_scope.build_scope_ir(scope_symbol_table=true_symbol_table, scope_context=true_context)
     self.false_scope.build_scope_ir(scope_symbol_table=false_symbol_table, scope_context=false_context)
 
-    # TODO: Add type assertions for one branch when the other branch terminated
     if true_context.is_terminated and false_context.is_terminated:
       context.is_terminated = True
       if context.emits_ir:
         context.builder = None
     else:
       assert not true_context.is_terminated or not false_context.is_terminated
+      if true_context.is_terminated:
+        symbol_table.apply_symbols_from(false_symbol_table)
+      if false_context.is_terminated:
+        symbol_table.apply_symbols_from(true_symbol_table)
       if context.emits_ir:
         continue_block = context.builder.append_basic_block('continue_branch')  # type: ir.Block
         if not true_context.is_terminated:
