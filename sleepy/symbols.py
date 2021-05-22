@@ -602,9 +602,10 @@ class FunctionSymbol(Symbol):
     """
     possible_concrete_funcs = []
     for expanded_arg_types in self._iter_expanded_possible_arg_types(arg_types):
-      concrete_func = self.concrete_funcs[expanded_arg_types]
-      if expanded_arg_types in self.concrete_funcs and concrete_func not in possible_concrete_funcs:
-        possible_concrete_funcs.append(concrete_func)
+      if expanded_arg_types in self.concrete_funcs:
+        concrete_func = self.concrete_funcs[expanded_arg_types]
+        if concrete_func not in possible_concrete_funcs:
+          possible_concrete_funcs.append(concrete_func)
     return possible_concrete_funcs
 
   def add_concrete_func(self, concrete_func):
