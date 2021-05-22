@@ -65,6 +65,7 @@ class AbstractSyntaxTree:
       self.raise_error('Cannot call function %r with arguments of types %r, only declared for parameter types: %r' % (
         func_identifier, ', '.join([str(called_type) for called_type in called_types]),
         ', '.join([concrete_func.to_signature_str() for concrete_func in symbol.concrete_funcs.values()])))
+
     possible_concrete_funcs = symbol.get_concrete_funcs(called_types)
     for concrete_func in possible_concrete_funcs:
       called_mutables = [arg_expr.is_val_mutable(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
@@ -74,11 +75,13 @@ class AbstractSyntaxTree:
           self.raise_error('Cannot call function %s%s declared with mutable parameter %r with immutable argument' % (
               func_identifier, concrete_func.to_signature_str(), arg_identifier))
 
-      for func_arg_expr, narrowed_arg_type in zip(func_arg_exprs, concrete_func.arg_type_narrowings):
-        if isinstance(func_arg_expr, VariableExpressionAst):
-          var_symbol = symbol_table[func_arg_expr.var_identifier]
-          assert isinstance(var_symbol, VariableSymbol)
-          symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
+    for arg_num, func_arg_expr in enumerate(func_arg_exprs):
+      narrowed_arg_types = [concrete_func.arg_type_narrowings[arg_num] for concrete_func in possible_concrete_funcs]
+      narrowed_arg_type = get_common_type(narrowed_arg_types)
+      if isinstance(func_arg_expr, VariableExpressionAst):
+        var_symbol = symbol_table[func_arg_expr.var_identifier]
+        assert isinstance(var_symbol, VariableSymbol)
+        symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
 
     return possible_concrete_funcs
 
