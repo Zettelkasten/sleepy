@@ -944,7 +944,7 @@ class IfStatementAst(StatementAst):
 
     true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
     make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=true_symbol_table)
-    # TODO: Assert the opposite for the false branch
+    make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=false_symbol_table)
 
     if context.emits_ir:
       ir_cond = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
@@ -960,6 +960,7 @@ class IfStatementAst(StatementAst):
     self.true_scope.build_scope_ir(scope_symbol_table=true_symbol_table, scope_context=true_context)
     self.false_scope.build_scope_ir(scope_symbol_table=false_symbol_table, scope_context=false_context)
 
+    # TODO: Add type assertions for one branch when the other branch terminated
     if true_context.is_terminated and false_context.is_terminated:
       context.is_terminated = True
       if context.emits_ir:
@@ -1744,8 +1745,10 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
     assert isinstance(cond_expr_ast.right_expr, VariableExpressionAst)
     check_type_expr = IdentifierTypeAst(cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.var_identifier)
     check_type = check_type_expr.make_type(symbol_table=symbol_table)
-    assert cond_holds, 'not implemented'
-    symbol_table[var_expr.var_identifier] = var_symbol.copy_with_narrowed_type(check_type)
+    if cond_holds:
+      symbol_table[var_expr.var_identifier] = var_symbol.copy_with_narrowed_type(check_type)
+    else:
+      symbol_table[var_expr.var_identifier] = var_symbol.copy_with_excluded_type(check_type)
 
 
 def parse_char(value):

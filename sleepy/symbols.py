@@ -452,6 +452,29 @@ def narrow_type(from_type, narrow_to):
   return from_type.copy_with_narrowed_types(narrow_to_types=narrow_to_types)
 
 
+def exclude_type(from_type, excluded_type):
+  """
+  :param Type from_type:
+  :param Type excluded_type:
+  :rtype: Type
+  """
+  if from_type == excluded_type:
+    return SLEEPY_NEVER
+  if excluded_type == SLEEPY_NEVER:
+    return from_type
+  if isinstance(excluded_type, UnionType):
+    excluded_types = excluded_type.possible_types
+  else:
+    excluded_types = [excluded_type]
+  if not isinstance(from_type, UnionType):
+    if from_type in excluded_types:
+      return SLEEPY_NEVER
+    else:
+      return from_type
+  narrow_to_types = [possible_type for possible_type in from_type.possible_types if possible_type not in excluded_types]
+  return from_type.copy_with_narrowed_types(narrow_to_types=narrow_to_types)
+
+
 def get_common_type(possible_types):
   """
   :param list[Type] possible_types:
@@ -523,6 +546,15 @@ class VariableSymbol(Symbol):
     """
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
     new_var_symbol.narrowed_var_type = narrow_type(self.narrowed_var_type, narrow_to)
+    return new_var_symbol
+
+  def copy_with_excluded_type(self, excluded):
+    """
+    :param Type excluded:
+    :rtype: VariableSymbol
+    """
+    new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
+    new_var_symbol.narrowed_var_type = exclude_type(self.narrowed_var_type, excluded)
     return new_var_symbol
 
   def build_ir_alloca(self, context, identifier):

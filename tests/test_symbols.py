@@ -21,6 +21,19 @@ def test_narrow_type():
     UnionType([SLEEPY_BOOL], [1], 4))
 
 
+def test_exclude_type():
+  from sleepy.symbols import exclude_type, UnionType, SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE, SLEEPY_NEVER
+  assert_equal(exclude_type(SLEEPY_INT, SLEEPY_NEVER), SLEEPY_INT)
+  assert_equal(exclude_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_NEVER)
+  assert_equal(
+    exclude_type(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_DOUBLE), UnionType([SLEEPY_INT], [0], 8))
+  assert_equal(
+    exclude_type(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_INT), UnionType([SLEEPY_DOUBLE], [1], 8))
+  assert_equal(
+    exclude_type(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_BOOL),
+    UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))
+
+
 def test_get_common_type():
   from sleepy.symbols import get_common_type, UnionType, SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE
   assert_equal(get_common_type([SLEEPY_INT]), SLEEPY_INT)

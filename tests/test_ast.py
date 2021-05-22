@@ -1334,6 +1334,34 @@ def test_is_operator_incremental():
     assert_equal(main(), True)
 
 
+def test_union_if_else_type_narrowing():
+  with make_execution_engine() as engine:
+    program = """
+    func make_val() -> Int|Bool|Double { return 42.0; }
+    func main() -> Double {
+      val = make_val();
+      if val is Int {
+        val = val + 5;
+        return 1.0;
+      } else {
+        # must be Bool or Double
+        if val is Bool {
+          val = not(val);
+          return 2.0;
+        } else {
+          # must be Double
+          extern_func sin(Double a) -> Double;
+          val = sin(val);
+          return val;
+        }
+      }
+    }
+    """
+    main = _test_compile_program(engine, program)
+    from math import sin
+    assert_almost_equal(main(), sin(42.0))
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
