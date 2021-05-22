@@ -127,6 +127,8 @@ class UnionType(Type):
     """
     assert len(possible_types) == len(possible_type_nums)
     assert SLEEPY_VOID not in possible_types
+    assert len(set(possible_types)) == len(possible_types)
+    assert all(val_size >= possible_type.size for possible_type in possible_types)
     self.possible_types = possible_types
     self.possible_type_nums = possible_type_nums
     self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
@@ -156,9 +158,9 @@ class UnionType(Type):
     """
     if not isinstance(other, UnionType):
       return False
-    return (
-      self.possible_types == other.possible_types and self.possible_type_nums == other.possible_type_nums and
-      self.val_size == other.val_size)
+    self_types_dict = dict(zip(self.possible_types, self.possible_type_nums))
+    other_types_dict = dict(zip(other.possible_types, other.possible_type_nums))
+    return self_types_dict == other_types_dict and self.val_size == other.val_size
 
   def contains(self, contained_type):
     """
