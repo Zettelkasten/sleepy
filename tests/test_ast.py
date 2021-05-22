@@ -1261,6 +1261,25 @@ def test_call_union_arg():
     assert_equal(main(-7), False)
 
 
+def test_call_multiple_concrete_funcs_with_union_arg():
+  with make_execution_engine() as engine:
+    program = """
+    func const() -> Bool|Int {
+      # here declared separately such that the compiler does not know that it will actually always be an Int
+      # in the future, we will probably add assertions so that the compiler does know that, but this will do for now.
+      return 1 == 1;
+    }
+    func is_int(Int x) -> Bool { return True(); }
+    func is_int(Bool x) -> Bool { return False(); }
+    func main() -> Bool {
+      Bool|Int alpha = const();
+      return is_int(alpha);
+    }
+    """
+    main = _test_compile_program(engine, program, optimize=False)
+    assert_equal(main(), False)
+
+
 def test_narrow_type():
   from sleepy.symbols import narrow_type, UnionType, SLEEPY_INT, SLEEPY_BOOL
   assert_equal(narrow_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_INT)

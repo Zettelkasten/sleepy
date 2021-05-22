@@ -101,32 +101,126 @@ class AbstractSyntaxTree:
     if isinstance(func_symbol, TypeSymbol):
       func_symbol = func_symbol.constructor_symbol
     assert isinstance(func_symbol, FunctionSymbol)
-    called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
-    assert func_symbol.has_concrete_func(called_types)
-    possible_concrete_funcs = func_symbol.get_concrete_funcs(called_types)
-    assert len(possible_concrete_funcs) == 1, 'not supported yet'
-    concrete_func = next(iter(possible_concrete_funcs))
-    assert len(concrete_func.arg_types) == len(func_arg_exprs)
-    ir_func_args = []  # type: List[ir.values.Value]
-    for arg_identifier, func_arg_expr, called_arg_type, declared_arg_type in zip(
-        concrete_func.arg_identifiers, func_arg_exprs, called_types, concrete_func.arg_types):
-      ir_func_arg = func_arg_expr.make_ir_val(symbol_table=symbol_table, context=context)
-      ir_func_arg = make_implicit_cast_to_ir_val(
-        from_type=called_arg_type, to_type=declared_arg_type, from_ir_val=ir_func_arg, context=context,
+    calling_arg_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+    ir_func_args = [
+      func_arg_expr.make_ir_val(symbol_table=symbol_table, context=context) for func_arg_expr in func_arg_exprs]
+
+    def make_call_func(concrete_func, concrete_calling_arg_types, caller_context):
+      """
+      :param ConcreteFunction concrete_func:
+      :param list[Type] concrete_calling_arg_types:
+      :param CodegenContext caller_context:
+      :rtype: ir.values.Value
+      """
+      assert len(concrete_func.arg_types) == len(func_arg_exprs)
+      casted_ir_func_args = [make_implicit_cast_to_ir_val(
+        from_type=called_arg_type, to_type=declared_arg_type, from_ir_val=ir_func_arg, context=caller_context,
         name='call_arg_%s_cast' % arg_identifier)
-      ir_func_args.append(ir_func_arg)
-    assert len(ir_func_args) == len(func_arg_exprs)
-    if concrete_func.is_inline:
-      if concrete_func in context.inline_func_call_stack:
-        self.raise_error('An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
-          ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func))
-      assert callable(concrete_func.make_inline_func_call_ir)
-      return concrete_func.make_inline_func_call_ir(ir_func_args=ir_func_args, caller_context=context)
+        for arg_identifier, ir_func_arg, called_arg_type, declared_arg_type in zip(
+          concrete_func.arg_identifiers, ir_func_args, concrete_calling_arg_types, concrete_func.arg_types)]
+      assert len(ir_func_args) == len(casted_ir_func_args) == len(func_arg_exprs)
+      if concrete_func.is_inline:
+        if concrete_func in caller_context.inline_func_call_stack:
+          self.raise_error(
+            'An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
+              ' -> '.join(str(inline_func) for inline_func in caller_context.inline_func_call_stack), concrete_func))
+        assert callable(concrete_func.make_inline_func_call_ir)
+        return concrete_func.make_inline_func_call_ir(ir_func_args=casted_ir_func_args, caller_context=caller_context)
+      else:
+        ir_func = concrete_func.ir_func
+        assert ir_func is not None
+        assert len(ir_func.args) == len(func_arg_exprs)
+        return caller_context.builder.call(ir_func, casted_ir_func_args, name='call_%s' % func_identifier)
+
+    assert func_symbol.has_concrete_func(calling_arg_types)
+    possible_concrete_funcs = func_symbol.get_concrete_funcs(calling_arg_types)
+    if len(possible_concrete_funcs) == 1:
+      return make_call_func(
+        concrete_func=possible_concrete_funcs[0], concrete_calling_arg_types=calling_arg_types, caller_context=context)
     else:
-      ir_func = concrete_func.ir_func
-      assert ir_func is not None
-      assert len(ir_func.args) == len(func_arg_exprs)
-      return context.builder.call(ir_func, ir_func_args, name='call_%s' % func_identifier)
+      import numpy as np, itertools
+      # The arguments which we need to look at to determine which concrete function to call
+      # TODO: This could use a better heuristic, only because something is a union type does not mean that it
+      # distinguishes different concrete funcs.
+      distinguishing_arg_nums = [
+        arg_num for arg_num, calling_arg_type in enumerate(calling_arg_types)
+        if isinstance(calling_arg_type, UnionType)]
+      assert len(distinguishing_arg_nums) >= 1
+      # noinspection PyTypeChecker
+      distinguishing_calling_arg_types = [
+        calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]  # type: List[UnionType]
+      assert all(isinstance(calling_arg, UnionType) for calling_arg in distinguishing_calling_arg_types)
+      # To distinguish which concrete func to call, use this table
+      block_addresses_distinguished_mapping = np.ndarray(
+        shape=tuple(max(calling_arg.possible_type_nums) + 1 for calling_arg in distinguishing_calling_arg_types),
+        dtype=ir.values.BlockAddress)
+
+      # Go through all concrete functions, and add one block for each
+      concrete_func_blocks = [context.builder.append_basic_block("call_%s_%s" % (
+        func_identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))
+        for concrete_func in possible_concrete_funcs]  # type: List[ir.Block]
+      for concrete_func, concrete_func_block in zip(possible_concrete_funcs, concrete_func_blocks):
+        concrete_func_block_address = ir.values.BlockAddress(context.builder.function, concrete_func_block)
+        concrete_func_distinguishing_args = [concrete_func.arg_types[arg_num] for arg_num in distinguishing_arg_nums]
+        concrete_func_possible_types_per_arg = [
+          [possible_type
+            for possible_type in (arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type])
+            if possible_type in calling_arg_type.possible_types]
+          for arg_type, calling_arg_type in zip(concrete_func_distinguishing_args, distinguishing_calling_arg_types)]
+        assert len(distinguishing_arg_nums) == len(concrete_func_possible_types_per_arg)
+
+        # Register the concrete function in the table
+        for expanded_func_types in itertools.product(*concrete_func_possible_types_per_arg):
+          assert len(expanded_func_types) == len(distinguishing_calling_arg_types)
+          distinguishing_variant_nums = tuple(
+            calling_arg_type.get_variant_num(concrete_arg_type)
+            for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_func_types))
+          assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
+          block_addresses_distinguished_mapping[distinguishing_variant_nums] = concrete_func_block_address
+
+      # Compute the index we have to look at in the table
+      from sleepy.symbols import LLVM_SIZE_TYPE, LLVM_VOID_POINTER_TYPE
+      tag_ir_type = ir.types.IntType(8)
+      call_block_index_ir = ir.Constant(tag_ir_type, 0)
+      for arg_num, calling_arg_type in enumerate(distinguishing_calling_arg_types):
+        ir_func_arg = ir_func_args[arg_num]
+        base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
+        base_ir = ir.Constant(tag_ir_type, base)
+        tag_ir = calling_arg_type.make_extract_tag(
+          ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (func_identifier, arg_num))
+        call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
+      call_block_index_ir = context.builder.zext(
+        call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % func_identifier)
+
+      # Look it up in the table and call the function
+      ir_block_addresses_type = ir.types.VectorType(
+        LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
+      ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
+        list(block_addresses_distinguished_mapping.flatten())))
+      ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
+      indirect_branch = context.builder.branch_indirect(ir_call_block_target)
+      for concrete_func_block in concrete_func_blocks:
+        indirect_branch.add_destination(concrete_func_block)
+
+      # Execute the concrete functions and collect their return value
+      common_return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
+      collect_block = context.builder.append_basic_block("collect_%s_overload" % func_identifier)
+      context.builder = ir.IRBuilder(collect_block)
+      collect_return_ir_phi = context.builder.phi(
+        common_return_type.ir_type, name="collect_%s_overload_return" % func_identifier)
+
+      # Execute the concrete function
+      for concrete_func, concrete_func_block in zip(possible_concrete_funcs, concrete_func_blocks):
+        concrete_caller_context = context.copy_with_builder(ir.IRBuilder(concrete_func_block))
+        concrete_calling_arg_types = [
+          narrow_type(calling_arg_type, concrete_arg_type)
+          for calling_arg_type, concrete_arg_type in zip(calling_arg_types, concrete_func.arg_types)]
+        concrete_return_val_ir = make_call_func(
+          concrete_func, concrete_calling_arg_types=concrete_calling_arg_types, caller_context=concrete_caller_context)
+        assert not concrete_caller_context.is_terminated
+        concrete_caller_context.builder.branch(collect_block)
+        collect_return_ir_phi.add_incoming(concrete_return_val_ir, concrete_caller_context.block)
+      return collect_return_ir_phi
 
   def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
     """
