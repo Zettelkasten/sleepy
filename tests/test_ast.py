@@ -1401,6 +1401,24 @@ def test_while_cond_type_narrowing():
     assert_equal(main(117), True)
 
 
+def test_while_cond_type_narrowing_independent_variable():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Int initial_value) -> Int {
+      Int|Bool start = initial_value;
+      Int|Bool counter = start;
+      while counter > 0 {
+        counter = counter - 1;
+      }
+      return start;  # should work, as start is known to always be an Int.
+    }
+
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(5), 5)
+    assert_equal(main(-9), 9)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
