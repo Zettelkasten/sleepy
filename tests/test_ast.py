@@ -1382,6 +1382,25 @@ def test_union_if_terminated_branch_type_narrowing():
     assert_almost_equal(main(), sin(42.0))
 
 
+def test_while_cond_type_narrowing():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Int initial_value) -> Bool {
+      Int|Bool value = initial_value;
+      while value is Int {
+        value = value - 1;
+        if value < 0 { value = False(); }
+        if value > 100 { value = True(); }
+      }
+      return value;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(17), False)
+    assert_equal(main(-2), False)
+    assert_equal(main(117), True)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

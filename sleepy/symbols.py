@@ -550,6 +550,15 @@ class VariableSymbol(Symbol):
     new_var_symbol.narrowed_var_type = narrow_type(self.narrowed_var_type, narrow_to)
     return new_var_symbol
 
+  def copy_reset_narrowed_type(self):
+    """
+    :rtype: VariableSymbol
+    """
+    new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
+    new_var_symbol.base = self if self.base is None else self.base
+    new_var_symbol.narrowed_var_type = self.declared_var_type
+    return new_var_symbol
+
   def copy_with_excluded_type(self, excluded):
     """
     :param Type excluded:
@@ -831,6 +840,16 @@ class SymbolTable:
     for symbol_identifier, other_symbol in other_symbol_table.symbols.items():
       if symbol_identifier in self and self[symbol_identifier].base == other_symbol.base:
         self[symbol_identifier] = other_symbol
+
+  def reset_narrowed_types(self):
+    """
+    Applies symbol.copy_reset_narrowed_type() for all variable symbols.
+    """
+    for symbol_identifier, symbol in self.symbols.items():
+      if isinstance(symbol, VariableSymbol):
+        if symbol.declared_var_type != symbol.narrowed_var_type:
+          self[symbol_identifier] = symbol.copy_reset_narrowed_type()
+
 
 class CodegenContext:
   """

@@ -940,7 +940,7 @@ class IfStatementAst(StatementAst):
     """
     cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
     if not cond_type == SLEEPY_BOOL:
-      self.raise_error('Condition use expression of type %r as if-condition' % cond_type)
+      self.raise_error('Cannot use expression of type %r as if-condition' % cond_type)
 
     true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
     make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=true_symbol_table)
@@ -1007,7 +1007,7 @@ class WhileStatementAst(StatementAst):
     """
     cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
     if not cond_type == SLEEPY_BOOL:
-      self.raise_error('Condition use expression of type %r as while-condition' % cond_type)
+      self.raise_error('Cannot use expression of type %r as while-condition' % cond_type)
 
     body_symbol_table = symbol_table.copy()
     make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=body_symbol_table)
@@ -1028,6 +1028,8 @@ class WhileStatementAst(StatementAst):
       body_context = context.copy_without_builder()
       self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
 
+    # TODO: Do a fix-point iteration over the body and wait until the most general type no longer changes.
+    symbol_table.reset_narrowed_types()
     make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=symbol_table)
 
   def __repr__(self):
