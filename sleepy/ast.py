@@ -502,7 +502,7 @@ class FunctionDeclarationAst(StatementAst):
         if concrete_func.return_type == SLEEPY_VOID:
           return_val_ir_alloca = None
         else:
-          return_val_ir_alloca = caller_context.builder.alloca(
+          return_val_ir_alloca = caller_context.alloca_at_entry(
             concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
         collect_block = caller_context.builder.append_basic_block('collect_return_%s_block' % self.identifier)
         inline_context = caller_context.copy_with_inline_func(
@@ -793,7 +793,7 @@ class StructDeclarationAst(StatementAst):
           context.ir_func_malloc, [struct_type.make_ir_size()], name='self_raw_ptr')
         self_ir_alloca = context.builder.bitcast(self_ir_alloca_raw, struct_type.ir_type, name='self')
       else:  # pass by value, use alloca
-        self_ir_alloca = context.builder.alloca(struct_type.ir_type, name='self')
+        self_ir_alloca = context.alloca_at_entry(struct_type.ir_type, name='self')
 
       for member_num, (stmt, ir_func_arg) in enumerate(zip(self.stmt_list, constructor.ir_func.args)):
         assert isinstance(stmt, AssignStatementAst)

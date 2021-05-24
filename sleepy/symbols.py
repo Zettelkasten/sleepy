@@ -248,7 +248,7 @@ class UnionType(Type):
     """
     assert context.emits_ir
     assert variant_type in self.possible_types
-    union_ir_alloca = context.builder.alloca(self.ir_type, name='%s_ptr' % name)
+    union_ir_alloca = context.alloca_at_entry(self.ir_type, name='%s_ptr' % name)
     context.builder.store(union_ir_val, union_ir_alloca)
     untagged_union_ptr = self.make_untagged_union_ptr(
       union_ir_alloca, variant_type=variant_type, context=context, name='%s_val_ptr' % name)
@@ -412,7 +412,7 @@ def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context, name)
     return from_ir_val
   assert not to_type.is_pass_by_ref()
   if isinstance(to_type, UnionType):
-    to_ir_alloca = context.builder.alloca(to_type.ir_type, name='%s_ptr' % name)
+    to_ir_alloca = context.alloca_at_entry(to_type.ir_type, name='%s_ptr' % name)
     if isinstance(from_type, UnionType):
       tag_mapping_ir_type = ir.types.VectorType(to_type.tag_ir_type, max(from_type.possible_type_nums) + 1)
       tag_mapping = [-1] * (max(from_type.possible_type_nums) + 1)
@@ -592,11 +592,7 @@ class VariableSymbol(Symbol):
     assert self.ir_alloca is None
     if not context.emits_ir:
       return
-    # TODO: All alloca instr (not only these for variables, but in general all) must not be placed inside a block
-    # that can be called in a loop (e.g. because while uses it as body), because then we alloca for every new loop
-    # iteration.
-    # Instead, alloca at the entry block of the function.
-    self.ir_alloca = context.builder.alloca(self.declared_var_type.ir_type, name='%s_ptr' % identifier)
+    self.ir_alloca = context.alloca_at_entry(self.declared_var_type.ir_type, name='%s_ptr' % identifier)
 
   def __repr__(self):
     """
@@ -962,6 +958,32 @@ class CodegenContext:
     new_context.current_func_inline_return_collect_block = return_collect_block
     new_context.inline_func_call_stack.append(concrete_func)
     return new_context
+
+  def alloca_at_entry(self, ir_type, name):
+    """
+    Add alloca instruction at entry block of the current function.
+
+    :param ir.types.Type ir_type:
+    :param str name:
+    :rtype: ir.instructions.AllocaInstr
+    """
+    assert self.emits_ir
+    entry_block = self.block.function.entry_basic_block  # type: ir.Block
+    entry_builder = ir.IRBuilder(entry_block)
+    if len(entry_block.instructions) == 0 or not isinstance(entry_block.instructions[0], ir.instructions.AllocaInstr):
+      entry_builder.position_at_start(entry_block)
+    else:
+      last_alloca_num = 0
+      while (last_alloca_num < len(entry_block.instructions) and
+             isinstance(entry_block.instructions[last_alloca_num], ir.instructions.AllocaInstr)):
+        last_alloca_num += 1
+      assert isinstance(entry_block.instructions[last_alloca_num - 1], ir.instructions.AllocaInstr)
+      entry_builder.position_after(entry_block.instructions[last_alloca_num - 1])
+    ir_alloca = entry_builder.alloca(typ=ir_type, name=name)
+    if self.builder.block == entry_builder.block:
+      # assume that builders are always at the last instruction of a block
+      self.builder.position_at_end(self.builder.block)
+    return ir_alloca
 
 
 def _make_builtin_op_arg_names(op, op_arg_types):
