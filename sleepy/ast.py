@@ -826,9 +826,12 @@ class StructDeclarationAst(StatementAst):
     assert 'free' in parent_symbol_table
     destructor_symbol = parent_symbol_table['free']
     assert isinstance(destructor_symbol, FunctionSymbol)
+    from sleepy.symbols import SLEEPY_NEVER
+    # TODO: Narrow type to something more meaningful then SLEEPY_NEVER
+    # E.g. make a copy of the never union type and give that a name ("Freed" or sth)
     destructor = ConcreteFunction(
       ir_func=None, return_type=SLEEPY_VOID, return_mutable=False, arg_types=[struct_type], arg_identifiers=['var'],
-      arg_type_narrowings=[struct_type], arg_mutables=[False])
+      arg_type_narrowings=[SLEEPY_NEVER], arg_mutables=[False])
     if parent_context.emits_ir:
       ir_func_name = parent_symbol_table.make_ir_func_name('free', extern=False, concrete_func=destructor)
       destructor.ir_func = ir.Function(parent_context.module, destructor.make_ir_function_type(), name=ir_func_name)
