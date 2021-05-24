@@ -832,6 +832,7 @@ def test_mutable_struct_member_const():
       @Mutable Box b = Box(42);
       SuperBox sb = SuperBox(Box(42));
       sb.b = b;  # should fail, sb is immutable.
+      free(b); free(sb);
     }
     """
     with assert_raises(SemanticError):
@@ -866,6 +867,7 @@ def test_immutable_struct_member_assign_mutable_member():
       b.val = 27;
       SuperBox sb = SuperBox(Box(42));
       sb.b = b;  # should fail as sb is immutable.
+      free(b); free(sb);
     }
     """
     with assert_raises(SemanticError):

@@ -86,4 +86,5 @@ func main() {
   insert_all(l, l);
   print_len(l);
   print_line(l);
+  free(l);
 }

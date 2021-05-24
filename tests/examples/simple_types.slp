@@ -39,4 +39,5 @@ func main() {
   print_line(get_left(mutable_pair));  # and orints 53.
   print(mutable_pair);  # mutable types can implicitly be "downcast" to non-mutable types.
   print_line();
+  free(p); free(mutable_pair);
 }
