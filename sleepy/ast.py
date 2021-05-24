@@ -42,12 +42,12 @@ class AbstractSyntaxTree:
     """
     raise SemanticError(self.pos.word, self.pos.from_pos, self.pos.to_pos, message)
 
-  def _check_func_call_symbol_table(self, func_identifier, func_arg_exprs, symbol_table):
+  def resolve_func_call(self, func_identifier, func_arg_exprs, symbol_table):
     """
     :param str func_identifier:
     :param list[ExpressionAst] func_arg_exprs:
     :param SymbolTable symbol_table:
-    :rtype: list[ConcreteFunction]
+    :rtype: (FunctionSymbol, list[ConcreteFunction])
     """
     if func_identifier not in symbol_table:
       self.raise_error('Function %r called before declared' % func_identifier)
@@ -67,6 +67,7 @@ class AbstractSyntaxTree:
         ', '.join([concrete_func.to_signature_str() for concrete_func in symbol.concrete_funcs.values()])))
 
     possible_concrete_funcs = symbol.get_concrete_funcs(called_types)
+    assert len(possible_concrete_funcs) >= 1
     for concrete_func in possible_concrete_funcs:
       called_mutables = [arg_expr.is_val_mutable(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
       for arg_identifier, arg_mutable, called_mutable in zip(
@@ -74,7 +75,31 @@ class AbstractSyntaxTree:
         if not called_mutable and arg_mutable:
           self.raise_error('Cannot call function %s%s declared with mutable parameter %r with immutable argument' % (
               func_identifier, concrete_func.to_signature_str(), arg_identifier))
+    
+    return symbol, possible_concrete_funcs
 
+  def _build_func_call(self, func_identifier, func_arg_exprs, symbol_table, context):
+    """
+    :param str func_identifier:
+    :param list[ExpressionAst] func_arg_exprs:
+    :param SymbolTable symbol_table:
+    :param CodegenContext context:
+    :rtype: ir.values.Value
+    """
+    symbol, possible_concrete_funcs = self.resolve_func_call(
+      func_identifier=func_identifier, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
+    called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+
+    if context.emits_ir:
+      ir_func_args = [
+        func_arg_expr.make_ir_val(symbol_table=symbol_table, context=context) for func_arg_expr in func_arg_exprs]
+      return_ir_val = self._make_func_call_ir(
+        func_identifier=func_identifier, func_symbol=symbol, calling_arg_types=called_types,
+        calling_ir_args=ir_func_args, context=context)
+    else:
+      return_ir_val = None
+
+    # apply type narrowings
     for arg_num, func_arg_expr in enumerate(func_arg_exprs):
       narrowed_arg_types = [concrete_func.arg_type_narrowings[arg_num] for concrete_func in possible_concrete_funcs]
       narrowed_arg_type = get_common_type(narrowed_arg_types)
@@ -82,61 +107,52 @@ class AbstractSyntaxTree:
         var_symbol = symbol_table[func_arg_expr.var_identifier]
         assert isinstance(var_symbol, VariableSymbol)
         symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
+    return return_ir_val
 
-    return possible_concrete_funcs
-
-  def _make_func_call_ir(self, func_identifier, func_arg_exprs, symbol_table, context):
+  def _make_func_call_ir(self, func_identifier, func_symbol, calling_arg_types, calling_ir_args, context):
     """
     :param str func_identifier:
-    :param list[ExpressionAst] func_arg_exprs:
+    :param FunctionSymbol func_symbol:
+    :param list[Type] calling_arg_types:
+    :param list[ir.values.Value] calling_ir_args:
     :param SymbolTable symbol_table:
     :param CodegenContext context:
     :rtype: ir.values.Value|None
     """
     assert context.emits_ir
-    self._check_func_call_symbol_table(
-      func_identifier=func_identifier, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
-    assert func_identifier in symbol_table
-    func_symbol = symbol_table[func_identifier]
-    if isinstance(func_symbol, TypeSymbol):
-      func_symbol = func_symbol.constructor_symbol
-    assert isinstance(func_symbol, FunctionSymbol)
-    calling_arg_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
-    ir_func_args = [
-      func_arg_expr.make_ir_val(symbol_table=symbol_table, context=context) for func_arg_expr in func_arg_exprs]
+    assert len(calling_arg_types) == len(calling_ir_args)
 
-    def make_call_func(concrete_func, concrete_calling_arg_types, caller_context):
+    def make_call_func(concrete_func, concrete_calling_arg_types_, caller_context):
       """
       :param ConcreteFunction concrete_func:
-      :param list[Type] concrete_calling_arg_types:
+      :param list[Type] concrete_calling_arg_types_:
       :param CodegenContext caller_context:
       :rtype: ir.values.Value
       """
-      assert len(concrete_func.arg_types) == len(func_arg_exprs)
-      casted_ir_func_args = [make_implicit_cast_to_ir_val(
+      assert len(concrete_func.arg_types) == len(calling_arg_types)
+      casted_ir_args = [make_implicit_cast_to_ir_val(
         from_type=called_arg_type, to_type=declared_arg_type, from_ir_val=ir_func_arg, context=caller_context,
         name='call_arg_%s_cast' % arg_identifier)
         for arg_identifier, ir_func_arg, called_arg_type, declared_arg_type in zip(
-          concrete_func.arg_identifiers, ir_func_args, concrete_calling_arg_types, concrete_func.arg_types)]
-      assert len(ir_func_args) == len(casted_ir_func_args) == len(func_arg_exprs)
+          concrete_func.arg_identifiers, calling_ir_args, concrete_calling_arg_types_, concrete_func.arg_types)]
+      assert len(calling_ir_args) == len(casted_ir_args)
       if concrete_func.is_inline:
         if concrete_func in caller_context.inline_func_call_stack:
           self.raise_error(
             'An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
               ' -> '.join(str(inline_func) for inline_func in caller_context.inline_func_call_stack), concrete_func))
         assert callable(concrete_func.make_inline_func_call_ir)
-        return concrete_func.make_inline_func_call_ir(ir_func_args=casted_ir_func_args, caller_context=caller_context)
+        return concrete_func.make_inline_func_call_ir(ir_func_args=casted_ir_args, caller_context=caller_context)
       else:
         ir_func = concrete_func.ir_func
-        assert ir_func is not None
-        assert len(ir_func.args) == len(func_arg_exprs)
-        return caller_context.builder.call(ir_func, casted_ir_func_args, name='call_%s' % func_identifier)
+        assert ir_func is not None and len(ir_func.args) == len(calling_arg_types)
+        return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func_identifier)
 
     assert func_symbol.has_concrete_func(calling_arg_types)
     possible_concrete_funcs = func_symbol.get_concrete_funcs(calling_arg_types)
     if len(possible_concrete_funcs) == 1:
       return make_call_func(
-        concrete_func=possible_concrete_funcs[0], concrete_calling_arg_types=calling_arg_types, caller_context=context)
+        concrete_func=possible_concrete_funcs[0], concrete_calling_arg_types_=calling_arg_types, caller_context=context)
     else:
       import numpy as np, itertools
       # The arguments which we need to look at to determine which concrete function to call
@@ -184,8 +200,8 @@ class AbstractSyntaxTree:
       from sleepy.symbols import LLVM_SIZE_TYPE, LLVM_VOID_POINTER_TYPE
       tag_ir_type = ir.types.IntType(8)
       call_block_index_ir = ir.Constant(tag_ir_type, 0)
-      for arg_num, calling_arg_type in enumerate(distinguishing_calling_arg_types):
-        ir_func_arg = ir_func_args[arg_num]
+      for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
+        ir_func_arg = calling_ir_args[arg_num]
         base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
         base_ir = ir.Constant(tag_ir_type, base)
         tag_ir = calling_arg_type.make_extract_tag(
@@ -213,7 +229,7 @@ class AbstractSyntaxTree:
           narrow_type(calling_arg_type, concrete_arg_type)
           for calling_arg_type, concrete_arg_type in zip(calling_arg_types, concrete_func.arg_types)]
         concrete_return_ir_val = make_call_func(
-          concrete_func, concrete_calling_arg_types=concrete_calling_arg_types, caller_context=concrete_caller_context)
+          concrete_func, concrete_calling_arg_types_=concrete_calling_arg_types, caller_context=concrete_caller_context)
         concrete_func_return_ir_vals.append(concrete_return_ir_val)
         assert not concrete_caller_context.is_terminated
         concrete_caller_context.builder.branch(collect_block)
@@ -593,13 +609,9 @@ class CallStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :param CodegenContext context:
     """
-    if context.emits_ir:
-      self._make_func_call_ir(
-        func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs,
-        symbol_table=symbol_table, context=context)
-    else:
-      self._check_func_call_symbol_table(
-        func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
+    self._build_func_call(
+      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table,
+      context=context)
 
   def __repr__(self):
     """
@@ -1157,7 +1169,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       type_expr.make_type(symbol_table=symbol_table)  # just check that type exists
       return SLEEPY_BOOL
     operand_exprs = [self.left_expr, self.right_expr]
-    possible_concrete_funcs = self._check_func_call_symbol_table(
+    _, possible_concrete_funcs = self.resolve_func_call(
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
@@ -1183,7 +1195,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       ir_val = self.left_expr.make_ir_val(symbol_table=symbol_table, context=context)
       return make_ir_val_is_type(ir_val, val_type, check_type, context=context)
     operand_exprs = [self.left_expr, self.right_expr]
-    return_val = self._make_func_call_ir(
+    return_val = self._build_func_call(
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
     assert return_val is not None
     return return_val
@@ -1216,7 +1228,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     :rtype: Type
     """
     operand_exprs = [self.expr]
-    possible_concrete_funcs = self._check_func_call_symbol_table(
+    _, possible_concrete_funcs = self.resolve_func_call(
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
@@ -1235,7 +1247,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     assert context.emits_ir
     operand_exprs = [self.expr]
-    return self._make_func_call_ir(
+    return self._build_func_call(
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
 
   def __repr__(self):
@@ -1376,7 +1388,7 @@ class CallExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    possible_concrete_funcs = self._check_func_call_symbol_table(
+    _, possible_concrete_funcs = self.resolve_func_call(
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
@@ -1385,7 +1397,7 @@ class CallExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    possible_concrete_funcs = self._check_func_call_symbol_table(
+    _, possible_concrete_funcs = self.resolve_func_call(
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
@@ -1396,7 +1408,7 @@ class CallExpressionAst(ExpressionAst):
     :rtype: ir.values.Value
     """
     assert context.emits_ir
-    return self._make_func_call_ir(
+    return self._build_func_call(
       func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table, context=context)
 
