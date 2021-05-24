@@ -742,14 +742,14 @@ class StructDeclarationAst(StatementAst):
         stmt.raise_error(
           'Cannot declare member %r multiple times in struct declaration' % stmt.var_target.var_identifier)
     assert len(self.stmt_list) == len(struct_symbol_table.current_scope_identifiers)
-    member_identifiers, member_types = [], []
+    member_identifiers, member_types, member_mutables = [], [], []
     for stmt, declared_identifier in zip(self.stmt_list, struct_symbol_table.current_scope_identifiers):
       assert declared_identifier in struct_symbol_table
       declared_symbol = struct_symbol_table[declared_identifier]
       assert isinstance(declared_symbol, VariableSymbol)
       member_identifiers.append(declared_identifier)
       member_types.append(declared_symbol.declared_var_type)
-    member_mutables = [False] * len(member_identifiers)
+      member_mutables.append(declared_symbol.mutable)
     assert len(member_identifiers) == len(member_types) == len(member_mutables) == len(self.stmt_list)
 
     struct_type = StructType(
