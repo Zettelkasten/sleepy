@@ -14,6 +14,10 @@ void print_int(int i) {
     printf("%d", i);
 }
 
+void flush() {
+    fflush(stdout);
+}
+
 void assert(_Bool property) {
     if (!property) {
         printf("Assertion failed!\n");
