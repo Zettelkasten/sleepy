@@ -943,7 +943,6 @@ class AssignStatementAst(StatementAst):
           self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
       if not can_implicit_cast_to(val_type, declared_type):
         self.raise_error('Cannot redefine variable of type %r with variable of type %r' % (declared_type, val_type))
-      breakpoint()
       if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
         self.raise_error('Cannot reassign member of a non-mutable variable')
       if declared_mutable is None:
