@@ -592,6 +592,10 @@ class VariableSymbol(Symbol):
     assert self.ir_alloca is None
     if not context.emits_ir:
       return
+    # TODO: All alloca instr (not only these for variables, but in general all) must not be placed inside a block
+    # that can be called in a loop (e.g. because while uses it as body), because then we alloca for every new loop
+    # iteration.
+    # Instead, alloca at the entry block of the function.
     self.ir_alloca = context.builder.alloca(self.declared_var_type.ir_type, name='%s_ptr' % identifier)
 
   def __repr__(self):
