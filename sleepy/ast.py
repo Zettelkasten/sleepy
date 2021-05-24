@@ -1439,14 +1439,7 @@ class MemberExpressionAst(ExpressionAst):
     parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
     assert isinstance(parent_type, StructType)
     parent_ir_val = self.parent_val_expr.make_ir_val(symbol_table=symbol_table, context=context)
-    if parent_type.is_pass_by_ref():
-      member_num = parent_type.get_member_num(self.member_identifier)
-      gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
-      member_ptr = context.builder.gep(parent_ir_val, gep_indices, name='member_ptr_%s' % self.member_identifier)
-      return context.builder.load(member_ptr, name='member_%s' % self.member_identifier)
-    else:  # pass by value
-      return context.builder.extract_value(
-          parent_ir_val, parent_type.get_member_num(self.member_identifier), name='member_%s' % self.member_identifier)
+    return parent_type.make_extract_member_val_ir(self.member_identifier, struct_ir_val=parent_ir_val, context=context)
 
   def is_val_mutable(self, symbol_table):
     """

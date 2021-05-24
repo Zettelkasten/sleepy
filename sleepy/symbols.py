@@ -345,6 +345,21 @@ class StructType(Type):
     """
     return '%sType' % self.struct_identifier
 
+  def make_extract_member_val_ir(self, member_identifier, struct_ir_val, context):
+    """
+    :param str member_identifier:
+    :param ir.values.Value struct_ir_val:
+    :param CodegenContext context:
+    """
+    if self.is_pass_by_ref():
+      member_num = self.get_member_num(member_identifier)
+      gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
+      member_ptr = context.builder.gep(struct_ir_val, gep_indices, name='member_ptr_%s' % member_identifier)
+      return context.builder.load(member_ptr, name='member_%s' % member_identifier)
+    else:  # pass by value
+      return context.builder.extract_value(
+        struct_ir_val, self.get_member_num(member_identifier), name='member_%s' % member_identifier)
+
 
 SLEEPY_VOID = VoidType()
 SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
