@@ -841,7 +841,13 @@ class StructDeclarationAst(StatementAst):
       assert len(destructor.ir_func.args) == 1
       self_ir_alloca = destructor.ir_func.args[0]
       self_ir_alloca.identifier = 'self_ptr'
-      # TODO: Free members in reversed order
+      # Free members in reversed order
+      for member_identifier, member_type in zip(reversed(member_identifiers), reversed(member_types)):
+        member_ir_val = struct_type.make_extract_member_val_ir(
+          member_identifier, struct_ir_val=self_ir_alloca, context=context)
+        self._make_func_call_ir(
+          func_identifier='free', func_symbol=destructor_symbol, calling_arg_types=[member_type],
+          calling_ir_args=[member_ir_val], context=context)
       if self.is_pass_by_ref():
         assert context.ir_func_free is not None
         from sleepy.symbols import LLVM_VOID_POINTER_TYPE
@@ -937,6 +943,7 @@ class AssignStatementAst(StatementAst):
           self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
       if not can_implicit_cast_to(val_type, declared_type):
         self.raise_error('Cannot redefine variable of type %r with variable of type %r' % (declared_type, val_type))
+      breakpoint()
       if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
         self.raise_error('Cannot reassign member of a non-mutable variable')
       if declared_mutable is None:

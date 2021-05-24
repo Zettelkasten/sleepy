@@ -1073,16 +1073,32 @@ def build_initial_ir(symbol_table, context):
   :param SymbolTable symbol_table:
   :param CodegenContext context:
   """
+  assert 'free' not in symbol_table
+  free_symbol = FunctionSymbol(returns_void=True)
+  symbol_table['free'] = free_symbol
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table
     symbol_table[type_identifier] = TypeSymbol(inbuilt_type, constructor_symbol=None)
+    if inbuilt_type == SLEEPY_VOID:
+      continue
+
+    # add destructor
+    destructor = ConcreteFunction(
+      ir_func=None, return_type=SLEEPY_VOID, return_mutable=False, arg_identifiers=['self'], arg_types=[inbuilt_type],
+      arg_mutables=[False], arg_type_narrowings=[SLEEPY_NEVER])
+    if context.emits_ir:
+      ir_func_name = symbol_table.make_ir_func_name('free', extern=False, concrete_func=destructor)
+      destructor.ir_func = ir.Function(context.module, destructor.make_ir_function_type(), name=ir_func_name)
+      destructor_block = destructor.ir_func.append_basic_block(name='entry')
+      destructor_context = context.copy_with_builder(ir.IRBuilder(destructor_block))
+      destructor_context.builder.ret_void()  # destructor does not do anything for value types
+    free_symbol.add_concrete_func(destructor)
 
   if context.emits_ir:
     module = context.builder.module
     context.ir_func_malloc = ir.Function(
       module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
     context.ir_func_free = ir.Function(module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
-  symbol_table['free'] = FunctionSymbol(returns_void=True)
 
   for op, op_arg_type_list, op_return_type_list in zip(
     SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):
