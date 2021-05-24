@@ -742,53 +742,99 @@ class StructDeclarationAst(StatementAst):
 
     struct_type = StructType(
       self.struct_identifier, member_identifiers, member_types, member_mutables, pass_by_ref=self.is_pass_by_ref())
+    constructor_symbol = self._build_constructor(
+      struct_type, member_identifiers=member_identifiers, member_types=member_types, member_mutables=member_mutables,
+      parent_symbol_table=symbol_table, parent_context=context)
+    symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor_symbol)
+    symbol_table.current_scope_identifiers.append(self.struct_identifier)
+    self._build_destructor(
+      struct_type, member_identifiers=member_identifiers, member_types=member_types, member_mutables=member_mutables,
+      parent_symbol_table=symbol_table, parent_context=context)
+
+  def _build_constructor(self, struct_type, member_identifiers, member_types, member_mutables, parent_symbol_table,
+                         parent_context):
+    """
+    :param StructType struct_type:
+    :param List[str] member_identifiers:
+    :param List[Type] member_types:
+    :param List[bool] member_mutables:
+    :param SymbolTable parent_symbol_table:
+    :param CodegenContext parent_context:
+    :rtype: FunctionSymbol
+    """
+    assert len(member_identifiers) == len(member_types) == len(member_mutables)
     constructor_symbol = FunctionSymbol(returns_void=False)
     constructor = ConcreteFunction(
       ir_func=None, return_type=struct_type, return_mutable=True,
       arg_types=member_types, arg_identifiers=member_identifiers, arg_type_narrowings=member_types,
       arg_mutables=member_mutables)
-    if context.emits_ir:
-      ir_func_type = constructor.make_ir_function_type()
-      ir_func_name = symbol_table.make_ir_func_name(self.struct_identifier, extern=False, concrete_func=constructor)
-      constructor.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
-      self._make_constructor_body_ir(constructor, symbol_table=symbol_table, context=context)
-    # notice that we explicitly set return_mutable=False here, even if the constructor mutated the struct.
+
+    if parent_context.emits_ir:
+      ir_func_name = parent_symbol_table.make_ir_func_name(
+        self.struct_identifier, extern=False, concrete_func=constructor)
+      constructor.ir_func = ir.Function(parent_context.module, constructor.make_ir_function_type(), name=ir_func_name)
+      constructor_block = constructor.ir_func.append_basic_block(name='entry')
+      context = parent_context.copy_with_builder(ir.IRBuilder(constructor_block))
+      if self.is_pass_by_ref():  # use malloc
+        assert context.ir_func_malloc is not None
+        self_ir_alloca_raw = context.builder.call(
+          context.ir_func_malloc, [struct_type.make_ir_size()], name='self_raw_ptr')
+        self_ir_alloca = context.builder.bitcast(self_ir_alloca_raw, struct_type.ir_type, name='self')
+      else:  # pass by value, use alloca
+        self_ir_alloca = context.builder.alloca(struct_type.ir_type, name='self')
+
+      for member_num, (stmt, ir_func_arg) in enumerate(zip(self.stmt_list, constructor.ir_func.args)):
+        assert isinstance(stmt, AssignStatementAst)
+        assert isinstance(stmt.var_target, VariableTargetAst)
+        member_identifier = stmt.var_target.var_identifier
+        ir_func_arg.identifier = member_identifier
+        gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
+        member_ptr = context.builder.gep(self_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
+        context.builder.store(ir_func_arg, member_ptr)
+
+      if self.is_pass_by_ref():
+        context.builder.ret(self_ir_alloca)
+      else:  # pass by value
+        context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
+
     constructor_symbol.add_concrete_func(constructor)
-    symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor_symbol)
-    symbol_table.current_scope_identifiers.append(self.struct_identifier)
+    return constructor_symbol
 
-  def _make_constructor_body_ir(self, constructor, symbol_table, context):
+  def _build_destructor(self, struct_type, member_identifiers, member_types, member_mutables, parent_symbol_table,
+                        parent_context):
     """
-    :param ConcreteFunction constructor:
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
+    :param StructType struct_type:
+    :param List[str] member_identifiers:
+    :param List[Type] member_types:
+    :param List[bool] member_mutables:
+    :param SymbolTable parent_symbol_table:
+    :param CodegenContext parent_context:
     """
-    # TODO: Make this a new scope.
-    struct_type = constructor.return_type
-    constructor_block = constructor.ir_func.append_basic_block(name='entry')
-    constructor_builder = ir.IRBuilder(constructor_block)
-    if self.is_pass_by_ref():  # use malloc
-      assert context.ir_func_malloc is not None
-      self_ir_alloca_raw = constructor_builder.call(
-        context.ir_func_malloc, [struct_type.make_ir_size()], name='self_raw_ptr')
-      self_ir_alloca = constructor_builder.bitcast(self_ir_alloca_raw, struct_type.ir_type, name='self')
-      # TODO: eventually free memory again
-    else:  # pass by value, use alloca
-      self_ir_alloca = constructor_builder.alloca(struct_type.ir_type, name='self')
+    assert len(member_identifiers) == len(member_types) == len(member_mutables)
+    assert 'free' in parent_symbol_table
+    destructor_symbol = parent_symbol_table['free']
+    assert isinstance(destructor_symbol, FunctionSymbol)
+    destructor = ConcreteFunction(
+      ir_func=None, return_type=SLEEPY_VOID, return_mutable=False, arg_types=[struct_type], arg_identifiers=['var'],
+      arg_type_narrowings=[struct_type], arg_mutables=[False])
+    if parent_context.emits_ir:
+      ir_func_name = parent_symbol_table.make_ir_func_name('free', extern=False, concrete_func=destructor)
+      destructor.ir_func = ir.Function(parent_context.module, destructor.make_ir_function_type(), name=ir_func_name)
+      destructor_block = destructor.ir_func.append_basic_block(name='entry')
+      context = parent_context.copy_with_builder(ir.IRBuilder(destructor_block))
 
-    for member_num, (stmt, ir_func_arg) in enumerate(zip(self.stmt_list, constructor.ir_func.args)):
-      assert isinstance(stmt, AssignStatementAst)
-      assert isinstance(stmt.var_target, VariableTargetAst)
-      member_identifier = stmt.var_target.var_identifier
-      ir_func_arg.identifier = member_identifier
-      gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
-      member_ptr = constructor_builder.gep(self_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
-      constructor_builder.store(ir_func_arg, member_ptr)
+      assert len(destructor.ir_func.args) == 1
+      self_ir_alloca = destructor.ir_func.args[0]
+      self_ir_alloca.identifier = 'self_ptr'
+      # TODO: Free members in reversed order
+      if self.is_pass_by_ref():
+        assert context.ir_func_free is not None
+        from sleepy.symbols import LLVM_VOID_POINTER_TYPE
+        self_ir_alloca_raw = context.builder.bitcast(self_ir_alloca, LLVM_VOID_POINTER_TYPE, name='self_raw_ptr')
+        context.builder.call(context.ir_func_free, args=[self_ir_alloca_raw], name='free_self')
+      context.builder.ret_void()
 
-    if self.is_pass_by_ref():
-      constructor_builder.ret(self_ir_alloca)
-    else:  # pass by value
-      constructor_builder.ret(constructor_builder.load(self_ir_alloca, name='self'))
+    destructor_symbol.add_concrete_func(destructor)
 
   def __repr__(self):
     """

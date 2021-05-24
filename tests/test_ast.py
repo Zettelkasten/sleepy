@@ -575,6 +575,27 @@ def test_pass_by_value():
       _test_compile_program(engine, program)
 
 
+def test_struct_free():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Vec3 {
+      Double x = 0.0;
+      Double y = 0.0;
+      Double z = 0.0;
+    }
+    func main(Double x, Double y, Double z) {
+      left = 10000;
+      while left > 0 {
+        v = Vec3(x, y, z);
+        free(v);
+        left = left - 1;
+      }
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main(0, 1, 2)
+
+
 def test_annotation_fail_contradiction():
   with make_execution_engine() as engine:
     program = """
