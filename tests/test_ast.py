@@ -596,6 +596,28 @@ def test_struct_free():
     main(0, 1, 2)
 
 
+def test_struct_free_nested():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType struct Vec3 {
+      Double x = 0.0;
+      Double y = 0.0;
+      Double z = 0.0;
+    }
+    @RefType struct Mat3x3 {
+      @Mutable Vec3 x = Vec3(0.0, 0.0, 0.0);
+      @Mutable Vec3 y = Vec3(0.0, 0.0, 0.0);
+      @Mutable Vec3 z = Vec3(0.0, 0.0, 0.0);
+    }
+    func main() {
+      @Mutable mat = Mat3x3(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0));
+      mat.x.y = 42.0;
+      free(mat);
+    }
+    """
+    main = _test_compile_program(engine, program)
+    main()
+
 def test_annotation_fail_contradiction():
   with make_execution_engine() as engine:
     program = """
