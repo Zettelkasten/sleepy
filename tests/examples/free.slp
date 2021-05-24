@@ -1,0 +1,13 @@
+@RefType struct Vec3 {
+  Double x = 0.0;
+  Double y = 0.0;
+  Double z = 0.0;
+}
+func main() {
+  left = 1000000000;  # allocate 32 GB of Vec3 after each other
+  while left > 0 {
+    v = Vec3(42.0, -4.0, -1.23);
+    free(v);  # if this does not work, we would quickly run out of memory
+    left = left - 1;
+  }
+}
