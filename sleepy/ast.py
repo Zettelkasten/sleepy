@@ -735,7 +735,7 @@ class StructDeclarationAst(StatementAst):
     for member_num, stmt in enumerate(self.stmt_list):
       if not isinstance(stmt, AssignStatementAst):
         stmt.raise_error('Can only use declare statements within a struct declaration')
-      if not isinstance(stmt.var_target, VariableTargetAst):
+      if not isinstance(stmt.var_target, VariableExpressionAst):
         stmt.raise_error('Can only declare variables within a struct declaration')
       stmt.build_ir(symbol_table=struct_symbol_table, context=struct_context)
       if len(struct_symbol_table.current_scope_identifiers) != member_num + 1:
@@ -797,7 +797,7 @@ class StructDeclarationAst(StatementAst):
 
       for member_num, (stmt, ir_func_arg) in enumerate(zip(self.stmt_list, constructor.ir_func.args)):
         assert isinstance(stmt, AssignStatementAst)
-        assert isinstance(stmt.var_target, VariableTargetAst)
+        assert isinstance(stmt.var_target, VariableExpressionAst)
         member_identifier = stmt.var_target.var_identifier
         ir_func_arg.identifier = member_identifier
         gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
@@ -873,12 +873,12 @@ class AssignStatementAst(StatementAst):
   def __init__(self, pos, var_target, var_val, declared_var_type):
     """
     :param TreePosition pos:
-    :param TargetAst var_target:
+    :param ExpressionAst var_target:
     :param ExpressionAst var_val:
     :param TypeAst|None declared_var_type:
     """
     super().__init__(pos)
-    assert isinstance(var_target, TargetAst)
+    assert isinstance(var_target, ExpressionAst)
     self.var_target = var_target
     self.var_val = var_val
     self.declared_var_type = declared_var_type
@@ -888,7 +888,7 @@ class AssignStatementAst(StatementAst):
     :param SymbolTable symbol_table:
     :rtype: bool
     """
-    if not isinstance(self.var_target, VariableTargetAst):
+    if not isinstance(self.var_target, VariableExpressionAst):
       return False
     var_identifier = self.var_target.var_identifier
     if var_identifier not in symbol_table.current_scope_identifiers:
@@ -897,7 +897,7 @@ class AssignStatementAst(StatementAst):
     symbol = symbol_table[var_identifier]
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign non-variable %r to a variable' % var_identifier)
-    ptr_type = self.var_target.make_narrowed_ptr_type(symbol_table=symbol_table)
+    ptr_type = self.var_target.make_val_type(symbol_table=symbol_table)
     if symbol.narrowed_var_type != ptr_type:
       self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
         var_identifier, symbol.narrowed_var_type, ptr_type))
@@ -921,7 +921,7 @@ class AssignStatementAst(StatementAst):
     val_mutable = self.var_val.is_val_mutable(symbol_table=symbol_table)
 
     if self.is_declaration(symbol_table=symbol_table):
-      assert isinstance(self.var_target, VariableTargetAst)
+      assert isinstance(self.var_target, VariableExpressionAst)
       var_identifier = self.var_target.var_identifier
       assert var_identifier not in symbol_table.current_scope_identifiers
       if stated_type is not None:
@@ -937,13 +937,13 @@ class AssignStatementAst(StatementAst):
       symbol_table.current_scope_identifiers.append(var_identifier)
     else:
       # variable name in this scope already declared. just check that types match, but do not change symbol_table.
-      declared_type = self.var_target.make_declared_ptr_type(symbol_table=symbol_table)
+      declared_type = self.var_target.make_declared_val_type(symbol_table=symbol_table)
       assert declared_type is not None
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
           self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
       if not can_implicit_cast_to(val_type, declared_type):
         self.raise_error('Cannot redefine variable of type %r with variable of type %r' % (declared_type, val_type))
-      if not self.var_target.is_ptr_reassignable(symbol_table=symbol_table):
+      if not self.var_target.is_val_assignable(symbol_table=symbol_table):
         self.raise_error('Cannot reassign member of a non-mutable variable')
       if declared_mutable is None:
         declared_mutable = val_mutable
@@ -955,9 +955,10 @@ class AssignStatementAst(StatementAst):
     assert declared_type is not None
     if declared_mutable and not val_mutable:
       self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % stated_type)
+    assert self.var_target.is_val_assignable(symbol_table=symbol_table)
 
     # if we assign to a variable, narrow type to val_type
-    if isinstance(self.var_target, VariableTargetAst):
+    if isinstance(self.var_target, VariableExpressionAst):
       assert self.var_target.var_identifier in symbol_table
       symbol = symbol_table[self.var_target.var_identifier]
       assert isinstance(symbol, VariableSymbol)
@@ -971,7 +972,8 @@ class AssignStatementAst(StatementAst):
     if context.emits_ir:
       ir_val = self.var_val.make_ir_val(symbol_table=symbol_table, context=context)
       ir_val = make_implicit_cast_to_ir_val(val_type, declared_type, ir_val, context=context, name='assign_cast')
-      ir_ptr = self.var_target.make_ir_ptr(symbol_table=symbol_table, context=context)
+      ir_ptr = self.var_target.make_ir_val_ptr(symbol_table=symbol_table, context=context)
+      assert ir_ptr is not None
       context.builder.store(ir_val, ir_ptr)
 
   def __repr__(self):
@@ -1123,12 +1125,28 @@ class ExpressionAst(AbstractSyntaxTree):
     """
     raise NotImplementedError()
 
+  def make_declared_val_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    if self.is_val_mutable(symbol_table=symbol_table) or self.is_val_assignable(symbol_table=symbol_table):
+      raise NotImplementedError()
+    return self.make_val_type(symbol_table=symbol_table)
+
   def is_val_mutable(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    raise NotImplementedError()
+    return False
+
+  def is_val_assignable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype bool:
+    """
+    return False
 
   def make_ir_val(self, symbol_table, context):
     """
@@ -1139,6 +1157,17 @@ class ExpressionAst(AbstractSyntaxTree):
     """
     assert context.emits_ir
     raise NotImplementedError()
+
+  def make_ir_val_ptr(self, symbol_table, context):
+    """
+    :param SymbolTable symbol_table:
+    :param CodegenContext context:
+    :rtype: ir.instructions.Instruction|None
+    """
+    assert context.emits_ir
+    if self.is_val_mutable(symbol_table=symbol_table) or self.is_val_assignable(symbol_table=symbol_table):
+      raise NotImplementedError()
+    return None
 
   def __repr__(self):
     """
@@ -1181,13 +1210,6 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     _, possible_concrete_funcs = self.resolve_func_call(
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
-
-  def is_val_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    return False
 
   def make_ir_val(self, symbol_table, context):
     """
@@ -1341,12 +1363,26 @@ class VariableExpressionAst(ExpressionAst):
     """
     return self.get_var_symbol(symbol_table=symbol_table).narrowed_var_type
 
+  def make_declared_val_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    return self.get_var_symbol(symbol_table=symbol_table).declared_var_type
+
   def is_val_mutable(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: Type
     """
     return self.get_var_symbol(symbol_table=symbol_table).mutable
+
+  def is_val_assignable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: bool
+    """
+    return True
 
   def make_ir_val(self, symbol_table, context):
     """
@@ -1357,6 +1393,19 @@ class VariableExpressionAst(ExpressionAst):
     assert context.emits_ir
     symbol = self.get_var_symbol(symbol_table=symbol_table)
     return context.builder.load(symbol.ir_alloca, name=self.var_identifier)
+
+  def make_ir_val_ptr(self, symbol_table, context):
+    """
+    :param SymbolTable symbol_table:
+    :param CodegenContext context:
+    :rtype: ir.instructions.Instruction
+    """
+    assert context.emits_ir
+    assert self.var_identifier in symbol_table
+    symbol = symbol_table[self.var_identifier]
+    assert isinstance(symbol, VariableSymbol)
+    assert symbol.ir_alloca is not None
+    return symbol.ir_alloca
 
   def __repr__(self):
     """
@@ -1450,6 +1499,13 @@ class MemberExpressionAst(ExpressionAst):
     parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
     return self._make_member_val_type(parent_type, self.member_identifier, symbol_table)
 
+  def make_declared_val_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    return self.make_val_type(symbol_table=symbol_table)
+
   def make_ir_val(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
@@ -1473,200 +1529,24 @@ class MemberExpressionAst(ExpressionAst):
     member_mutable = parent_type.member_mutables[member_num]
     return member_mutable
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
-    return 'MemberExpressionAst(parent_val_expr=%r, member_identifier=%r)' % (
-      self.parent_val_expr, self.member_identifier)
-
-
-class TargetAst(AbstractSyntaxTree):
-  """
-  Target.
-  """
-  def __init__(self, pos):
-    """
-    :param TreePosition pos:
-    """
-    super().__init__(pos)
-
-  def make_declared_ptr_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    raise NotImplementedError()
-
-  def make_narrowed_ptr_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    raise NotImplementedError()
-
-  def is_ptr_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: bool
-    """
-    raise NotImplementedError()
-
-  def is_ptr_reassignable(self, symbol_table):
+  def is_val_assignable(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype bool:
     """
-    raise NotImplementedError()
+    return self.parent_val_expr.is_val_mutable(symbol_table=symbol_table)
 
-  def make_ir_ptr(self, symbol_table, context):
+  def make_ir_val_ptr(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
     :param CodegenContext context:
     :rtype: ir.instructions.Instruction
     """
     assert context.emits_ir
-    raise NotImplementedError()
-
-  def __repr__(self):
-    """
-    :rtype: str
-    """
-    return 'TargetAst'
-
-
-class VariableTargetAst(TargetAst):
-  """
-  Target -> identifier
-  """
-  def __init__(self, pos, var_identifier):
-    """
-    :param TreePosition pos:
-    :param str var_identifier:
-    """
-    super().__init__(pos)
-    self.var_identifier = var_identifier
-
-  def make_declared_ptr_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    if self.var_identifier not in symbol_table:
-      self.raise_error('Cannot reference variable %r before declaration' % self.var_identifier)
-    symbol = symbol_table[self.var_identifier]
-    if not isinstance(symbol, VariableSymbol):
-      self.raise_error('Cannot assign to non-variable %r' % self.var_identifier)
-    return symbol.declared_var_type
-
-  def make_narrowed_ptr_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    if self.var_identifier not in symbol_table:
-      self.raise_error('Cannot reference variable %r before declaration' % self.var_identifier)
-    symbol = symbol_table[self.var_identifier]
-    if not isinstance(symbol, VariableSymbol):
-      self.raise_error('Cannot assign to non-variable %r' % self.var_identifier)
-    return symbol.narrowed_var_type
-
-  def is_ptr_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: bool
-    """
-    assert self.var_identifier in symbol_table
-    symbol = symbol_table[self.var_identifier]
-    assert isinstance(symbol, VariableSymbol)
-    return symbol.mutable
-
-  def is_ptr_reassignable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype bool:
-    """
-    return True
-
-  def make_ir_ptr(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.instructions.Instruction
-    """
-    assert context.emits_ir
-    assert self.var_identifier in symbol_table
-    symbol = symbol_table[self.var_identifier]
-    assert isinstance(symbol, VariableSymbol)
-    assert symbol.ir_alloca is not None
-    return symbol.ir_alloca
-
-  def __repr__(self):
-    """
-    :rtype: str
-    """
-    return 'VariableTargetAst(var_identifier=%r)' % self.var_identifier
-
-
-class MemberTargetAst(TargetAst):
-  """
-  Target -> Target . identifier
-  """
-  def __init__(self, pos, parent_target, member_identifier):
-    """
-    :param TreePosition pos:
-    :param TargetAst parent_target:
-    :param str member_identifier:
-    """
-    super().__init__(pos)
-    self.parent_target = parent_target
-    self.member_identifier = member_identifier
-
-  def make_declared_ptr_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    parent_type = self.parent_target.make_narrowed_ptr_type(symbol_table=symbol_table)
-    return self._make_member_val_type(parent_type, member_identifier=self.member_identifier, symbol_table=symbol_table)
-
-  def make_narrowed_ptr_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    return self.make_declared_ptr_type(symbol_table=symbol_table)
-
-  def is_ptr_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: bool
-    """
-    parent_type = self.parent_target.make_narrowed_ptr_type(symbol_table=symbol_table)
-    assert isinstance(parent_type, StructType)
-    assert self.member_identifier in parent_type.member_identifiers
-    member_num = parent_type.get_member_num(self.member_identifier)
-    member_mutable = parent_type.member_mutables[member_num]
-    return self.parent_target.is_ptr_mutable(symbol_table=symbol_table) and member_mutable
-
-  def is_ptr_reassignable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype bool:
-    """
-    return self.parent_target.is_ptr_mutable(symbol_table=symbol_table)
-
-  def make_ir_ptr(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.instructions.Instruction
-    """
-    assert context.emits_ir
-    parent_type = self.parent_target.make_narrowed_ptr_type(symbol_table=symbol_table)
+    parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
     assert isinstance(parent_type, StructType)
     member_num = parent_type.get_member_num(self.member_identifier)
-    parent_ptr = self.parent_target.make_ir_ptr(symbol_table=symbol_table, context=context)
+    parent_ptr = self.parent_val_expr.make_ir_val_ptr(symbol_table=symbol_table, context=context)
     if parent_type.is_pass_by_ref():  # parent_ptr has type struct**
       # dereference to get struct*.
       parent_ptr = context.builder.load(parent_ptr, 'load_struct')
@@ -1677,7 +1557,8 @@ class MemberTargetAst(TargetAst):
     """
     :rtype: str
     """
-    return 'MemberTargetAst(parent_target=%r, member_identifier=%r)' % (self.parent_target, self.member_identifier)
+    return 'MemberExpressionAst(parent_val_expr=%r, member_identifier=%r)' % (
+      self.parent_val_expr, self.member_identifier)
 
 
 class TypeAst(AbstractSyntaxTree):
@@ -1942,8 +1823,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
     {'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
     {'ast': 'ast.2'},
-    {'ast': lambda _pos, identifier: VariableTargetAst(_pos, identifier(1))},
-    {'ast': lambda _pos, ast, identifier: MemberTargetAst(_pos, ast(1), identifier(3))},
+    {'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
+    {'ast': lambda _pos, ast, identifier: MemberExpressionAst(_pos, ast(1), identifier(3))},
     {'annotation_list': []},
     {'annotation_list': lambda ast, annotation_list: [ast(1)] + annotation_list(2)},
     {'ast': lambda _pos, identifier: AnnotationAst(_pos, identifier(2))},
