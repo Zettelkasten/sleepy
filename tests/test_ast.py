@@ -316,7 +316,7 @@ def test_simple_simple_iterative_fibonacci():
       current_fib = 1;
       i = 2;
       while i <= n {
-        i = i + 1;
+        i += 1;
         next_fib = prev_fib + current_fib;
         prev_fib = current_fib;
         current_fib = next_fib;
@@ -472,6 +472,20 @@ def test_shadow_var_name_with_var_of_different_type():
     assert_equal(main(), 5)
 
 
+def test_operator_assign():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Int x) -> Int {
+      x += 2;
+      x *= -1;
+      x += x;
+      return x;  # 2 * -(x + 2)
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(5), 2 * -(5 + 2))
+
+
 def test_struct_default_constructor():
   with make_execution_engine() as engine:
     program = """
@@ -588,7 +602,7 @@ def test_struct_free():
       while left > 0 {
         v = Vec3(x, y, z);
         free(v);
-        left = left - 1;
+        left -= 1;
       }
     }
     """
@@ -811,8 +825,8 @@ def test_if_inside_while2():
     program = """
     func main(Int x) -> Int {
       while x <= 5 {
-        if x <= 2 { x = x + 1; }
-        else { x = x + 2; }
+        if x <= 2 { x += 1; }
+        else { x += 2; }
       }
       return x;
     }

@@ -1737,6 +1737,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'return', 'ExprList', ';'),
   Production('Stmt', 'Type', 'Target', '=', 'Expr', ';'),
   Production('Stmt', 'Target', '=', 'Expr', ';'),
+  Production('Stmt', 'Target', 'Op', '=', 'Expr', ';'),
   Production('Stmt', 'if', 'Expr', 'Scope'),
   Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'),
   Production('Stmt', 'while', 'Expr', 'Scope'),
@@ -1808,6 +1809,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(2), ast(4), ast(1))},
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(1), ast(3), None)},
+    {'ast': lambda _pos, ast, op: AssignStatementAst(
+      _pos, ast(1), BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(4)), None)},
     {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), None)},
     {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), ast(5))},
     {'ast': lambda _pos, ast: WhileStatementAst(_pos, ast(2), ast(3))}] + [
