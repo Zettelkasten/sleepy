@@ -632,6 +632,7 @@ def test_struct_free_nested():
     main = _test_compile_program(engine, program)
     main()
 
+
 def test_annotation_fail_contradiction():
   with make_execution_engine() as engine:
     program = """
@@ -1458,6 +1459,22 @@ def test_while_cond_type_narrowing():
     assert_equal(main(17), False)
     assert_equal(main(-2), False)
     assert_equal(main(117), True)
+
+
+def test_assert_type_narrowing():
+  with make_execution_engine() as engine:
+    program = """
+    func black_box() -> Int|Char {
+      return 12;
+    }
+    func main() -> Int {
+      Int|Char my_thing = black_box();
+      assert(my_thing is Int);
+      return my_thing;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 12)
 
 
 if __name__ == "__main__":

@@ -782,6 +782,7 @@ class SymbolTable:
       self.current_func = None  # type: Optional[ConcreteFunction]
       self.current_scope_identifiers = []  # type: List[str]
       self.used_ir_func_names = set()  # type: Set[str]
+      self.assert_symbol = None  # type: Optional[FunctionSymbol]
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
       if copy_new_current_func is None:
@@ -791,6 +792,7 @@ class SymbolTable:
         self.current_func = copy_new_current_func  # type: Optional[ConcreteFunction]
         self.current_scope_identifiers = []  # type: List[str]
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
+      self.assert_symbol = copy_from.assert_symbol  # type: Optional[FunctionSymbol]
 
   def __setitem__(self, identifier, symbol):
     """
@@ -1119,6 +1121,11 @@ def build_initial_ir(symbol_table, context):
       destructor_context = context.copy_with_builder(ir.IRBuilder(destructor_block))
       destructor_context.builder.ret_void()  # destructor does not do anything for value types
     free_symbol.add_concrete_func(destructor)
+
+  assert 'assert' not in symbol_table
+  assert_symbol = FunctionSymbol(returns_void=True)
+  symbol_table['assert'] = assert_symbol
+  symbol_table.assert_symbol = assert_symbol
 
   if context.emits_ir:
     module = context.builder.module

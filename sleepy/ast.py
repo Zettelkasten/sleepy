@@ -107,6 +107,13 @@ class AbstractSyntaxTree:
         var_symbol = symbol_table[func_arg_expr.var_identifier]
         assert isinstance(var_symbol, VariableSymbol)
         symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
+
+    # special handling of 'assert' call
+    if symbol == symbol_table.assert_symbol:
+      assert len(possible_concrete_funcs) == 1
+      assert len(func_arg_exprs) == 1
+      condition_expr = func_arg_exprs[0]
+      make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
     return return_ir_val
 
   def _make_func_call_ir(self, func_identifier, func_symbol, calling_arg_types, calling_ir_args, context):
@@ -466,6 +473,8 @@ class FunctionDeclarationAst(StatementAst):
     else:
       func_symbol = FunctionSymbol(returns_void=(return_type == SLEEPY_VOID))
       symbol_table[self.identifier] = func_symbol
+    if func_symbol == symbol_table.assert_symbol and len(func_symbol.concrete_funcs) >= 1:
+      self.raise_error('Cannot overload assert(Bool condition)')
     if func_symbol.has_concrete_func(arg_types):
       self.raise_error('Cannot override definition of function %r with parameter types %r' % (
         self.identifier, ', '.join([str(arg_type) for arg_type in arg_types])))
