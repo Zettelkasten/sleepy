@@ -33,13 +33,29 @@ extern_func assert(Bool condition);
 @RefType struct Str {
   CharPtr start = allocate_char(8);
   Int length = 0;
-  Int allocated_length = 8;
+  Int alloc_length = 8;
 }
 func EmptyStr() -> @Mutable Str {
   return Str(allocate_char(8), 0, 8);
 }
 func get(Str str, Int pos) -> Char {
   return load(str.start + pos);
+}
+func set(@Mutable Str str, Int pos, Char char) {
+  assert(and(0 <= pos, pos < str.length + 1));
+  if pos >= str.alloc_length {  # no space left, resize
+    extern_func memcpy(CharPtr to, CharPtr from, Int size);  # size is actually a Long
+    new_alloc_length = 2 * str.alloc_length;
+    new_start = allocate_char(new_alloc_length);
+    memcpy(new_start, str.start, str.alloc_length * 8);
+    deallocate(str.start);
+    str.alloc_length = new_alloc_length;
+    str.start = new_start;
+  }
+  store(str.start + pos, char);
+  if pos == str.length {
+    str.length += 1;
+  }
 }
 func print(Str str) {
   pos = 0;
