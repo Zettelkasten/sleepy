@@ -15,5 +15,7 @@ extern_func assert(Bool condition);
 @Inline func True() -> Bool { return 0 == 0; }
 @Inline func False() -> Bool { return 0 != 0; }
 @Inline func or(Bool a, Bool b) -> Bool { if a { return a; } else { return b; } }
+@Inline func or(Bool a, Bool b, Bool c) -> Bool { return or(or(a, b), c); }
 @Inline func and(Bool a, Bool b) -> Bool { if a { return b; } else { return False(); } }
+@Inline func and(Bool a, Bool b, Bool c) -> Bool { return and(and(a, b), c); }
 @Inline func not(Bool a) -> Bool { if (a) { return False(); } else { return True(); } }
