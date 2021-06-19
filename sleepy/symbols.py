@@ -383,6 +383,7 @@ SLEEPY_TYPES = {
   'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG,
   'Char': SLEEPY_CHAR, 'DoublePtr': SLEEPY_DOUBLE_PTR, 'CharPtr': SLEEPY_CHAR_PTR}  # type: Dict[str, Type]
 SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG}
+SLEEPY_POINTER_TYPES = {SLEEPY_DOUBLE_PTR, SLEEPY_CHAR_PTR}
 
 
 def can_implicit_cast_to(from_type, to_type):
@@ -1014,7 +1015,7 @@ SLEEPY_INBUILT_BINARY_OPS = ['+', '-', '*', '/', '==', '!=', '<', '>', '<=', '>=
 SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES = [
   [
     [SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
-    [SLEEPY_DOUBLE_PTR, SLEEPY_INT],
+    [SLEEPY_DOUBLE_PTR, SLEEPY_INT], [SLEEPY_CHAR_PTR, SLEEPY_INT],
     [SLEEPY_DOUBLE], [SLEEPY_INT], [SLEEPY_LONG]
   ], [
     [SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
@@ -1023,12 +1024,12 @@ SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES = [
   [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG]],
   [[SLEEPY_DOUBLE, SLEEPY_DOUBLE]]] + [
     [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
-    [SLEEPY_DOUBLE_PTR, SLEEPY_DOUBLE_PTR]]] * 6  # type: List[List[List[Type]]]
+    [SLEEPY_DOUBLE_PTR, SLEEPY_DOUBLE_PTR], [SLEEPY_CHAR_PTR, SLEEPY_CHAR_PTR]]] * 6  # type: List[List[List[Type]]]
 SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES = [
-  [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE_PTR, SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
+  [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE_PTR, SLEEPY_CHAR_PTR, SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
   [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
   [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
-  [SLEEPY_DOUBLE]] + [[SLEEPY_BOOL] * 4] * 6  # type: List[List[Type]]
+  [SLEEPY_DOUBLE]] + [[SLEEPY_BOOL] * 5] * 6  # type: List[List[Type]]
 assert (
   len(SLEEPY_INBUILT_BINARY_OPS) == len(SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES) ==
   len(SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES))
@@ -1081,7 +1082,7 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
     assert len(op_arg_types) == len(ir_func_args) == 2
     left_type, right_type = op_arg_types
     left_val, right_val = ir_func_args
-    if left_type == SLEEPY_DOUBLE_PTR and right_type == SLEEPY_INT:
+    if left_type in SLEEPY_POINTER_TYPES and right_type == SLEEPY_INT:
       return body_builder.gep(left_val, (right_val,), name='add')
     return make_binary_op(
       {SLEEPY_DOUBLE: body_builder.fadd, SLEEPY_INT: body_builder.add, SLEEPY_LONG: body_builder.add}, instr_name='add')
@@ -1100,7 +1101,8 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
     from functools import partial
     return make_binary_op({
       SLEEPY_DOUBLE: partial(body_builder.fcmp_ordered, op), SLEEPY_INT: partial(body_builder.icmp_signed, op),
-      SLEEPY_LONG: partial(body_builder.icmp_signed, op), SLEEPY_DOUBLE_PTR: partial(body_builder.icmp_unsigned, op)},
+      SLEEPY_LONG: partial(body_builder.icmp_signed, op), SLEEPY_DOUBLE_PTR: partial(body_builder.icmp_unsigned, op),
+      SLEEPY_CHAR_PTR: partial(body_builder.icmp_unsigned, op)},
       instr_name='cmp')
   assert False, 'Operator %s not handled!' % op
 
