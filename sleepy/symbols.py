@@ -868,7 +868,7 @@ class SymbolTable:
     if extern:
       ir_func_name = func_identifier
       if ir_func_name in self.known_extern_funcs:
-        assert self.known_extern_funcs[ir_func_name] == concrete_func
+        assert self.known_extern_funcs[ir_func_name].has_same_signature_as(concrete_func)
     else:
       ir_func_name = '_'.join([func_identifier] + [str(arg_type) for arg_type in concrete_func.arg_types])
       assert ir_func_name not in self.used_ir_func_names
