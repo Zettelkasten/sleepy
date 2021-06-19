@@ -39,8 +39,11 @@ extern_func assert(Bool condition);
   Int length = 0;
   Int alloc_length = 8;
 }
+func EmptyStr(Int alloc_length) -> @Mutable Str {
+  return Str(allocate_char(alloc_length), 0, alloc_length);
+}
 func EmptyStr() -> @Mutable Str {
-  return Str(allocate_char(8), 0, 8);
+  return EmptyStr(8);
 }
 func get(Str str, Int pos) -> Char {
   return load(str.start + pos);
@@ -49,7 +52,7 @@ func set(@Mutable Str str, Int pos, Char char) {
   assert(and(0 <= pos, pos < str.length + 1));
   if pos >= str.alloc_length {  # no space left, resize
     extern_func memcpy(CharPtr to, CharPtr from, Int size);  # size is actually a Long
-    new_alloc_length = 2 * str.alloc_length;
+    new_alloc_length = max(2 * str.alloc_length, 1);
     new_start = allocate_char(new_alloc_length);
     memcpy(new_start, str.start, str.alloc_length * 8);
     deallocate(str.start);
