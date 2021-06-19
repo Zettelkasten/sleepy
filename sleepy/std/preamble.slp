@@ -29,6 +29,10 @@ extern_func assert(Bool condition);
 @Inline func and(Bool a, Bool b, Bool c) -> Bool { return and(and(a, b), c); }
 @Inline func not(Bool a) -> Bool { if (a) { return False(); } else { return True(); } }
 
+## Simple Math
+@Inline func min(Int a, Int b) -> Int { if a < b { return a; } else { return b; } }
+@Inline func max(Int a, Int b) -> Int { if a > b { return a; } else { return b; } }
+
 ## String
 @RefType struct Str {
   CharPtr start = allocate_char(8);
