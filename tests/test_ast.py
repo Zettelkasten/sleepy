@@ -344,6 +344,22 @@ def test_extern_func():
       assert_almost_equal(cos_(x), math.cos(x))
 
 
+def test_extern_func_inside_inline_func():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func foo_sqrt(Double x) -> Double {
+      extern_func sqrt(Double x) -> Double;
+      return sqrt(x);
+    }
+    func main(Double x) -> Double {
+      return foo_sqrt(x);
+    }
+    """
+    main = _test_compile_program(engine, program, add_preamble=False)
+    from math import sqrt
+    assert_almost_equal(main(12.0), sqrt(12.0))
+
+
 def test_extern_func_simple_alloc():
   with make_execution_engine() as engine:
     program = """

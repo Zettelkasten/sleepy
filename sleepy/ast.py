@@ -498,7 +498,9 @@ class FunctionDeclarationAst(StatementAst):
         if not extern_concrete_func.has_same_signature_as(concrete_func):
           self.raise_error('Cannot redefine extern func %r previously declared as %s with new signature %s' % (
             self.identifier, extern_concrete_func.to_signature_str(), concrete_func.to_signature_str()))
-        should_declare_func = False
+        # Sometimes the ir_func has not been set for a previously declared extern func,
+        # e.g. because it was declared in an inlined func.
+        should_declare_func = extern_concrete_func.ir_func is None
       else:
         symbol_table.add_extern_func(self.identifier, concrete_func)
         should_declare_func = True
