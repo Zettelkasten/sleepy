@@ -64,6 +64,13 @@ func set(@Mutable Str str, Int pos, Char char) {
     str.length += 1;
   }
 }
+func +(Str a, Str b) -> @Mutable Str {
+  @Mutable Str res = EmptyStr(a.length + b.length);
+  extern_func memcpy(CharPtr to, CharPtr from, Int size);  # size is actually a Long
+  memcpy(res.start, a.start, a.length);
+  memcpy(res.start + a.length, b.start, b.length);
+  return res;
+}
 func print(Str str) {
   pos = 0;
   while pos < str.length {
