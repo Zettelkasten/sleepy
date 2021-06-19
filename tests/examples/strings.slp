@@ -1,14 +1,15 @@
 func Hello() -> Str {
-  @Mutable str = Str(allocate_char(5), 5, 5);
-  store(str.start + 0, 'H');
-  store(str.start + 1, 'e');
-  store(str.start + 2, 'l');
-  store(str.start + 3, 'l');
-  store(str.start + 4, 'o');
+  @Mutable str = EmptyStr();
+  set(str, 0, 'H');
+  set(str, 1, 'e');
+  set(str, 2, 'l');
+  set(str, 3, 'l');
+  set(str, 4, 'o');
   return str;
 }
 
 func main() {
   hello = Hello();
   print_line(hello);
+  free(hello);
 }
