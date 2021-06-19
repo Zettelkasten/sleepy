@@ -1,10 +1,10 @@
 @RefType struct DoubleList {
-  DoublePtr pointer = allocate(8);
+  DoublePtr pointer = allocate_double(8);
   Int alloc_length = 8;
   Int length = 0;
 }
 func empty_list() -> @Mutable DoubleList {
-  return DoubleList(allocate(8), 8, 0);
+  return DoubleList(allocate_double(8), 8, 0);
 }
 func get(DoubleList l, Int idx) -> Double {
   assert(and(idx >= 0, idx < l.length));
@@ -20,7 +20,7 @@ func insert(@Mutable DoubleList l, Double val) {
     # no space left, resize
     extern_func memcpy(DoublePtr to, DoublePtr from, Int size);  # size is actually a Long
     new_alloc_length = 2 * l.alloc_length;
-    new_pointer = allocate(new_alloc_length);
+    new_pointer = allocate_double(new_alloc_length);
     memcpy(new_pointer, l.pointer, l.alloc_length * 8);
     deallocate(l.pointer);
     l.alloc_length = new_alloc_length;

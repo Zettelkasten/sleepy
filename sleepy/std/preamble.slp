@@ -7,10 +7,14 @@ func print(Int int) { extern_func print_int(Int i); print_int(int); }
 extern_func flush();
 @Inline func print_flush(Char|Double|Int|Bool text) { print(text); flush(); }
 @Inline func print_line_flush(Char|Double|Int|Bool line) { print_line(line); flush(); }
-extern_func allocate(Int size) -> DoublePtr;
-extern_func deallocate(DoublePtr ptr);
-extern_func load(DoublePtr ptr) -> Double;
-extern_func store(DoublePtr prt, Double value);
+extern_func allocate_double(Int size) -> DoublePtr;
+extern_func allocate_char(Int size) -> CharPtr;
+func deallocate(DoublePtr ptr) { extern_func deallocate_double(DoublePtr ptr); deallocate_double(ptr); }
+func deallocate(CharPtr ptr) { extern_func deallocate_char(CharPtr ptr); deallocate_char(ptr); }
+func load(DoublePtr ptr) -> Double { extern_func load_double(DoublePtr ptr) -> Double; return load_double(ptr); }
+func load(CharPtr ptr) -> Char { extern_func load_char(CharPtr ptr) -> Char; return load_char(ptr); }
+func store(DoublePtr ptr, Double value) { extern_func store_double(DoublePtr ptr, Double value); store_double(ptr, value); }
+func store(CharPtr ptr, Char value) { extern_func store_char(CharPtr ptr, Char value); store_char(ptr, value); }
 extern_func assert(Bool condition);
 @Inline func True() -> Bool { return 0 == 0; }
 @Inline func False() -> Bool { return 0 != 0; }
