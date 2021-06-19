@@ -699,6 +699,16 @@ class ConcreteFunction:
       'is_inline=%r)' % (
         self.ir_func, self.return_type, self.arg_identifiers, self.arg_types, self.arg_type_narrowings, self.is_inline))
 
+  def has_same_signature_as(self, other):
+    """
+    :param ConcreteFunction other:
+    :rtype: bool
+    """
+    return (
+      self.return_type == other.return_type and self.return_mutable == other.return_mutable and
+      self.arg_types == other.arg_types and self.arg_mutables == other.arg_mutables and
+      self.arg_type_narrowings == other.arg_type_narrowings)
+
 
 class FunctionSymbol(Symbol):
   """
@@ -792,6 +802,7 @@ class SymbolTable:
       self.current_func = None  # type: Optional[ConcreteFunction]
       self.current_scope_identifiers = []  # type: List[str]
       self.used_ir_func_names = set()  # type: Set[str]
+      self.known_extern_funcs = {}  # type: Dict[str, ConcreteFunction]
       self.assert_symbol = None  # type: Optional[FunctionSymbol]
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
@@ -802,6 +813,8 @@ class SymbolTable:
         self.current_func = copy_new_current_func  # type: Optional[ConcreteFunction]
         self.current_scope_identifiers = []  # type: List[str]
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
+      # do not copy known_extern_funcs, but reference back as we want those to be shared globally
+      self.known_extern_funcs = copy_from.known_extern_funcs  # type: Dict[str, ConcreteFunction]
       self.assert_symbol = copy_from.assert_symbol  # type: Optional[FunctionSymbol]
 
   def __setitem__(self, identifier, symbol):
@@ -854,6 +867,8 @@ class SymbolTable:
     """
     if extern:
       ir_func_name = func_identifier
+      if ir_func_name in self.known_extern_funcs:
+        assert self.known_extern_funcs[ir_func_name] == concrete_func
     else:
       ir_func_name = '_'.join([func_identifier] + [str(arg_type) for arg_type in concrete_func.arg_types])
       assert ir_func_name not in self.used_ir_func_names
@@ -876,6 +891,29 @@ class SymbolTable:
       if isinstance(symbol, VariableSymbol):
         if symbol.declared_var_type != symbol.narrowed_var_type:
           self[symbol_identifier] = symbol.copy_reset_narrowed_type()
+
+  def has_extern_func(self, func_identifier):
+    """
+    :param str func_identifier:
+    :rtype: bool
+    """
+    return func_identifier in self.known_extern_funcs
+
+  def get_extern_func(self, func_identifier):
+    """
+    :param str func_identifier:
+    :rtype: ConcreteFunction
+    """
+    assert self.has_extern_func(func_identifier)
+    return self.known_extern_funcs[func_identifier]
+
+  def add_extern_func(self, func_identifier, concrete_func):
+    """
+    :param str func_identifier:
+    :param ConcreteFunction concrete_func:
+    """
+    assert not self.has_extern_func(func_identifier)
+    self.known_extern_funcs[func_identifier] = concrete_func
 
 
 class CodegenContext:

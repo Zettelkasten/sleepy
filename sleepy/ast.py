@@ -456,6 +456,9 @@ class FunctionDeclarationAst(StatementAst):
     :param CodegenContext context:
     """
     arg_types = self.make_arg_types(symbol_table=symbol_table)
+    arg_mutables = [
+      self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
+      for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
     if self.return_type is None:
       return_type = SLEEPY_VOID
     else:
@@ -481,20 +484,38 @@ class FunctionDeclarationAst(StatementAst):
     if func_symbol.returns_void != (return_type == SLEEPY_VOID):
       self.raise_error(
         'Function declared with name %r must consistently return a value or consistently return void' % self.identifier)
-    arg_mutables = [
-      self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
-      for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
     if self.is_inline and self.is_extern:
       self.raise_error('Extern function %r cannot be inlined' % self.identifier)
+
     concrete_func = ConcreteFunction(
       None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
       arg_types=arg_types, arg_mutables=arg_mutables, arg_type_narrowings=arg_types, is_inline=self.is_inline)
+    func_symbol.add_concrete_func(concrete_func)
+
+    if self.is_extern:
+      if symbol_table.has_extern_func(self.identifier):
+        extern_concrete_func = symbol_table.get_extern_func(self.identifier)
+        if not extern_concrete_func.has_same_signature_as(concrete_func):
+          self.raise_error('Cannot redefine extern func %r previously declared as %s with new signature %s' % (
+            self.identifier, extern_concrete_func.to_signature_str(), concrete_func.to_signature_str()))
+        should_declare_func = False
+      else:
+        symbol_table.add_extern_func(self.identifier, concrete_func)
+        should_declare_func = True
+    else:
+      assert not self.is_extern
+      should_declare_func = True
     if context.emits_ir and not self.is_inline:
       ir_func_type = concrete_func.make_ir_function_type()
-      ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
-      concrete_func.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
+      if should_declare_func:
+        ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
+        concrete_func.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
+      else:
+        assert not should_declare_func
+        assert self.is_extern and symbol_table.has_extern_func(self.identifier)
+        concrete_func.ir_func = symbol_table.get_extern_func(self.identifier).ir_func
+      assert concrete_func.ir_func.ftype == ir_func_type
 
-    func_symbol.add_concrete_func(concrete_func)
     if self.is_extern:
       return
 
