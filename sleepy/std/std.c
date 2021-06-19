@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <string.h>
 
 void print_char(char c) {
     putc(c, stdout);
@@ -49,4 +50,11 @@ double load_double(double* ptr) {
 }
 char load_char(char* ptr) {
     return *ptr;
+}
+
+void memcpy_double(double* to, double* from, int len) {
+    memcpy(to, from, len);
+}
+void memcpy_char(char* to, char* from, int len) {
+    memcpy(to, from, len);
 }

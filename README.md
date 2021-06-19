@@ -44,7 +44,6 @@ func set(@Mutable DoubleList l, Int idx, Double val) {
 func insert(@Mutable DoubleList l, Double val) {
   if l.length >= l.alloc_length {
     # no space left, resize
-    extern_func memcpy(DoublePtr to, DoublePtr from, Int size);
     new_alloc_length = 2 * l.alloc_length;
     new_pointer = allocate(new_alloc_length);
     memcpy(new_pointer, l.pointer, l.alloc_length * 8);
