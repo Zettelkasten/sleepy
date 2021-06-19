@@ -5,11 +5,9 @@
 void print_char(char c) {
     putc(c, stdout);
 }
-
 void print_double(double d) {
     printf("%f", d);
 }
-
 void print_int(int i) {
     printf("%d", i);
 }
@@ -25,18 +23,30 @@ void assert(_Bool property) {
     }
 }
 
-double* allocate(int size) {
+double* allocate_double(int size) {
+    return malloc((size_t) size * sizeof(double));
+}
+double* allocate_char(int size) {
     return malloc((size_t) size * sizeof(double));
 }
 
-void deallocate(double* ptr) {
+void deallocate_double(double* ptr) {
+    free(ptr);
+}
+void deallocate_char(char* ptr) {
     free(ptr);
 }
 
-void store(double* ptr, double value) {
+void store_double(double* ptr, double value) {
+    *ptr = value;
+}
+void store_char(char* ptr, char value) {
     *ptr = value;
 }
 
-double load(double* ptr) {
+double load_double(double* ptr) {
+    return *ptr;
+}
+char load_char(char* ptr) {
     return *ptr;
 }

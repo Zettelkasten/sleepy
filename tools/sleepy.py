@@ -93,7 +93,7 @@ def main():
 
   exec_file_name = _make_file_name(source_file_name, '', allow_exist=True)
   import subprocess
-  subprocess.run(['gcc', '-o', exec_file_name, object_file_name, LIB_PATH + '.o', '-lm'])
+  subprocess.run(['gcc', '-o', exec_file_name, object_file_name, LIB_PATH + '_static.a', '-lm'])
 
 
 if __name__ == '__main__':

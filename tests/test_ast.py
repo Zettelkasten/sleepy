@@ -348,7 +348,7 @@ def test_extern_func_simple_alloc():
   with make_execution_engine() as engine:
     program = """
     func main() -> Double {
-      arr = allocate(3);
+      arr = allocate_double(3);
       store(arr, 42.0);
       res = load(arr);
       return res;

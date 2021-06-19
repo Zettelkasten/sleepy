@@ -116,6 +116,14 @@ class DoublePtrType(Type):
     super().__init__(ir.PointerType(ir.DoubleType()), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_double))
 
 
+class CharPtrType(Type):
+  """
+  A char pointer.
+  """
+  def __init__(self):
+    super().__init__(ir.PointerType(ir.IntType(bits=8)), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_char))
+
+
 class UnionType(Type):
   """
   A tagged union, i.e. a type that can be one of a set of different types.
@@ -369,10 +377,11 @@ SLEEPY_INT = IntType()
 SLEEPY_LONG = LongType()
 SLEEPY_CHAR = CharType()
 SLEEPY_DOUBLE_PTR = DoublePtrType()
+SLEEPY_CHAR_PTR = CharPtrType()
 
 SLEEPY_TYPES = {
   'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG,
-  'Char': SLEEPY_CHAR, 'DoublePtr': SLEEPY_DOUBLE_PTR}  # type: Dict[str, Type]
+  'Char': SLEEPY_CHAR, 'DoublePtr': SLEEPY_DOUBLE_PTR, 'CharPtr': SLEEPY_CHAR_PTR}  # type: Dict[str, Type]
 SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG}
 
 
