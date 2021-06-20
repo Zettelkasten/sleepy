@@ -368,6 +368,83 @@ class StructType(Type):
       return context.builder.extract_value(
         struct_ir_val, self.get_member_num(member_identifier), name='member_%s' % member_identifier)
 
+  def build_constructor(self, parent_symbol_table, parent_context):
+    """
+    :param SymbolTable parent_symbol_table:
+    :param CodegenContext parent_context:
+    :rtype: FunctionSymbol
+    """
+    constructor_symbol = FunctionSymbol(returns_void=False)
+    constructor = ConcreteFunction(
+      ir_func=None, return_type=self, return_mutable=True,
+      arg_types=self.member_types, arg_identifiers=self.member_identifiers, arg_type_narrowings=self.member_types,
+      arg_mutables=self.member_mutables)
+
+    if parent_context.emits_ir:
+      ir_func_name = parent_symbol_table.make_ir_func_name(
+        self.struct_identifier, extern=False, concrete_func=constructor)
+      constructor.ir_func = ir.Function(parent_context.module, constructor.make_ir_function_type(), name=ir_func_name)
+      constructor_block = constructor.ir_func.append_basic_block(name='entry')
+      context = parent_context.copy_with_builder(ir.IRBuilder(constructor_block))
+      if self.is_pass_by_ref():  # use malloc
+        assert context.ir_func_malloc is not None
+        self_ir_alloca_raw = context.builder.call(
+          context.ir_func_malloc, [self.make_ir_size()], name='self_raw_ptr')
+        self_ir_alloca = context.builder.bitcast(self_ir_alloca_raw, self.ir_type, name='self')
+      else:  # pass by value, use alloca
+        self_ir_alloca = context.alloca_at_entry(self.ir_type, name='self')
+
+      for member_num, (member_identifier, ir_func_arg) in enumerate(zip(
+          self.member_identifiers, constructor.ir_func.args)):
+        ir_func_arg.identifier = member_identifier
+        gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
+        member_ptr = context.builder.gep(self_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
+        context.builder.store(ir_func_arg, member_ptr)
+
+      if self.is_pass_by_ref():
+        context.builder.ret(self_ir_alloca)
+      else:  # pass by value
+        context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
+
+    constructor_symbol.add_concrete_func(constructor)
+    return constructor_symbol
+
+  def build_destructor(self, parent_symbol_table, parent_context):
+    """
+    :param SymbolTable parent_symbol_table:
+    :param CodegenContext parent_context:
+    """
+    destructor_symbol = parent_symbol_table['free']
+    assert isinstance(destructor_symbol, FunctionSymbol)
+    # TODO: Narrow type to something more meaningful then SLEEPY_NEVER
+    # E.g. make a copy of the never union type and give that a name ("Freed" or sth)
+    destructor = ConcreteFunction(
+      ir_func=None, return_type=SLEEPY_VOID, return_mutable=False, arg_types=[self], arg_identifiers=['var'],
+      arg_type_narrowings=[SLEEPY_NEVER], arg_mutables=[False])
+    if parent_context.emits_ir:
+      ir_func_name = parent_symbol_table.make_ir_func_name('free', extern=False, concrete_func=destructor)
+      destructor.ir_func = ir.Function(parent_context.module, destructor.make_ir_function_type(), name=ir_func_name)
+      destructor_block = destructor.ir_func.append_basic_block(name='entry')
+      context = parent_context.copy_with_builder(ir.IRBuilder(destructor_block))
+
+      assert len(destructor.ir_func.args) == 1
+      self_ir_alloca = destructor.ir_func.args[0]
+      self_ir_alloca.identifier = 'self_ptr'
+      # Free members in reversed order
+      for member_identifier, member_type in zip(reversed(self.member_identifiers), reversed(self.member_types)):
+        member_ir_val = self.make_extract_member_val_ir(
+          member_identifier, struct_ir_val=self_ir_alloca, context=context)
+        make_func_call_ir(
+          func_identifier='free', func_symbol=destructor_symbol, calling_arg_types=[member_type],
+          calling_ir_args=[member_ir_val], context=context)
+      if self.is_pass_by_ref():
+        assert context.ir_func_free is not None
+        self_ir_alloca_raw = context.builder.bitcast(self_ir_alloca, LLVM_VOID_POINTER_TYPE, name='self_raw_ptr')
+        context.builder.call(context.ir_func_free, args=[self_ir_alloca_raw], name='free_self')
+      context.builder.ret_void()
+
+    destructor_symbol.add_concrete_func(destructor)
+
 
 SLEEPY_VOID = VoidType()
 SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
@@ -1034,6 +1111,141 @@ class CodegenContext:
       # assume that builders are always at the last instruction of a block
       self.builder.position_at_end(self.builder.block)
     return ir_alloca
+
+
+def make_func_call_ir(func_identifier, func_symbol, calling_arg_types, calling_ir_args, context):
+  """
+  :param str func_identifier:
+  :param FunctionSymbol func_symbol:
+  :param list[Type] calling_arg_types:
+  :param list[ir.values.Value] calling_ir_args:
+  :param CodegenContext context:
+  :rtype: ir.values.Value|None
+  """
+  assert context.emits_ir
+  assert len(calling_arg_types) == len(calling_ir_args)
+
+  def make_call_func(concrete_func, concrete_calling_arg_types_, caller_context):
+    """
+    :param ConcreteFunction concrete_func:
+    :param list[Type] concrete_calling_arg_types_:
+    :param CodegenContext caller_context:
+    :rtype: ir.values.Value
+    """
+    assert len(concrete_func.arg_types) == len(calling_arg_types)
+    casted_ir_args = [make_implicit_cast_to_ir_val(
+      from_type=called_arg_type, to_type=declared_arg_type, from_ir_val=ir_func_arg, context=caller_context,
+      name='call_arg_%s_cast' % arg_identifier)
+      for arg_identifier, ir_func_arg, called_arg_type, declared_arg_type in zip(
+        concrete_func.arg_identifiers, calling_ir_args, concrete_calling_arg_types_, concrete_func.arg_types)]
+    assert len(calling_ir_args) == len(casted_ir_args)
+    if concrete_func.is_inline:
+      assert concrete_func not in caller_context.inline_func_call_stack
+      assert callable(concrete_func.make_inline_func_call_ir)
+      return concrete_func.make_inline_func_call_ir(ir_func_args=casted_ir_args, caller_context=caller_context)
+    else:
+      ir_func = concrete_func.ir_func
+      assert ir_func is not None and len(ir_func.args) == len(calling_arg_types)
+      return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func_identifier)
+
+  assert func_symbol.has_concrete_func(calling_arg_types)
+  possible_concrete_funcs = func_symbol.get_concrete_funcs(calling_arg_types)
+  if len(possible_concrete_funcs) == 1:
+    return make_call_func(
+      concrete_func=possible_concrete_funcs[0], concrete_calling_arg_types_=calling_arg_types, caller_context=context)
+  else:
+    import numpy as np, itertools
+    # The arguments which we need to look at to determine which concrete function to call
+    # TODO: This could use a better heuristic, only because something is a union type does not mean that it
+    # distinguishes different concrete funcs.
+    distinguishing_arg_nums = [
+      arg_num for arg_num, calling_arg_type in enumerate(calling_arg_types)
+      if isinstance(calling_arg_type, UnionType)]
+    assert len(distinguishing_arg_nums) >= 1
+    # noinspection PyTypeChecker
+    distinguishing_calling_arg_types = [
+      calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]  # type: List[UnionType]
+    assert all(isinstance(calling_arg, UnionType) for calling_arg in distinguishing_calling_arg_types)
+    # To distinguish which concrete func to call, use this table
+    block_addresses_distinguished_mapping = np.ndarray(
+      shape=tuple(max(calling_arg.possible_type_nums) + 1 for calling_arg in distinguishing_calling_arg_types),
+      dtype=ir.values.BlockAddress)
+
+    # Go through all concrete functions, and add one block for each
+    concrete_func_caller_contexts = [
+      context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
+        func_identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))))
+      for concrete_func in possible_concrete_funcs]
+    for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
+      concrete_func_block = concrete_caller_context.block
+      concrete_func_block_address = ir.values.BlockAddress(context.builder.function, concrete_func_block)
+      concrete_func_distinguishing_args = [concrete_func.arg_types[arg_num] for arg_num in distinguishing_arg_nums]
+      concrete_func_possible_types_per_arg = [
+        [possible_type
+          for possible_type in (arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type])
+          if possible_type in calling_arg_type.possible_types]
+        for arg_type, calling_arg_type in zip(concrete_func_distinguishing_args, distinguishing_calling_arg_types)]
+      assert len(distinguishing_arg_nums) == len(concrete_func_possible_types_per_arg)
+
+      # Register the concrete function in the table
+      for expanded_func_types in itertools.product(*concrete_func_possible_types_per_arg):
+        assert len(expanded_func_types) == len(distinguishing_calling_arg_types)
+        distinguishing_variant_nums = tuple(
+          calling_arg_type.get_variant_num(concrete_arg_type)
+            for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_func_types))
+        assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
+        block_addresses_distinguished_mapping[distinguishing_variant_nums] = concrete_func_block_address
+
+    # Compute the index we have to look at in the table
+    from sleepy.symbols import LLVM_SIZE_TYPE, LLVM_VOID_POINTER_TYPE
+    tag_ir_type = ir.types.IntType(8)
+    call_block_index_ir = ir.Constant(tag_ir_type, 0)
+    for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
+      ir_func_arg = calling_ir_args[arg_num]
+      base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
+      base_ir = ir.Constant(tag_ir_type, base)
+      tag_ir = calling_arg_type.make_extract_tag(
+        ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (func_identifier, arg_num))
+      call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
+    call_block_index_ir = context.builder.zext(
+      call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % func_identifier)
+
+    # Look it up in the table and call the function
+    ir_block_addresses_type = ir.types.VectorType(
+      LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
+    ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
+      list(block_addresses_distinguished_mapping.flatten())))
+    ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
+    indirect_branch = context.builder.branch_indirect(ir_call_block_target)
+    for concrete_caller_context in concrete_func_caller_contexts:
+      indirect_branch.add_destination(concrete_caller_context.block)
+
+    # Execute the concrete functions and collect their return value
+    collect_block = context.builder.append_basic_block("collect_%s_overload" % func_identifier)
+    context.builder = ir.IRBuilder(collect_block)
+    concrete_func_return_ir_vals = []  # type: List[ir.values.Value]
+    for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
+      concrete_calling_arg_types = [
+        narrow_type(calling_arg_type, concrete_arg_type)
+        for calling_arg_type, concrete_arg_type in zip(calling_arg_types, concrete_func.arg_types)]
+      concrete_return_ir_val = make_call_func(
+        concrete_func, concrete_calling_arg_types_=concrete_calling_arg_types, caller_context=concrete_caller_context)
+      concrete_func_return_ir_vals.append(concrete_return_ir_val)
+      assert not concrete_caller_context.is_terminated
+      concrete_caller_context.builder.branch(collect_block)
+      assert concrete_func.returns_void == func_symbol.returns_void
+    assert len(possible_concrete_funcs) == len(concrete_func_return_ir_vals)
+
+    if func_symbol.returns_void:
+      return None
+    else:
+      common_return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
+      collect_return_ir_phi = context.builder.phi(
+        common_return_type.ir_type, name="collect_%s_overload_return" % func_identifier)
+      for concrete_return_ir_val, concrete_caller_context in zip(
+          concrete_func_return_ir_vals, concrete_func_caller_contexts):
+        collect_return_ir_phi.add_incoming(concrete_return_ir_val, concrete_caller_context.block)
+      return collect_return_ir_phi
 
 
 def _make_builtin_op_arg_names(op, op_arg_types):
