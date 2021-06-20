@@ -11,5 +11,6 @@ func Hello() -> Str {
 func main() {
   hello = Hello();
   print_line(hello);
+  print_line(hello + ',' + ' ' + hello + '!');
   free(hello);
 }
