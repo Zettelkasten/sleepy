@@ -1,4 +1,4 @@
 func main() -> Int {
-  print('H'); print('i'); print('!'); print('\n');
+  print_line("Hello, world!");
   return 0;
 }
