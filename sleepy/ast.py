@@ -986,7 +986,7 @@ class AssignStatementAst(StatementAst):
           self.raise_error('Cannot redefine a variable declared as mutable to non-mutable')
     assert declared_type is not None
     if declared_mutable and not val_mutable:
-      self.raise_error('Cannot assign a non-mutable variable a mutable value of type %r' % stated_type)
+      self.raise_error('Cannot assign a non-mutable value of type %r to a mutable variable' % declared_type)
     assert self.var_target.is_val_assignable(symbol_table=symbol_table)
 
     # if we assign to a variable, narrow type to val_type
