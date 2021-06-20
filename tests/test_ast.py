@@ -1493,6 +1493,23 @@ def test_assert_type_narrowing():
     assert_equal(main(), 12)
 
 
+def test_string_literal():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Int reps) -> Int {
+      base = "test";
+      out = "";
+      while reps > 0 {
+        out += base;
+        reps -= 1;
+      }
+      return out.length;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(10), 10 * 4)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
