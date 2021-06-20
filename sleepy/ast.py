@@ -11,7 +11,8 @@ from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
   SLEEPY_VOID, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
-  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, narrow_type, get_common_type
+  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, narrow_type, get_common_type, \
+  SLEEPY_CHAR_PTR
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is'}
 
@@ -116,7 +117,7 @@ class AbstractSyntaxTree:
         symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
 
     # special handling of 'assert' call
-    if symbol == symbol_table.assert_symbol:
+    if symbol == symbol_table.inbuilt_symbols.get('assert'):
       assert len(possible_concrete_funcs) == 1
       assert len(func_arg_exprs) == 1
       condition_expr = func_arg_exprs[0]
@@ -345,7 +346,7 @@ class FunctionDeclarationAst(StatementAst):
     else:
       func_symbol = FunctionSymbol(returns_void=(return_type == SLEEPY_VOID))
       symbol_table[self.identifier] = func_symbol
-    if func_symbol == symbol_table.assert_symbol and len(func_symbol.concrete_funcs) >= 1:
+    if func_symbol == symbol_table.inbuilt_symbols.get('assert') and len(func_symbol.concrete_funcs) >= 1:
       self.raise_error('Cannot overload assert(Bool condition)')
     if func_symbol.has_concrete_func(arg_types):
       self.raise_error('Cannot override definition of function %r with parameter types %r' % (
@@ -1150,6 +1151,74 @@ class ConstantExpressionAst(ExpressionAst):
     return 'ConstantExpressionAst(constant_val=%r, constant_type=%r)' % (self.constant_val, self.constant_type)
 
 
+class StringLiteralExpressionAst(ExpressionAst):
+  """
+  PrimaryExpr -> str
+  """
+  def __init__(self, pos, constant_str):
+    """
+    :param TreePosition pos:
+    :param str constant_str:
+    """
+    super().__init__(pos)
+    self.constant_str = constant_str
+
+  def make_val_type(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    assert 'Str' in symbol_table.inbuilt_symbols is not None
+    str_symbol = symbol_table.inbuilt_symbols['Str']
+    assert isinstance(str_symbol, TypeSymbol)
+    return str_symbol.type
+
+  def is_val_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    return True
+
+  def make_ir_val(self, symbol_table, context):
+    """
+    :param SymbolTable symbol_table:
+    :param CodegenContext context:
+    :rtype: ir.values.Value
+    """
+    assert context.emits_ir
+    assert 'Str' in symbol_table.inbuilt_symbols is not None
+    str_symbol = symbol_table.inbuilt_symbols['Str']
+    assert isinstance(str_symbol, TypeSymbol)
+    str_type = str_symbol.type
+    assert isinstance(str_type, StructType)
+    assert str_type.member_identifiers == ['start', 'length', 'alloc_length']
+
+    str_val = tuple(self.constant_str.encode())
+    assert context.ir_func_malloc is not None
+    from sleepy.symbols import LLVM_SIZE_TYPE
+    ir_start_raw = context.builder.call(
+      context.ir_func_malloc, args=[ir.Constant(LLVM_SIZE_TYPE, len(str_val))], name='str_literal_start_raw')
+    str_ir_type = ir.ArrayType(SLEEPY_CHAR.ir_type, len(str_val))
+    ir_start_array = context.builder.bitcast(
+      ir_start_raw, ir.PointerType(str_ir_type), name='str_literal_start_array')
+    context.builder.store(ir.Constant(str_ir_type, str_val), ir_start_array)
+    ir_start = context.builder.bitcast(ir_start_array, SLEEPY_CHAR_PTR.ir_type, name='str_literal_start')
+    length_ir_type = str_type.member_types[1].ir_type
+    ir_length = ir.Constant(length_ir_type, len(str_val))
+
+    str_ir_alloca = str_type.make_ir_alloca(context=context)
+    str_type.make_store_members_ir(
+      member_ir_vals=[ir_start, ir_length, ir_length], struct_ir_alloca=str_ir_alloca, context=context)
+    return str_ir_alloca
+
+  def __repr__(self):
+    """
+    :rtype: str
+    """
+    return 'StringLiteralExpressionAst(constant_str=%r)' % self.constant_str
+
+
 class VariableExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> identifier
@@ -1530,16 +1599,36 @@ def parse_char(value):
   return {'n': '\n', 'r': '\r', 't': '\t', "'": "'", '"': '"'}[value[1]]
 
 
+def parse_string(value):
+  """
+  :param str value: e.g. "abc", "", "cool \"stuff\""
+  :rtype: str
+  """
+  assert len(value) >= 2
+  assert value[0] == value[-1] == '"'
+  value = value[1:-1]
+  res = []  # type: List[chr]
+  pos = 0
+  while pos < len(value):
+    char = value[pos]
+    if char == '\\':
+      assert pos + 1 < len(value)
+      pos += 1
+    res.append(value[pos])
+    pos += 1
+  return ''.join(res)
+
+
 SLEEPY_LEXER = LexerGenerator(
   [
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '|',
     '->', '@', 'cmp_op', 'sum_op', 'prod_op', '=', 'identifier',
-    'int', 'double', 'char',
+    'int', 'double', 'char', 'str',
     None, None
   ], [
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\|',
     '\\->', '@', '==|!=|<=?|>=?|is', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
-    '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'",
+    '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'", '"([^\"]|\\\\[nrt\'"])*"',
     '#[^\n]*\n', '[ \n\t]+'
   ])
 SLEEPY_GRAMMAR = Grammar(
@@ -1572,6 +1661,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('PrimaryExpr', 'int'),
   Production('PrimaryExpr', 'double'),
   Production('PrimaryExpr', 'char'),
+  Production('PrimaryExpr', 'str'),
   Production('PrimaryExpr', 'identifier'),
   Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'),
   Production('PrimaryExpr', '(', 'Expr', ')'),
@@ -1606,7 +1696,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   SLEEPY_GRAMMAR,
   syn_attrs={
     'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
-    'op', 'number'},
+    'op', 'number', 'string'},
   prod_attr_rules=[
     {'ast': lambda _pos, stmt_list: TopLevelAst(_pos, AbstractScopeAst(_pos, stmt_list(1)))},
     {'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list(2))},
@@ -1641,6 +1731,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_DOUBLE)},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_CHAR)},
+    {'ast': lambda _pos, string: StringLiteralExpressionAst(_pos, string(1))},
     {'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
     {'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
     {'ast': 'ast.2'},
@@ -1686,7 +1777,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'identifier': {'identifier': lambda value: value},
     'int': {'number': lambda value: int(value)},
     'double': {'number': lambda value: float(value)},
-    'char': {'number': lambda value: ord(parse_char(value))}
+    'char': {'number': lambda value: ord(parse_char(value))},
+    'str': {'string': lambda value: parse_string(value)}
   }
 )
 SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)

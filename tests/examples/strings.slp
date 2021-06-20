@@ -11,7 +11,7 @@ func Hello() -> Str {
 
 func main() {
   hello = Hello();
-  print_line(hello);
-  print_line(hello + ',' + ' ' + hello + '!');
-  free(hello);
+  world = "World";
+  print_line(hello + ", " + world + '!');
+  free(hello);  # actually we need to free all intermediate values too, but blargh!
 }

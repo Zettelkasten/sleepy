@@ -41,12 +41,12 @@ func memcpy(CharPtr to, CharPtr from, Int size) {
 @Inline func min(Int a, Int b) -> Int { if a < b { return a; } else { return b; } }
 @Inline func max(Int a, Int b) -> Int { if a > b { return a; } else { return b; } }
 
-## String
-@RefType struct Str {
-  CharPtr start = allocate_char(8);
-  Int length = 0;
-  Int alloc_length = 8;
-}
+## String (note: the Str struct itself is declared internally, not here.)
+# @RefType struct Str {
+#   CharPtr start = allocate_char(8);
+#   Int length = 0;
+#   Int alloc_length = 8;
+# }
 func EmptyStr(Int alloc_length) -> @Mutable Str {
   return Str(allocate_char(alloc_length), 0, alloc_length);
 }
