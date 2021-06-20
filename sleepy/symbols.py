@@ -59,6 +59,20 @@ class Type:
     """
     return ir.Constant(LLVM_SIZE_TYPE, self.size)
 
+  def make_ir_alloca(self, context):
+    """
+    :param CodegenContext context:
+    :rtype: ir.instructions.Instruction
+    """
+    assert context.emits_ir
+    if self.is_pass_by_ref():  # use malloc
+      assert context.ir_func_malloc is not None
+      self_ir_alloca_raw = context.builder.call(
+        context.ir_func_malloc, [self.make_ir_size()], name='self_raw_ptr')
+      return context.builder.bitcast(self_ir_alloca_raw, self.ir_type, name='self')
+    else:  # pass by value, use alloca
+      return context.alloca_at_entry(self.ir_type, name='self')
+
 
 class VoidType(Type):
   """
@@ -368,6 +382,19 @@ class StructType(Type):
       return context.builder.extract_value(
         struct_ir_val, self.get_member_num(member_identifier), name='member_%s' % member_identifier)
 
+  def make_store_members_ir(self, member_ir_vals, struct_ir_alloca, context):
+    """
+    :param list[ir.values.Value] member_ir_vals:
+    :param ir.instructions.Instruction struct_ir_alloca:
+    :param CodegenContext context:
+    """
+    assert len(member_ir_vals) == len(self.member_identifiers)
+    assert context.emits_ir
+    for member_num, (member_identifier, ir_func_arg) in enumerate(zip(self.member_identifiers, member_ir_vals)):
+      gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
+      member_ptr = context.builder.gep(struct_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
+      context.builder.store(ir_func_arg, member_ptr)
+
   def build_constructor(self, parent_symbol_table, parent_context):
     """
     :param SymbolTable parent_symbol_table:
@@ -386,20 +413,12 @@ class StructType(Type):
       constructor.ir_func = ir.Function(parent_context.module, constructor.make_ir_function_type(), name=ir_func_name)
       constructor_block = constructor.ir_func.append_basic_block(name='entry')
       context = parent_context.copy_with_builder(ir.IRBuilder(constructor_block))
-      if self.is_pass_by_ref():  # use malloc
-        assert context.ir_func_malloc is not None
-        self_ir_alloca_raw = context.builder.call(
-          context.ir_func_malloc, [self.make_ir_size()], name='self_raw_ptr')
-        self_ir_alloca = context.builder.bitcast(self_ir_alloca_raw, self.ir_type, name='self')
-      else:  # pass by value, use alloca
-        self_ir_alloca = context.alloca_at_entry(self.ir_type, name='self')
+      self_ir_alloca = self.make_ir_alloca(context=context)
 
-      for member_num, (member_identifier, ir_func_arg) in enumerate(zip(
-          self.member_identifiers, constructor.ir_func.args)):
+      for member_identifier, ir_func_arg in zip(self.member_identifiers, constructor.ir_func.args):
         ir_func_arg.identifier = member_identifier
-        gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
-        member_ptr = context.builder.gep(self_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
-        context.builder.store(ir_func_arg, member_ptr)
+      self.make_store_members_ir(
+        member_ir_vals=constructor.ir_func.args, struct_ir_alloca=self_ir_alloca, context=context)
 
       if self.is_pass_by_ref():
         context.builder.ret(self_ir_alloca)
@@ -880,7 +899,7 @@ class SymbolTable:
       self.current_scope_identifiers = []  # type: List[str]
       self.used_ir_func_names = set()  # type: Set[str]
       self.known_extern_funcs = {}  # type: Dict[str, ConcreteFunction]
-      self.assert_symbol = None  # type: Optional[FunctionSymbol]
+      self.inbuilt_symbols = {}  # type: Dict[str, Symbol]
     else:
       self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
       if copy_new_current_func is None:
@@ -892,7 +911,7 @@ class SymbolTable:
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
       # do not copy known_extern_funcs, but reference back as we want those to be shared globally
       self.known_extern_funcs = copy_from.known_extern_funcs  # type: Dict[str, ConcreteFunction]
-      self.assert_symbol = copy_from.assert_symbol  # type: Optional[FunctionSymbol]
+      self.inbuilt_symbols = copy_from.inbuilt_symbols  # type: Dict[str, Symbol]
 
   def __setitem__(self, identifier, symbol):
     """
@@ -1357,6 +1376,22 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
   assert False, 'Operator %s not handled!' % op
 
 
+def _make_str_symbol(symbol_table, context):
+  """
+  :param SymbolTable symbol_table:
+  :param CodegenContext context:
+  :rtype: TypeSymbol
+  """
+  str_type = StructType(
+    struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'],
+    member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT], member_mutables=[False, False, False],
+    pass_by_ref=True)
+  constructor_symbol = str_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
+  struct_symbol = TypeSymbol(type=str_type, constructor_symbol=constructor_symbol)
+  str_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
+  return struct_symbol
+
+
 def build_initial_ir(symbol_table, context):
   """
   :param SymbolTable symbol_table:
@@ -1386,13 +1421,18 @@ def build_initial_ir(symbol_table, context):
   assert 'assert' not in symbol_table
   assert_symbol = FunctionSymbol(returns_void=True)
   symbol_table['assert'] = assert_symbol
-  symbol_table.assert_symbol = assert_symbol
+  symbol_table.inbuilt_symbols['assert'] = assert_symbol
 
   if context.emits_ir:
     module = context.builder.module
     context.ir_func_malloc = ir.Function(
       module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
     context.ir_func_free = ir.Function(module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
+
+  assert 'Str' not in symbol_table
+  str_symbol = _make_str_symbol(symbol_table=symbol_table, context=context)
+  symbol_table['Str'] = str_symbol
+  symbol_table.inbuilt_symbols['Str'] = str_symbol
 
   for op, op_arg_type_list, op_return_type_list in zip(
     SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):
