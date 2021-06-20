@@ -97,7 +97,7 @@ func insert(@Mutable Str str, Str insert_str, Int pos) {
   str.length += insert_str.length;
 }
 func insert(@Mutable Str str, Str insert_str) { insert(str, insert_str, str.length); }
-func MakeStr(Char from_char) -> @Mutable Str {
+func ToStr(Char from_char) -> @Mutable Str {
   @Mutable str = EmptyStr();
   insert(str, from_char);
   return str;
@@ -115,13 +115,13 @@ func +(Str a, Char b) -> @Mutable Str {
   return res;
 }
 func +(Char a, Str b) -> @Mutable Str {
-  a_ = MakeStr(a);
+  a_ = ToStr(a);
   @Mutable res = a_ + b;
   free(a_);
   return res;
 }
 func +(Char a, Char b) -> @Mutable Str {
-  @Mutable res = MakeStr(a);
+  @Mutable res = ToStr(a);
   insert(res, b);
   return res;
 }
