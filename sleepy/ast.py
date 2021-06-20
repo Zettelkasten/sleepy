@@ -1243,6 +1243,18 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
+  def is_val_mutable(self, symbol_table):
+    """
+    :param SymbolTable symbol_table:
+    :rtype: Type
+    """
+    if self.op == 'is':
+      return False
+    operand_exprs = [self.left_expr, self.right_expr]
+    _, possible_concrete_funcs = self.resolve_func_call(
+      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+    return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
+
   def make_ir_val(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
@@ -1300,7 +1312,10 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    return False
+    operand_exprs = [self.expr]
+    _, possible_concrete_funcs = self.resolve_func_call(
+      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+    return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
     """
