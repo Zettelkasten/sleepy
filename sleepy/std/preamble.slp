@@ -125,6 +125,21 @@ func +(Char a, Char b) -> @Mutable Str {
   insert(res, b);
   return res;
 }
+func *(Str str, Int repetitions) -> @Mutable Str {
+  @Mutable res = EmptyStr(str.length * repetitions);
+  while repetitions > 0 {
+    memcpy(res.start + res.length, str.start, str.length);
+    res.length += str.length;
+    repetitions -= 1;
+  }
+  return res;
+}
+func *(Char c, Int repetitions) -> @Mutable Str {
+  c_ = ToStr(c);
+  @Mutable res = c_ * repetitions;
+  free(c_);
+  return res;
+}
 func print(Str str) {
   pos = 0;
   while pos < str.length {
