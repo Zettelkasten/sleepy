@@ -55,7 +55,7 @@ func EmptyStr() -> @Mutable Str {
 }
 func resize(@Mutable Str str, Int new_alloc_length) {
   new_start = allocate_char(new_alloc_length);
-  memcpy(new_start, str.start, str.alloc_length * 8);
+  memcpy(new_start, str.start, str.alloc_length);
   deallocate(str.start);
   str.alloc_length = new_alloc_length;
   str.start = new_start;
@@ -85,7 +85,6 @@ func insert(@Mutable Str str, Char char, Int pos) {
   }
   memcpy(str.start + pos + 1, str.start + pos, str.length - pos);
   set(str, pos, char);
-  str.length += 1;
 }
 func insert(@Mutable Str str, Char insert_char) { insert(str, insert_char, str.length); }
 func insert(@Mutable Str str, Str insert_str, Int pos) {

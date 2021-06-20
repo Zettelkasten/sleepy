@@ -1,10 +1,11 @@
 func Hello() -> Str {
   @Mutable str = EmptyStr();
-  set(str, 0, 'H');
-  set(str, 1, 'e');
-  set(str, 2, 'l');
-  set(str, 3, 'l');
-  set(str, 4, 'o');
+  insert(str, 'H');
+  insert(str, 'e');
+  insert(str, 'l');
+  insert(str, 'l');
+  insert(str, 'o');
+  assert(str.length == 5);
   return str;
 }
 
