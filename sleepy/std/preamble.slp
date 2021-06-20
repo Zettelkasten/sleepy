@@ -53,28 +53,77 @@ func EmptyStr(Int alloc_length) -> @Mutable Str {
 func EmptyStr() -> @Mutable Str {
   return EmptyStr(8);
 }
+func resize(@Mutable Str str, Int new_alloc_length) {
+  new_start = allocate_char(new_alloc_length);
+  memcpy(new_start, str.start, str.alloc_length * 8);
+  deallocate(str.start);
+  str.alloc_length = new_alloc_length;
+  str.start = new_start;
+}
+func copy(Str str) -> @Mutable Str {
+  @Mutable new = Str(allocate_char(str.alloc_length), str.length, str.alloc_length);
+  memcpy(new.start, str.start, str.length);
+  return new;
+}
 func get(Str str, Int pos) -> Char {
   return load(str.start + pos);
 }
 func set(@Mutable Str str, Int pos, Char char) {
   assert(and(0 <= pos, pos < str.length + 1));
-  if pos >= str.alloc_length {  # no space left, resize
-    new_alloc_length = max(2 * str.alloc_length, 1);
-    new_start = allocate_char(new_alloc_length);
-    memcpy(new_start, str.start, str.alloc_length * 8);
-    deallocate(str.start);
-    str.alloc_length = new_alloc_length;
-    str.start = new_start;
+  if pos >= str.alloc_length {
+    resize(str, max(2 * str.alloc_length, 1));
   }
   store(str.start + pos, char);
   if pos == str.length {
     str.length += 1;
   }
 }
+func insert(@Mutable Str str, Char char, Int pos) {
+  assert(and(0 <= pos, pos < str.length + 1));
+  if str.length + 1 >= str.alloc_length {
+    resize(str, max(2 * str.alloc_length, 1));
+  }
+  memcpy(str.start + pos + 1, str.start + pos, str.length - pos);
+  set(str, pos, char);
+  str.length += 1;
+}
+func insert(@Mutable Str str, Char insert_char) { insert(str, insert_char, str.length); }
+func insert(@Mutable Str str, Str insert_str, Int pos) {
+  assert(and(0 <= pos, pos < str.length + 1));
+  if str.length + insert_str.length >= str.alloc_length {
+    resize(str, max(2 * str.alloc_length, str.length + insert_str.length));
+  }
+  memcpy(str.start + pos + insert_str.length, str.start + pos, str.length - pos);
+  memcpy(str.start + pos, insert_str.start, insert_str.length);
+  str.length += insert_str.length;
+}
+func insert(@Mutable Str str, Str insert_str) { insert(str, insert_str, str.length); }
+func MakeStr(Char from_char) -> @Mutable Str {
+  @Mutable str = EmptyStr();
+  insert(str, from_char);
+  return str;
+}
 func +(Str a, Str b) -> @Mutable Str {
-  @Mutable Str res = EmptyStr(a.length + b.length);
+  @Mutable res = EmptyStr(a.length + b.length);
   memcpy(res.start, a.start, a.length);
   memcpy(res.start + a.length, b.start, b.length);
+  res.length = a.length + b.length;
+  return res;
+}
+func +(Str a, Char b) -> @Mutable Str {
+  @Mutable res = copy(a);
+  insert(res, b);
+  return res;
+}
+func +(Char a, Str b) -> @Mutable Str {
+  a_ = MakeStr(a);
+  @Mutable res = a_ + b;
+  free(a_);
+  return res;
+}
+func +(Char a, Char b) -> @Mutable Str {
+  @Mutable res = MakeStr(a);
+  insert(res, b);
   return res;
 }
 func print(Str str) {
