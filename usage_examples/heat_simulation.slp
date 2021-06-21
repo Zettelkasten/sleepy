@@ -1,0 +1,160 @@
+extern_func null() -> DoublePtr;
+
+@RefType
+struct For_impl {
+    Int begin = 0;
+    Int end = 0;
+    Int index = 0;
+}
+
+@RefType
+struct For {
+    @Mutable For_impl it = For_impl(0, 0, 0);
+}
+
+func +(For f) -> Int {
+    return f.it.index;
+}
+
+func run(For f) -> Bool {
+    f.it.begin += 1;
+    f.it.index += 1;
+    not_done = f.it.begin <= f.it.end;
+
+    if(not(not_done)) {
+        free(f);
+    }
+
+    return not_done;
+}
+
+func for(Int begin, Int end) -> For {
+    return For(For_impl(begin, end, begin - 1));
+}
+
+struct DPtr {
+    DoublePtr ptr = null();
+}
+
+func >=(DPtr dptr, Double d) -> DPtr {
+    store(dptr.ptr, d);
+    return dptr;
+}
+
+func +(DPtr dptr) -> Double {
+    return load(dptr.ptr);
+}
+
+# 'Generic' ptr ctor. Could write an overload for other types as well.
+func Ptr(DoublePtr p) -> DPtr {
+    return DPtr(p);
+}
+
+struct Matrix {
+    Int dim = 0;
+    DoublePtr data = null();
+}
+
+func at(Matrix m, Int i, Int j) -> DPtr {
+    return Ptr(m.data + (i * m.dim) + j);
+}
+
+func Matrix_c(Int dim) -> Matrix {
+    return Matrix(dim, allocate_double(dim * dim));
+}
+
+# Put heat sources in first row at the beginning and in last row at the end
+func make_heat_sources(Matrix m) {
+
+
+    ind = for(0, min(100, m.dim));
+    while(run(ind)) {
+        ptr = at(m, 0, +ind);
+        ptr >== 50.0;
+    }
+
+
+    ind = for(max(0, m.dim - 100), m.dim);
+    while(run(ind)) {
+        ptr = at(m, m.dim - 1, +ind);
+        ptr >== 50.0;
+    }
+}
+
+func relaxation(Matrix current, Matrix next) {
+
+    #print_line("relax");
+
+    col = for(1, current.dim - 1);
+    while(run(col)) {
+
+        row = for(1, current.dim - 1);
+        while(run(row)) {
+
+            #print(+row);
+            #print(" ");
+            #print(+col);
+
+            #print(" = ");
+            #print_line(+at(current, +row, +col));
+
+            ptr = at(next, +row, +col);
+            ptr >== (+at(current, +row, +col + 1) +
+                +at(current, +row, +col - 1) +
+                +at(current, +row + 1, +col) +
+                +at(current, +row - 1, +col)) / 4.0;
+
+            #print_line(+ptr);
+            #print_line(+at(next, +row, +col));
+            #print_line("");
+        }
+    }
+}
+
+func print_ppm(Matrix mat) {
+    print_line("P2");
+
+    print(mat.dim);
+    print(" ");
+    print(mat.dim);
+    print("\n");
+
+    print_line(255);
+
+    row = for(0, mat.dim);
+    while(run(row)) {
+
+        col = for(0, mat.dim);
+        while(run(col)) {
+            print( min(to_int(+at(mat, +row, +col) * 255.0), 255) );
+            print(" ");
+        }
+        print("\n");
+    }
+
+}
+
+func main() {
+    Int dim = 500;
+    Matrix current = Matrix_c(dim + 2);
+    Matrix next = Matrix_c(dim + 2);
+
+    make_heat_sources(current);
+    make_heat_sources(next);
+
+
+    ind = for(0, 500);
+    while(run(ind)) {
+        relaxation(current, next);
+        tmp = current;
+        current = next;
+        next = tmp;
+
+        _  = at(current, 200, 300) >= 100.0;
+    }
+
+    print_ppm(current);
+}
+
+
+
