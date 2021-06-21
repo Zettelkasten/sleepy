@@ -1,0 +1,39 @@
+# Save the contents of this file to
+# /usr/share/nano/sleepy.nanorc
+# to get syntax highlighting within nano.
+
+syntax c "\.slp$"
+header "slp"
+magic "Sleepy program"
+comment "#"
+
+# Constants.
+color brightred "\<[A-Z_][0-9A-Z_]+\>"
+# Labels.
+color brightmagenta "^[[:space:]]*[A-Z_a-z]+:[[:space:]]*$"
+
+color green "\<(Int|Double|Long|Float|Char|Bool|Str|True|False|EmptyStr|ToStr)\>"
+color brightyellow "\<(func|extern_func|struct|if|else|return|while)\>"
+color brightmagenta "'([^'\]|(\\["'abfnrtv\\]))'" "'\\(([0-3]?[0-7]{1,2}))'" "'\\x[0-9A-Fa-f]{1,2}'"
+
+# Inbuilt function and annotation names
+color cyan "\<(print|print_line|flush|print_flush|print_flush_line|or|and|not|allocate_char|allocate_double|deallocate|load|store|assert|memcpy|resize|copy|get|set|insert)\>"
+
+color brightcyan "\<(RefType|ValType|Mutable|Const|Inline)\>"
+
+
+# Strings.  In general you will want your strings and comments to come last,
+# because highlighting rules are applied in the order they are read in.
+color brightyellow ""([^"]|\\")*"" "#[[:space:]]*include[[:space:]]+<[^[:blank:]=]*>"
+# Multiline strings.  This regex is VERY resource intensive,
+# and sometimes colours things that shouldn't be coloured.
+
+# Comments.
+color brightblue "#.*"
+# color brightblue start="/\*" end="\*/"
+
+# Reminders.
+color brightwhite,yellow "\<(FIXME|TODO|XXX)\>"
+
+# Trailing whitespace.
+color ,green "[[:space:]]+$"
