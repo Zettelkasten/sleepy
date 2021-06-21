@@ -1493,6 +1493,29 @@ def test_assert_type_narrowing():
     assert_equal(main(), 12)
 
 
+def test_unchecked_assert_type_narrowing():
+  with make_execution_engine() as engine:
+    program = """
+    @RefType
+    struct S {
+      Double val = 0.0;
+    }
+    func cast_to_s(S|DoublePtr ptr) -> S {
+      unchecked_assert(ptr is S);
+      return ptr;
+    }
+    func main(Double val) -> Double {
+      ptr = allocate_double(2);
+      store(ptr, val);
+      S s = cast_to_s(ptr);
+      return s.val;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(42.0), 42.0)
+    assert_equal(main(0.123), 0.123)
+
+
 def test_string_literal():
   with make_execution_engine() as engine:
     program = """
