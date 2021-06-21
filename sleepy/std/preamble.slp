@@ -19,7 +19,7 @@ func load(CharPtr ptr) -> Char { extern_func load_char(CharPtr ptr) -> Char; ret
 func store(DoublePtr ptr, Double value) { extern_func store_double(DoublePtr ptr, Double value); store_double(ptr, value); }
 func store(CharPtr ptr, Char value) { extern_func store_char(CharPtr ptr, Char value); store_char(ptr, value); }
 extern_func assert(Bool condition);
-func unchecked_assert(Bool condition) { }
+@Inline func unchecked_assert(Bool condition) { }
 func memcpy(DoublePtr to, DoublePtr from, Int size) {
   extern_func memcpy_double(DoublePtr to, DoublePtr from, Int size);
   memcpy_double(to, from, size);
