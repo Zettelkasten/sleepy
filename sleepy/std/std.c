@@ -58,3 +58,5 @@ void memcpy_double(double* to, double* from, int len) {
 void memcpy_char(char* to, char* from, int len) {
     memcpy(to, from, len);
 }
+
+int double_to_int(double d) { return d; }
