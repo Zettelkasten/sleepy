@@ -203,6 +203,8 @@ class AbstractScopeAst(AbstractSyntaxTree):
     :param CodegenContext scope_context:
     """
     for stmt in self.stmt_list:
+      if scope_context.is_terminated:
+        stmt.raise_error('Code is unreachable')
       stmt.build_ir(symbol_table=scope_symbol_table, context=scope_context)
 
   def __repr__(self):
