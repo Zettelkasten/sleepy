@@ -1176,7 +1176,26 @@ def test_scope_declare_variable_multiple_times():
     main(True)
     main(False)
 
-      
+
+def test_scope_capture_var():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Int {
+      Int x = 100;
+      func inner() {
+          a = x;  # <- should raise error, variable captures not implemented yet
+          print_line(a);
+          x = 2;
+          print_line(x);
+      }
+      inner();
+      return x;
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program)
+
+
 def test_union():
   with make_execution_engine() as engine:
     program = """
