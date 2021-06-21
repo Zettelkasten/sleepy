@@ -1022,11 +1022,11 @@ class CodegenContext:
     :param CodegenContext copy_from:
     """
     self.builder = builder
-    
+
     if copy_from is None:
       self.emits_ir = builder is not None  # type: bool
       self.is_terminated = False
-  
+
       self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
       self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
       self.inline_func_call_stack = []  # type: List[ConcreteFunction]
@@ -1035,7 +1035,7 @@ class CodegenContext:
     else:
       self.emits_ir = copy_from.emits_ir
       self.is_terminated = copy_from.is_terminated
-      
+
       self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
       self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
       self.inline_func_call_stack = copy_from.inline_func_call_stack.copy()  # type: List[ConcreteFunction]
@@ -1417,10 +1417,11 @@ def build_initial_ir(symbol_table, context):
       destructor_context.builder.ret_void()  # destructor does not do anything for value types
     free_symbol.add_concrete_func(destructor)
 
-  assert 'assert' not in symbol_table
-  assert_symbol = FunctionSymbol(returns_void=True)
-  symbol_table['assert'] = assert_symbol
-  symbol_table.inbuilt_symbols['assert'] = assert_symbol
+  for assert_identifier in ['assert', 'unchecked_assert']:
+    assert assert_identifier not in symbol_table
+    assert_symbol = FunctionSymbol(returns_void=True)
+    symbol_table[assert_identifier] = assert_symbol
+    symbol_table.inbuilt_symbols[assert_identifier] = assert_symbol
 
   if context.emits_ir:
     module = context.builder.module
