@@ -516,7 +516,6 @@ def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context, name)
   assert can_implicit_cast_to(from_type, to_type)
   if from_type == to_type:
     return from_ir_val
-  assert not to_type.is_pass_by_ref()
   if isinstance(to_type, UnionType):
     to_ir_alloca = context.alloca_at_entry(to_type.ir_type, name='%s_ptr' % name)
     if isinstance(from_type, UnionType):
