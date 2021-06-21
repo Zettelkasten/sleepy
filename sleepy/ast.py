@@ -1585,6 +1585,8 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
       symbol_table[var_expr.var_identifier] = var_symbol.copy_with_excluded_type(check_type)
 
 
+ESCAPE_CHARACTERS = {'n': '\n', 'r': '\r', 't': '\t', "'": "'", '"': '"'}
+
 def parse_char(value):
   """
   :param str value: e.g. 'a', '\n', ...
@@ -1596,7 +1598,8 @@ def parse_char(value):
   if len(value) == 1:
     return value
   assert value[0] == '\\'
-  return {'n': '\n', 'r': '\r', 't': '\t', "'": "'", '"': '"'}[value[1]]
+  assert value[1] in ESCAPE_CHARACTERS, 'unknown escape character \\%r' % [value[1]]
+  return ESCAPE_CHARACTERS[value[1]]
 
 
 def parse_string(value):
@@ -1613,9 +1616,12 @@ def parse_string(value):
     char = value[pos]
     if char == '\\':
       assert pos + 1 < len(value)
+      assert value[pos + 1] in ESCAPE_CHARACTERS, 'unknown escape character \\%r' % value[pos + 1]
+      res.append(ESCAPE_CHARACTERS[value[pos + 1]])
+      pos += 2
+    else:
+      res.append(value[pos])
       pos += 1
-    res.append(value[pos])
-    pos += 1
   return ''.join(res)
 
 
