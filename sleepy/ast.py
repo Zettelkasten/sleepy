@@ -1587,6 +1587,7 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
 
 ESCAPE_CHARACTERS = {'n': '\n', 'r': '\r', 't': '\t', "'": "'", '"': '"'}
 
+
 def parse_char(value):
   """
   :param str value: e.g. 'a', '\n', ...
@@ -1625,15 +1626,27 @@ def parse_string(value):
   return ''.join(res)
 
 
+def parse_assign_op(value):
+  """
+  :param str value: e.g. +=
+  :rtype: str
+  """
+  assert len(value) >= 2
+  assert value[-1] == '='
+  return value[:-1]
+
+
 SLEEPY_LEXER = LexerGenerator(
   [
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '|',
-    '->', '@', 'cmp_op', 'sum_op', 'prod_op', '=', 'identifier',
+    '->', '@', 'cmp_op', 'sum_op', 'prod_op', '=', 'assign_op',
+    'identifier',
     'int', 'double', 'char', 'str',
     None, None
   ], [
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\|',
-    '\\->', '@', '==|!=|<=?|>=?|is', '\\+|\\-', '\\*|/', '=', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
+    '\\->', '@', '==|!=|<=?|>=?|is', '\\+|\\-', '\\*|/', '=', '===|!==|<==|>==|\\+=|\\-=|\\*=|/=',
+    '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'", '"([^\"]|\\\\[nrt\'"])*"',
     '#[^\n]*\n', '[ \n\t]+'
   ])
@@ -1650,7 +1663,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('Stmt', 'return', 'ExprList', ';'),
   Production('Stmt', 'Type', 'Target', '=', 'Expr', ';'),
   Production('Stmt', 'Target', '=', 'Expr', ';'),
-  Production('Stmt', 'Target', 'Op', '=', 'Expr', ';'),
+  Production('Stmt', 'Target', 'assign_op', 'Expr', ';'),
   Production('Stmt', 'if', 'Expr', 'Scope'),
   Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'),
   Production('Stmt', 'while', 'Expr', 'Scope'),
@@ -1724,7 +1737,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(2), ast(4), ast(1))},
     {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(1), ast(3), None)},
     {'ast': lambda _pos, ast, op: AssignStatementAst(
-      _pos, ast(1), BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(4)), None)},
+      _pos, ast(1), BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3)), None)},
     {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), None)},
     {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), ast(5))},
     {'ast': lambda _pos, ast: WhileStatementAst(_pos, ast(2), ast(3))}] + [
@@ -1780,6 +1793,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'cmp_op': {'op': lambda value: value},
     'sum_op': {'op': lambda value: value},
     'prod_op': {'op': lambda value: value},
+    'assign_op': {'op': parse_assign_op},
     'identifier': {'identifier': lambda value: value},
     'int': {'number': lambda value: int(value)},
     'double': {'number': lambda value: float(value)},
