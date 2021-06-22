@@ -171,12 +171,7 @@ class StatementAst(AbstractSyntaxTree):
     has_const = any(annotation.identifier == 'Const' for annotation in arg_annotation_list)
     if has_mutable and has_const:
       self.raise_error('Cannot annotate %r with both %r and %r' % (arg_name, 'Mutable', 'Const'))
-    mutable = default if (not has_mutable and not has_const) else has_mutable
-    if mutable and not arg_type.pass_by_ref:
-      self.raise_error(
-        'Type %r of mutable %s needs to have pass-by-reference semantics (annotatated by @RefType)' % (
-          arg_type, arg_name))
-    return mutable
+    return default if (not has_mutable and not has_const) else has_mutable
 
   def __repr__(self):
     """
@@ -331,6 +326,11 @@ class FunctionDeclarationAst(StatementAst):
     arg_mutables = [
       self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
       for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
+    for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, arg_mutables):
+     if not arg_type.is_pass_by_ref() and arg_mutable:
+       self.raise_error(
+         'Type %r of mutable parameter %r needs to have pass-by-reference semantics (annotated by @RefType)' % (
+           arg_identifier, arg_type))
     if self.return_type is None:
       return_type = SLEEPY_VOID
     else:
@@ -341,6 +341,10 @@ class FunctionDeclarationAst(StatementAst):
       return_mutable = False
     else:
       return_mutable = self.make_var_is_mutable('return type', return_type, self.return_annotation_list, default=False)
+    if not return_type.is_pass_by_ref() and return_mutable:
+      self.raise_error(
+        'Type %r of return value needs to have pass-by-reference semantics (annotated by @RefType)' % (
+          return_type))
     if self.identifier in symbol_table:
       func_symbol = symbol_table[self.identifier]
       if not isinstance(func_symbol, FunctionSymbol):

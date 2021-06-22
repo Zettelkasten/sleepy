@@ -605,6 +605,48 @@ def test_pass_by_value():
       _test_compile_program(engine, program)
 
 
+def test_mutable_val_type_local_var():
+  with make_execution_engine() as engine:
+    program = """
+    struct Box { Int mem = 123; }
+    func main() -> Int {
+      @Mutable Box x = Box(42);
+      x.mem = 17;
+      return x.mem;
+    }
+    """
+    main = _test_compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 17);
+
+
+def test_mutable_val_type_arg():
+  with make_execution_engine() as engine:
+    program = """
+    struct Box { Int mem = 123; }
+    func not_allowed(@Mutable Box b) { # <- cannot have mutable non-ref type as argument
+    }
+    func main() {
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program, add_preamble=False)
+
+
+def test_mutable_val_type_return():
+  with make_execution_engine() as engine:
+    program = """
+    struct Box { Int mem = 123; }
+    func not_allowed() -> @Mutable Box { # <- cannot have mutable non-ref type as return type
+      @Mutable Box cool = Box(123);
+      return cool;
+    }
+    func main() {
+    }
+    """
+    with assert_raises(SemanticError):
+      _test_compile_program(engine, program, add_preamble=False)
+
+
 def test_struct_free():
   with make_execution_engine() as engine:
     program = """
@@ -730,7 +772,7 @@ def test_call_mutable_with_const_var():
 def test_assign_mutable_to_const():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Counter { Int val = 0; }
+    struct Counter { Int val = 0; }
     func main() -> Int {
       @Const con = Counter(-42);
       @Mutable mut = Counter(123);
@@ -745,7 +787,7 @@ def test_assign_mutable_to_const():
 def test_assign_const_to_mutable():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Counter { Int val = 0; }
+    struct Counter { Int val = 0; }
     func main() -> Int {
       @Const con = Counter(-42);
       @Mutable mut = Counter(123);
