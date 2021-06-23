@@ -126,7 +126,7 @@ func print_ppm(Matrix mat) {
 
         col = for(0, mat.dim);
         while(run(col)) {
-            print( min(to_int(+at(mat, +row, +col) * 255.0), 255) );
+            print( min(ToInt(+at(mat, +row, +col) * 255.0), 255) );
             print(" ");
         }
         print("\n");
