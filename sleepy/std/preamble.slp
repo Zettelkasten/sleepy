@@ -38,9 +38,23 @@ func memcpy(CharPtr to, CharPtr from, Int size) {
 @Inline func and(Bool a, Bool b, Bool c) -> Bool { return and(and(a, b), c); }
 @Inline func not(Bool a) -> Bool { if (a) { return False(); } else { return True(); } }
 
+## Conversions
+func ToInt(Double d) -> Int { extern_func double_to_int(Double d) -> Int; return double_to_int(d); }
+func ToDouble(Int i) -> Double { extern_func int_to_double(Int i) -> Double; return int_to_double(i); }
+
 ## Simple Math
+func <(Int left, Double right) -> Bool { return ToDouble(left) < right; }
+func <(Double left, Int right) -> Bool { return left < ToDouble(right); }
+func <=(Int left, Double right) -> Bool { return ToDouble(left) <= right; }
+func <=(Double left, Int right) -> Bool { return left <= ToDouble(right); }
+func >(Int left, Double right) -> Bool { return ToDouble(left) > right; }
+func >(Double left, Int right) -> Bool { return left > ToDouble(right); }
+func >=(Int left, Double right) -> Bool { return ToDouble(left) >= right; }
+func >=(Double left, Int right) -> Bool { return left >= ToDouble(right); }
 @Inline func min(Int a, Int b) -> Int { if a < b { return a; } else { return b; } }
 @Inline func max(Int a, Int b) -> Int { if a > b { return a; } else { return b; } }
+@Inline func sign(Int a) -> Int { if a > 0 { return 1; } if a == 0 { return 0; } else { return -1; } }
+@Inline func sign(Double a) -> Double { if a > 0.0 { return 1.0; } if a == 0.0 { return 0.0; } else { return -1.0; } }
 
 ## String (note: the Str struct itself is declared internally, not here.)
 # @RefType struct Str {
@@ -152,6 +166,17 @@ func print_line(Str str) {
   print(str); print_line();
 }
 
-## Conversions
-func ToInt(Double d) -> Int { extern_func double_to_int(Double d) -> Int; return double_to_int(d); }
-func ToDouble(Int i) -> Double { extern_func int_to_double(Int i) -> Double; return int_to_double(i); }
+## Misc
+func set_random_seed(Int seed) {
+  extern_func srand(Int seed);
+  srand(seed);
+}
+func random(Double min, Double max) -> Double {
+  assert(min < max);
+  extern_func random_double() -> Double;
+  rnd = random_double();  # in [0, 1]
+  return (1.0 - rnd) * min + rnd * max;  # in [min, max]
+}
+func random_int(Int min, Int max) -> Int {
+  return ToInt(random(ToDouble(min), ToDouble(max)));
+}

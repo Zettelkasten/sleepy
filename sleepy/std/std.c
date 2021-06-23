@@ -65,3 +65,7 @@ int double_to_int(double d) {
 double int_to_double(int i) {
     return i;
 }
+
+double random_double() {
+    return (double) rand() / RAND_MAX;
+}
