@@ -1,0 +1,201 @@
+# Variable dimensional vector
+@RefType struct Vec {
+  Int dim = 0;
+  DoublePtr start = allocate_double(0);
+}
+func get(Vec vec, Int pos) -> Double {
+  assert(and(0 <= pos, pos < vec.dim));
+  return load(vec.start + pos);
+}
+func set(@Mutable Vec vec, Int pos, Double val) {
+  assert(and(0 <= pos, pos < vec.dim));
+  store(vec.start + pos, val);
+}
+func fill(@Mutable Vec vec, Double val) {
+  pos = 0;
+  while pos < vec.dim {
+    vec[pos] = val;
+    pos += 1;
+  }
+}
+func ZeroVec(Int dim) -> @Mutable Vec {
+  @Mutable v = Vec(dim, allocate_double(dim * 8));
+  fill(v, 0.0);
+  return v;
+}
+func RandomVec(Int dim) -> @Mutable Vec {
+  @Mutable res = ZeroVec(dim);
+  pos = 0;
+  while pos < res.dim {
+    res[pos] = random(-1.0, 1.0);
+    pos += 1;
+  }
+  return res;
+}
+func *(Double scale, Vec vec) -> @Mutable Vec {
+  @Mutable res = ZeroVec(vec.dim);
+  pos = 0;
+  while pos < vec.dim {
+    res[pos] = scale * vec[pos];
+    pos += 1;
+  }
+  return res;
+}
+func +(Vec a, Vec b) -> @Mutable Vec {
+  assert(a.dim == b.dim);
+  @Mutable res = ZeroVec(a.dim);
+  pos = 0;
+  while pos < res.dim {
+    res[pos] = a[pos] + b[pos];
+    pos += 1;
+  }
+  return res;
+}
+func *(Vec a, Vec b) -> Double {  # dot product
+  assert(a.dim == b.dim);
+  res = 0.0;
+  pos = 0;
+  while pos < a.dim {
+    res += a[pos] * b[pos];
+    pos += 1;
+  }
+  return res;
+}
+func print(Vec vec) {
+  print('[');
+  pos = 0;
+  while pos < vec.dim {
+    print(vec[pos]);
+    if pos != vec.dim - 1 {
+      print(", ");
+    }
+    pos += 1;
+  }
+  print(']');
+}
+func free_vec(Vec vec) {
+  deallocate(vec.start);
+  free(vec);
+}
+
+# Matrix implementation
+@RefType struct Mat {
+  Int num_rows = 0;
+  Int num_cols = 0;
+  DoublePtr start = allocate_double(0);
+}
+func get(Mat mat, Int row, Int col) -> Double {
+  assert(and(0 <= row, row < mat.num_rows));
+  assert(and(0 <= col, col < mat.num_cols));
+  return load(mat.start + row * mat.num_cols + col);
+}
+func get(Mat mat, Int row) -> @Mutable Vec {
+  @Mutable row_vec = ZeroVec(mat.num_cols);
+  col = 0;
+  while col < mat.num_cols {
+    row_vec[col] = mat[row, col];
+    col += 1;
+  }
+  return row_vec;
+}
+func set(@Mutable Mat mat, Int row, Int col, Double val) {
+  assert(and(0 <= row, row < mat.num_rows));
+  assert(and(0 <= col, col < mat.num_cols));
+  store(mat.start + row * mat.num_cols + col, val);
+}
+func set(@Mutable Mat mat, Int row, Vec row_vec) {
+  assert(and(0 <= row, row < mat.num_rows));
+  assert(row_vec.dim == mat.num_cols);
+  memcpy(mat.start + row * mat.num_cols, row_vec.start, row_vec.dim * 8);
+}
+func fill(@Mutable Mat mat, Double val) {
+  row = 0;
+  while row < mat.num_rows {
+    col = 0;
+    while col < mat.num_cols {
+      mat[row, col] = val;
+      col += 1;
+    }
+    row += 1;
+  }
+}
+func ZeroMat(Int num_rows, Int num_cols) -> @Mutable Mat {
+  @Mutable mat = Mat(num_rows, num_cols, allocate_double(num_rows * num_cols * 8));
+  fill(mat, 0.0);
+  return mat;
+}
+func RandomMat(Int num_rows, Int num_cols) -> @Mutable Mat {
+  @Mutable mat = ZeroMat(num_rows, num_cols);
+  row = 0;
+  while row < num_rows {
+    col = 0;
+    while col < num_cols {
+      mat[row, col] = random(-1.0, 1.0);
+      col += 1;
+    }
+    row += 1;
+  }
+  return mat;
+}
+func free_mat(Mat mat) {
+  deallocate(mat.start);
+  free(mat);
+}
+
+func main() {
+  # training data: try to learn signum(sum of features).
+  func make_sample_labels(Mat x) -> Vec {
+    @Mutable y = ZeroVec(x.num_rows);
+    sample = 0;
+    while sample < x.num_rows {
+      feature_sum = 0.0;
+      feature = 0;
+      while feature < x.num_cols {
+        feature_sum += x[sample, feature];
+        feature += 1;
+      }
+      y[sample] = sign(feature_sum);
+      sample += 1;
+    }
+    return y;
+  }
+  num_samples = 300;
+  feature_dim = 1;
+  samples_x = RandomMat(num_samples, feature_dim);
+  samples_y = make_sample_labels(samples_x);
+  epsilon = 0.01;
+
+  # model weights
+  set_random_seed(42);
+  weights = RandomVec(feature_dim);
+  bias = random(-1.0, 1.0);
+
+  it = 0;
+  max_it = 300;
+  learning_rate = 1.0;
+  print_line("Training model ...");
+  while it < max_it {
+    sample = random_int(0, num_samples);
+    x = samples_x[sample];
+    y = samples_y[sample];
+
+    likelihood = weights * x + bias;
+    if y * likelihood < epsilon {
+      # update weights.
+      weights += learning_rate * y * x;
+      bias += learning_rate * y;
+    }
+
+    print("Step "); print(it + 1); print('/'); print(max_it); print_line();
+    it += 1;
+  }
+
+  func predict(Vec weights, Double bias, Vec x) -> Double {
+    likelihood = weights * x + bias;
+    return sign(likelihood);
+  }
+  @Mutable test = ZeroVec(feature_dim);
+  set(test, 0, -4.0);
+  print_line(predict(weights, bias, test));
+  print("The fitted hyperplane is "); print(weights); print(" * x + "); print(bias); print_line();
+}
