@@ -27,9 +27,17 @@ void assert(_Bool property) {
 double* allocate_double(int size) {
     return malloc((size_t) size * sizeof(double));
 }
-double* allocate_char(int size) {
-    return malloc((size_t) size * sizeof(double));
+char* allocate_char(int size) {
+    return malloc((size_t) size * sizeof(char));
 }
+
+char* double_null_ptr() {
+    return NULL;
+}
+char* char_null_ptr() {
+    return NULL;
+}
+
 
 void deallocate_double(double* ptr) {
     free(ptr);

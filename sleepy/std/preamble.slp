@@ -12,6 +12,8 @@ extern_func flush();
 ## Allocation
 extern_func allocate_double(Int size) -> DoublePtr;
 extern_func allocate_char(Int size) -> CharPtr;
+func NullDoublePtr() -> DoublePtr { extern_func double_null_ptr() -> DoublePtr; return double_null_ptr(); }
+func NullCharPtr() -> CharPtr { extern_func char_null_ptr() -> CharPtr; return char_null_ptr(); }
 func deallocate(DoublePtr ptr) { extern_func deallocate_double(DoublePtr ptr); deallocate_double(ptr); }
 func deallocate(CharPtr ptr) { extern_func deallocate_char(CharPtr ptr); deallocate_char(ptr); }
 func load(DoublePtr ptr) -> Double { extern_func load_double(DoublePtr ptr) -> Double; return load_double(ptr); }
