@@ -47,6 +47,7 @@ def main():
     '--emit-ir', '-ir', dest='emit_ir', action='store_true', help='Emit LLVM intermediate representation.')
   parser.add_argument(
     '--emit-object', '-c', dest='emit_object', action='store_true', help='Emit object code, but do not link.')
+  parser.add_argument('--compile-libs', '-libs', nargs='*', help='External libraries to link with', default=['m'])
   parser.set_defaults(execute=False)
 
   args = parser.parse_args()
@@ -93,7 +94,9 @@ def main():
 
   exec_file_name = _make_file_name(source_file_name, '', allow_exist=True)
   import subprocess
-  subprocess.run(['gcc', '-o', exec_file_name, object_file_name, LIB_PATH + '_static.a', '-lm'])
+  subprocess.run(
+    ['gcc', '-o', exec_file_name, object_file_name, LIB_PATH + '_static.a']
+    + ['-l%s' % lib_name for lib_name in args.compile_libs])
 
 
 if __name__ == '__main__':
