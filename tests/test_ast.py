@@ -616,7 +616,7 @@ def test_mutable_val_type_local_var():
     }
     """
     main = _test_compile_program(engine, program, add_preamble=False)
-    assert_equal(main(), 17);
+    assert_equal(main(), 17)
 
 
 def test_mutable_val_type_arg():
@@ -1024,6 +1024,26 @@ def test_overload_with_different_structs():
     }
     """
     _test_compile_program(engine, program)
+
+
+def test_index_operator():
+  with make_execution_engine() as engine:
+    program = """
+    func get(DoublePtr ptr, Int pos) -> Double {
+      return load(ptr + pos);
+    }
+    func set(DoublePtr ptr, Int pos, Double val) {
+      store(ptr + pos, val);
+    }
+    func main(Double val) -> Double {
+      ptr = allocate_double(8);
+      ptr[0] = val;
+      loaded = ptr[0];
+      return loaded;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(12.0), 12.0)
 
 
 def test_func_inline():
