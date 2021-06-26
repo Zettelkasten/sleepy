@@ -99,7 +99,7 @@ func insert(@Mutable Str str, Char char, Int pos) {
     resize(str, max(2 * str.alloc_length, 1));
   }
   memcpy(str.start + pos + 1, str.start + pos, str.length - pos);
-  set(str, pos, char);
+  str[pos] = char;
 }
 func insert(@Mutable Str str, Char insert_char) { insert(str, insert_char, str.length); }
 func insert(@Mutable Str str, Str insert_str, Int pos) {
@@ -158,7 +158,7 @@ func *(Char c, Int repetitions) -> @Mutable Str {
 func print(Str str) {
   pos = 0;
   while pos < str.length {
-    print(get(str, pos));
+    print(str[pos]);
     pos += 1;
   }
 }
