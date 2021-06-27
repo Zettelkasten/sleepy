@@ -61,6 +61,8 @@ func memcpy(IntPtr to, IntPtr from, Int size) {
 ## Conversions
 func ToInt(Double d) -> Int { extern_func double_to_int(Double d) -> Int; return double_to_int(d); }
 func ToInt(Bool b) -> Int { if b { return 1; } else { return 0; } }
+func ToInt(Long l) -> Int { extern_func long_to_int(Long l) -> Int; return long_to_int(l); }
+func ToLong(Int i) -> Long { extern_func int_to_long(Int i) -> Long; return int_to_long(i); }
 func ToDouble(Int i) -> Double { extern_func int_to_double(Int i) -> Double; return int_to_double(i); }
 
 ## Simple Math

@@ -112,6 +112,12 @@ int double_to_int(double d) {
 double int_to_double(int i) {
     return i;
 }
+int long_to_int(long l) {
+    return l;
+}
+long int_to_long(int i) {
+    return i;
+}
 
 double random_double() {
     return (double) rand() / RAND_MAX;
