@@ -1311,25 +1311,25 @@ def _make_builtin_op_arg_names(op, op_arg_types):
 SLEEPY_INBUILT_BINARY_OPS = ['+', '-', '*', '/', '==', '!=', '<', '>', '<=', '>=']  # type: List[str]
 SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES = [
   [
-    [SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
+    [SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
     [SLEEPY_DOUBLE_PTR, SLEEPY_INT], [SLEEPY_FLOAT_PTR, SLEEPY_INT], [SLEEPY_CHAR_PTR, SLEEPY_INT],
-    [SLEEPY_INT_PTR, SLEEPY_INT], [SLEEPY_DOUBLE], [SLEEPY_INT], [SLEEPY_LONG]
+    [SLEEPY_INT_PTR, SLEEPY_INT], [SLEEPY_DOUBLE], [SLEEPY_FLOAT], [SLEEPY_INT], [SLEEPY_LONG]
   ], [
-    [SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
-    [SLEEPY_DOUBLE], [SLEEPY_INT], [SLEEPY_LONG]
+    [SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
+    [SLEEPY_DOUBLE], [SLEEPY_FLOAT], [SLEEPY_INT], [SLEEPY_LONG]
   ],
-  [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG]],
-  [[SLEEPY_DOUBLE, SLEEPY_DOUBLE]]] + [
-    [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
+  [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG]],
+  [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT]]] + [
+    [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
     [SLEEPY_DOUBLE_PTR, SLEEPY_DOUBLE_PTR], [SLEEPY_FLOAT_PTR, SLEEPY_FLOAT_PTR], [SLEEPY_CHAR_PTR, SLEEPY_CHAR_PTR],
     [SLEEPY_INT_PTR, SLEEPY_INT_PTR]]] * 6  # type: List[List[List[Type]]]
 SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES = [
   [
-    SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE_PTR, SLEEPY_FLOAT_PTR, SLEEPY_CHAR_PTR, SLEEPY_INT_PTR,
-    SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
-  [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
-  [SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG],
-  [SLEEPY_DOUBLE]] + [[SLEEPY_BOOL] * 7] * 6  # type: List[List[Type]]
+    SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE_PTR, SLEEPY_FLOAT_PTR, SLEEPY_CHAR_PTR,
+    SLEEPY_INT_PTR, SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
+  [SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
+  [SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
+  [SLEEPY_DOUBLE, SLEEPY_FLOAT]] + [[SLEEPY_BOOL] * 7] * 6  # type: List[List[Type]]
 assert (
   len(SLEEPY_INBUILT_BINARY_OPS) == len(SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES) ==
   len(SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES))
@@ -1371,10 +1371,11 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
 
   body_builder = caller_context.builder
   if op == '*':
-    return make_binary_op(
-      {SLEEPY_DOUBLE: body_builder.fmul, SLEEPY_INT: body_builder.mul, SLEEPY_LONG: body_builder.mul}, instr_name='mul')
+    return make_binary_op({
+      SLEEPY_DOUBLE: body_builder.fmul, SLEEPY_FLOAT: body_builder.fmul, SLEEPY_INT: body_builder.mul,
+      SLEEPY_LONG: body_builder.mul}, instr_name='mul')
   if op == '/':
-    return make_binary_op({SLEEPY_DOUBLE: body_builder.fdiv}, instr_name='div')
+    return make_binary_op({SLEEPY_DOUBLE: body_builder.fdiv, SLEEPY_FLOAT: body_builder.fdiv}, instr_name='div')
   if op == '+':
     if len(op_arg_types) == 1:
       assert len(ir_func_args) == 1
@@ -1384,25 +1385,30 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
     left_val, right_val = ir_func_args
     if left_type in SLEEPY_POINTER_TYPES and right_type == SLEEPY_INT:
       return body_builder.gep(left_val, (right_val,), name='add')
-    return make_binary_op(
-      {SLEEPY_DOUBLE: body_builder.fadd, SLEEPY_INT: body_builder.add, SLEEPY_LONG: body_builder.add}, instr_name='add')
+    return make_binary_op({
+      SLEEPY_DOUBLE: body_builder.fadd, SLEEPY_FLOAT: body_builder.fadd, SLEEPY_INT: body_builder.add,
+      SLEEPY_LONG: body_builder.add}, instr_name='add')
   if op == '-':
     if len(op_arg_types) == 1:
       assert len(ir_func_args) == 1
       val_type, ir_val = op_arg_types[0], ir_func_args[0]
       constant_minus_one = ir.Constant(val_type.ir_type, -1)
-      if val_type == SLEEPY_DOUBLE:
+      if val_type in {SLEEPY_DOUBLE, SLEEPY_FLOAT}:
         return body_builder.fmul(constant_minus_one, ir_val, name='neg')
       if val_type in {SLEEPY_INT, SLEEPY_LONG}:
         return body_builder.mul(constant_minus_one, ir_val, name='neg')
-    return make_binary_op(
-      {SLEEPY_DOUBLE: body_builder.fsub, SLEEPY_INT: body_builder.sub, SLEEPY_LONG: body_builder.sub}, instr_name='sub')
+    return make_binary_op({
+      SLEEPY_DOUBLE: body_builder.fsub, SLEEPY_FLOAT: body_builder.fsub, SLEEPY_INT: body_builder.sub,
+      SLEEPY_LONG: body_builder.sub}, instr_name='sub')
   if op in {'==', '!=', '<', '>', '<=', '>='}:
     from functools import partial
     return make_binary_op({
-      SLEEPY_DOUBLE: partial(body_builder.fcmp_ordered, op), SLEEPY_INT: partial(body_builder.icmp_signed, op),
-      SLEEPY_LONG: partial(body_builder.icmp_signed, op), SLEEPY_DOUBLE_PTR: partial(body_builder.icmp_unsigned, op),
-      SLEEPY_CHAR_PTR: partial(body_builder.icmp_unsigned, op)},
+      SLEEPY_DOUBLE: partial(body_builder.fcmp_ordered, op), SLEEPY_FLOAT: partial(body_builder.fcmp_ordered, op),
+      SLEEPY_INT: partial(body_builder.icmp_signed, op), SLEEPY_LONG: partial(body_builder.icmp_signed, op),
+      SLEEPY_DOUBLE_PTR: partial(body_builder.icmp_unsigned, op),
+      SLEEPY_FLOAT_PTR: partial(body_builder.icmp_unsigned, op),
+      SLEEPY_CHAR_PTR: partial(body_builder.icmp_unsigned, op),
+      SLEEPY_INT_PTR: partial(body_builder.icmp_unsigned, op)},
       instr_name='cmp')
   assert False, 'Operator %s not handled!' % op
 
