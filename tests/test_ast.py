@@ -1665,6 +1665,17 @@ def test_unreachable_code2():
       _test_compile_program(engine, program)
 
 
+def test_bitwise_or():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Int a, Int b) -> Int {
+      return bitwise_or(a, b);
+    }
+    """
+    main = _test_compile_program(engine, program, add_preamble=False)
+    assert_equal(main(15645, 4301), 15645 | 4301)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

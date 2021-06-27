@@ -70,6 +70,7 @@ func ToInt(Long l) -> Int { extern_func long_to_int(Long l) -> Int; return long_
 func ToLong(Int i) -> Long { extern_func int_to_long(Int i) -> Long; return int_to_long(i); }
 func ToLong(CharPtr ptr) -> Long { extern_func char_ptr_to_long(CharPtr ptr) -> Long; return char_ptr_to_long(ptr); }
 func ToDouble(Int i) -> Double { extern_func int_to_double(Int i) -> Double; return int_to_double(i); }
+func ToBool(Int i) -> Bool { if i == 0 { return False(); } else { if i != 1 { assert(False()); } return True(); }}
 
 ## Simple Math
 func <(Int left, Double right) -> Bool { return ToDouble(left) < right; }

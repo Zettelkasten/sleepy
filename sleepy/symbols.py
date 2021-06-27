@@ -1317,8 +1317,8 @@ def _make_builtin_op_arg_names(op, op_arg_types):
   assert False, 'not implemented'
 
 
-SLEEPY_INBUILT_BINARY_OPS = ['+', '-', '*', '/', '==', '!=', '<', '>', '<=', '>=']  # type: List[str]
-SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES = [
+SLEEPY_INBUILT_BINARY_OPS = ['+', '-', '*', '/', '==', '!=', '<', '>', '<=', '>=', 'bitwise_or']  # type: List[str]
+SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES = ([
   [
     [SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
     [SLEEPY_DOUBLE_PTR, SLEEPY_INT], [SLEEPY_FLOAT_PTR, SLEEPY_INT], [SLEEPY_CHAR_PTR, SLEEPY_INT],
@@ -1331,14 +1331,16 @@ SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES = [
   [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT]]] + [
     [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
     [SLEEPY_DOUBLE_PTR, SLEEPY_DOUBLE_PTR], [SLEEPY_FLOAT_PTR, SLEEPY_FLOAT_PTR], [SLEEPY_CHAR_PTR, SLEEPY_CHAR_PTR],
-    [SLEEPY_INT_PTR, SLEEPY_INT_PTR]]] * 6  # type: List[List[List[Type]]]
-SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES = [
+    [SLEEPY_INT_PTR, SLEEPY_INT_PTR]]] * 6 +
+  [[[SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG]]])  # type: List[List[List[Type]]]
+SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES = ([
   [
     SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE_PTR, SLEEPY_FLOAT_PTR, SLEEPY_CHAR_PTR,
     SLEEPY_INT_PTR, SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
   [SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
   [SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
-  [SLEEPY_DOUBLE, SLEEPY_FLOAT]] + [[SLEEPY_BOOL] * 8] * 6  # type: List[List[Type]]
+  [SLEEPY_DOUBLE, SLEEPY_FLOAT]] + [[SLEEPY_BOOL] * 8] * 6 +
+  [[SLEEPY_INT, SLEEPY_LONG]])  # type: List[List[Type]]
 assert (
   len(SLEEPY_INBUILT_BINARY_OPS) == len(SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES) ==
   len(SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES))
@@ -1419,6 +1421,8 @@ def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
       SLEEPY_CHAR_PTR: partial(body_builder.icmp_unsigned, op),
       SLEEPY_INT_PTR: partial(body_builder.icmp_unsigned, op)},
       instr_name='cmp')
+  if op == 'bitwise_or':
+    return make_binary_op({SLEEPY_INT: body_builder.or_, SLEEPY_LONG: body_builder.or_}, instr_name='bitwise_or')
   assert False, 'Operator %s not handled!' % op
 
 
