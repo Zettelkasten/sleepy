@@ -88,6 +88,9 @@ void store_char(char* ptr, char value) {
 void store_int(int* ptr, int value) {
     *ptr = value;
 }
+void store_long(long* ptr, long value) {
+    *ptr = value;
+}
 
 double load_double(double* ptr) {
     return *ptr;
