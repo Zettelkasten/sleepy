@@ -2,6 +2,33 @@
 # Compile using
 # sleepy opengl.slp --compile-libs GL GLU glfw3 X11 Xxf86vm Xrandr pthread Xi dl m
 
+
+### Vector functions ###
+@RefType struct Vector {
+  Int size = 0;
+  FloatPtr start = allocate_float(0);
+}
+func get(Vector vec, Int pos) -> Float {
+  assert(and(0 <= pos, pos < vec.size));
+  return load(vec.start + pos);
+}
+func set(@Mutable Vector vec, Int pos, Float val) {
+  assert(and(0 <= pos, pos < vec.size));
+  store(vec.start + pos, val);
+}
+func fill(@Mutable Vector vec, Float val) {
+  pos = 0;
+  while pos < vec.size {
+    vec[pos] = val;
+    pos += 1;
+  }
+}
+func ZeroVector(Int size) -> @Mutable Vector {
+  @Mutable v = Vector(size, allocate_float(size));
+  fill(v, 0.0f);
+  return v;
+}
+
 ### GLFW Functions ###
 extern_func glfwInit() -> Int;
 extern_func glfwTerminate() -> Int;
@@ -57,11 +84,66 @@ func clear(GLClearMask clear_mask) {
   glClear(clear_mask.val);
 }
 
+struct VertexArray { Int id = 0; }
+func generate_vertex_array() -> VertexArray {
+  extern_func glGenVertexArrays(Int n, IntPtr arrays);
+  # as there is no reference operator yet, temporarily allocate some memory to obtain the id.
+  tmp_ptr = allocate_int(1);
+  glGenVertexArrays(1, tmp_ptr);
+  arr = VertexArray(load(tmp_ptr));
+  deallocate(tmp_ptr);
+  return arr;
+}
+func bind(VertexArray arr) {
+  extern_func glBindVertexArray(VertexArray array);
+  glBindVertexArray(arr);
+}
+
+struct Buffer { Int id = 0; }
+func generate_buffer() -> Buffer {
+  extern_func glGenBuffers(Int n, IntPtr buffers);
+  # as there is no reference operator yet, temporarily allocate some memory to obtain the id.
+  tmp_ptr = allocate_int(1);
+  glGenBuffers(1, tmp_ptr);
+  buffer = Buffer(load(tmp_ptr));
+  deallocate(tmp_ptr);
+  return buffer;
+}
+struct BufferTarget { Int val = 0; }
+func ArrayBufferTarget() -> BufferTarget { return BufferTarget(0x8892); }
+func bind(BufferTarget target, Buffer buffer) {
+  extern_func glBindBuffer(BufferTarget target, Buffer buffer);
+  glBindBuffer(target, buffer);
+}
+struct BufferUsage { Int val = 0; }
+func StaticDrawBufferUsage() -> BufferUsage { return BufferUsage(0x88E4); }
+func set_data(BufferTarget target, Vector data, BufferUsage usage) {
+  extern_func glBufferData(BufferTarget target, Int size, FloatPtr data, BufferUsage usage);
+  glBufferData(target, data.size, data.start, usage);
+}
+
+extern_func glEnableVertexAttribArray(Int attrib_idx);
+extern_func glDisableVertexAttribArray(Int attrib_idx);
+struct AttribType { Int val = 0; }
+func FloatAttribType() -> AttribType { return AttribType(0x1406); }
+extern_func glVertexAttribPointer(Int attrib_idx, Int size, AttribType attrib_type, Bool normalized, Int stride, IntPtr ptr);
+struct DrawMode { Int val = 0; }
+func TrianglesDrawMode() -> DrawMode { return DrawMode(0x0004); }
+extern_func glDrawArrays(DrawMode mode, Int first, Int count);
+
 func terminate(Str error) {
   print("Error happened: ");
   print_line(error);
   glfwTerminate();
   assert(False());
+}
+
+func make_vertices_data() -> Vector {
+  @Mutable data = ZeroVector(9);
+  data[0] = -1f; data[1] = -1f;
+  data[3] = 1f;  data[4] = -1f;
+                 data[7] = 1f;
+  return data;
 }
 
 func main() {
@@ -79,13 +161,25 @@ func main() {
   set_sticky_keys(window, True());
   glClearColor(0.2f, 0.8f, 0.2f, 0.0f);
 
+  vertex_array = generate_vertex_array();
+  bind(vertex_array);
+  vertex_buffer = generate_buffer();
+  bind(ArrayBufferTarget(), vertex_buffer);
+  set_data(ArrayBufferTarget(), make_vertices_data(), StaticDrawBufferUsage());
+
   while not(or(should_close(window), glfwGetKey(window, EscapeKey()) == KeyPress())) {
     clear(GLColorBufferBit());
+    glEnableVertexAttribArray(0);
+    bind(ArrayBufferTarget(), vertex_buffer);
+    glVertexAttribPointer(0, 3, FloatAttribType(), False(), 0, NullIntPtr());
+    glDrawArrays(TrianglesDrawMode(), 0, 3);
+    glDisableVertexAttribArray(0);
+
     swap_buffers(window);
     glfwPollEvents();
   }
 
   destroy(window);
-  print_line("Hello world!");
+  print_line("Goodbye.");
   glfwTerminate();
 }
