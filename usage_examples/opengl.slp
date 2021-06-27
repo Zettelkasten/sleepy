@@ -1,0 +1,91 @@
+# OpenGL bindings via GLFW for sleepy.
+# Compile using
+# sleepy opengl.slp --compile-libs GL GLU glfw3 X11 Xxf86vm Xrandr pthread Xi dl m
+
+### GLFW Functions ###
+extern_func glfwInit() -> Int;
+extern_func glfwTerminate() -> Int;
+
+struct GLFWMonitor { CharPtr ptr = NullCharPtr(); }
+@Inline func NullGLFWMonitor() -> GLFWMonitor { return GLFWMonitor(NullCharPtr()); }
+
+struct GLFWWindow { CharPtr ptr = NullCharPtr(); }
+@Inline func NullGLFWWindow() -> GLFWWindow { return GLFWWindow(NullCharPtr()); }
+@Inline func ==(GLFWWindow a, GLFWWindow b) -> Bool { return a.ptr == b.ptr; }
+
+extern_func glfwCreateWindow(Int width, Int height, CharPtr title, GLFWMonitor monitor, GLFWWindow share) -> GLFWWindow;
+extern_func glfwGetPrimaryMonitor() -> GLFWMonitor;
+func destroy(GLFWWindow window) {
+  extern_func glfwDestroyWindow(GLFWWindow window);
+  glfwDestroyWindow(window);
+}
+func make_current_context(GLFWWindow window) {
+  extern_func glfwMakeContextCurrent(GLFWWindow window);
+  glfwMakeContextCurrent(window);
+}
+func should_close(GLFWWindow window) -> Bool {
+  extern_func glfwWindowShouldClose(GLFWWindow window) -> Int;
+  return glfwWindowShouldClose(window) == 1;
+}
+func swap_buffers(GLFWWindow window) {
+  extern_func glfwSwapBuffers(GLFWWindow window);
+  glfwSwapBuffers(window);
+}
+
+struct GLFWInputMode { Int val = 0x0; }
+func GLFWStickyKeys() -> GLFWInputMode { return GLFWInputMode(0x00033002); }
+func set_sticky_keys(GLFWWindow window, Bool enable) {
+  extern_func glfwSetInputMode(GLFWWindow window, GLFWInputMode mode, Int value);
+  glfwSetInputMode(window, GLFWStickyKeys(), ToInt(enable));
+}
+extern_func glfwPollEvents();
+struct Key { Int code = 0; }
+func EscapeKey() -> Key { return Key(256); }
+struct GLFWKeyState { Int val = 0; }
+func KeyRelease() -> GLFWKeyState { return GLFWKeyState(0); }
+func KeyPress() -> GLFWKeyState { return GLFWKeyState(1); }
+func KeyRepeat() -> GLFWKeyState { return GLFWKeyState(2); }
+func ==(GLFWKeyState a, GLFWKeyState b) -> Bool { return a.val == b.val; }
+extern_func glfwGetKey(GLFWWindow window, Key key) -> GLFWKeyState;
+
+### GL Functions ###
+extern_func glClearColor(Float red, Float green, Float blue, Float alpha);
+struct GLClearMask { Int val = 0x0; }
+func GLColorBufferBit() -> GLClearMask { return GLClearMask(0x00004000); }
+func clear(GLClearMask clear_mask) {
+  extern_func glClear(Int clear_mask);
+  glClear(clear_mask.val);
+}
+
+func terminate(Str error) {
+  print("Error happened: ");
+  print_line(error);
+  glfwTerminate();
+  assert(False());
+}
+
+func main() {
+  if glfwInit() != 1 {
+    print_line("Init error");
+    assert(False());
+  }
+  fullscreen = False();
+  monitor = NullGLFWMonitor();
+  if fullscreen { monitor = glfwGetPrimaryMonitor(); }
+  GLFWWindow window = glfwCreateWindow(640, 480, "Hello, World!\0".start, monitor, NullGLFWWindow());
+  if window == NullGLFWWindow() { terminate("Could not make window"); }
+
+  make_current_context(window);
+  set_sticky_keys(window, True());
+  glClearColor(0.2f, 0.8f, 0.2f, 0.0f);
+
+  while not(or(should_close(window), glfwGetKey(window, EscapeKey()) == KeyPress())) {
+    clear(GLColorBufferBit());
+    swap_buffers(window);
+    glfwPollEvents();
+  }
+
+  destroy(window);
+  print_line("Hello world!");
+  glfwTerminate();
+}
