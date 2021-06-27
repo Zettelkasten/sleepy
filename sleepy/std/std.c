@@ -9,6 +9,9 @@ void print_char(char c) {
 void print_double(double d) {
     printf("%f", d);
 }
+void print_float(float f) {
+    printf("%f", f);
+}
 void print_int(int i) {
     printf("%d", i);
 }
@@ -27,6 +30,9 @@ void assert(_Bool property) {
 double* allocate_double(int size) {
     return malloc((size_t) size * sizeof(double));
 }
+float* allocate_float(int size) {
+    return malloc((size_t) size * sizeof(float));
+}
 char* allocate_char(int size) {
     return malloc((size_t) size * sizeof(char));
 }
@@ -35,6 +41,9 @@ int* allocate_int(int size) {
 }
 
 char* double_null_ptr() {
+    return NULL;
+}
+float* float_null_ptr() {
     return NULL;
 }
 char* char_null_ptr() {
@@ -48,6 +57,9 @@ int* int_null_ptr() {
 void deallocate_double(double* ptr) {
     free(ptr);
 }
+void deallocate_float(float* ptr) {
+    free(ptr);
+}
 void deallocate_char(char* ptr) {
     free(ptr);
 }
@@ -56,6 +68,9 @@ void deallocate_int(int* ptr) {
 }
 
 void store_double(double* ptr, double value) {
+    *ptr = value;
+}
+void store_float(float* ptr, float value) {
     *ptr = value;
 }
 void store_char(char* ptr, char value) {
@@ -68,6 +83,9 @@ void store_int(int* ptr, int value) {
 double load_double(double* ptr) {
     return *ptr;
 }
+double load_float(float* ptr) {
+    return *ptr;
+}
 char load_char(char* ptr) {
     return *ptr;
 }
@@ -76,6 +94,9 @@ int load_int(int* ptr) {
 }
 
 void memcpy_double(double* to, double* from, int len) {
+    memcpy(to, from, len);
+}
+void memcpy_float(float* to, float* from, int len) {
     memcpy(to, from, len);
 }
 void memcpy_char(char* to, char* from, int len) {
