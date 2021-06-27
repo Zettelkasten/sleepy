@@ -8,7 +8,7 @@ from llvmlite import ir
 from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar, TreePosition
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
-from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, Type, SLEEPY_INT, \
+from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, SLEEPY_FLOAT, Type, SLEEPY_INT, \
   SLEEPY_VOID, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, narrow_type, get_common_type, \
@@ -1599,6 +1599,15 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
 ESCAPE_CHARACTERS = {'n': '\n', 'r': '\r', 't': '\t', "'": "'", '"': '"', '0': '\0'}
 
 
+def parse_float(value):
+  """
+  :param str value: e.g. 0.5f, ...
+  :rtype: str
+  """
+  assert value[-1] in {'f', 'F'}
+  return float(value[:-1])
+
+
 def parse_char(value):
   """
   :param str value: e.g. 'a', '\n', ...
@@ -1660,15 +1669,15 @@ SLEEPY_LEXER = LexerGenerator(
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '|',
     '->', '@', 'cmp_op', 'sum_op', 'prod_op', '=', 'assign_op', '[', ']',
     'identifier',
-    'int', 'double', 'char', 'str',
-    'hex_int',
+    'int', 'double', 'float', 'char',
+    'str', 'hex_int',
     None, None
   ], [
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\|',
     '\\->', '@', '==|!=|<=?|>=?|is', '\\+|\\-', '\\*|/', '=', '===|!==|<==|>==|\\+=|\\-=|\\*=|/=', '\[', '\]',
     '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
-    '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'", '"([^\"]|\\\\[nrt\'"])*"',
-    '0x([0-9]|[A-F]|[a-f])+',
+    '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', '(0|[1-9][0-9]*)\\.[0-9]+f', "'([^\']|\\\\[nrt'\"])'",
+    '"([^\"]|\\\\[nrt\'"])*"', '0x([0-9]|[A-F]|[a-f])+',
     '#[^\n]*\n', '[ \n\t]+'
   ])
 SLEEPY_GRAMMAR = Grammar(
@@ -1701,6 +1710,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('NegExpr', 'PrimaryExpr'),
   Production('PrimaryExpr', 'int'),
   Production('PrimaryExpr', 'double'),
+  Production('PrimaryExpr', 'float'),
   Production('PrimaryExpr', 'char'),
   Production('PrimaryExpr', 'str'),
   Production('PrimaryExpr', 'hex_int'),
@@ -1774,6 +1784,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': 'ast.1'},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_DOUBLE)},
+    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_FLOAT)},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_CHAR)},
     {'ast': lambda _pos, string: StringLiteralExpressionAst(_pos, string(1))},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
@@ -1824,6 +1835,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'identifier': {'identifier': lambda value: value},
     'int': {'number': lambda value: int(value)},
     'double': {'number': lambda value: float(value)},
+    'float': {'number': lambda value: parse_float(value)},
     'char': {'number': lambda value: ord(parse_char(value))},
     'str': {'string': lambda value: parse_string(value)},
     'hex_int': {'number': lambda value: parse_hex_int(value)}

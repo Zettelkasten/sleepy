@@ -1625,6 +1625,17 @@ def test_hex_int_literal():
     assert_equal(main(), 2 * 16 + 10)
 
 
+def test_float_literal():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Float {
+      return 0.5f;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(), 0.5)
+
+
 def test_unreachable_code():
   with make_execution_engine() as engine:
     program = """

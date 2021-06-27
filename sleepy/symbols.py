@@ -90,6 +90,14 @@ class DoubleType(Type):
     super().__init__(ir.DoubleType(), pass_by_ref=False, c_type=ctypes.c_double)
 
 
+class FloatType(Type):
+  """
+  A double.
+  """
+  def __init__(self):
+    super().__init__(ir.FloatType(), pass_by_ref=False, c_type=ctypes.c_float)
+
+
 class BoolType(Type):
   """
   A 1-bit integer.
@@ -468,6 +476,7 @@ class StructType(Type):
 SLEEPY_VOID = VoidType()
 SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
 SLEEPY_DOUBLE = DoubleType()
+SLEEPY_FLOAT = FloatType()
 SLEEPY_BOOL = BoolType()
 SLEEPY_INT = IntType()
 SLEEPY_LONG = LongType()
@@ -476,9 +485,10 @@ SLEEPY_DOUBLE_PTR = DoublePtrType()
 SLEEPY_CHAR_PTR = CharPtrType()
 
 SLEEPY_TYPES = {
-  'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT, 'Long': SLEEPY_LONG,
-  'Char': SLEEPY_CHAR, 'DoublePtr': SLEEPY_DOUBLE_PTR, 'CharPtr': SLEEPY_CHAR_PTR}  # type: Dict[str, Type]
-SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_INT, SLEEPY_LONG}
+  'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Float': SLEEPY_FLOAT, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT,
+  'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR,
+  'DoublePtr': SLEEPY_DOUBLE_PTR,'CharPtr': SLEEPY_CHAR_PTR}  # type: Dict[str, Type]
+SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG}
 SLEEPY_POINTER_TYPES = {SLEEPY_DOUBLE_PTR, SLEEPY_CHAR_PTR}
 
 
