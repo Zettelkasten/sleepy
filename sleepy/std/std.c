@@ -39,6 +39,9 @@ char* allocate_char(int size) {
 int* allocate_int(int size) {
     return malloc((size_t) size * sizeof(int));
 }
+long* allocate_long(int size) {
+    return malloc((size_t) size * sizeof(long));
+}
 
 char* double_null_ptr() {
     return NULL;
@@ -50,6 +53,9 @@ char* char_null_ptr() {
     return NULL;
 }
 int* int_null_ptr() {
+    return NULL;
+}
+long* long_null_ptr() {
     return NULL;
 }
 
@@ -64,6 +70,9 @@ void deallocate_char(char* ptr) {
     free(ptr);
 }
 void deallocate_int(int* ptr) {
+    free(ptr);
+}
+void deallocate_long(long* ptr) {
     free(ptr);
 }
 
@@ -92,6 +101,9 @@ char load_char(char* ptr) {
 int load_int(int* ptr) {
     return *ptr;
 }
+long load_long(long* ptr) {
+    return *ptr;
+}
 
 void memcpy_double(double* to, double* from, int len) {
     memcpy(to, from, len);
@@ -103,6 +115,9 @@ void memcpy_char(char* to, char* from, int len) {
     memcpy(to, from, len);
 }
 void memcpy_int(int* to, int* from, int len) {
+    memcpy(to, from, len);
+}
+void memcpy_long(long* to, long* from, int len) {
     memcpy(to, from, len);
 }
 
@@ -117,6 +132,9 @@ int long_to_int(long l) {
 }
 long int_to_long(int i) {
     return i;
+}
+long char_ptr_to_long(char* ptr) {
+    return (long) ptr;
 }
 
 double random_double() {

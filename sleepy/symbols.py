@@ -162,6 +162,14 @@ class IntPtrType(Type):
     super().__init__(ir.PointerType(ir.IntType(bits=32)), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_int32))
 
 
+class LongPtrType(Type):
+  """
+  A long pointer.
+  """
+  def __init__(self):
+    super().__init__(ir.PointerType(ir.IntType(bits=64)), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_int64))
+
+
 class UnionType(Type):
   """
   A tagged union, i.e. a type that can be one of a set of different types.
@@ -501,14 +509,15 @@ SLEEPY_DOUBLE_PTR = DoublePtrType()
 SLEEPY_FLOAT_PTR = FloatPtrType()
 SLEEPY_CHAR_PTR = CharPtrType()
 SLEEPY_INT_PTR = IntPtrType()
+SLEEPY_LONG_PTR = LongPtrType()
 
 SLEEPY_TYPES = {
   'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Float': SLEEPY_FLOAT, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT,
   'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR,
   'DoublePtr': SLEEPY_DOUBLE_PTR, 'FloatPtr': SLEEPY_FLOAT_PTR, 'CharPtr': SLEEPY_CHAR_PTR,
-  'IntPtr': SLEEPY_INT_PTR}  # type: Dict[str, Type]
+  'IntPtr': SLEEPY_INT_PTR, 'LongPtr': SLEEPY_LONG_PTR}  # type: Dict[str, Type]
 SLEEPY_NUMERICAL_TYPES = {SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG}
-SLEEPY_POINTER_TYPES = {SLEEPY_DOUBLE_PTR, SLEEPY_FLOAT_PTR, SLEEPY_CHAR_PTR, SLEEPY_INT_PTR}
+SLEEPY_POINTER_TYPES = {SLEEPY_DOUBLE_PTR, SLEEPY_FLOAT_PTR, SLEEPY_CHAR_PTR, SLEEPY_INT_PTR, SLEEPY_LONG_PTR}
 
 
 def can_implicit_cast_to(from_type, to_type):
