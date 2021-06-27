@@ -30,11 +30,17 @@ double* allocate_double(int size) {
 char* allocate_char(int size) {
     return malloc((size_t) size * sizeof(char));
 }
+int* allocate_int(int size) {
+    return malloc((size_t) size * sizeof(int));
+}
 
 char* double_null_ptr() {
     return NULL;
 }
 char* char_null_ptr() {
+    return NULL;
+}
+int* int_null_ptr() {
     return NULL;
 }
 
@@ -45,11 +51,17 @@ void deallocate_double(double* ptr) {
 void deallocate_char(char* ptr) {
     free(ptr);
 }
+void deallocate_int(int* ptr) {
+    free(ptr);
+}
 
 void store_double(double* ptr, double value) {
     *ptr = value;
 }
 void store_char(char* ptr, char value) {
+    *ptr = value;
+}
+void store_int(int* ptr, int value) {
     *ptr = value;
 }
 
@@ -59,11 +71,17 @@ double load_double(double* ptr) {
 char load_char(char* ptr) {
     return *ptr;
 }
+int load_int(int* ptr) {
+    return *ptr;
+}
 
 void memcpy_double(double* to, double* from, int len) {
     memcpy(to, from, len);
 }
 void memcpy_char(char* to, char* from, int len) {
+    memcpy(to, from, len);
+}
+void memcpy_int(int* to, int* from, int len) {
     memcpy(to, from, len);
 }
 

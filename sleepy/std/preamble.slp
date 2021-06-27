@@ -12,14 +12,19 @@ extern_func flush();
 ## Allocation
 extern_func allocate_double(Int size) -> DoublePtr;
 extern_func allocate_char(Int size) -> CharPtr;
+extern_func allocate_int(Int size) -> IntPtr;
 func NullDoublePtr() -> DoublePtr { extern_func double_null_ptr() -> DoublePtr; return double_null_ptr(); }
 func NullCharPtr() -> CharPtr { extern_func char_null_ptr() -> CharPtr; return char_null_ptr(); }
+func NullIntPtr() -> IntPtr { extern_func int_null_ptr() -> IntPtr; return int_null_ptr(); }
 func deallocate(DoublePtr ptr) { extern_func deallocate_double(DoublePtr ptr); deallocate_double(ptr); }
 func deallocate(CharPtr ptr) { extern_func deallocate_char(CharPtr ptr); deallocate_char(ptr); }
+func deallocate(IntPtr ptr) { extern_func deallocate_int(IntPtr ptr); deallocate_int(ptr); }
 func load(DoublePtr ptr) -> Double { extern_func load_double(DoublePtr ptr) -> Double; return load_double(ptr); }
 func load(CharPtr ptr) -> Char { extern_func load_char(CharPtr ptr) -> Char; return load_char(ptr); }
+func load(IntPtr ptr) -> Int { extern_func load_int(IntPtr ptr) -> Int; return load_int(ptr); }
 func store(DoublePtr ptr, Double value) { extern_func store_double(DoublePtr ptr, Double value); store_double(ptr, value); }
 func store(CharPtr ptr, Char value) { extern_func store_char(CharPtr ptr, Char value); store_char(ptr, value); }
+func store(IntPtr ptr, Int value) { extern_func store_int(IntPtr ptr, Int value); store_int(ptr, value); }
 extern_func assert(Bool condition);
 @Inline func unchecked_assert(Bool condition) { }
 func memcpy(DoublePtr to, DoublePtr from, Int size) {
@@ -29,6 +34,10 @@ func memcpy(DoublePtr to, DoublePtr from, Int size) {
 func memcpy(CharPtr to, CharPtr from, Int size) {
   extern_func memcpy_char(CharPtr to, CharPtr from, Int size);
   memcpy_char(to, from, size);
+}
+func memcpy(IntPtr to, IntPtr from, Int size) {
+  extern_func memcpy_int(IntPtr to, IntPtr from, Int size);
+  memcpy_int(to, from, size);
 }
 
 ## Boolean Logic
