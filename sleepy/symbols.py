@@ -1329,7 +1329,7 @@ SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES = [
     SLEEPY_INT_PTR, SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
   [SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
   [SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
-  [SLEEPY_DOUBLE, SLEEPY_FLOAT]] + [[SLEEPY_BOOL] * 7] * 6  # type: List[List[Type]]
+  [SLEEPY_DOUBLE, SLEEPY_FLOAT]] + [[SLEEPY_BOOL] * 8] * 6  # type: List[List[Type]]
 assert (
   len(SLEEPY_INBUILT_BINARY_OPS) == len(SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES) ==
   len(SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES))
@@ -1477,6 +1477,7 @@ def build_initial_ir(symbol_table, context):
     assert op not in symbol_table
     func_symbol = FunctionSymbol(returns_void=False)
     symbol_table[op] = func_symbol
+    assert len(op_arg_type_list) == len(op_return_type_list)
     for op_arg_types, op_return_type in zip(op_arg_type_list, op_return_type_list):
       assert not func_symbol.has_concrete_func(op_arg_types)
       op_arg_identifiers = _make_builtin_op_arg_names(op, op_arg_types)
