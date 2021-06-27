@@ -1637,6 +1637,14 @@ def parse_string(value):
   return ''.join(res)
 
 
+def parse_hex_int(value):
+  """
+  :param str value: e.g. 0x0043fabc
+  :rtype: int
+  """
+  return int(value, 0)
+
+
 def parse_assign_op(value):
   """
   :param str value: e.g. +=
@@ -1653,12 +1661,14 @@ SLEEPY_LEXER = LexerGenerator(
     '->', '@', 'cmp_op', 'sum_op', 'prod_op', '=', 'assign_op', '[', ']',
     'identifier',
     'int', 'double', 'char', 'str',
+    'hex_int',
     None, None
   ], [
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\|',
     '\\->', '@', '==|!=|<=?|>=?|is', '\\+|\\-', '\\*|/', '=', '===|!==|<==|>==|\\+=|\\-=|\\*=|/=', '\[', '\]',
     '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
     '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)\\.[0-9]+', "'([^\']|\\\\[nrt'\"])'", '"([^\"]|\\\\[nrt\'"])*"',
+    '0x([0-9]|[A-F]|[a-f])+',
     '#[^\n]*\n', '[ \n\t]+'
   ])
 SLEEPY_GRAMMAR = Grammar(
@@ -1693,6 +1703,7 @@ SLEEPY_GRAMMAR = Grammar(
   Production('PrimaryExpr', 'double'),
   Production('PrimaryExpr', 'char'),
   Production('PrimaryExpr', 'str'),
+  Production('PrimaryExpr', 'hex_int'),
   Production('PrimaryExpr', 'identifier'),
   Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'),
   Production('PrimaryExpr', 'PrimaryExpr', '[', 'ExprList', ']'),
@@ -1765,6 +1776,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_DOUBLE)},
     {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_CHAR)},
     {'ast': lambda _pos, string: StringLiteralExpressionAst(_pos, string(1))},
+    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
     {'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
     {'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
     {'ast': lambda _pos, ast, val_list: CallExpressionAst(_pos, 'get', [ast(1)] + val_list(3))},
@@ -1813,7 +1825,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'int': {'number': lambda value: int(value)},
     'double': {'number': lambda value: float(value)},
     'char': {'number': lambda value: ord(parse_char(value))},
-    'str': {'string': lambda value: parse_string(value)}
+    'str': {'string': lambda value: parse_string(value)},
+    'hex_int': {'number': lambda value: parse_hex_int(value)}
   }
 )
 SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
