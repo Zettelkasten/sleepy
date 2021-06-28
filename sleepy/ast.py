@@ -5,7 +5,8 @@ from typing import Dict, List, Optional
 
 from llvmlite import ir
 
-from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar, TreePosition
+from sleepy.errors import SemanticError, CompilerError
+from sleepy.grammar import Grammar, Production, AttributeGrammar, TreePosition
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, SLEEPY_FLOAT, Type, SLEEPY_INT, \
@@ -37,7 +38,7 @@ class AbstractSyntaxTree:
     """
     return 'AbstractSyntaxTree'
 
-  def raise_error(self, message):
+  def raise_error(self, message: str):
     """
     :param str message:
     """
@@ -541,7 +542,7 @@ class ReturnStatementAst(StatementAst):
     """
     super().__init__(pos)
     self.return_exprs = return_exprs
-    assert len(return_exprs) <= 1, 'returning of multiple values is not support yet'
+    if not len(return_exprs) <= 1: self.raise_error('returning of multiple values is not support yet')
 
   def build_ir(self, symbol_table, context):
     """
@@ -1006,7 +1007,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     if self.op == 'is':
       # TODO: Then it should be a TypeExpressionAst, not a VariableExpressionAst.
       # Probably it's nicer to make an entire new ExpressionAst for `is` Expressions anyway.
-      assert isinstance(self.right_expr, VariableExpressionAst)
+      if not isinstance(self.right_expr, VariableExpressionAst): raise self.raise_error("'is' operator must be applied to a union type and a type.")
 
   def make_val_type(self, symbol_table):
     """
@@ -1632,6 +1633,14 @@ def parse_char(value):
   return ESCAPE_CHARACTERS[value[1]]
 
 
+class InvalidLiteralError(CompilerError):
+  def __init__(self, literal, message):
+    """
+    :param str message:
+    """
+    super().__init__("Literal: " + literal + " invalid.\n" + message)
+
+
 def parse_string(value):
   """
   :param str value: e.g. "abc", "", "cool \"stuff\""
@@ -1645,8 +1654,8 @@ def parse_string(value):
   while pos < len(value):
     char = value[pos]
     if char == '\\':
-      assert pos + 1 < len(value)
-      assert value[pos + 1] in ESCAPE_CHARACTERS, 'unknown escape character \\%s' % value[pos + 1]
+      if not pos + 1 < len(value): raise InvalidLiteralError("\"%s\"" % value, "Escape sequence at end of string.")
+      if not value[pos + 1] in ESCAPE_CHARACTERS: raise InvalidLiteralError("\"%s\"" % value, 'Unknown escape character.')
       res.append(ESCAPE_CHARACTERS[value[pos + 1]])
       pos += 2
     else:
@@ -1854,7 +1863,6 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   }
 )
 SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
-
 
 def make_program_ast(program, add_preamble=True):
   """

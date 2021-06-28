@@ -6,7 +6,7 @@ from nose.tools import assert_equal, assert_raises, assert_equals, assert_almost
 
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
-from sleepy.grammar import EPSILON, Production, Grammar, ParseError, AttributeGrammar, SyntaxTree, IGNORED_TOKEN
+from sleepy.grammar import EPSILON, Production, Grammar, AttributeGrammar, SyntaxTree, IGNORED_TOKEN
 from sleepy.semantic import AttributeEvalGenerator
 
 

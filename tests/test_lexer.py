@@ -4,7 +4,8 @@ import unittest
 import better_exchook
 from nose.tools import assert_equal, assert_raises
 
-from sleepy.grammar import LexError, IGNORED_TOKEN
+from sleepy.errors import LexError
+from sleepy.grammar import IGNORED_TOKEN
 from sleepy.lexer import LexerGenerator
 
 

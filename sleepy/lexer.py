@@ -1,7 +1,7 @@
 from typing import Dict, Tuple, Set, Union, Optional, List
 
 from sleepy.automaton import ERROR_STATE
-from sleepy.grammar import LexError
+from sleepy.errors import LexError
 from sleepy.regex import make_regex_dfa
 
 

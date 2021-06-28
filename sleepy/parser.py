@@ -1,6 +1,7 @@
 from typing import Optional, Dict, List, Set, FrozenSet, Any
 
-from sleepy.grammar import EPSILON, ParseError, Production, AttributeGrammar, SyntaxTree, IGNORED_TOKEN, \
+from sleepy.errors import ParseError
+from sleepy.grammar import EPSILON, Production, AttributeGrammar, SyntaxTree, IGNORED_TOKEN, \
   get_token_word_from_tokens_pos, TreePosition
 
 

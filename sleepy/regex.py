@@ -1,5 +1,6 @@
 from sleepy.automaton import NonDeterministicAutomaton, make_dfa_from_nfa
-from sleepy.grammar import Grammar, Production, LexError, EPSILON, IGNORED_TOKEN, get_token_word_from_tokens_pos
+from sleepy.errors import LexError
+from sleepy.grammar import Grammar, Production, EPSILON, IGNORED_TOKEN, get_token_word_from_tokens_pos
 from sleepy.parser import ParserGenerator
 from typing import List, Dict, Set, Optional
 
