@@ -60,6 +60,14 @@ def main():
     program = program_file.read()
   try:
     ast = make_program_ast(program)
+    module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='default_module')
+    if main_func_identifier not in symbol_table:
+      raise CompilerError('Error: Entry point function %r not found' % main_func_identifier)
+    main_func_symbol = symbol_table[main_func_identifier]
+    if not isinstance(main_func_symbol, FunctionSymbol):
+      raise CompilerError('Error: Entry point %r must be a function' % main_func_identifier)
+    if len(main_func_symbol.concrete_funcs) != 1:
+      raise CompilerError('Error: Must declare exactly one entry point function %r' % main_func_identifier)
   except CompilerError as ce:
     if args.debug:
       raise ce
@@ -67,17 +75,6 @@ def main():
       print(str(ce))
       return
 
-  module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='default_module')
-  if main_func_identifier not in symbol_table:
-    print('Error: Entry point function %r not found' % main_func_identifier)
-    exit()
-  main_func_symbol = symbol_table[main_func_identifier]
-  if not isinstance(main_func_symbol, FunctionSymbol):
-    print('Error: Entry point %r must be a function' % main_func_identifier)
-    exit()
-  if len(main_func_symbol.concrete_funcs) != 1:
-    print('Error: Must declare exactly one entry point function %r' % main_func_identifier)
-    exit()
   if args.execute:
     # Execute directly using JIT compilation.
     concrete_main_func = main_func_symbol.get_single_concrete_func()
