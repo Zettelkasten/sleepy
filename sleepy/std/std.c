@@ -15,6 +15,9 @@ void print_float(float f) {
 void print_int(int i) {
     printf("%d", i);
 }
+void print_long(long l) {
+    printf("%d", l);
+}
 
 void flush() {
     fflush(stdout);
@@ -95,7 +98,7 @@ void store_long(long* ptr, long value) {
 double load_double(double* ptr) {
     return *ptr;
 }
-double load_float(float* ptr) {
+float load_float(float* ptr) {
     return *ptr;
 }
 char load_char(char* ptr) {

@@ -1,13 +1,15 @@
 ## Output
 func print(Char char) { extern_func print_char(Char char); print_char(char); }
 func print(Double double) { extern_func print_double(Double d); print_double(double); }
+func print(Float float) { extern_func print_float(Float f); print_float(float); }
 func print(Int int) { extern_func print_int(Int i); print_int(int); }
+func print(Long long) { extern_func print_long(Long l); print_long(long); }
 @Inline func print(Bool bool) { if bool { print('T'); } else { print('F'); } }
 @Inline func print_line() { print('\n'); }
-@Inline func print_line(Char|Double|Int|Bool line) { print(line); print_line(); }
+@Inline func print_line(Char|Double|Float|Int|Long|Bool line) { print(line); print_line(); }
 extern_func flush();
-@Inline func print_flush(Char|Double|Int|Bool text) { print(text); flush(); }
-@Inline func print_line_flush(Char|Double|Int|Bool line) { print_line(line); flush(); }
+@Inline func print_flush(Char|Double|Float|Int|Long|Bool text) { print(text); flush(); }
+@Inline func print_line_flush(Char|Double|Float|Int|Long|Bool line) { print_line(line); flush(); }
 
 ## Allocation
 extern_func allocate_double(Int size) -> DoublePtr;
