@@ -129,6 +129,13 @@ func KeyRepeat() -> GLFWKeyState { return GLFWKeyState(2); }
 func ==(GLFWKeyState a, GLFWKeyState b) -> Bool { return a.val == b.val; }
 extern_func glfwGetKey(GLFWWindow window, Key key) -> GLFWKeyState;
 
+struct WindowHintTarget { Int val = 0; }
+func SamplesWindowHint() -> WindowHintTarget { return WindowHintTarget(0x0002100D); }
+extern_func glfwWindowHint(WindowHintTarget target, Int hint);
+func set_samples(Int num_samples) {
+  glfwWindowHint(SamplesWindowHint(), num_samples);
+}
+
 ### GL Functions ###
 extern_func glClearColor(Float red, Float green, Float blue, Float alpha);
 struct ClearMask { Int bits = 0x0; }
@@ -189,6 +196,9 @@ extern_func glVertexAttribPointer(Int attrib_idx, Int size, AttribType attrib_ty
 struct DrawMode { Int val = 0; }
 func TrianglesDrawMode() -> DrawMode { return DrawMode(0x0004); }
 extern_func glDrawArrays(DrawMode mode, Int first, Int count);
+struct Capability { Int val = 0; }
+func Multisample() -> Capability { return Capability(0x809D); }
+extern_func glEnable(Capability cap);
 
 struct ShaderType { Int val = 0; }
 func FragmentShaderType() -> ShaderType { return ShaderType(0x8B30); }
@@ -344,6 +354,9 @@ func main() {
     print_line("Init error");
     assert(False());
   }
+
+  set_samples(4);
+
   fullscreen = False();
   monitor = NullGLFWMonitor();
   if fullscreen { monitor = glfwGetPrimaryMonitor(); }
@@ -353,6 +366,7 @@ func main() {
   make_current_context(window);
   set_sticky_keys(window, True());
   glClearColor(0.2f, 0.8f, 0.2f, 0.0f);
+  glEnable(Multisample());
 
   vertex_array = generate_vertex_array();
   bind(vertex_array);
