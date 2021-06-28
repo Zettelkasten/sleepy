@@ -8,6 +8,7 @@ import better_exchook
 
 import _setup_sleepy_env  # noqa
 from sleepy.ast import make_program_ast
+from sleepy.errors import CompilerError
 from sleepy.jit import make_execution_engine, compile_ir, LIB_PATH
 from sleepy.symbols import FunctionSymbol
 import llvmlite.binding as llvm
@@ -48,6 +49,7 @@ def main():
   parser.add_argument(
     '--emit-object', '-c', dest='emit_object', action='store_true', help='Emit object code, but do not link.')
   parser.add_argument('--compile-libs', '-libs', nargs='*', help='External libraries to link with', default=['m'])
+  parser.add_argument('--debug', dest='debug', action='store_true', help='Print full stacktrace for all compiler errors.')
   parser.set_defaults(execute=False)
 
   args = parser.parse_args()
@@ -56,7 +58,15 @@ def main():
   source_file_name = args.program  # type: str
   with open(source_file_name) as program_file:
     program = program_file.read()
-  ast = make_program_ast(program)
+  try:
+    ast = make_program_ast(program)
+  except CompilerError as ce:
+    if args.debug:
+      raise ce
+    else:
+      print(str(ce))
+      return
+
   module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='default_module')
   if main_func_identifier not in symbol_table:
     print('Error: Entry point function %r not found' % main_func_identifier)

@@ -1,17 +1,20 @@
 
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 from llvmlite import ir
 
-from sleepy.grammar import SemanticError, Grammar, Production, AttributeGrammar, TreePosition
+from sleepy.ast_value_parsing import parse_assign_op, parse_double, parse_hex_int, parse_long, parse_char, \
+  parse_float, parse_string
+from sleepy.errors import SemanticError
+from sleepy.grammar import Grammar, Production, AttributeGrammar, TreePosition
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, SLEEPY_FLOAT, Type, SLEEPY_INT, \
   SLEEPY_VOID, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
-  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, narrow_type, get_common_type, \
+  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
   SLEEPY_CHAR_PTR, SLEEPY_LONG
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is'}
@@ -541,7 +544,8 @@ class ReturnStatementAst(StatementAst):
     """
     super().__init__(pos)
     self.return_exprs = return_exprs
-    assert len(return_exprs) <= 1, 'returning of multiple values is not support yet'
+    if len(return_exprs) > 1:
+      self.raise_error('Returning multiple values not support yet')
 
   def build_ir(self, symbol_table, context):
     """
@@ -1006,7 +1010,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     if self.op == 'is':
       # TODO: Then it should be a TypeExpressionAst, not a VariableExpressionAst.
       # Probably it's nicer to make an entire new ExpressionAst for `is` Expressions anyway.
-      assert isinstance(self.right_expr, VariableExpressionAst)
+      if not isinstance(self.right_expr, VariableExpressionAst): raise self.raise_error("'is' operator must be applied to a union type and a type.")
 
   def make_val_type(self, symbol_table):
     """
@@ -1596,83 +1600,6 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
       symbol_table[var_expr.var_identifier] = var_symbol.copy_with_excluded_type(check_type)
 
 
-ESCAPE_CHARACTERS = {'n': '\n', 'r': '\r', 't': '\t', "'": "'", '"': '"', '0': '\0'}
-
-
-def parse_long(value):
-  """
-  :param str value: e.g. 123l, ...
-  :rtype: str
-  """
-  assert value[-1] in {'l', 'L'}
-  return int(value[:-1])
-
-
-def parse_float(value):
-  """
-  :param str value: e.g. 0.5f, ...
-  :rtype: str
-  """
-  assert value[-1] in {'f', 'F'}
-  return float(value[:-1])
-
-
-def parse_char(value):
-  """
-  :param str value: e.g. 'a', '\n', ...
-  :rtype: str
-  """
-  assert 3 <= len(value) <= 4
-  assert value[0] == value[-1] == "'"
-  value = value[1:-1]
-  if len(value) == 1:
-    return value
-  assert value[0] == '\\'
-  assert value[1] in ESCAPE_CHARACTERS, 'unknown escape character \\%s' % [value[1]]
-  return ESCAPE_CHARACTERS[value[1]]
-
-
-def parse_string(value):
-  """
-  :param str value: e.g. "abc", "", "cool \"stuff\""
-  :rtype: str
-  """
-  assert len(value) >= 2
-  assert value[0] == value[-1] == '"'
-  value = value[1:-1]
-  res = []  # type: List[chr]
-  pos = 0
-  while pos < len(value):
-    char = value[pos]
-    if char == '\\':
-      assert pos + 1 < len(value)
-      assert value[pos + 1] in ESCAPE_CHARACTERS, 'unknown escape character \\%s' % value[pos + 1]
-      res.append(ESCAPE_CHARACTERS[value[pos + 1]])
-      pos += 2
-    else:
-      res.append(value[pos])
-      pos += 1
-  return ''.join(res)
-
-
-def parse_hex_int(value):
-  """
-  :param str value: e.g. 0x0043fabc
-  :rtype: int
-  """
-  return int(value, 0)
-
-
-def parse_assign_op(value):
-  """
-  :param str value: e.g. +=
-  :rtype: str
-  """
-  assert len(value) >= 2
-  assert value[-1] == '='
-  return value[:-1]
-
-
 SLEEPY_LEXER = LexerGenerator(
   [
     'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '|',
@@ -1846,7 +1773,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'identifier': {'identifier': lambda value: value},
     'int': {'number': lambda value: int(value)},
     'long': {'number': lambda value: parse_long(value)},
-    'double': {'number': lambda value: float(value)},
+    'double': {'number': lambda value: parse_double(value)},
     'float': {'number': lambda value: parse_float(value)},
     'char': {'number': lambda value: ord(parse_char(value))},
     'str': {'string': lambda value: parse_string(value)},
@@ -1854,7 +1781,6 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
   }
 )
 SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
-
 
 def make_program_ast(program, add_preamble=True):
   """
@@ -1891,4 +1817,3 @@ def add_preamble_to_ast(program_ast):
   assert isinstance(preamble_ast, TopLevelAst)
   return TopLevelAst(program_ast.pos, AbstractScopeAst(
     preamble_ast.pos, preamble_ast.root_scope.stmt_list + program_ast.root_scope.stmt_list))
-

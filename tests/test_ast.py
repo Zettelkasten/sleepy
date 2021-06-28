@@ -10,7 +10,7 @@ from nose.tools import assert_equal, assert_almost_equal, assert_raises
 
 from sleepy.ast import TopLevelAst, FunctionDeclarationAst, SLEEPY_LEXER, SLEEPY_ATTR_GRAMMAR, \
   SLEEPY_PARSER, add_preamble_to_ast
-from sleepy.grammar import SemanticError
+from sleepy.errors import SemanticError
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.symbols import FunctionSymbol, SymbolTable
 
