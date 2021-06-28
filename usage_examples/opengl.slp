@@ -28,6 +28,60 @@ func ZeroVector(Int size) -> @Mutable Vector {
   fill(v, 0.0f);
   return v;
 }
+func print(Vector vec) {
+  print('[');
+  pos = 0;
+  while pos < vec.size {
+    print(vec[pos]);
+    pos += 1;
+    if pos < vec.size { print(','); print(' '); }
+  }
+  print(']');
+}
+func print_line(Vector vec) { print(vec); print_line(); }
+
+### Reading Files ###
+func read_file(Str file_name) -> @Mutable Str {
+  struct File { IntPtr ptr = NullIntPtr(); }
+  struct SeekOrigin { Int val = 0; }
+  func SeekBeginning() -> SeekOrigin { return SeekOrigin(0); }
+  func SeekCurrent() -> SeekOrigin { return SeekOrigin(1); }
+  func SeekEnd() -> SeekOrigin { return SeekOrigin(2); }
+  extern_func fopen(CharPtr file_name, CharPtr mode) -> File;
+  extern_func fseek(File stream, Long offset, SeekOrigin origin) -> Int;
+  extern_func ftell(File stream) -> Long;
+  extern_func rewind(File stream);
+  extern_func fread(CharPtr buffer, Long size, Long count, File stream) -> Long;
+  extern_func fclose(File stream) -> Int;
+
+  file_name += '\0';
+  mode = "rb\0";
+
+  file = fopen(file_name.start, mode.start);
+  if file.ptr == NullIntPtr() {
+    print("Cannot open: "); print_line(file_name);
+    assert(False());
+  }
+  fseek(file, 0l, SeekEnd());    # go to end of file
+  Long file_size = ftell(file);  # get position (= file size)
+  rewind(file);                  # go back to front
+  if ToLong(ToInt(file_size)) != file_size {
+    print("File too big: "); print_line(file_name);
+    assert(False());
+  }
+
+  @Mutable file_content = EmptyStr(ToInt(file_size));
+  fread(file_content.start, file_size, 1l, file);  # read file content
+  file_content.length = ToInt(file_size);
+
+  if fclose(file) != 0 {
+    print("Cannot close: "); print_line(file_name);
+    assert(False());
+  }
+  free(file_name);  free(mode);
+  return file_content;
+}
+
 
 ### GLFW Functions ###
 extern_func glfwInit() -> Int;
@@ -77,11 +131,16 @@ extern_func glfwGetKey(GLFWWindow window, Key key) -> GLFWKeyState;
 
 ### GL Functions ###
 extern_func glClearColor(Float red, Float green, Float blue, Float alpha);
-struct GLClearMask { Int val = 0x0; }
-func GLColorBufferBit() -> GLClearMask { return GLClearMask(0x00004000); }
-func clear(GLClearMask clear_mask) {
+struct ClearMask { Int bits = 0x0; }
+func ColorBufferBit() -> ClearMask { return ClearMask(0x00004000); }
+func DepthBufferBit() -> ClearMask { return ClearMask(0x00000100); }
+func or(ClearMask a, ClearMask b) -> ClearMask {
+  return ClearMask(bitwise_or(a.bits, b.bits));
+}
+
+func clear(ClearMask clear_mask) {
   extern_func glClear(Int clear_mask);
-  glClear(clear_mask.val);
+  glClear(clear_mask.bits);
 }
 
 struct VertexArray { Int id = 0; }
@@ -119,7 +178,7 @@ struct BufferUsage { Int val = 0; }
 func StaticDrawBufferUsage() -> BufferUsage { return BufferUsage(0x88E4); }
 func set_data(BufferTarget target, Vector data, BufferUsage usage) {
   extern_func glBufferData(BufferTarget target, Int size, FloatPtr data, BufferUsage usage);
-  glBufferData(target, data.size, data.start, usage);
+  glBufferData(target, 4 * data.size, data.start, usage);  # 4 bytes per Float.
 }
 
 extern_func glEnableVertexAttribArray(Int attrib_idx);
@@ -131,6 +190,112 @@ struct DrawMode { Int val = 0; }
 func TrianglesDrawMode() -> DrawMode { return DrawMode(0x0004); }
 extern_func glDrawArrays(DrawMode mode, Int first, Int count);
 
+struct ShaderType { Int val = 0; }
+func FragmentShaderType() -> ShaderType { return ShaderType(0x8B30); }
+func VertexShaderType() -> ShaderType { return ShaderType(0x8B31); }
+struct Shader { Int id = 0; }
+func create_shader(ShaderType shader_type) -> Shader {
+  extern_func glCreateShader(ShaderType shader_type) -> Shader;
+  return glCreateShader(shader_type);
+}
+func set_source(Shader shader, Str shader_code) {
+  # string argument is actually of type CharCharPtr, which do not exist yet (use LongPtr + unsafe cast for now).
+  extern_func glShaderSource(Shader shader, Int count, LongPtr string, IntPtr length);
+  # as there is no reference operator yet, temporarily allocate some memory to obtain the string and length.
+  code_ptr = allocate_long(1);
+  store(code_ptr, ToLong(shader_code.start));
+  len_ptr = allocate_int(1);
+  store(len_ptr, shader_code.length);
+  glShaderSource(shader, 1, code_ptr, len_ptr);
+  deallocate(code_ptr);
+  deallocate(len_ptr);
+}
+func compile(Shader shader) {
+  extern_func glCompileShader(Shader shader);
+  glCompileShader(shader);
+}
+struct ShaderParameter { Int val = 0; }
+func ShaderCompileStatus() -> ShaderParameter { return ShaderParameter(0x8B81); }
+func ShaderInfoLogLength() -> ShaderParameter { return ShaderParameter(0x8B84); }
+extern_func glGetShaderiv(Shader shader, ShaderParameter pname, IntPtr params);
+struct CompileSuccess { }
+struct CompileError { Str message = ""; }
+func print(CompileSuccess status) { print("Compile Success"); }
+func print(CompileError status) { print("Compile Error:\n"); print(status.message); }
+func print_line(CompileSuccess|CompileError status) { print(status); print_line(); }
+func get_compile_status(Shader shader) -> CompileSuccess|CompileError {
+  res = allocate_int(1);
+  glGetShaderiv(shader, ShaderCompileStatus(), res);
+  success = ToBool(load(res));
+  if success {
+    deallocate(res);
+    return CompileSuccess();
+  } else {
+    # get error message
+    glGetShaderiv(shader, ShaderInfoLogLength(), res);
+    log_length = load(res);
+    @Mutable log = EmptyStr(log_length);
+    extern_func glGetShaderInfoLog(Shader shader, Int max_length, IntPtr length, CharPtr info_log);
+    glGetShaderInfoLog(shader, log.alloc_length, res, log.start);
+    log.length = load(res);
+    deallocate(res);
+    return CompileError(log);
+  }
+}
+func delete_shader(Shader shader) {
+  extern_func glDeleteShader(Shader shader);
+  glDeleteShader(shader);
+}
+struct ShaderProgram { Int id = 0; }
+func create_shader_program() -> ShaderProgram {
+  extern_func glCreateProgram() -> ShaderProgram;
+  return glCreateProgram();
+}
+func attach_shader(ShaderProgram program, Shader shader) {
+  extern_func glAttachShader(ShaderProgram program, Shader shader);
+  glAttachShader(program, shader);
+}
+func link(ShaderProgram program) {
+  extern_func glLinkProgram(ShaderProgram program);
+  glLinkProgram(program);
+}
+struct ShaderProgramParameter { Int val = 0; }
+func ShaderProgramLinkStatus() -> ShaderProgramParameter { return ShaderProgramParameter(0x8B82); }
+func ShaderProgramInfoLogLength() -> ShaderProgramParameter { return ShaderProgramParameter(0x8B84); }
+extern_func glGetProgramiv(ShaderProgram shader, ShaderProgramParameter pname, IntPtr params);
+struct LinkSuccess { }
+struct LinkError { Str message = ""; }
+func print(LinkSuccess status) { print("Link Success"); }
+func print(LinkError status) { print("Link Error:\n"); print(status.message); }
+func print_line(LinkSuccess|LinkError status) { print(status); print_line(); }
+func get_link_status(ShaderProgram program) -> LinkSuccess|LinkError {
+  res = allocate_int(1);
+  glGetProgramiv(program, ShaderProgramLinkStatus(), res);
+  success = ToBool(load(res));
+  if success {
+    deallocate(res);
+    return LinkSuccess();
+  } else {
+    # get error message
+    glGetProgramiv(program, ShaderProgramInfoLogLength(), res);
+    log_length = load(res);
+    @Mutable log = EmptyStr(log_length);
+    extern_func glGetProgramInfoLog(ShaderProgram program, Int max_length, IntPtr length, CharPtr info_log);
+    glGetProgramInfoLog(program, log.alloc_length, res, log.start);
+    log.length = load(res);
+    deallocate(res);
+    return LinkError(log);
+  }
+}
+func detach_shader(ShaderProgram program, Shader shader) {
+  extern_func glDetachShader(ShaderProgram program, Shader shader);
+  glDetachShader(program, shader);
+}
+func use(ShaderProgram program) {
+  extern_func glUseProgram(ShaderProgram program);
+  glUseProgram(program);
+}
+
 func terminate(Str error) {
   print("Error happened: ");
   print_line(error);
@@ -140,10 +305,38 @@ func terminate(Str error) {
 
 func make_vertices_data() -> Vector {
   @Mutable data = ZeroVector(9);
-  data[0] = -1f; data[1] = -1f;
-  data[3] = 1f;  data[4] = -1f;
-                 data[7] = 1f;
+  data[0] = -0.8f; data[1] = -0.8f;
+  data[3] = 0.8f;  data[4] = -0.8f;
+                   data[7] = 0.8f;
+  print_line(data);
   return data;
+}
+
+func reload(ShaderProgram program, Str vertex_shader_path, Str fragment_shader_path) {
+  vertex_shader_code = read_file(vertex_shader_path);
+  fragment_shader_code = read_file(fragment_shader_path);
+  vertex_shader = create_shader(VertexShaderType());
+  fragment_shader = create_shader(FragmentShaderType());
+  set_source(vertex_shader, vertex_shader_code);
+  set_source(fragment_shader, fragment_shader_code);
+  compile(vertex_shader);
+  compile(fragment_shader);
+  print_line(get_compile_status(vertex_shader));
+  print_line(get_compile_status(fragment_shader));
+
+  attach_shader(program, vertex_shader);
+  attach_shader(program, fragment_shader);
+  link(program);
+  print_line(get_link_status(program));
+  detach_shader(program, vertex_shader);
+  detach_shader(program, fragment_shader);
+  delete_shader(vertex_shader);
+  delete_shader(fragment_shader);
+}
+func make_program(Str vertex_shader_path, Str fragment_shader_path) -> ShaderProgram {
+  program = create_shader_program();
+  reload(program, vertex_shader_path, fragment_shader_path);
+  return program;
 }
 
 func main() {
@@ -167,8 +360,14 @@ func main() {
   bind(ArrayBufferTarget(), vertex_buffer);
   set_data(ArrayBufferTarget(), make_vertices_data(), StaticDrawBufferUsage());
 
+  vertex_shader_path = "shaders/vertex.glsl";
+  fragment_shader_path = "shaders/fragment.glsl";
+  program = make_program(vertex_shader_path, fragment_shader_path);
+
   while not(or(should_close(window), glfwGetKey(window, EscapeKey()) == KeyPress())) {
-    clear(GLColorBufferBit());
+    clear(or(ColorBufferBit(), DepthBufferBit()));
+
+    use(program);
     glEnableVertexAttribArray(0);
     bind(ArrayBufferTarget(), vertex_buffer);
     glVertexAttribPointer(0, 3, FloatAttribType(), False(), 0, NullIntPtr());
