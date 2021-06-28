@@ -40,7 +40,7 @@ class AbstractSyntaxTree:
     """
     return 'AbstractSyntaxTree'
 
-  def raise_error(self, message: str):
+  def raise_error(self, message):
     """
     :param str message:
     """
@@ -544,7 +544,8 @@ class ReturnStatementAst(StatementAst):
     """
     super().__init__(pos)
     self.return_exprs = return_exprs
-    if not len(return_exprs) <= 1: self.raise_error('returning of multiple values is not support yet')
+    if len(return_exprs) > 1:
+      self.raise_error('Returning multiple values not support yet')
 
   def build_ir(self, symbol_table, context):
     """
@@ -1816,4 +1817,3 @@ def add_preamble_to_ast(program_ast):
   assert isinstance(preamble_ast, TopLevelAst)
   return TopLevelAst(program_ast.pos, AbstractScopeAst(
     preamble_ast.pos, preamble_ast.root_scope.stmt_list + program_ast.root_scope.stmt_list))
-
