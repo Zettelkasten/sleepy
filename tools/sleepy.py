@@ -73,6 +73,7 @@ def main():
       raise ce
     else:
       print(str(ce))
+      exit(1)
       return
 
   if args.execute:
