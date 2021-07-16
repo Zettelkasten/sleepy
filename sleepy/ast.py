@@ -1623,6 +1623,12 @@ SLEEPY_GRAMMAR = Grammar(
   Production('StmtList', 'AnnotationList', 'Stmt', 'StmtList'),
   Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'),
   Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'),
+  Production(
+    'Stmt', 'func', '(', 'AnnotationList', 'Type', 'identifier', ')', '[', 'TypedIdentifierList', ']',
+    'ReturnType', 'Scope'),
+  Production(
+    'Stmt', 'func', '(', 'AnnotationList', 'Type', 'identifier', ')', '[', 'TypedIdentifierList', ']', '=',
+    'AnnotationList', 'Type', 'identifier', 'Scope'),
   Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'),
   Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'),
   Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
@@ -1699,6 +1705,17 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast: (
       FunctionDeclarationAst(
         _pos, op(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6), ast(7)))},
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+      FunctionDeclarationAst(
+        _pos, identifier='get', arg_identifiers=[identifier(5)] + identifier_list(8),
+        arg_types=[ast(4)] + type_list(8), arg_annotations=[annotation_list(3)] + annotation_list(8),
+        return_type=ast(10), return_annotation_list=annotation_list(10), body_scope=ast(11)))},
+    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+      FunctionDeclarationAst(
+        _pos, identifier='set', arg_identifiers=[identifier(5)] + identifier_list(8) + [identifier(13)],
+        arg_types=[ast(4)] + type_list(8) + [ast(12)],
+        arg_annotations=[annotation_list(3)] + annotation_list(8) + [annotation_list(11)],
+        return_type=None, return_annotation_list=None, body_scope=ast(14)))},
     {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
       FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
         ast(6), annotation_list(6), None))},

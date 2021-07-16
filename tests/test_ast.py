@@ -1046,6 +1046,26 @@ def test_index_operator():
     assert_equal(main(12.0), 12.0)
 
 
+def test_index_operator_syntax():
+  with make_execution_engine() as engine:
+    program = """
+    func (DoublePtr ptr)[Int pos] -> Double {
+      return load(ptr + pos);
+    }
+    func (DoublePtr ptr)[Int pos] = Double val {
+      store(ptr + pos, val);
+    }
+    func main(Double val) -> Double {
+      ptr = allocate_double(8);
+      ptr[0] = val;
+      loaded = ptr[0];
+      return loaded;
+    }
+    """
+    main = _test_compile_program(engine, program)
+    assert_equal(main(12.0), 12.0)
+
+
 def test_func_inline():
   with make_execution_engine() as engine:
     program = """
