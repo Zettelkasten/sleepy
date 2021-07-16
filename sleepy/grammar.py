@@ -319,14 +319,16 @@ class AttributeGrammar:
         """
         assert 0 <= pos <= len(prod.right), '%s.%s: invalid for production %r' % (get_attr_name, pos, prod)
         if pos == 0:
-          assert get_attr_name in left_attr_eval, '%r: evaluation of %s.%s for rule %s not available, only have %r' % (
-            prod, get_attr_name, pos, rule_attr_target, left_attr_eval)
+          assert get_attr_name in left_attr_eval, '%r: evaluation of %s.%s for rule %r not available, only have %r' % (
+            prod, get_attr_name, pos, rule_attr_target,
+            _format_available_prod_eval(prod, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals))
           return left_attr_eval[get_attr_name]
         else:
           assert 0 < pos <= len(prod.right)
           assert get_attr_name in right_attr_evals[pos - 1], (
-            '%r: evaluation of %s.%s for rule %s not available, only have %r' % (
-              prod, get_attr_name, pos, rule_attr_target, right_attr_evals))
+            '%r: evaluation of %s.%s for rule %s not available, only have:\n%s' % (
+              prod, get_attr_name, pos, rule_attr_target,
+              _format_available_prod_eval(prod, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals)))
           return right_attr_evals[pos - 1][get_attr_name]
 
       return get
@@ -356,8 +358,9 @@ class AttributeGrammar:
       if callable(func):
         func_arg_names = self._get_attr_func_arg_names(func)
         assert all(from_attr_name in available_attr_names for from_attr_name in func_arg_names), (
-          '%r: evaluation for %r not available, only have evals %r -> %r' % (
-            prod, func_arg_names, left_attr_eval, right_attr_evals))
+          '%r: evaluation for %r not available, only have:\n%s' % (
+            prod, func_arg_names,
+            _format_available_prod_eval(prod, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals)))
         func_kwargs = {
           from_attr_name: make_attr_getter(from_attr_name, rule_attr_target=attr_target)
           for from_attr_name in func_arg_names}
@@ -365,8 +368,9 @@ class AttributeGrammar:
       elif isinstance(func, str):
         from_attr_name, from_attr_pos = self._split_attr_name_pos(func)
         assert from_attr_name in available_attr_names, (
-          '%r: evaluation for %s.%s not available, only have evals %r -> %r' % (
-            prod, from_attr_name, from_attr_pos, left_attr_eval, right_attr_evals))
+          '%r: evaluation for %s.%s not available, only have:\n%s' % (
+            prod, from_attr_name, from_attr_pos,
+            _format_available_prod_eval(prod, left_attr_eval=left_attr_eval, right_attr_evals=right_attr_evals)))
         attr_eval[attr_name] = make_attr_getter(from_attr_name, rule_attr_target=attr_target)(from_attr_pos)
       else:
         attr_eval[attr_name] = func
@@ -415,6 +419,22 @@ class AttributeGrammar:
       prod_attr_rules=self.prod_attr_rules.copy(),
       terminal_attr_rules=self.terminal_attr_rules.copy(),
       inh_attrs=self.inh_attrs.copy(), syn_attrs=self.syn_attrs.copy())
+
+
+def _format_available_prod_eval(prod, left_attr_eval, right_attr_evals):
+  """
+  For error messages.
+
+  :param Production prod:
+  :param dict[str,Any] left_attr_eval: (partial) evaluation of production left
+  :param list[dict[str,Any]] right_attr_evals: (partial) evaluations of production right sides
+  """
+  all_prod_symbols = (prod.left,) + prod.right
+  all_attr_evals = [left_attr_eval] + right_attr_evals
+  assert len(all_prod_symbols) == len(all_attr_evals)
+  return '\n'.join(
+    ' - pos %s (symbol %r): %r' % (pos, symbol, attrs)
+    for pos, (attrs, symbol) in enumerate(zip(all_attr_evals, all_prod_symbols)))
 
 
 class SyntaxTree:
