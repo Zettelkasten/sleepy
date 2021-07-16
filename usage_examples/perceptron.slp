@@ -3,11 +3,11 @@
   Int dim = 0;
   DoublePtr start = allocate_double(0);
 }
-func get(Vec vec, Int pos) -> Double {
+func (Vec vec)[Int pos] -> Double {
   assert(and(0 <= pos, pos < vec.dim));
   return load(vec.start + pos);
 }
-func set(@Mutable Vec vec, Int pos, Double val) {
+func (@Mutable Vec vec)[Int pos] = Double val {
   assert(and(0 <= pos, pos < vec.dim));
   store(vec.start + pos, val);
 }
@@ -84,12 +84,12 @@ func free_vec(Vec vec) {
   Int num_cols = 0;
   DoublePtr start = allocate_double(0);
 }
-func get(Mat mat, Int row, Int col) -> Double {
+func (Mat mat)[Int row, Int col] -> Double {
   assert(and(0 <= row, row < mat.num_rows));
   assert(and(0 <= col, col < mat.num_cols));
   return load(mat.start + row * mat.num_cols + col);
 }
-func get(Mat mat, Int row) -> @Mutable Vec {
+func (Mat mat)[Int row] -> @Mutable Vec {
   @Mutable row_vec = ZeroVec(mat.num_cols);
   col = 0;
   while col < mat.num_cols {
@@ -98,12 +98,12 @@ func get(Mat mat, Int row) -> @Mutable Vec {
   }
   return row_vec;
 }
-func set(@Mutable Mat mat, Int row, Int col, Double val) {
+func (@Mutable Mat mat)[Int row, Int col] = Double val {
   assert(and(0 <= row, row < mat.num_rows));
   assert(and(0 <= col, col < mat.num_cols));
   store(mat.start + row * mat.num_cols + col, val);
 }
-func set(@Mutable Mat mat, Int row, Vec row_vec) {
+func (@Mutable Mat mat)[Int row] = Vec row_vec {
   assert(and(0 <= row, row < mat.num_rows));
   assert(row_vec.dim == mat.num_cols);
   memcpy(mat.start + row * mat.num_cols, row_vec.start, row_vec.dim * 8);
@@ -195,7 +195,7 @@ func main() {
     return sign(likelihood);
   }
   @Mutable test = ZeroVec(feature_dim);
-  set(test, 0, -4.0);
+  test[0] = -4.0;
   print_line(predict(weights, bias, test));
   print("The fitted hyperplane is "); print(weights); print(" * x + "); print(bias); print_line();
 }
