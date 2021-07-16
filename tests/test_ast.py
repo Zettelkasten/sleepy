@@ -1539,6 +1539,29 @@ def test_union_if_else_type_narrowing():
     assert_almost_equal(main(), sin(42.0))
 
 
+def test_union_if_without_else_type_narrowing():
+  with make_execution_engine() as engine:
+    program = """
+    struct Unbounded { }
+    func normalized_from_index(Int|Unbounded index, Int length) -> Int {
+      if index is Unbounded { index = 0; }
+      if index < 0 { index += length; }
+      assert(0 <= index);  assert(index <= length);
+      return index;
+    }
+    func main(Bool unbounded, Int index, Int length) -> Int {
+      Int|Unbounded slice = index;
+      if unbounded { slice = Unbounded(); }
+      return normalized_from_index(index, length);
+    }
+    """
+    main = _test_compile_program(engine, program, add_preamble=False)
+    assert_equal(main(False, 0, 10), 0)
+    assert_equal(main(False, 4, 10), 4)
+    assert_equal(main(False, -1, 10), 9)
+    assert_equal(main(True, -1, 10), 0)
+
+
 def test_union_if_terminated_branch_type_narrowing():
   with make_execution_engine() as engine:
     program = """
