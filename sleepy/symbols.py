@@ -19,7 +19,7 @@ class Symbol:
     """
     Initialize the symbol.
     """
-    self.base = None  # type: Optional[Symbol]
+    self.base = self  # type: Symbol
 
 
 class Type:
@@ -1008,19 +1008,24 @@ class SymbolTable:
     self.used_ir_func_names.add(ir_func_name)
     return ir_func_name
 
-  def apply_type_narrowings_from(self, other_symbol_table):
+  def apply_type_narrowings_from(self, *other_symbol_tables):
     """
-    :param SymbolTable other_symbol_table:
+    For all variable symbols, copy common type of all other_symbol_tables.
+
+    :param SymbolTable other_symbol_tables: containing all variables of self
     """
-    for symbol_identifier, other_symbol in other_symbol_table.symbols.items():
-      if not isinstance(other_symbol, VariableSymbol):
+    for symbol_identifier, self_symbol in self.symbols.items():
+      if not isinstance(self_symbol, VariableSymbol):
         continue
-      if symbol_identifier not in self:
+      assert all(symbol_identifier in symbol_table for symbol_table in other_symbol_tables)
+      other_symbols = [
+        symbol_table[symbol_identifier] for symbol_table in other_symbol_tables]
+      other_symbols = [other_symbol for other_symbol in other_symbols if other_symbol.base == self_symbol.base]
+      assert all(isinstance(other_symbol, VariableSymbol) for other_symbol in other_symbols)
+      if len(other_symbols) == 0:
         continue
-      self_symbol = self[symbol_identifier]
-      assert isinstance(self_symbol, VariableSymbol)
-      if self[symbol_identifier].base == other_symbol.base:
-        self[symbol_identifier] = other_symbol
+      common_type = get_common_type([other_symbol.narrowed_var_type for other_symbol in other_symbols])
+      self[symbol_identifier] = self_symbol.copy_with_narrowed_type(common_type)
 
   def reset_narrowed_types(self):
     """
