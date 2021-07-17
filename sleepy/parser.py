@@ -1,8 +1,8 @@
 from typing import Optional, Dict, List, Set, FrozenSet, Any
 
 from sleepy.errors import ParseError
-from sleepy.grammar import EPSILON, Production, AttributeGrammar, SyntaxTree, IGNORED_TOKEN, \
-  get_token_word_from_tokens_pos, TreePosition
+from sleepy.grammar import EPSILON, Production, SyntaxTree, IGNORED_TOKEN, \
+  get_token_word_from_tokens_pos, TreePosition, AttributeGrammar
 
 
 def make_first1_sets(grammar):

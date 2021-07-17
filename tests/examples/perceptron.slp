@@ -1,6 +1,6 @@
 struct Unbounded { }
 struct Slice {
-  Int|Unbounded from = 0; Int|Unbounded to = 0;
+  from : Int|Unbounded; to : Int|Unbounded = 0;
 }
 func SliceFrom(Int from) -> Slice {
   return Slice(from, Unbounded());
@@ -31,8 +31,8 @@ func normalized_to_index(Int|Unbounded index, Int length) -> Int {
 
 # Variable dimensional vector
 @RefType struct Vec {
-  Int dim = 0;
-  DoublePtr start = allocate_double(0);
+  dim : Int = 0;
+  start : DoublePtr = allocate_double(0);
 }
 func (Vec vec)[Int pos] -> Double {
   pos = normalized_index(pos, vec.dim);
