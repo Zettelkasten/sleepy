@@ -852,9 +852,9 @@ class IfStatementAst(StatementAst):
     else:
       assert not true_context.is_terminated or not false_context.is_terminated
       if true_context.is_terminated:
-        symbol_table.apply_symbols_from(false_symbol_table)
-      if false_context.is_terminated:
-        symbol_table.apply_symbols_from(true_symbol_table)
+        symbol_table.apply_type_narrowings_from(false_symbol_table)
+      elif false_context.is_terminated:
+        symbol_table.apply_type_narrowings_from(true_symbol_table)
       if context.emits_ir:
         continue_block = context.builder.append_basic_block('continue_branch')  # type: ir.Block
         if not true_context.is_terminated:
