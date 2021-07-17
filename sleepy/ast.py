@@ -855,6 +855,9 @@ class IfStatementAst(StatementAst):
         symbol_table.apply_type_narrowings_from(false_symbol_table)
       elif false_context.is_terminated:
         symbol_table.apply_type_narrowings_from(true_symbol_table)
+      else:  # default case
+        assert not true_context.is_terminated and not false_context.is_terminated
+        symbol_table.apply_type_narrowings_from(true_symbol_table, false_symbol_table)
       if context.emits_ir:
         continue_block = context.builder.append_basic_block('continue_branch')  # type: ir.Block
         if not true_context.is_terminated:
