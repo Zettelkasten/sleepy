@@ -1,26 +1,57 @@
+struct Unbounded { }
+struct Slice {
+  Int|Unbounded from = 0; Int|Unbounded to = 0;
+}
+func SliceFrom(Int from) -> Slice {
+  return Slice(from, Unbounded());
+}
+func SliceTo(Int to) -> Slice {
+  return Slice(Unbounded(), to);
+}
+func SliceAll() -> Slice {
+  return Slice(Unbounded(), Unbounded());
+}
+func normalized_index(Int index, Int length) -> Int {
+  if index < 0 { index += length; }
+  assert(and(0 <= index, index < length));
+  return index;
+}
+func normalized_from_index(Int|Unbounded index, Int length) -> Int {
+  if index is Unbounded { index = 0; }
+  if index < 0 { index += length; }
+  assert(and(0 <= index, index <= length));
+  return index;
+}
+func normalized_to_index(Int|Unbounded index, Int length) -> Int {
+  if index is Unbounded { index = length; }
+  if index < 0 { index += length; }
+  assert(and(0 <= index, index <= length));
+  return index;
+}
+
 # Variable dimensional vector
 @RefType struct Vec {
   Int dim = 0;
   DoublePtr start = allocate_double(0);
 }
 func (Vec vec)[Int pos] -> Double {
-  assert(and(0 <= pos, pos < vec.dim));
+  pos = normalized_index(pos, vec.dim);
   return load(vec.start + pos);
 }
 func (@Mutable Vec vec)[Int pos] = Double val {
-  assert(and(0 <= pos, pos < vec.dim));
+  pos = normalized_index(pos, vec.dim);
   store(vec.start + pos, val);
 }
-func fill(@Mutable Vec vec, Double val) {
-  pos = 0;
-  while pos < vec.dim {
+func (@Mutable Vec vec)[Slice slice] = Double val {
+  pos = normalized_from_index(slice.from, vec.dim);
+  while pos < normalized_to_index(slice.to, vec.dim) {
     vec[pos] = val;
     pos += 1;
   }
 }
 func ZeroVec(Int dim) -> @Mutable Vec {
   @Mutable v = Vec(dim, allocate_double(dim * 8));
-  fill(v, 0.0);
+  v[SliceAll()] = 0.0;
   return v;
 }
 func RandomVec(Int dim) -> @Mutable Vec {
@@ -85,8 +116,8 @@ func free_vec(Vec vec) {
   DoublePtr start = allocate_double(0);
 }
 func (Mat mat)[Int row, Int col] -> Double {
-  assert(and(0 <= row, row < mat.num_rows));
-  assert(and(0 <= col, col < mat.num_cols));
+  row = normalized_index(row, mat.num_rows);
+  col = normalized_index(col, mat.num_cols);
   return load(mat.start + row * mat.num_cols + col);
 }
 func (Mat mat)[Int row] -> @Mutable Vec {
@@ -108,11 +139,11 @@ func (@Mutable Mat mat)[Int row] = Vec row_vec {
   assert(row_vec.dim == mat.num_cols);
   memcpy(mat.start + row * mat.num_cols, row_vec.start, row_vec.dim * 8);
 }
-func fill(@Mutable Mat mat, Double val) {
-  row = 0;
-  while row < mat.num_rows {
-    col = 0;
-    while col < mat.num_cols {
+func (@Mutable Mat mat)[Slice row_slice, Slice col_slice] = Double val {
+  row = normalized_from_index(row_slice.from, mat.num_rows);
+  while row < normalized_to_index(row_slice.to, mat.num_rows) {
+    col = normalized_from_index(col_slice.from, mat.num_cols);
+    while col < normalized_to_index(col_slice.to, mat.num_cols) {
       mat[row, col] = val;
       col += 1;
     }
@@ -121,7 +152,7 @@ func fill(@Mutable Mat mat, Double val) {
 }
 func ZeroMat(Int num_rows, Int num_cols) -> @Mutable Mat {
   @Mutable mat = Mat(num_rows, num_cols, allocate_double(num_rows * num_cols * 8));
-  fill(mat, 0.0);
+  mat[SliceAll(), SliceAll()] = 0.0;
   return mat;
 }
 func RandomMat(Int num_rows, Int num_cols) -> @Mutable Mat {
