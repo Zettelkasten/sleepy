@@ -1546,13 +1546,12 @@ def test_union_if_without_else_type_narrowing():
     func normalized_from_index(Int|Unbounded index, Int length) -> Int {
       if index is Unbounded { index = 0; }
       if index < 0 { index += length; }
-      assert(0 <= index);  assert(index <= length);
       return index;
     }
     func main(Bool unbounded, Int index, Int length) -> Int {
       Int|Unbounded slice = index;
       if unbounded { slice = Unbounded(); }
-      return normalized_from_index(index, length);
+      return normalized_from_index(slice, length);
     }
     """
     main = _test_compile_program(engine, program, add_preamble=False)
