@@ -119,8 +119,8 @@ func copy(Str str) -> @Mutable Str {
   memcpy(new.start, str.start, str.length);
   return new;
 }
-func get(Str str, Int pos) -> Char {
-  return load(str.start + pos);
+func get(Str str, Int pos) -> CharPtr {
+  return str.start + pos;
 }
 func set(@Mutable Str str, Int pos, Char char) {
   assert(and(0 <= pos, pos < str.length + 1));
@@ -132,6 +132,9 @@ func set(@Mutable Str str, Int pos, Char char) {
     str.length += 1;
   }
 }
+func =(CharPtr ptr, Char v) { store(ptr, v); }
+func +(CharPtr ptr) -> Char { return load(ptr); }
+
 func insert(@Mutable Str str, Char char, Int pos) {
   assert(and(0 <= pos, pos < str.length + 1));
   if str.length + 1 >= str.alloc_length {
@@ -197,7 +200,7 @@ func *(Char c, Int repetitions) -> @Mutable Str {
 func print(Str str) {
   pos = 0;
   while pos < str.length {
-    print(str[pos]);
+    print(+str[pos]);
     pos += 1;
   }
 }

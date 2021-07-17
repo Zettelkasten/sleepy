@@ -23,7 +23,7 @@ class AttributeEvalGenerator:
 
   def eval_attrs(self, root_tree, word, tokens, tokens_pos):
     """
-    :param SyntaxTree root_tree: parse tree of start symbol. Is assumed to not have any inherited attributes
+    :param SyntaxTree root_tree: parse tree of start symbol.
     :param str word:
     :param list[str] tokens:
     :param list[int] tokens_pos: start index of word for each token
