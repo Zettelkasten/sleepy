@@ -1008,12 +1008,18 @@ class SymbolTable:
     self.used_ir_func_names.add(ir_func_name)
     return ir_func_name
 
-  def apply_symbols_from(self, other_symbol_table):
+  def apply_type_narrowings_from(self, other_symbol_table):
     """
     :param SymbolTable other_symbol_table:
     """
     for symbol_identifier, other_symbol in other_symbol_table.symbols.items():
-      if symbol_identifier in self and self[symbol_identifier].base == other_symbol.base:
+      if not isinstance(other_symbol, VariableSymbol):
+        continue
+      if symbol_identifier not in self:
+        continue
+      self_symbol = self[symbol_identifier]
+      assert isinstance(self_symbol, VariableSymbol)
+      if self[symbol_identifier].base == other_symbol.base:
         self[symbol_identifier] = other_symbol
 
   def reset_narrowed_types(self):
