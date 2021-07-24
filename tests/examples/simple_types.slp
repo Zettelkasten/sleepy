@@ -1,7 +1,7 @@
 func main() {
-  Int my_int = 21;
-  Double my_double = 4.0;
-  Double prod = my_double * my_double;
+  my_int: Int = 21;
+  my_double: Double = 4.0;
+  prod: Double = my_double * my_double;
   print(prod);
   print('\n');
   sum = my_double + my_double;  # also implicitly a Double
@@ -11,8 +11,8 @@ func main() {
 
   @RefType
   struct IntPair {
-    Int left = 0;
-    Int right = 0;
+    left: Int = 0;
+    right: Int = 0;
   }
 
   # @Const can also be omitted.
@@ -31,7 +31,7 @@ func main() {
     print(')');
   }
 
-  IntPair p = IntPair(4, -3);
+  p: IntPair = IntPair(4, -3);
   print_line(get_left(p));
   # set_left(p, 6) would fail, as p is immutable!
   @Mutable mutable_pair = IntPair(6, 9);
