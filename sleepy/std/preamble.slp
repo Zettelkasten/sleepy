@@ -141,7 +141,7 @@ func insert(@Mutable Str str, Char char, Int pos) {
     resize(str, max(2 * str.alloc_length, 1));
   }
   memcpy(str.start + pos + 1, str.start + pos, str.length - pos);
-  str[pos] = char;
+  set(str, pos, char);
 }
 func insert(@Mutable Str str, Char insert_char) { insert(str, insert_char, str.length); }
 func insert(@Mutable Str str, Str insert_str, Int pos) {

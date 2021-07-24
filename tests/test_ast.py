@@ -379,8 +379,8 @@ def test_types_simple():
   with make_execution_engine() as engine:
     program = """
     func main() {
-      Int my_int = 3;
-      Double my_double = 4.0;
+      my_int: Int = 3;
+      my_double: Double = 4.0;
     }
     """
     main = _test_compile_program(engine, program)
@@ -436,7 +436,7 @@ def test_define_variable_with_wrong_type():
   with make_execution_engine() as engine:
     program = """
     func main() {
-      Bool a = 3.0;  # should fail.
+      a: Bool = 3.0;  # should fail.
     }
     """
     with assert_raises(SemanticError):
@@ -472,13 +472,13 @@ def test_shadow_var_name_with_var_of_different_type():
   with make_execution_engine() as engine:
     program = """
     func main() -> Int {
-      Int val = 5;
+      value: Int = 5;
       func inner() -> Bool {
-        Bool val = True();
-        return val;
+        value: Bool = True();
+        return value;
       }
       if inner() {
-        return val;
+        return value;
       } else {
         return 3;
       }
@@ -506,8 +506,8 @@ def test_struct_default_constructor():
   with make_execution_engine() as engine:
     program = """
     struct Vec2 {
-      Int x = 0;
-      Int y = 0;
+      x: Int = 0;
+      y: Int = 0;
     }
     func main() -> Vec2 {
       return Vec2(0, 0);
@@ -520,9 +520,9 @@ def test_struct_default_constructor():
 def test_struct_member_access():
   with make_execution_engine() as engine:
     program = """
-    struct Vec3 { Double x = 1.0; Double y = 2.0; Double z = 3.0; }
+    struct Vec3 { x: Double= 1.0; y: Double= 2.0; z: Double= 3.0; }
     func main() -> Double {
-      Vec3 my_vec = Vec3(1.0, 2.0, 3.0);
+      my_vec: Vec3 = Vec3(1.0, 2.0, 3.0);
       middle = my_vec.y;
       return middle;
     }
@@ -535,12 +535,12 @@ def test_struct_with_struct_member():
   with make_execution_engine() as engine:
     program = """
     struct Vec2 {
-      Double x = 0.0;
-      Double y = 0.0;
+      x: Double= 0.0;
+      y: Double= 0.0;
     }
     struct Mat22 {
-      Vec2 first = Vec2(0.0, 0.0);
-      Vec2 second = Vec2(0.0, 0.0);
+      first: Vec2 = Vec2(0.0, 0.0);
+      second: Vec2 = Vec2(0.0, 0.0);
     }
     func mat_sum(Mat22 mat) -> Double {
       func vec_sum(Vec2 vec) -> Double {
@@ -549,7 +549,7 @@ def test_struct_with_struct_member():
       return vec_sum(mat.first) + vec_sum(mat.second);
     }
     func main() -> Double {
-      Mat22 mat = Mat22(Vec2(1.0, 2.0), Vec2(3.0, 4.0));
+      mat: Mat22 = Mat22(Vec2(1.0, 2.0), Vec2(3.0, 4.0));
       assert(mat.first.x == 1.0);
       return mat_sum(mat);
     }
@@ -576,16 +576,16 @@ def test_pass_by_reference():
     program = """
     @RefType
     struct Foo {
-      Int val = 0;
+      value: Int = 0;
     }
     func inc_val(@Mutable Foo of) {
-      of.val = of.val + 1;
+      of.value = of.value + 1;
     }
     func main() -> Int {
       @Mutable my_foo = Foo(0);
-      my_foo.val = 4;
-      inc_val(my_foo);  # now my_foo.val should be 5.
-      return my_foo.val;
+      my_foo.value = 4;
+      inc_val(my_foo);  # now my_foo.value should be 5.
+      return my_foo.value;
     }
     """
     main = _test_compile_program(engine, program)
@@ -595,9 +595,9 @@ def test_pass_by_reference():
 def test_pass_by_value():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Foo { Int val = 0; }
+    @RefType struct Foo { value: Int = 0; }
     func inc_val(Foo of) {
-      of.val = of.val + 1;  # cannot redefine a immutable parameter!
+      of.value = of.value + 1;  # cannot redefine a immutable parameter!
     }
     func main() { }
     """
@@ -608,9 +608,9 @@ def test_pass_by_value():
 def test_mutable_val_type_local_var():
   with make_execution_engine() as engine:
     program = """
-    struct Box { Int mem = 123; }
+    struct Box { mem: Int = 123; }
     func main() -> Int {
-      @Mutable Box x = Box(42);
+      @Mutable x: Box = Box(42);
       x.mem = 17;
       return x.mem;
     }
@@ -622,7 +622,7 @@ def test_mutable_val_type_local_var():
 def test_mutable_val_type_arg():
   with make_execution_engine() as engine:
     program = """
-    struct Box { Int mem = 123; }
+    struct Box { mem: Int = 123; }
     func not_allowed(@Mutable Box b) { # <- cannot have mutable non-ref type as argument
     }
     func main() {
@@ -635,9 +635,9 @@ def test_mutable_val_type_arg():
 def test_mutable_val_type_return():
   with make_execution_engine() as engine:
     program = """
-    struct Box { Int mem = 123; }
+    struct Box { mem: Int = 123; }
     func not_allowed() -> @Mutable Box { # <- cannot have mutable non-ref type as return type
-      @Mutable Box cool = Box(123);
+      @Mutable cool: Box = Box(123);
       return cool;
     }
     func main() {
@@ -651,9 +651,9 @@ def test_struct_free():
   with make_execution_engine() as engine:
     program = """
     @RefType struct Vec3 {
-      Double x = 0.0;
-      Double y = 0.0;
-      Double z = 0.0;
+      x: Double= 0.0;
+      y: Double= 0.0;
+      z: Double= 0.0;
     }
     func main(Double x, Double y, Double z) {
       left = 10000;
@@ -672,14 +672,14 @@ def test_struct_free_nested():
   with make_execution_engine() as engine:
     program = """
     @RefType struct Vec3 {
-      Double x = 0.0;
-      Double y = 0.0;
-      Double z = 0.0;
+      x: Double = 0.0;
+      y: Double = 0.0;
+      z: Double = 0.0;
     }
     @RefType struct Mat3x3 {
-      @Mutable Vec3 x = Vec3(0.0, 0.0, 0.0);
-      @Mutable Vec3 y = Vec3(0.0, 0.0, 0.0);
-      @Mutable Vec3 z = Vec3(0.0, 0.0, 0.0);
+      @Mutable x: Vec3 = Vec3(0.0, 0.0, 0.0);
+      @Mutable y: Vec3 = Vec3(0.0, 0.0, 0.0);
+      @Mutable z: Vec3 = Vec3(0.0, 0.0, 0.0);
     }
     func main() {
       @Mutable mat = Mat3x3(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0));
@@ -733,7 +733,7 @@ def test_overload_func():
 def test_const_add_vs_assign_add():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Vec2 { Double x = 0.0; Double y = 0.0; }
+    @RefType struct Vec2 { x: Double = 0.0; y: Double = 0.0; }
     func add(Vec2 a, Vec2 b) -> Vec2 {
       return Vec2(a.x + b.x, a.y + b.y);
     }
@@ -757,8 +757,8 @@ def test_const_add_vs_assign_add():
 def test_call_mutable_with_const_var():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Counter { Int val = 0; }
-    func inc(@Mutable Counter c) { c.val = c.val + 1; }
+    @RefType struct Counter { value: Int = 0; }
+    func inc(@Mutable Counter c) { c.value = c.value + 1; }
     func inc_wrapper(Counter c) { inc(c); }  # <-- cannot call a function taking sth mutable with const argument!
     func main() {
       c = Counter(0);
@@ -772,12 +772,12 @@ def test_call_mutable_with_const_var():
 def test_assign_mutable_to_const():
   with make_execution_engine() as engine:
     program = """
-    struct Counter { Int val = 0; }
+    struct Counter { value: Int = 0; }
     func main() -> Int {
       @Const con = Counter(-42);
       @Mutable mut = Counter(123);
       con = mut;
-      return con.val;
+      return con.value;
     }
     """
     main = _test_compile_program(engine, program)
@@ -787,12 +787,12 @@ def test_assign_mutable_to_const():
 def test_assign_const_to_mutable():
   with make_execution_engine() as engine:
     program = """
-    struct Counter { Int val = 0; }
+    struct Counter { value: Int = 0; }
     func main() -> Int {
       @Const con = Counter(-42);
       @Mutable mut = Counter(123);
       mut = con;  # not allowed.
-      return con.val;
+      return con.value;
     }
     """
     _test_compile_program(engine, program)
@@ -801,12 +801,12 @@ def test_assign_const_to_mutable():
 def test_counter_is_empty():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Counter { Int val = 0; }
+    @RefType struct Counter { value: Int = 0; }
     func increase(@Mutable Counter c) {
-      c.val = c.val + 1;
+      c.value= c.value+ 1;
     }
     func is_empty(Counter c) -> Bool {
-      return c.val == 0;
+      return c.value== 0;
     }
     func increase_if_empty(@Mutable Counter c) {
       if is_empty(c) {
@@ -817,10 +817,10 @@ def test_counter_is_empty():
       @Mutable c = Counter(0);
       increase(c);
       increase_if_empty(c);  # should not do anything
-      c.val = c.val - 1;
+      c.value= c.value- 1;
       increase_if_empty(c);  # should increase
       increase(c);
-      return c.val;
+      return c.value;
     }
     """
     main = _test_compile_program(engine, program)
@@ -830,7 +830,7 @@ def test_counter_is_empty():
 def test_return_mutable_var_as_mutable():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Container { Int value = 0; }
+    @RefType struct Container { value: Int = 0; }
     func identity(@Mutable Container c) -> @Mutable Container {
       return c;
     }
@@ -842,7 +842,7 @@ def test_return_mutable_var_as_mutable():
 def test_return_const_var_as_mutable():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Container { Int value = 0; }
+    @RefType struct Container { value: Int = 0; }
     func identity(Container c) -> @Mutable Container {
       return c;  # shouldn't be allowed, cannot make something immutable suddenly mutable!
     }
@@ -855,7 +855,7 @@ def test_return_const_var_as_mutable():
 def test_return_mutable_var_as_const():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Container { Int value = 0; }
+    @RefType struct Container { value: Int = 0; }
     func identity(@Mutable Container c) -> Container {
       return c;  # giving up that something can be edited is fine though.
     }
@@ -921,11 +921,11 @@ def test_wrong_return_void():
 def test_mutable_struct_member_const():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Box { Int val = 42; }
-    @RefType struct SuperBox { @Mutable Box b = Box(42); }
+    @RefType struct Box { value: Int = 42; }
+    @RefType struct SuperBox { @Mutable b: Box = Box(42); }
     func main() {
-      @Mutable Box b = Box(42);
-      SuperBox sb = SuperBox(Box(42));
+      @Mutable b: Box = Box(42);
+      sb: SuperBox = SuperBox(Box(42));
       sb.b = b;  # should fail, sb is immutable.
       free(b); free(sb);
     }
@@ -937,15 +937,15 @@ def test_mutable_struct_member_const():
 def test_mutable_struct_member_mutable():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Box { Int val = 42; }
-    @RefType struct SuperBox { @Mutable Box b = Box(42); }
+    @RefType struct Box { value: Int = 42; }
+    @RefType struct SuperBox { @Mutable b: Box = Box(42); }
     func main() -> Int {
-      @Mutable Box b = Box(42);
-      @Mutable SuperBox sb = SuperBox(Box(42));
+      @Mutable b: Box = Box(42);
+      @Mutable sb: SuperBox = SuperBox(Box(42));
       sb.b = b;  # should work now.
       # can now even change b, and sb should be effected too:
-      b.val = 123;
-      return sb.b.val;
+      b.value = 123;
+      return sb.b.value;
     }
     """
     main = _test_compile_program(engine, program)
@@ -955,12 +955,12 @@ def test_mutable_struct_member_mutable():
 def test_immutable_struct_member_assign_mutable_member():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Box { Int val = 42; }
-    @RefType struct SuperBox { Box b = Box(42); }
+    @RefType struct Box { value: Int = 42; }
+    @RefType struct SuperBox { b: Box = Box(42); }
     func main() -> Int {
-      @Mutable Box b = Box(42);
-      b.val = 27;
-      SuperBox sb = SuperBox(Box(42));
+      @Mutable b: Box = Box(42);
+      b.value = 27;
+      sb: SuperBox = SuperBox(Box(42));
       sb.b = b;  # should fail as sb is immutable.
       free(b); free(sb);
     }
@@ -1010,8 +1010,8 @@ def test_overload_func_twice():
 def test_overload_with_different_structs():
   with make_execution_engine() as engine:
     program = """
-    struct Vec2 { Double x = 0.0; Double y = 0.0; }
-    struct Vec3 { Double x = 0.0; Double y = 0.0; Double z = 0.0; }
+    struct Vec2 { x: Double= 0.0; y: Double= 0.0; }
+    struct Vec3 { x: Double= 0.0; y: Double= 0.0; z: Double= 0.0; }
     func +(Vec2 left, Vec2 right) -> Vec2 {
       return Vec2(left.x + right.x, left.y + right.y);
     }
@@ -1029,16 +1029,15 @@ def test_overload_with_different_structs():
 def test_index_operator():
   with make_execution_engine() as engine:
     program = """
-    func get(DoublePtr ptr, Int pos) -> Double {
-      return load(ptr + pos);
+    func get(DoublePtr ptr, Int pos) -> DoublePtr {
+      return ptr + pos;
     }
-    func set(DoublePtr ptr, Int pos, Double val) {
-      store(ptr + pos, val);
-    }
+    func =(DoublePtr ptr, Double val) { store(ptr, val); }
+    func +(DoublePtr ptr) -> Double { return load(ptr); }
     func main(Double val) -> Double {
       ptr = allocate_double(8);
       ptr[0] = val;
-      loaded = ptr[0];
+      loaded = +ptr[0];
       return loaded;
     }
     """
@@ -1049,17 +1048,16 @@ def test_index_operator():
 def test_index_operator_syntax():
   with make_execution_engine() as engine:
     program = """
-    func (DoublePtr ptr)[Int pos] -> Double {
-      return load(ptr + pos);
+    func get(DoublePtr ptr, Int pos) -> DoublePtr {
+      return ptr + pos;
     }
-    func (DoublePtr ptr)[Int pos] = Double val {
-      store(ptr + pos, val);
-    }
+    func =(DoublePtr ptr, Double val) { store(ptr, val); }
+    func +(DoublePtr ptr) -> Double { return load(ptr); }
     func main(Double val) -> Double {
       ptr = allocate_double(8);
       ptr[0] = val;
       loaded = ptr[0];
-      return loaded;
+      return +loaded;
     }
     """
     main = _test_compile_program(engine, program)
@@ -1073,7 +1071,7 @@ def test_func_inline():
       return 42;
     }
     func main() -> Int {
-      Int what = important();
+      what: Int = important();
       return what + 5;
     }
     """
@@ -1164,12 +1162,12 @@ def test_func_inline_own_symbol_table():
     program = """
     # compute a + (a + 5)
     @Inline func foo(Int a) -> Int {
-      Int b = a + 5;
+      b: Int = a + 5;
       return a + b;
     }
     func main(Int x) -> Int {
-      Int c = foo(x);
-      Double b = 2.0;
+      c: Int = foo(x);
+      b: Double = 2.0;
       return c;
     }
     """
@@ -1212,12 +1210,12 @@ def test_if_scope():
   with make_execution_engine() as engine:
     program = """
     func main(Bool case) -> Bool {
-      Bool result = False();
+      result: Bool = False();
       if case {
-        Bool bar = True();
+        bar: Bool = True();
         result = bar;
       } else {
-        Double bar = 1.23;
+        bar: Double = 1.23;
         result = bar > 2.0;
       }
       return result;
@@ -1233,7 +1231,7 @@ def test_if_scope_leak_var():
     program = """
     func main(Bool case) -> Int {
       if case {
-        Int fav_num = 123456;
+        fav_num: Int = 123456;
       }
       return fav_num;  # should fail! if should not leak its local variables.
     }
@@ -1247,11 +1245,11 @@ def test_scope_declare_variable_multiple_times():
     program = """
     func main(Bool case) {
       if case {
-        Int fav_num = 123456;
+        fav_num: Int = 123456;
       } else {
-        Double fav_num = 4.0;
+        fav_num: Double = 4.0;
       }
-      Bool fav_num = True();
+      fav_num: Bool = True();
     }
     """
     main = _test_compile_program(engine, program)
@@ -1263,7 +1261,7 @@ def test_scope_capture_var():
   with make_execution_engine() as engine:
     program = """
     func main() -> Int {
-      Int x = 100;
+      x: Int = 100;
       func inner() {
           a = x;  # <- should raise error, variable captures not implemented yet
           print_line(a);
@@ -1301,16 +1299,16 @@ def test_union():
 def test_union_is_operator():
   with make_execution_engine() as engine:
     program = """
-    struct Foo { Int lol = 1; }  # 1
-    struct Bar { Int fav = 42; }  # 2
+    struct Foo { lol: Int = 1; }  # 1
+    struct Bar { fav: Int = 42; }  # 2
     func main_foo() -> Int {
-      Bar|Foo value = Foo(0);
+      value: Foo|Bar = Foo(0);
       if value is Foo { return 1; }
       if value is Bar { return 2; }
       return 0;
     }
     func main_bar() -> Int {
-      Bar|Foo value = Bar(-123);
+      value: Bar|Foo  = Bar(-123);
       if value is Foo { return 1; }
       if value is Bar { return 2; }
       return 0;
@@ -1326,7 +1324,7 @@ def test_union_is_operator_simple():
   with make_execution_engine() as engine:
     program = """
     func main() -> Bool {
-      Int|Double test = 42;
+      test: Int|Double = 42;
       test = 1.234;
       return test is Double;  # should be True().
     }
@@ -1339,7 +1337,7 @@ def test_union_is_operator_if_cond():
   with make_execution_engine() as engine:
     program = """
     func main() -> Bool {
-      Int|Bool test = 42;
+      test: Int|Bool = 42;
       if test is Bool {
         return True();
       } else {
@@ -1363,7 +1361,7 @@ def test_union_scope_assertions():
         }
         return x / y;
       }
-      Double|MathError div = safe_div(x, y);
+      div: Double|MathError = safe_div(x, y);
       if div is Double {
         return div;
       } else {
@@ -1381,7 +1379,7 @@ def test_assign_to_union():
   with make_execution_engine() as engine:
     program = """
     func main() {
-      Double|Int sth = 42;
+      sth: Double|Int = 42;
     }
     """
     main = _test_compile_program(engine, program)
@@ -1400,7 +1398,7 @@ def test_assign_to_union2():
     func main() {
       a = safe_sqrt(-123.0);
       a = 5.0;
-      Double|MathError a = MathError();  # can also explicitly specify type again
+      a: Double|MathError = MathError();  # can also explicitly specify type again
     }
     """
     main = _test_compile_program(engine, program)
@@ -1411,8 +1409,8 @@ def test_assign_union_to_single():
   with make_execution_engine() as engine:
     program = """
     func main() -> Int {
-      Double|Int x = 3;  # at this point, the compiler asserts that x is an Int
-      Int y = x;  # so this should work
+      x: Double|Int = 3;  # at this point, the compiler asserts that x is an Int
+      y: Int = x;  # so this should work
       return y;
     }
     """
@@ -1429,7 +1427,7 @@ def test_call_union_arg():
       return False();  # never happens...
     }
     func main(Int a) -> Bool {
-      Int|Bool thing = a;
+      thing: Int|Bool = a;
       return accepts_both(thing);
     }
     """
@@ -1449,7 +1447,7 @@ def test_call_multiple_concrete_funcs_with_union_arg():
     func is_int(Int x) -> Bool { return True(); }
     func is_int(Bool x) -> Bool { return False(); }
     func main() -> Bool {
-      Bool|Int alpha = const();
+      alpha: Bool|Int = const();
       return is_int(alpha);
     }
     """
@@ -1468,7 +1466,7 @@ def test_call_multiple_concrete_void_funcs_with_union_arg():
     func cool_func(Int x) { }
     func cool_func(Bool x) { }
     func main() -> Bool {
-      Bool|Int alpha = const();
+      alpha: Bool|Int = const();
       cool_func(alpha);
       return True();
     }
@@ -1482,8 +1480,8 @@ def test_union_folding():
     program = """
     struct None { }
     func main() -> Double {
-      None|Bool|Double a = 42.0;
-      Double|(None|Bool) x = a;
+      a: None|Bool|Double = 42.0;
+      x: Double|(None|Bool) = a;
       return x;
     }
     """
@@ -1497,7 +1495,7 @@ def test_is_operator_incremental():
     struct None { }
     func make_val() -> None|Bool|Double { return 42.0; }
     func main() -> Bool {
-      None|Bool|Double a = make_val();
+      a: None|Bool|Double = make_val();
       if a is None {
         if a is Bool {
           # this is dead code
@@ -1548,7 +1546,7 @@ def test_union_if_without_else_type_narrowing():
       return index;
     }
     func main(Bool unbounded, Int index, Int length) -> Int {
-      Int|Unbounded slice = index;
+      slice: Int|Unbounded = index;
       if unbounded { slice = Unbounded(); }
       return normalized_from_index(slice, length);
     }
@@ -1583,7 +1581,7 @@ def test_while_cond_type_narrowing():
   with make_execution_engine() as engine:
     program = """
     func main(Int initial_value) -> Bool {
-      Int|Bool value = initial_value;
+      value: Int|Bool = initial_value;
       while value is Int {
         value = value - 1;
         if value < 0 { value = False(); }
@@ -1605,7 +1603,7 @@ def test_assert_type_narrowing():
       return 12;
     }
     func main() -> Int {
-      Int|Char my_thing = black_box();
+      my_thing : Int|Char = black_box();
       assert(my_thing is Int);
       return my_thing;
     }
@@ -1619,7 +1617,7 @@ def test_unchecked_assert_type_narrowing():
     program = """
     @RefType
     struct S {
-      Double val = 0.0;
+      val: Double = 0.0;
     }
     func cast_to_s(S|DoublePtr ptr) -> S {
       unchecked_assert(ptr is S);
@@ -1628,7 +1626,7 @@ def test_unchecked_assert_type_narrowing():
     func main(Double val) -> Double {
       ptr = allocate_double(2);
       store(ptr, val);
-      S s = cast_to_s(ptr);
+      s: S = cast_to_s(ptr);
       return s.val;
     }
     """
@@ -1724,7 +1722,7 @@ def test_mod():
     }
     """
     from math import fmod
-    main = _test_compile_program(engine, program, add_preamble=True, main_func_identifier='mod_')
+    main = compile_program(engine, program, add_preamble=True, main_func_identifier='mod_')
     for a, b in [(4, 2), (-4, 2), (7, 3), (7, 1), (-5, 3), (-2, -2)]:
       assert_equal(main(a, b), fmod(a, b))
 

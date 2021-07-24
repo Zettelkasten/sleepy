@@ -1,6 +1,6 @@
 struct Unbounded { }
 struct Slice {
-  from : Int|Unbounded; to : Int|Unbounded = 0;
+  from : Int|Unbounded = 0; to : Int|Unbounded = 0;
 }
 func SliceFrom(Int from) -> Slice {
   return Slice(from, Unbounded());
