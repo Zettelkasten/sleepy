@@ -59,15 +59,13 @@ func read_file(Str file_name) -> @Mutable Str {
 
   file = fopen(file_name.start, mode.start);
   if file.ptr == NullIntPtr() {
-    print("Cannot open: "); print_line(file_name);
-    assert(False());
+    assert(False(), "Cannot open: " + file_name);
   }
   fseek(file, 0l, SeekEnd());    # go to end of file
   Long file_size = ftell(file);  # get position (= file size)
   rewind(file);                  # go back to front
   if ToLong(ToInt(file_size)) != file_size {
-    print("File too big: "); print_line(file_name);
-    assert(False());
+    assert(False(), "File too big: " + file_name);
   }
 
   @Mutable file_content = EmptyStr(ToInt(file_size));
@@ -75,8 +73,7 @@ func read_file(Str file_name) -> @Mutable Str {
   file_content.length = ToInt(file_size);
 
   if fclose(file) != 0 {
-    print("Cannot close: "); print_line(file_name);
-    assert(False());
+    assert(False(), "Cannot close: " + file_name);
   }
   free(file_name);  free(mode);
   return file_content;

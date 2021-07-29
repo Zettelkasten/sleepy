@@ -197,6 +197,14 @@ func print(Str str) {
 func print_line(Str str) {
   print(str); print_line();
 }
+func assert(Bool cond, Str error) {
+  if not(cond) {
+    print_line("Assertion failed!");
+    print_line(error);
+    extern_func exit(Int exit_code);
+    exit(1);
+  }
+}
 
 ## Misc
 func set_random_seed(Int seed) {

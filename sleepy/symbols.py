@@ -358,6 +358,19 @@ class UnionType(Type):
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
 
 
+class ReferenceType(Type):
+  """
+  A reference (essentially a pointer) to some type.
+  """
+  def __init__(self, val_type):
+    """
+    :param Type val_type: the wrapped value type
+    """
+    assert not val_type.is_pass_by_ref()
+    super().__init__(ir.types.PointerType(val_type.ir_type), pass_by_ref=True, c_type=ctypes.POINTER(val_type.c_type))
+    self.val_type = val_type
+
+
 class StructType(Type):
   """
   A struct.
