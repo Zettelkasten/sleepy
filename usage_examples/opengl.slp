@@ -3,7 +3,7 @@
 # sleepy opengl.slp --compile-libs GL GLU glfw3 X11 Xxf86vm Xrandr pthread Xi dl m
 
 
-### Vector functions ###
+### Vector / Matrix functions ###
 @RefType struct Vector {
   Int size = 0;
   FloatPtr start = allocate_float(0);
@@ -39,6 +39,64 @@ func print(Vector vec) {
   print(']');
 }
 func print_line(Vector vec) { print(vec); print_line(); }
+@RefType struct Matrix {
+  Int dim_x = 0; Int dim_y = 0;
+  FloatPtr start = allocate_float(0);
+}
+func get(Matrix mat, Int x, Int y) -> Float {
+  assert(and(0 <= x, x < mat.dim_x));
+  assert(and(0 <= y, y < mat.dim_y));
+  return load(mat.start + x * mat.dim_x + y);
+}
+func set(@Mutable Matrix mat, Int x, Int y, Float val) {
+  assert(and(0 <= x, x < mat.dim_x));
+  assert(and(0 <= y, y < mat.dim_y));
+  store(mat.start + x * mat.dim_x + y, val);
+}
+func fill(@Mutable Matrix mat, Float val) {
+  x = 0;
+  while x < mat.dim_x {
+    y = 0;
+    while y < mat.dim_y {
+      mat[x, y] = val;
+      y += 1;
+    }
+    x += 1;
+  }
+}
+func ZeroMatrix(Int xs, Int ys) -> @Mutable Matrix {
+  @Mutable m = Matrix(xs, ys, allocate_float(xs * ys));
+  fill(m, 0.0f);
+  return m;
+}
+func IdentityMatrix(Int dim) -> @Mutable Matrix {
+  @Mutable mat = ZeroMatrix(dim, dim);
+  pos = 0;
+  while pos < dim {
+    mat[pos, pos] = 1.0f;
+    pos += 1;
+  }
+  return mat;
+}
+func print(Matrix mat) {
+  print('[');
+  x = 0;
+  while x < mat.dim_x {
+    y = 0;
+    print('[');
+    while y < mat.dim_y {
+      print(mat[x, y]);
+      y += 1;
+      if y < mat.dim_y { print(' '); }
+    }
+    print(']');
+    x += 1;
+    if x < mat.dim_x { print(' '); }
+  }
+  print(']');
+}
+func print_line(Matrix mat) { print(mat); print_line(); }
+
 
 ### Reading Files ###
 func read_file(Str file_name) -> @Mutable Str {
@@ -302,6 +360,48 @@ func use(ShaderProgram program) {
   extern_func glUseProgram(ShaderProgram program);
   glUseProgram(program);
 }
+struct UniformLocation { Int id = 0; }
+func get_uniform_location(ShaderProgram program, Str uniform_name) -> UniformLocation {
+  extern_func glGetUniformLocation(ShaderProgram program, CharPtr name) -> UniformLocation;
+  uniform_name += '\0';
+  uniform = glGetUniformLocation(program, uniform_name.start);
+  assert(uniform.id != -1, "Cannot get uniform " + uniform_name);  # error code.
+  free(uniform_name);
+  return uniform;
+}
+func set_uniform(UniformLocation location, Vector data) {
+  # Sleepy does not support else if yet.
+  if data.size == 1 {
+    extern_func glUniform1f(UniformLocation location, Float v0);
+    glUniform1f(location, data[0]);
+    return;
+  } if data.size == 2 {
+    extern_func glUniform2f(UniformLocation location, Float v0, Float v1);
+    glUniform2f(location, data[0], data[1]);
+    return;
+  } if data.size == 3 {
+    extern_func glUniform3f(UniformLocation location, Float v0, Float v1, Float v2);
+    glUniform3f(location, data[0], data[1], data[2]);
+    return;
+   }
+   assert(False(), "Not supported yet");
+}
+func set_uniform(UniformLocation location, Matrix data) {
+  if and(data.dim_x == 2, data.dim_y == 2) {
+    extern_func glUniformMatrix2fv(UniformLocation location, Int count, Bool transpose, FloatPtr value);
+    glUniformMatrix2fv(location, 1, False(), data.start);
+    return;
+  } if and(data.dim_x == 3, data.dim_y == 3) {
+    extern_func glUniformMatrix3fv(UniformLocation location, Int count, Bool transpose, FloatPtr value);
+    glUniformMatrix3fv(location, 1, False(), data.start);
+    return;
+  } if and(data.dim_x == 4, data.dim_y == 4) {
+    extern_func glUniformMatrix4fv(UniformLocation location, Int count, Bool transpose, FloatPtr value);
+    glUniformMatrix4fv(location, 1, False(), data.start);
+    return;
+  }
+  assert(False(), "Not supported yet");
+}
 
 func terminate(Str error) {
   print("Error happened: ");
@@ -374,6 +474,8 @@ func main() {
   vertex_shader_path = "shaders/vertex.glsl";
   fragment_shader_path = "shaders/fragment.glsl";
   program = make_program(vertex_shader_path, fragment_shader_path);
+  projection_uniform = get_uniform_location(program, "projection");
+  @Mutable projection = IdentityMatrix(4);
 
   while not(or(should_close(window), glfwGetKey(window, EscapeKey()) == KeyPress())) {
     clear(or(ColorBufferBit(), DepthBufferBit()));
@@ -382,6 +484,7 @@ func main() {
     glEnableVertexAttribArray(0);
     bind(ArrayBufferTarget(), vertex_buffer);
     glVertexAttribPointer(0, 3, FloatAttribType(), False(), 0, NullIntPtr());
+    set_uniform(projection_uniform, projection);
     glDrawArrays(TrianglesDrawMode(), 0, 3);
     glDisableVertexAttribArray(0);
 
