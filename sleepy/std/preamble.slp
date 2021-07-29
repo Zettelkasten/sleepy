@@ -71,6 +71,7 @@ func ToInt(Bool b) -> Int { if b { return 1; } else { return 0; } }
 func ToInt(Long l) -> Int { extern_func long_to_int(Long l) -> Int; return long_to_int(l); }
 func ToLong(Int i) -> Long { extern_func int_to_long(Int i) -> Long; return int_to_long(i); }
 func ToLong(CharPtr ptr) -> Long { extern_func char_ptr_to_long(CharPtr ptr) -> Long; return char_ptr_to_long(ptr); }
+func ToLong(FloatPtr ptr) -> Long { extern_func float_ptr_to_long(FloatPtr ptr) -> Long; return float_ptr_to_long(ptr); }
 func ToDouble(Int i) -> Double { extern_func int_to_double(Int i) -> Double; return int_to_double(i); }
 func ToBool(Int i) -> Bool { if i == 0 { return False(); } else { if i != 1 { assert(False()); } return True(); }}
 

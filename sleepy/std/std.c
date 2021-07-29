@@ -142,6 +142,9 @@ long int_to_long(int i) {
 long char_ptr_to_long(char* ptr) {
     return (long) ptr;
 }
+long float_ptr_to_long(float* ptr) {
+    return (long) ptr;
+}
 
 double random_double() {
     return (double) rand() / RAND_MAX;
