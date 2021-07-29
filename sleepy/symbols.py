@@ -73,6 +73,12 @@ class Type:
     else:  # pass by value, use alloca
       return context.alloca_at_entry(self.ir_type, name='self')
 
+  def is_realizable(self):
+    """
+    :rtype: bool
+    """
+    return True
+
 
 class VoidType(Type):
   """
@@ -203,6 +209,8 @@ class UnionType(Type):
     super().__init__(ir_type, pass_by_ref=False, c_type=c_type)
 
   def __repr__(self):
+    if len(self.possible_types) == 0:
+      return 'NeverType'
     return 'UnionType(%s)' % ', '.join(
       '%s:%s' % (possible_type_num, possible_type)
       for possible_type_num, possible_type in zip(self.possible_type_nums, self.possible_types))
@@ -216,6 +224,12 @@ class UnionType(Type):
     self_types_dict = dict(zip(self.possible_types, self.possible_type_nums))
     other_types_dict = dict(zip(other.possible_types, other.possible_type_nums))
     return self_types_dict == other_types_dict and self.val_size == other.val_size
+
+  def is_realizable(self):
+    """
+    :rtype: bool
+    """
+    return len(self.possible_types) > 0
 
   def contains(self, contained_type):
     """
@@ -256,7 +270,6 @@ class UnionType(Type):
     assert context.emits_ir
     untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1))
     return context.builder.gep(union_ir_alloca, untagged_union_gep_indices, name=name)
-
 
   def make_untagged_union_ptr(self, union_ir_alloca, variant_type, context, name):
     """

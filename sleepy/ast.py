@@ -69,6 +69,9 @@ class AbstractSyntaxTree:
       self.raise_error('Cannot call function %r with arguments of types %r, only declared for parameter types: %r' % (
         func_identifier, ', '.join([str(called_type) for called_type in called_types]),
         ', '.join([concrete_func.to_signature_str() for concrete_func in symbol.concrete_funcs.values()])))
+    if not all(called_type.is_realizable() for called_type in called_types):
+      self.raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
+        func_identifier, ', '.join([str(called_type) for called_type in called_types])))
 
     possible_concrete_funcs = symbol.get_concrete_funcs(called_types)
     assert len(possible_concrete_funcs) >= 1
