@@ -16,7 +16,7 @@ void print_int(int i) {
     printf("%d", i);
 }
 void print_long(long l) {
-    printf("%d", l);
+    printf("%ld", l);
 }
 
 void flush() {
