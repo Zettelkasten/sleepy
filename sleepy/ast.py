@@ -9,8 +9,8 @@ from sleepy.ast_value_parsing import parse_assign_op, parse_double, parse_hex_in
   parse_float, parse_string
 from sleepy.errors import SemanticError
 from sleepy.grammar import Grammar, Production, TreePosition, AttributeGrammar
-from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator
+from sleepy.sleepy_lexer import SLEEPY_LEXER
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, SLEEPY_FLOAT, Type, SLEEPY_INT, \
   SLEEPY_VOID, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
@@ -1600,22 +1600,6 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
       symbol_table[var_expr.var_identifier] = var_symbol.copy_with_excluded_type(check_type)
 
 
-SLEEPY_LEXER = LexerGenerator(
-  [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '|',
-    '->', '@', 'cmp_op', 'sum_op', 'prod_op', '=', ':', 'assign_op', '[', ']',
-    'identifier',
-    'int', 'long', 'double', 'float',
-    'char', 'str', 'hex_int',
-    None, None
-  ], [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\|',
-    '\\->', '@', '==|!=|<=?|>=?|is', '\\+|\\-', '\\*|/', '=', ':', '===|!==|<==|>==|\\+=|\\-=|\\*=|/=', '\\[', '\\]',
-    '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
-    '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)l', '(0|[1-9][0-9]*)\\.([0-9]?)+d?', '(0|[1-9][0-9]*)((\\.([0-9]?))?)+f',
-    "'([^\']|\\\\[0nrt'\"])'", '"([^\"]|\\\\[0nrt\'"])*"', '0x([0-9]|[A-F]|[a-f])+',
-    '#[^\n]*\n', '[ \n\t]+'
-  ])
 SLEEPY_GRAMMAR = Grammar(
   Production('TopLevelStmt', 'StmtList'),
   Production('Scope', '{', 'StmtList', '}'),
