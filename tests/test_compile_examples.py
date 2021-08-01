@@ -16,8 +16,8 @@ def _test_compile_example(code_file_name):
 
 
 def test_compile_examples():
-  from tests.test_examples import find_all_example_files
-  code_file_root, code_file_names = find_all_example_files()
+  from tests.run_examples_dir import find_all_example_files
+  code_file_root, code_file_names = find_all_example_files('examples')
   for code_file_name in code_file_names:
     yield _test_compile_example, os.path.join(code_file_root, code_file_name)
 
