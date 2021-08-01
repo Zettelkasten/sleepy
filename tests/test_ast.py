@@ -1,49 +1,26 @@
-from typing import Dict, List
-
-import _setup_test_env  # noqa
-import better_exchook
 import sys
 import unittest
 
-from llvmlite import ir
+import better_exchook
 from nose.tools import assert_equal, assert_almost_equal, assert_raises
 
-from sleepy.ast import TopLevelAst, FunctionDeclarationAst, SLEEPY_ATTR_GRAMMAR, \
-  SLEEPY_PARSER, add_preamble_to_ast
-from sleepy.sleepy_lexer import SLEEPY_LEXER
+import _setup_test_env  # noqa
 from sleepy.errors import SemanticError
-from sleepy.jit import make_execution_engine, compile_ir
-from sleepy.symbols import FunctionSymbol, SymbolTable
-
-
-def _test_parse_ast(program, add_preamble=True):
-  """
-  :param str program:
-  :param bool add_preamble:
-  :rtype: TopLevelAst
-  """
-  print('---- input program:')
-  print(program)
-  tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
-  analysis, eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
-  ast = eval['ast']
-  assert isinstance(ast, TopLevelAst)
-  if add_preamble:
-    ast = add_preamble_to_ast(ast)
-    assert isinstance(ast, TopLevelAst)
-  return ast
+from sleepy.jit import make_execution_engine
+from tests.compile import compile_program
+from tests.parse import parse_ast
 
 
 def test_ast_parser():
   program1 = 'hello_world(123);'
-  _test_parse_ast(program1)
+  parse_ast(program1)
   program2 = """# This function will just return 4.
 func do_stuff(Double val) -> Int {
   return 4;
 }
 do_stuff(7.5);
 """
-  _test_parse_ast(program2)
+  parse_ast(program2)
   program3 = """
   # Compute 0 + 1 + ... + n
   func sum_all(Int n) -> Int {
@@ -53,32 +30,7 @@ do_stuff(7.5);
   
   sum_all(12);
   """
-  _test_parse_ast(program3)
-
-
-def _test_compile_program(engine, program, main_func_identifier='main', optimize=True, add_preamble=True):
-  """
-  :param ExecutionEngine engine:
-  :param str program:
-  :param str main_func_identifier:
-  :param bool optimize:
-  :param bool add_preamble:
-  :rtype: Callable[[], float]
-  """
-  ast = _test_parse_ast(program, add_preamble=add_preamble)
-  module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast')
-  print('---- module intermediate repr:')
-  print(module_ir)
-  optimized_module_ir = compile_ir(engine, module_ir, optimize=optimize)
-  if optimize:
-    print('---- optimized module intermediate repr:')
-    print(optimized_module_ir)
-  assert main_func_identifier in symbol_table
-  main_func_symbol = symbol_table[main_func_identifier]
-  assert isinstance(main_func_symbol, FunctionSymbol)
-  py_func = main_func_symbol.get_single_concrete_func().make_py_func(engine)
-  assert callable(py_func)
-  return py_func
+  parse_ast(program3)
 
 
 def test_simple_arithmetic():
@@ -88,7 +40,7 @@ def test_simple_arithmetic():
       return 4.0 + 3.0;
     }
     """
-    func = _test_compile_program(engine, program)
+    func = compile_program(engine, program)
     assert_equal(func(), 4.0 + 3.0)
   with make_execution_engine() as engine:
     program = """
@@ -96,7 +48,7 @@ def test_simple_arithmetic():
       return 2 * 4 - 3;
     }
     """
-    func = _test_compile_program(engine, program, main_func_identifier='test')
+    func = compile_program(engine, program, main_func_identifier='test')
     assert_equal(func(), 2 * 4 - 3)
   with make_execution_engine() as engine:
     program = """
@@ -104,7 +56,7 @@ def test_simple_arithmetic():
       return a - b;
     }
     """
-    func = _test_compile_program(engine, program, main_func_identifier='sub')
+    func = compile_program(engine, program, main_func_identifier='sub')
     assert_equal(func(0.0, 1.0), 0.0 - 1.0)
     assert_equal(func(3.0, 5.0), 3.0 - 5.0)
     assert_equal(func(2.5, 2.5), 2.5 - 2.5)
@@ -116,7 +68,7 @@ def test_empty_func():
     func nothing() {
     }
     """
-    nothing = _test_compile_program(engine, program, main_func_identifier='nothing')
+    nothing = compile_program(engine, program, main_func_identifier='nothing')
     assert_equal(nothing(), None)
 
 
@@ -128,7 +80,7 @@ def test_lerp():
       return x1 + diff * time;
     }
     """
-    lerp = _test_compile_program(engine, program, main_func_identifier='lerp', add_preamble=False)
+    lerp = compile_program(engine, program, main_func_identifier='lerp', add_preamble=False)
     assert_equal(lerp(0.0, 1.0, 0.3), 0.3)
     assert_equal(lerp(7.5, 3.2, 0.0), 7.5)
     assert_equal(lerp(7.5, 3.2, 1.0), 3.2)
@@ -144,7 +96,7 @@ def test_call_other_func():
       return square(x1 - y1) + square(x2 - y2);
     }
     """
-    dist_squared = _test_compile_program(engine, program, main_func_identifier='dist_squared', add_preamble=False)
+    dist_squared = compile_program(engine, program, main_func_identifier='dist_squared', add_preamble=False)
     assert_almost_equal(dist_squared(0.0, 0.0, 1.0, 0.0), 1.0)
     assert_almost_equal(dist_squared(3.0, 0.0, 0.0, 4.0), 25.0)
     assert_almost_equal(dist_squared(1.0, 2.0, 3.0, 4.0), (1.0 - 3.0)**2 + (2.0 - 4.0)**2)
@@ -160,7 +112,7 @@ def test_global_var():
       return 4/3 * PI * cube(radius);
     }
     """
-    ball_volume = _test_compile_program(engine, program, main_func_identifier='ball_volume', add_preamble=False)
+    ball_volume = compile_program(engine, program, main_func_identifier='ball_volume', add_preamble=False)
     for radius in [0.0, 2.0, 3.0, 124.343]:
       assert_almost_equal(ball_volume(radius), 4.0 / 3.0 * 3.1415 * radius ** 3.0)
 
@@ -174,7 +126,7 @@ def test_simple_mutable_assign():
       return x;
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(3), 3 + 2)
 
 
@@ -193,7 +145,7 @@ def test_nested_func_call():
       return volume1 / volume2;
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     with warnings.catch_warnings():
       warnings.filterwarnings('ignore')
       for radius1 in [0.0, 2.0, 3.0, 124.343]:
@@ -213,7 +165,7 @@ def test_simple_if():
       }
     }
     """
-    branch = _test_compile_program(engine, program, main_func_identifier='branch', add_preamble=False)
+    branch = compile_program(engine, program, main_func_identifier='branch', add_preamble=False)
     assert_equal(branch(0, 42, -13), -13)
     assert_equal(branch(1, 42, -13), 42)
 
@@ -229,7 +181,7 @@ def test_simple_if_max():
       }
     }
     """
-    max_ = _test_compile_program(engine, program, main_func_identifier='max', add_preamble=False)
+    max_ = compile_program(engine, program, main_func_identifier='max', add_preamble=False)
     assert_equal(max_(13, 18), 18)
     assert_equal(max_(-3, 4.23), 4.23)
     assert_equal(max_(0, 0), 0)
@@ -239,7 +191,7 @@ def test_simple_if_max():
 def test_simple_if_abs():
   with make_execution_engine() as engine:
     program = """ func abs(Double x) -> Double { if x < 0.0 { return -x; } else { return x; } } """
-    abs_ = _test_compile_program(engine, program, main_func_identifier='abs', add_preamble=False)
+    abs_ = compile_program(engine, program, main_func_identifier='abs', add_preamble=False)
     assert_equal(abs_(3.1415), 3.1415)
     assert_equal(abs_(0.0), 0.0)
     assert_equal(abs_(-5.1), 5.1)
@@ -261,7 +213,7 @@ def test_if_assign():
       return res;
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(0, 4, 6), 10)
     assert_equal(main(1, 5, -3), 8)
     assert_equal(main(2, 0, 1), 1)
@@ -279,7 +231,7 @@ def test_simple_simple_recursion_factorial():
       }
     }
     """
-    fac = _test_compile_program(engine, program, main_func_identifier='fac', add_preamble=False)
+    fac = compile_program(engine, program, main_func_identifier='fac', add_preamble=False)
     assert_equal(fac(3), 3 * 2 * 1)
     assert_equal(fac(9), math.prod(range(1, 9 + 1)))
     assert_equal(fac(0), 0)
@@ -304,7 +256,7 @@ def test_simple_simple_recursion_fibonacci():
       }
     }
     """
-    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', add_preamble=True)
+    fib = compile_program(engine, program, main_func_identifier='fibonacci', add_preamble=True)
     for n in range(1, 15):
       assert_equal(fib(n), _reference_fibonacci(n))
 
@@ -325,7 +277,7 @@ def test_simple_simple_iterative_fibonacci():
       return current_fib;
     }
     """
-    fib = _test_compile_program(engine, program, main_func_identifier='fibonacci', add_preamble=False)
+    fib = compile_program(engine, program, main_func_identifier='fibonacci', add_preamble=False)
     for n in list(range(1, 15)) + [20]:
       assert_equal(fib(n), _reference_fibonacci(n))
 
@@ -340,7 +292,7 @@ def test_extern_func():
     }
     """
 
-    cos_ = _test_compile_program(engine, program, add_preamble=False)
+    cos_ = compile_program(engine, program, add_preamble=False)
     for x in [0, 1, 2, 3, math.pi]:
       assert_almost_equal(cos_(x), math.cos(x))
 
@@ -356,7 +308,7 @@ def test_extern_func_inside_inline_func():
       return foo_sqrt(x);
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     from math import sqrt
     assert_almost_equal(main(12.0), sqrt(12.0))
 
@@ -372,7 +324,7 @@ def test_extern_func_simple_alloc():
     }
     """
 
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 42)
 
 
@@ -384,7 +336,7 @@ def test_types_simple():
       my_double: Double = 4.0;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     main()
 
 
@@ -396,7 +348,7 @@ def test_wrong_return_type_should_be_void():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_wrong_return_type_should_not_be_void():
@@ -407,7 +359,7 @@ def test_wrong_return_type_should_not_be_void():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_wrong_return_type_not_matching():
@@ -418,7 +370,7 @@ def test_wrong_return_type_not_matching():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_redefine_variable_with_different_type():
@@ -430,7 +382,7 @@ def test_redefine_variable_with_different_type():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_define_variable_with_wrong_type():
@@ -441,7 +393,7 @@ def test_define_variable_with_wrong_type():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_redefine_variable_with_function():
@@ -454,7 +406,7 @@ def test_redefine_variable_with_function():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_shadow_func_name_with_var():
@@ -465,7 +417,7 @@ def test_shadow_func_name_with_var():
       return main;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 4)
 
 
@@ -485,7 +437,7 @@ def test_shadow_var_name_with_var_of_different_type():
       }
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 5)
 
 
@@ -499,7 +451,7 @@ def test_operator_assign():
       return x;  # 2 * -(x + 2)
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(5), 2 * -(5 + 2))
 
 
@@ -514,7 +466,7 @@ def test_struct_default_constructor():
       return Vec2(0, 0);
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(type(main()).__name__, 'Vec2_CType')
 
 
@@ -528,7 +480,7 @@ def test_struct_member_access():
       return middle;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 2.0)
 
 
@@ -555,7 +507,7 @@ def test_struct_with_struct_member():
       return mat_sum(mat);
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 1.0 + 2.0 + 3.0 + 4.0)
 
 
@@ -569,7 +521,7 @@ def test_if_missing_return_branch():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_pass_by_reference():
@@ -589,7 +541,7 @@ def test_pass_by_reference():
       return my_foo.value;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 5)
 
 
@@ -603,7 +555,7 @@ def test_pass_by_value():
     func main() { }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_mutable_val_type_local_var():
@@ -616,7 +568,7 @@ def test_mutable_val_type_local_var():
       return x.mem;
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 17)
 
 
@@ -630,7 +582,7 @@ def test_mutable_val_type_arg():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program, add_preamble=False)
+      compile_program(engine, program, add_preamble=False)
 
 
 def test_mutable_val_type_return():
@@ -645,7 +597,7 @@ def test_mutable_val_type_return():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program, add_preamble=False)
+      compile_program(engine, program, add_preamble=False)
 
 
 def test_struct_free():
@@ -665,7 +617,7 @@ def test_struct_free():
       }
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     main(0, 1, 2)
 
 
@@ -688,7 +640,7 @@ def test_struct_free_nested():
       free(mat);
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     main()
 
 
@@ -699,7 +651,7 @@ def test_annotation_fail_contradiction():
     func main() { }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_annotation_fail_duplicated():
@@ -709,7 +661,7 @@ def test_annotation_fail_duplicated():
     func main() { }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_overload_func():
@@ -726,7 +678,7 @@ def test_overload_func():
       return to_int(a) + to_int(b) * 2;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(True, 2), 1 + 2 * 2)
     assert_equal(main(False, -5), 0 - 5 * 2)
 
@@ -751,7 +703,7 @@ def test_const_add_vs_assign_add():
       return v4.x + v4.y;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 10.0 + 20.0)
 
 
@@ -767,7 +719,7 @@ def test_call_mutable_with_const_var():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_assign_mutable_to_const():
@@ -781,7 +733,7 @@ def test_assign_mutable_to_const():
       return con.value;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 123)
 
 
@@ -796,7 +748,7 @@ def test_assign_const_to_mutable():
       return con.value;
     }
     """
-    _test_compile_program(engine, program)
+    compile_program(engine, program)
 
 
 def test_counter_is_empty():
@@ -824,7 +776,7 @@ def test_counter_is_empty():
       return c.value;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 2)
 
 
@@ -837,7 +789,7 @@ def test_return_mutable_var_as_mutable():
     }
     func main() { }
     """
-    _test_compile_program(engine, program)  # just check that it compiles.
+    compile_program(engine, program)  # just check that it compiles.
 
 
 def test_return_const_var_as_mutable():
@@ -850,7 +802,7 @@ def test_return_const_var_as_mutable():
     func main() { }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_return_mutable_var_as_const():
@@ -862,7 +814,7 @@ def test_return_mutable_var_as_const():
     }
     func main() { }
     """
-    _test_compile_program(engine, program)  # just check that compiles
+    compile_program(engine, program)  # just check that compiles
 
 
 def test_if_inside_while():
@@ -876,7 +828,7 @@ def test_if_inside_while():
       return x;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 5)
 
 
@@ -891,7 +843,7 @@ def test_if_inside_while2():
       return x;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(0), 7)
 
 
@@ -904,7 +856,7 @@ def test_wrong_assign_void():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_wrong_return_void():
@@ -916,7 +868,7 @@ def test_wrong_return_void():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_mutable_struct_member_const():
@@ -932,7 +884,7 @@ def test_mutable_struct_member_const():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_mutable_struct_member_mutable():
@@ -949,7 +901,7 @@ def test_mutable_struct_member_mutable():
       return sb.b.value;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 123)
 
 
@@ -967,7 +919,7 @@ def test_immutable_struct_member_assign_mutable_member():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_func_operator():
@@ -984,7 +936,7 @@ def test_func_operator():
       return a + b * c;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(False, False, True), False)
     assert_equal(main(True, False, True), True)
     assert_equal(main(False, True, True), True)
@@ -1005,7 +957,7 @@ def test_overload_func_twice():
     func main() { }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_overload_with_different_structs():
@@ -1024,7 +976,7 @@ def test_overload_with_different_structs():
       res2 = Vec3(0.0, 0.0, 0.4) + Vec3(1.0, 3.0, -3.4);
     }
     """
-    _test_compile_program(engine, program)
+    compile_program(engine, program)
 
 
 def test_index_operator():
@@ -1042,7 +994,7 @@ def test_index_operator():
       return loaded;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(12.0), 12.0)
 
 
@@ -1061,7 +1013,7 @@ def test_index_operator_syntax():
       return +loaded;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(12.0), 12.0)
 
 
@@ -1076,7 +1028,7 @@ def test_func_inline():
       return what + 5;
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 42 + 5)
 
 
@@ -1095,7 +1047,7 @@ def test_func_inline_with_branching():
       return ternary(cond, if_true, if_false);
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(True, 51, -43), 51)
     assert_equal(main(False, 51, -43), -43)
 
@@ -1111,7 +1063,7 @@ def test_func_inline_nested():
       return sum(ternary(cond, if_true, if_false), 42);
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(True, 51, -43), 51 + 42)
     assert_equal(main(False, 51, -43), -43 + 42)
 
@@ -1126,7 +1078,7 @@ def test_func_inline_sequence():
       return d;
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(4, 6), 4 + 6 + 6)
     assert_equal(main(2, 4), 2 + 4 + 4)
 
@@ -1141,7 +1093,7 @@ def test_func_inline_void():
       nothing();
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     main()
 
 
@@ -1154,7 +1106,7 @@ def test_func_inline_mutable_arg():
     }
     func main() -> Int { return my_func(Nothing()); }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 32)
 
 
@@ -1172,7 +1124,7 @@ def test_func_inline_own_symbol_table():
       return c;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(4), 4 + (4 + 5))
 
 
@@ -1187,7 +1139,7 @@ def test_func_inline_recursive():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_func_inline_recursive_indirect():
@@ -1204,7 +1156,7 @@ def test_func_inline_recursive_indirect():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_if_scope():
@@ -1222,7 +1174,7 @@ def test_if_scope():
       return result;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(True), True)
     assert_equal(main(False), False)
 
@@ -1238,7 +1190,7 @@ def test_if_scope_leak_var():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_scope_declare_variable_multiple_times():
@@ -1253,7 +1205,7 @@ def test_scope_declare_variable_multiple_times():
       fav_num: Bool = True();
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     main(True)
     main(False)
 
@@ -1274,7 +1226,7 @@ def test_scope_capture_var():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_union():
@@ -1293,7 +1245,7 @@ def test_union():
       b = safe_sqrt(1.0);
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     main()
 
 
@@ -1315,8 +1267,8 @@ def test_union_is_operator():
       return 0;
     }
     """
-    main_foo = _test_compile_program(engine, program, main_func_identifier='main_foo')
-    main_bar = _test_compile_program(engine, program, main_func_identifier='main_bar')
+    main_foo = compile_program(engine, program, main_func_identifier='main_foo')
+    main_bar = compile_program(engine, program, main_func_identifier='main_bar')
     assert_equal(main_foo(), 1)
     assert_equal(main_bar(), 2)
 
@@ -1330,7 +1282,7 @@ def test_union_is_operator_simple():
       return test is Double;  # should be True().
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False, optimize=False)
+    main = compile_program(engine, program, add_preamble=False, optimize=False)
     assert_equal(main(), True)
 
 
@@ -1346,7 +1298,7 @@ def test_union_is_operator_if_cond():
       }
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), False)
 
 
@@ -1370,7 +1322,7 @@ def test_union_scope_assertions():
       }
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(5, 0), 0)
     assert_equal(main(5, 1), 5 / 1)
     assert_equal(main(-3, -6), -3 / -6)
@@ -1383,7 +1335,7 @@ def test_assign_to_union():
       sth: Double|Int = 42;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     main()
 
 
@@ -1402,7 +1354,7 @@ def test_assign_to_union2():
       a: Double|MathError = MathError();  # can also explicitly specify type again
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     main()
 
 
@@ -1415,7 +1367,7 @@ def test_assign_union_to_single():
       return y;
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 3)
 
 
@@ -1432,7 +1384,7 @@ def test_call_union_arg():
       return accepts_both(thing);
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(4), True)
     assert_equal(main(-7), False)
 
@@ -1452,7 +1404,7 @@ def test_call_multiple_concrete_funcs_with_union_arg():
       return is_int(alpha);
     }
     """
-    main = _test_compile_program(engine, program, optimize=False)
+    main = compile_program(engine, program, optimize=False)
     assert_equal(main(), False)
 
 
@@ -1472,7 +1424,7 @@ def test_call_multiple_concrete_void_funcs_with_union_arg():
       return True();
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), True)
 
 
@@ -1486,7 +1438,7 @@ def test_union_folding():
       return x;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 42.0)
 
 
@@ -1506,7 +1458,7 @@ def test_is_operator_incremental():
       return True();
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), True)
 
 
@@ -1532,7 +1484,7 @@ def test_union_if_else_type_narrowing():
       }
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     from math import sin
     assert_almost_equal(main(), sin(42.0))
 
@@ -1552,7 +1504,7 @@ def test_union_if_without_else_type_narrowing():
       return normalized_from_index(slice, length);
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(False, 0, 10), 0)
     assert_equal(main(False, 4, 10), 4)
     assert_equal(main(False, -1, 10), 9)
@@ -1573,7 +1525,7 @@ def test_union_if_terminated_branch_type_narrowing():
       return val;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     from math import sin
     assert_almost_equal(main(), sin(42.0))
 
@@ -1591,7 +1543,7 @@ def test_while_cond_type_narrowing():
       return value;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(17), False)
     assert_equal(main(-2), False)
     assert_equal(main(117), True)
@@ -1609,7 +1561,7 @@ def test_assert_type_narrowing():
       return my_thing;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 12)
 
 
@@ -1631,7 +1583,7 @@ def test_unchecked_assert_type_narrowing():
       return s.val;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(42.0), 42.0)
     assert_equal(main(0.123), 0.123)
 
@@ -1649,7 +1601,7 @@ def test_string_literal():
       return out.length;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(10), 10 * 4)
 
 
@@ -1660,7 +1612,7 @@ def test_hex_int_literal():
       return 0x02A;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 2 * 16 + 10)
 
 
@@ -1671,7 +1623,7 @@ def test_float_literal():
       return 0.5f;
     }
     """
-    main = _test_compile_program(engine, program)
+    main = compile_program(engine, program)
     assert_equal(main(), 0.5)
 
 
@@ -1684,7 +1636,7 @@ def test_unreachable_code():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_unreachable_code2():
@@ -1701,7 +1653,7 @@ def test_unreachable_code2():
     }
     """
     with assert_raises(SemanticError):
-      _test_compile_program(engine, program)
+      compile_program(engine, program)
 
 
 def test_bitwise_or():
@@ -1711,7 +1663,7 @@ def test_bitwise_or():
       return bitwise_or(a, b);
     }
     """
-    main = _test_compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(15645, 4301), 15645 | 4301)
 
 
