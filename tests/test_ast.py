@@ -1718,6 +1718,19 @@ def test_bitwise_or():
     assert_equal(main(15645, 4301), 15645 | 4301)
 
 
+def test_mod():
+  with make_execution_engine() as engine:
+    program = """
+    func mod_(Int a, Int b) -> Int {
+      return mod(a, b);
+    }
+    """
+    from math import fmod
+    main = _test_compile_program(engine, program, add_preamble=True, main_func_identifier='mod_')
+    for a, b in [(4, 2), (-4, 2), (7, 3), (7, 1), (-5, 3), (-2, -2)]:
+      assert_equal(main(a, b), fmod(a, b))
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
