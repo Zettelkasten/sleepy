@@ -134,6 +134,8 @@ func set(@Mutable Str str, Int pos, Char char) {
 }
 func =(CharPtr ptr, Char v) { store(ptr, v); }
 func +(CharPtr ptr) -> Char { return load(ptr); }
+func =(DoublePtr ptr, Double d) { store(ptr, d); }
+func +(DoublePtr ptr) -> Double { return load(ptr); }
 
 func insert(@Mutable Str str, Char char, Int pos) {
   assert(and(0 <= pos, pos < str.length + 1));

@@ -985,8 +985,6 @@ def test_index_operator():
     func get(DoublePtr ptr, Int pos) -> DoublePtr {
       return ptr + pos;
     }
-    func =(DoublePtr ptr, Double val) { store(ptr, val); }
-    func +(DoublePtr ptr) -> Double { return load(ptr); }
     func main(Double val) -> Double {
       ptr = allocate_double(8);
       ptr[0] = val;
@@ -1004,8 +1002,6 @@ def test_index_operator_syntax():
     func get(DoublePtr ptr, Int pos) -> DoublePtr {
       return ptr + pos;
     }
-    func =(DoublePtr ptr, Double val) { store(ptr, val); }
-    func +(DoublePtr ptr) -> Double { return load(ptr); }
     func main(Double val) -> Double {
       ptr = allocate_double(8);
       ptr[0] = val;

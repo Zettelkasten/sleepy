@@ -34,9 +34,9 @@ func normalized_to_index(Int|Unbounded index, Int length) -> Int {
   dim : Int = 0;
   start : DoublePtr = allocate_double(0);
 }
-func (Vec vec)[Int pos] -> Double {
+func (Vec vec)[Int pos] -> DoublePtr {
   pos = normalized_index(pos, vec.dim);
-  return load(vec.start + pos);
+  return vec.start + pos;
 }
 func (@Mutable Vec vec)[Int pos] = Double val {
   pos = normalized_index(pos, vec.dim);
@@ -50,8 +50,8 @@ func (@Mutable Vec vec)[Slice slice] = Double val {
   }
 }
 func ZeroVec(Int dim) -> @Mutable Vec {
-  @Mutable v = Vec(dim, allocate_double(dim * 8));
-  v[SliceAll()] = 0.0;
+  @Mutable v = Vec(dim, allocate_double(dim));
+  set(v, SliceAll(), 0.0);
   return v;
 }
 func RandomVec(Int dim) -> @Mutable Vec {
@@ -67,7 +67,7 @@ func *(Double scale, Vec vec) -> @Mutable Vec {
   @Mutable res = ZeroVec(vec.dim);
   pos = 0;
   while pos < vec.dim {
-    res[pos] = scale * vec[pos];
+    res[pos] = scale * +vec[pos];
     pos += 1;
   }
   return res;
@@ -77,7 +77,7 @@ func +(Vec a, Vec b) -> @Mutable Vec {
   @Mutable res = ZeroVec(a.dim);
   pos = 0;
   while pos < res.dim {
-    res[pos] = a[pos] + b[pos];
+    res[pos] = +a[pos] + +b[pos];
     pos += 1;
   }
   return res;
@@ -87,7 +87,7 @@ func *(Vec a, Vec b) -> Double {  # dot product
   res = 0.0;
   pos = 0;
   while pos < a.dim {
-    res += a[pos] * b[pos];
+    res += +a[pos] * +b[pos];
     pos += 1;
   }
   return res;
@@ -96,7 +96,7 @@ func print(Vec vec) {
   print('[');
   pos = 0;
   while pos < vec.dim {
-    print(vec[pos]);
+    print(+vec[pos]);
     if pos != vec.dim - 1 {
       print(", ");
     }
@@ -111,20 +111,20 @@ func free_vec(Vec vec) {
 
 # Matrix implementation
 @RefType struct Mat {
-  Int num_rows = 0;
-  Int num_cols = 0;
-  DoublePtr start = allocate_double(0);
+  num_rows : Int = 0;
+  num_cols : Int = 0;
+  start : DoublePtr = allocate_double(0);
 }
-func (Mat mat)[Int row, Int col] -> Double {
+func (Mat mat)[Int row, Int col] -> DoublePtr {
   row = normalized_index(row, mat.num_rows);
   col = normalized_index(col, mat.num_cols);
-  return load(mat.start + row * mat.num_cols + col);
+  return mat.start + row * mat.num_cols + col;
 }
 func (Mat mat)[Int row] -> @Mutable Vec {
   @Mutable row_vec = ZeroVec(mat.num_cols);
   col = 0;
   while col < mat.num_cols {
-    row_vec[col] = mat[row, col];
+    row_vec[col] = +mat[row, col];
     col += 1;
   }
   return row_vec;
@@ -152,7 +152,7 @@ func (@Mutable Mat mat)[Slice row_slice, Slice col_slice] = Double val {
 }
 func ZeroMat(Int num_rows, Int num_cols) -> @Mutable Mat {
   @Mutable mat = Mat(num_rows, num_cols, allocate_double(num_rows * num_cols * 8));
-  mat[SliceAll(), SliceAll()] = 0.0;
+  set(mat, SliceAll(), SliceAll(), 0.0);
   return mat;
 }
 func RandomMat(Int num_rows, Int num_cols) -> @Mutable Mat {
@@ -182,7 +182,7 @@ func main() {
       feature_sum = 0.0;
       feature = 0;
       while feature < x.num_cols {
-        feature_sum += x[sample, feature];
+        feature_sum += +x[sample, feature];
         feature += 1;
       }
       y[sample] = sign(feature_sum);
@@ -208,7 +208,7 @@ func main() {
   while it < max_it {
     sample = random_int(0, num_samples);
     x = samples_x[sample];
-    y = samples_y[sample];
+    y = +samples_y[sample];
 
     likelihood = weights * x + bias;
     if y * likelihood < epsilon {
