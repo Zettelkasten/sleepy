@@ -1603,24 +1603,28 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   prods_attr_rules={
     Production('TopLevelStmt', 'StmtList'): {
-      'ast': lambda _pos, stmt_list: TopLevelAst(_pos, AbstractScopeAst(_pos, stmt_list(1)))},
+      'ast': lambda _pos, stmt_list: TopLevelAst(_pos, root_scope=AbstractScopeAst(_pos, stmt_list=stmt_list(1)))},
     Production('Scope', '{', 'StmtList', '}'): {
-      'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list(2))},
+      'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list=stmt_list(2))},
     Production('StmtList'): {
       'stmt_list': []},
     Production('StmtList', 'AnnotationList', 'Stmt', 'StmtList'): {
       'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
     Production('Stmt', 'Expr', ';'): {
-      'ast': lambda _pos, ast: ExpressionStatementAst(_pos, ast(1))},
+      'ast': lambda _pos, ast: ExpressionStatementAst(_pos, expr=ast(1))},
     Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
         FunctionDeclarationAst(
-          _pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6),
-          ast(7)))},
+          _pos, identifier=identifier(2), arg_identifiers=identifier_list(4), arg_types=type_list(4),
+          arg_annotations=annotation_list(4), return_type=ast(6), return_annotation_list=annotation_list(6),
+          body_scope=ast(7)))},
     Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {
       'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast: (
         FunctionDeclarationAst(
-          _pos, op(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6), ast(7)))},
+          _pos, identifier=op(2), arg_identifiers=identifier_list(4), arg_types=type_list(4),
+          arg_annotations=annotation_list(4), return_type=ast(6), return_annotation_list=annotation_list(6),
+          body_scope=ast(7)))},
+    # TODO: Cleanup index operator
     Production('Stmt', 'func', '(', 'AnnotationList', 'Type', 'identifier', ')', '[', 'TypedIdentifierList', ']', 'ReturnType', 'Scope'): {  # noqa
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
         FunctionDeclarationAst(
@@ -1637,30 +1641,35 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'): {
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
         FunctionDeclarationAst(
-          _pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6),
-          None))},
+          _pos, identifier=identifier(2), arg_identifiers=identifier_list(4), arg_types=type_list(4),
+          arg_annotations=annotation_list(4), return_type=ast(6), return_annotation_list=annotation_list(6),
+          body_scope=None))},
     Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'): {
-      'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
+      'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(
+        _pos, struct_identifier=identifier(2), stmt_list=stmt_list(4))},
     Production('Stmt', 'return', 'ExprList', ';'): {
-      'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
+      'ast': lambda _pos, val_list: ReturnStatementAst(_pos, return_exprs=val_list(2))},
     Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr', ';'): {
       'ast': lambda _pos, ast: AssignStatementAst(_pos, var_target=ast(1), var_val=ast(5), declared_var_type=ast(3))},
+    # TODO: Handle equality operator in a saner way
     Production('Stmt', 'Expr', '=', 'Expr', ';'): {
       'ast': lambda _pos, ast: (
         AssignStatementAst(_pos, var_target=ast(1), var_val=ast(3), declared_var_type=None)
         if isinstance(ast(1), VariableExpressionAst) or isinstance(ast(1), MemberExpressionAst)
-        else ExpressionStatementAst(_pos, BinaryOperatorExpressionAst(_pos, '=', ast(1), ast(3))))},
+        else ExpressionStatementAst(_pos, BinaryOperatorExpressionAst(
+          _pos, op='=', left_expr=ast(1), right_expr=ast(3))))},
     Production('Stmt', 'Expr', 'assign_op', 'Expr', ';'): {
       'ast': lambda _pos, ast, op: AssignStatementAst(
-        _pos, ast(1), BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3)), None)},
+        _pos, var_target=ast(1), var_val=BinaryOperatorExpressionAst(
+          _pos, op=op(2), left_expr=ast(1), right_expr=ast(3)), declared_var_type=None)},
     Production('Stmt', 'if', 'Expr', 'Scope'): {
-      'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), None)},
+      'ast': lambda _pos, ast: IfStatementAst(_pos, condition_val=ast(2), true_scope=ast(3), false_scope=None)},
     Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'): {
-      'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), ast(5))},
+      'ast': lambda _pos, ast: IfStatementAst(_pos, condition_val=ast(2), true_scope=ast(3), false_scope=ast(5))},
     Production('Stmt', 'while', 'Expr', 'Scope'): {
-      'ast': lambda _pos, ast: WhileStatementAst(_pos, ast(2), ast(3))},
+      'ast': lambda _pos, ast: WhileStatementAst(_pos, condition_val=ast(2), body_scope=ast(3))},
     Production('Expr', 'Expr', 'cmp_op', 'SumExpr'): {
-      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
+      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op=op(2), left_expr=ast(1), right_expr=ast(3))},
     Production('Expr', 'SumExpr'): {
       'ast': 'ast.1'},
     Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'): {
@@ -1697,6 +1706,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
     Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'): {
       'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
+    # TODO: Cleanup index operator
     Production('PrimaryExpr', 'PrimaryExpr', '[', 'ExprList', ']'): {
       'ast': lambda _pos, ast, val_list: CallExpressionAst(_pos, 'get', [ast(1)] + val_list(3))},
     Production('PrimaryExpr', '(', 'Expr', ')'): {
@@ -1777,8 +1787,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
 )
 
 SLEEPY_GRAMMAR = SLEEPY_ATTR_GRAMMAR.grammar
-
 SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
+
 
 def make_program_ast(program, add_preamble=True):
   """
