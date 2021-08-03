@@ -90,6 +90,10 @@ func >=(Double left, Int right) -> Bool { return left >= ToDouble(right); }
 @Inline func sign(Double a) -> Double { if a > 0.0 { return 1.0; } if a == 0.0 { return 0.0; } else { return -1.0; } }
 @Inline func div(Int a, Int b) -> Int { return ToInt(ToDouble(a) / ToDouble(b)); }
 @Inline func mod(Int a, Int b) -> Int { return a - div(a, b) * b; }
+extern_func sin(Double x) -> Double;
+extern_func cos(Double x) -> Double;
+@Inline func sin(Float x) -> Float { extern_func sinf(Float f) -> Float; return sinf(x); }
+@Inline func cos(Float x) -> Float { extern_func cosf(Float f) -> Float; return cosf(x); }
 
 ## String (note: the Str struct itself is declared internally, not here.)
 # @RefType struct Str {
