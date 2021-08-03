@@ -28,6 +28,11 @@ func ZeroVector(Int size) -> @Mutable Vector {
   fill(v, 0.0f);
   return v;
 }
+func Vector3(Float x, Float y, Float z) -> @Mutable Vector {
+  @Mutable vec = ZeroVector(3);
+  vec[0] = x; vec[1] = y; vec[2] = z;
+  return vec;
+}
 func print(Vector vec) {
   print('[');
   pos = 0;
@@ -78,6 +83,27 @@ func IdentityMatrix(Int dim) -> @Mutable Matrix {
   }
   return mat;
 }
+func ScaleMatrix(Vector scale) -> @Mutable Matrix {
+  @Mutable mat = ZeroMatrix(scale.size + 1, scale.size + 1);
+  pos = 0;
+  while pos < scale.size {
+    mat[pos, pos] = scale[pos];
+    pos += 1;
+  }
+  mat[scale.size, scale.size] = 1.0f;
+  return mat;
+}
+func TranslateMatrix(Vector translation) -> @Mutable Matrix {
+  @Mutable mat = ZeroMatrix(translation.size + 1, translation.size + 1);
+  pos = 0;
+  while pos < translation.size {
+    mat[pos, pos] = 1.0f;
+    mat[pos, translation.size] = translation[pos];
+    pos += 1;
+  }
+  mat[translation.size, translation.size] = 1.0f;
+  return mat;
+}
 func print(Matrix mat) {
   print('[');
   x = 0;
@@ -96,7 +122,26 @@ func print(Matrix mat) {
   print(']');
 }
 func print_line(Matrix mat) { print(mat); print_line(); }
-
+func dot(Matrix left, Matrix right) -> @Mutable Matrix {
+  assert(left.dim_x == right.dim_y);
+  @Mutable Matrix new = ZeroMatrix(left.dim_y, right.dim_x);
+  x = 0;
+  while x < new.dim_x {
+    y = 0;
+    while y < new.dim_y {
+      new_entry = 0.0f;
+      i = 0;
+      while i < left.dim_x {
+        new_entry += left[i, x] * right[y, i];
+        i += 1;
+      }
+      new[x, y] = new_entry;
+      y += 1;
+    }
+    x += 1;
+  }
+  return new;
+}
 
 ### Reading Files ###
 func read_file(Str file_name) -> @Mutable Str {
@@ -255,6 +300,16 @@ struct Capability { Int val = 0; }
 func Multisample() -> Capability { return Capability(0x809D); }
 extern_func glEnable(Capability cap);
 
+struct PolygonMode { Int val = 0; }
+func LineMode() -> PolygonMode { return PolygonMode(0x1B01); }
+func FillMode() -> PolygonMode { return PolygonMode(0x1B02); }
+func PointMode() -> PolygonMode { return PolygonMode(0x1B00); }
+func set_polygon_mode(PolygonMode mode) {
+  extern_func glPolygonMode(Int face, PolygonMode mode);
+  front_and_back = 0x0408;
+  glPolygonMode(front_and_back, mode);
+}
+
 struct ShaderType { Int val = 0; }
 func FragmentShaderType() -> ShaderType { return ShaderType(0x8B30); }
 func VertexShaderType() -> ShaderType { return ShaderType(0x8B31); }
@@ -410,12 +465,61 @@ func terminate(Str error) {
   assert(False());
 }
 
-func make_vertices_data() -> Vector {
+func make_triangle() -> Vector {
   @Mutable data = ZeroVector(9);
   data[0] = -0.8f; data[1] = -0.8f;
   data[3] = 0.8f;  data[4] = -0.8f;
                    data[7] = 0.8f;
   print_line(data);
+  return data;
+}
+func make_cube() -> Vector {
+  num_triangles = 2 * 2 * 3;
+  @Mutable data = ZeroVector(9 * num_triangles);
+  data_pos = 0;
+  normal_axis = 0;  # axis in which normal faces
+  while normal_axis < 3 {
+    normal_dir = 0.0f;  # sign of normal
+    while normal_dir < 2.0f {
+      #
+      # p3 x---x p2
+      #    |  /|
+      #    | / |
+      #    |/  |
+      # p0 x---x p1
+      #
+      other_axis0 = mod(normal_axis + 1, 3);
+      other_axis1 = mod(normal_axis + 2, 3);
+      # p0 -> p2 -> p1
+      data[data_pos + normal_axis] = normal_dir;
+      data[data_pos + other_axis0] = 0.0f;
+      data[data_pos + other_axis1] = 0.0f;
+      data_pos += 3;
+      data[data_pos + normal_axis] = normal_dir;
+      data[data_pos + other_axis0] = 1.0f;
+      data[data_pos + other_axis1] = 1.0f;
+      data_pos += 3;
+      data[data_pos + normal_axis] = normal_dir;
+      data[data_pos + other_axis0] = 1.0f;
+      data[data_pos + other_axis1] = 0.0f;
+      data_pos += 3;
+      # p0 -> p3 -> p2
+      data[data_pos + normal_axis] = normal_dir;
+      data[data_pos + other_axis0] = 0.0f;
+      data[data_pos + other_axis1] = 0.0f;
+      data_pos += 3;
+      data[data_pos + normal_axis] = normal_dir;
+      data[data_pos + other_axis0] = 0.0f;
+      data[data_pos + other_axis1] = 1.0f;
+      data_pos += 3;
+      data[data_pos + normal_axis] = normal_dir;
+      data[data_pos + other_axis0] = 1.0f;
+      data[data_pos + other_axis1] = 1.0f;
+      data_pos += 3;
+      normal_dir += 1.0f;
+    }
+    normal_axis += 1;
+  }
   return data;
 }
 
@@ -428,13 +532,18 @@ func reload(ShaderProgram program, Str vertex_shader_path, Str fragment_shader_p
   set_source(fragment_shader, fragment_shader_code);
   compile(vertex_shader);
   compile(fragment_shader);
-  print_line(get_compile_status(vertex_shader));
-  print_line(get_compile_status(fragment_shader));
+  if not(and(get_compile_status(vertex_shader) is CompileSuccess, get_compile_status(fragment_shader) is CompileSuccess)) {
+    print_line(get_compile_status(vertex_shader));
+    print_line(get_compile_status(fragment_shader));
+  }
 
   attach_shader(program, vertex_shader);
   attach_shader(program, fragment_shader);
   link(program);
-  print_line(get_link_status(program));
+  link_status = get_link_status(program);
+  if not(link_status is LinkSuccess) {
+    print_line(get_link_status(program));
+  }
   detach_shader(program, vertex_shader);
   detach_shader(program, fragment_shader);
   delete_shader(vertex_shader);
@@ -469,23 +578,37 @@ func main() {
   bind(vertex_array);
   vertex_buffer = generate_buffer();
   bind(ArrayBufferTarget(), vertex_buffer);
-  set_data(ArrayBufferTarget(), make_vertices_data(), StaticDrawBufferUsage());
+  mesh = make_cube();
+  set_data(ArrayBufferTarget(), mesh, StaticDrawBufferUsage());
+
+  func translate_and_scale(Float translate_x, Float translate_y, Float translate_z, Float scale_x, Float scale_y, Float scale_z) -> @Mutable Matrix {
+    scale = Vector3(translate_x, translate_y, translate_z);
+    translate = Vector3(scale_x, scale_y, scale_z);
+    @Mutable projection = dot(TranslateMatrix(translate), ScaleMatrix(scale));
+    return projection;
+  }
 
   vertex_shader_path = "shaders/vertex.glsl";
   fragment_shader_path = "shaders/fragment.glsl";
   program = make_program(vertex_shader_path, fragment_shader_path);
   projection_uniform = get_uniform_location(program, "projection");
-  @Mutable projection = IdentityMatrix(4);
+  @Mutable projection = translate_and_scale(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+
+  time = 0.0f;
 
   while not(or(should_close(window), glfwGetKey(window, EscapeKey()) == KeyPress())) {
+    time += 0.1f * 0.1f;
     clear(or(ColorBufferBit(), DepthBufferBit()));
 
     use(program);
     glEnableVertexAttribArray(0);
     bind(ArrayBufferTarget(), vertex_buffer);
     glVertexAttribPointer(0, 3, FloatAttribType(), False(), 0, NullIntPtr());
+
+    projection = translate_and_scale(cos(time), sin(time), 0.0f, 0.5f, 0.5f, 1.0f);
     set_uniform(projection_uniform, projection);
-    glDrawArrays(TrianglesDrawMode(), 0, 3);
+    set_polygon_mode(LineMode());
+    glDrawArrays(TrianglesDrawMode(), 0, div(mesh.size, 3));
     glDisableVertexAttribArray(0);
 
     swap_buffers(window);
