@@ -1527,7 +1527,6 @@ def test_union_if_else_type_narrowing():
           return 2.0;
         } else {
           # must be Double
-          extern_func sin(Double a) -> Double;
           val = sin(val);
           return val;
         }
@@ -1571,7 +1570,6 @@ def test_union_if_terminated_branch_type_narrowing():
         return 17.5;
       }
       # must be Double
-      extern_func sin(Double a) -> Double;
       val = sin(val);
       return val;
     }
