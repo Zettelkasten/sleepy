@@ -50,6 +50,7 @@ def main():
     '--emit-object', '-c', dest='emit_object', action='store_true', help='Emit object code, but do not link.')
   parser.add_argument('--compile-libs', '-libs', nargs='*', help='External libraries to link with', default=['m'])
   parser.add_argument('--debug', dest='debug', action='store_true', help='Print full stacktrace for all compiler errors.')
+  parser.add_argument('--Optimization', '-O', dest='opt', action='store', type=int, default=0, help='Print full stacktrace for all compiler errors.')
   parser.set_defaults(execute=False)
 
   args = parser.parse_args()
@@ -94,7 +95,7 @@ def main():
   object_file_name = _make_file_name(source_file_name, '.o', allow_exist=True)
   module_ref = llvm.parse_assembly(str(module_ir))
   target = llvm.Target.from_default_triple()
-  machine = target.create_target_machine()
+  machine = target.create_target_machine(opt=args.opt)
   with open(object_file_name, 'wb') as file:
     file.write(machine.emit_object(module_ref))
   if args.emit_object:
