@@ -611,11 +611,11 @@ class StructDeclarationAst(StatementAst):
 
   allowed_annotation_identifiers = frozenset({'ValType', 'RefType'})
 
-  def __init__(self, pos: TreePosition, struct_identifier: str, templ_arg_identifiers: List[str],
+  def __init__(self, pos: TreePosition, struct_identifier: str, placeholder_templ_type_identifiers: List[str],
                stmt_list: List[StatementAst]):
     super().__init__(pos)
     self.struct_identifier = struct_identifier
-    self.templ_arg_identifiers = templ_arg_identifiers
+    self.placeholder_templ_type_identifiers = placeholder_templ_type_identifiers
     self.stmt_list = stmt_list
 
   def is_pass_by_ref(self) -> bool:
@@ -631,16 +631,27 @@ class StructDeclarationAst(StatementAst):
     struct_symbol_table = symbol_table.copy()
     struct_symbol_table.current_scope_identifiers = []
     struct_context = context.copy_without_builder()
+    placeholder_templ_types = []
+    for templ_type_identifier in self.placeholder_templ_type_identifiers:
+      if templ_type_identifier in struct_symbol_table.current_scope_identifiers:
+        self.raise_error('Cannot declare template variable %r multiple times' % templ_type_identifier)
+      template_type = TemplateType(templ_type_identifier)
+      placeholder_templ_types.append(template_type)
+      template_type_factory = TypeFactory(placeholder_templ_types=[template_type], signature_type=template_type)
+      template_type_symbol = TypeSymbol(type_factory=template_type_factory, constructor_symbol=None)
+      struct_symbol_table.current_scope_identifiers.append(templ_type_identifier)
+      struct_symbol_table[templ_type_identifier] = template_type_symbol
+    assert len(struct_symbol_table.current_scope_identifiers) == len(placeholder_templ_types)
     for member_num, stmt in enumerate(self.stmt_list):
       if not isinstance(stmt, AssignStatementAst):
         stmt.raise_error('Can only use declare statements within a struct declaration')
       if not isinstance(stmt.var_target, VariableExpressionAst):
         stmt.raise_error('Can only declare variables within a struct declaration')
       stmt.build_ir(symbol_table=struct_symbol_table, context=struct_context)
-      if len(struct_symbol_table.current_scope_identifiers) != member_num + 1:
+      if len(struct_symbol_table.current_scope_identifiers) != len(placeholder_templ_types) + member_num + 1:
         stmt.raise_error(
           'Cannot declare member %r multiple times in struct declaration' % stmt.var_target.var_identifier)
-    assert len(self.stmt_list) == len(struct_symbol_table.current_scope_identifiers)
+    assert len(placeholder_templ_types) + len(self.stmt_list) == len(struct_symbol_table.current_scope_identifiers)
     member_identifiers, member_types, member_mutables = [], [], []
     for stmt, declared_identifier in zip(self.stmt_list, struct_symbol_table.current_scope_identifiers):
       assert declared_identifier in struct_symbol_table
@@ -651,11 +662,11 @@ class StructDeclarationAst(StatementAst):
       member_mutables.append(declared_symbol.mutable)
     assert len(member_identifiers) == len(member_types) == len(member_mutables) == len(self.stmt_list)
 
-    # TODO: Add template types
     signature_struct_type = StructType(
-      struct_identifier=self.struct_identifier, member_identifiers=member_identifiers, templ_types=[],
-      member_types=member_types, member_mutables=member_mutables, pass_by_ref=self.is_pass_by_ref())
-    type_factory = TypeFactory(placeholder_templ_types=[], signature_type=signature_struct_type)
+      struct_identifier=self.struct_identifier, member_identifiers=member_identifiers,
+      templ_types=placeholder_templ_types, member_types=member_types, member_mutables=member_mutables,
+      pass_by_ref=self.is_pass_by_ref())
+    type_factory = TypeFactory(placeholder_templ_types=placeholder_templ_types, signature_type=signature_struct_type)
 
     constructor_symbol = signature_struct_type.build_constructor(
       parent_symbol_table=symbol_table, parent_context=context)
@@ -665,8 +676,8 @@ class StructDeclarationAst(StatementAst):
     signature_struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
 
   def __repr__(self) -> str:
-    return 'StructDeclarationAst(struct_identifier=%r, templ_arg_identifiers=%r, stmt_list=%r)' % (
-      self.struct_identifier, self.templ_arg_identifiers, self.stmt_list)
+    return 'StructDeclarationAst(struct_identifier=%r, placeholder_templ_type_identifiers=%r, stmt_list=%r)' % (
+      self.struct_identifier, self.placeholder_templ_type_identifiers, self.stmt_list)
 
 
 class AssignStatementAst(StatementAst):
@@ -1639,7 +1650,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           body_scope=None))},
     Production('Stmt', 'struct', 'identifier', 'TemplateIdentifierList', '{', 'StmtList', '}'): {
       'ast': lambda _pos, identifier, identifier_list, stmt_list: StructDeclarationAst(
-        _pos, struct_identifier=identifier(2), templ_arg_identifiers=identifier_list(3), stmt_list=stmt_list(5))},
+        _pos, struct_identifier=identifier(2), placeholder_templ_type_identifiers=identifier_list(3), stmt_list=stmt_list(5))},
     Production('Stmt', 'return', 'ExprList', ';'): {
       'ast': lambda _pos, val_list: ReturnStatementAst(_pos, return_exprs=val_list(2))},
     Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr', ';'): {
@@ -1732,12 +1743,12 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(5)},
     Production('TemplateIdentifierList'): {
       'identifier_list': []},
-    Production('TemplateIdentifierList', '[', 'TemplateIndentifierList+', ']'): {
-      'identifier_list': 'identifier_list.1'},
+    Production('TemplateIdentifierList', '[', 'TemplateIdentifierList+', ']'): {
+      'identifier_list': 'identifier_list.2'},
     Production('TemplateIdentifierList+', 'identifier'): {
       'identifier_list': lambda identifier: [identifier(1)]},
-    Production('TemplateIdentifierList+', 'identifier', ',', 'TemplateIndentifierList+'): {
-      'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(2)},
+    Production('TemplateIdentifierList+', 'identifier', ',', 'TemplateIdentifierList+'): {
+      'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(3)},
     Production('ExprList'): {
       'val_list': []},
     Production('ExprList', 'ExprList+'): {
