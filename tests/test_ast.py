@@ -1676,23 +1676,20 @@ def test_mod():
       assert_equal(main(a, b), fmod(a, b))
 
 
-def test_template_types():
+def test_templ_ternary():
   with make_execution_engine() as engine:
     program = """
-    struct Cool { x : Int = 0; }
-    struct Mega { y : Int = 4; }
-    func add(Cool c, Int y) -> Int {
-      return c.x + add(c, y);
+    func ternary[T](T true, T false, Bool cond) -> T {
+      if cond { return true; } else { return false; }
     }
-    func main() -> Int {
-      x : Int = 5;
-      y = x + 7;
-      cool = Cool(42);
-      # free(cool);
-      return add(cool, 2 * x);
+    func main() -> Double {
+      a = ternary(4, 6, False());
+      b: Double = ternary(1.2, 5.6, True());
+      return b;
     }
     """
-    main = compile_program(engine, program, add_preamble=False, optimize=False)
+    main = compile_program(engine, program, add_preamble=True, optimize=False)
+    assert_almost_equal(main(), 1.2)
 
 
 if __name__ == "__main__":
