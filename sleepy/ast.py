@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 from llvmlite import ir
 
@@ -15,7 +15,7 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, SLEEPY
   SLEEPY_VOID, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, SLEEPY_LONG
+  SLEEPY_CHAR_PTR, SLEEPY_LONG, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
 
@@ -46,13 +46,8 @@ class AbstractSyntaxTree:
     """
     raise SemanticError(self.pos.word, self.pos.from_pos, self.pos.to_pos, message)
 
-  def resolve_func_call(self, func_identifier, func_arg_exprs, symbol_table):
-    """
-    :param str func_identifier:
-    :param list[ExpressionAst] func_arg_exprs:
-    :param SymbolTable symbol_table:
-    :rtype: (FunctionSymbol, list[ConcreteFunction])
-    """
+  def resolve_func_call(self, func_identifier: str, templ_types: List[Type], func_arg_exprs: List[ExpressionAst],
+                        symbol_table: SymbolTable) -> Tuple[FunctionSymbol, List[ConcreteFunction]]:
     if func_identifier not in symbol_table:
       self.raise_error('Function %r called before declared' % func_identifier)
     symbol = symbol_table[func_identifier]
@@ -65,15 +60,17 @@ class AbstractSyntaxTree:
     if not isinstance(symbol, FunctionSymbol):
       self.raise_error('Cannot call non-function %r' % func_identifier)
     called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
-    if not symbol.has_concrete_func(called_types):
+    if not symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=called_types):
+      breakpoint()
+      symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=called_types)
       self.raise_error('Cannot call function %r with arguments of types %r, only declared for parameter types: %r' % (
         func_identifier, ', '.join([str(called_type) for called_type in called_types]),
-        ', '.join([concrete_func.to_signature_str() for concrete_func in symbol.concrete_funcs.values()])))
+        ', '.join([signature.to_signature_str() for signature in symbol.signatures])))
     if not all(called_type.is_realizable() for called_type in called_types):
       self.raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
         func_identifier, ', '.join([str(called_type) for called_type in called_types])))
 
-    possible_concrete_funcs = symbol.get_concrete_funcs(called_types)
+    possible_concrete_funcs = symbol.get_concrete_funcs(templ_types=templ_types, arg_types=called_types)
     assert len(possible_concrete_funcs) >= 1
     for concrete_func in possible_concrete_funcs:
       called_mutables = [arg_expr.is_val_mutable(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
@@ -81,20 +78,15 @@ class AbstractSyntaxTree:
           concrete_func.arg_identifiers, concrete_func.arg_mutables, called_mutables):
         if not called_mutable and arg_mutable:
           self.raise_error('Cannot call function %s%s declared with mutable parameter %r with immutable argument' % (
-              func_identifier, concrete_func.to_signature_str(), arg_identifier))
+              func_identifier, concrete_func.signature.to_signature_str(), arg_identifier))
 
     return symbol, possible_concrete_funcs
 
-  def _build_func_call(self, func_identifier, func_arg_exprs, symbol_table, context):
-    """
-    :param str func_identifier:
-    :param list[ExpressionAst] func_arg_exprs:
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.values.Value
-    """
+  def _build_func_call(self, func_identifier: str, templ_types: List[Type], func_arg_exprs: List[ExpressionAst],
+                       symbol_table: SymbolTable, context: CodegenContext):
     symbol, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=func_identifier, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
+      func_identifier=func_identifier, templ_types=templ_types, func_arg_exprs=func_arg_exprs,
+      symbol_table=symbol_table)
     called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
 
     for concrete_func in possible_concrete_funcs:
@@ -108,7 +100,7 @@ class AbstractSyntaxTree:
         func_arg_expr.make_ir_val(symbol_table=symbol_table, context=context) for func_arg_expr in func_arg_exprs]
       from sleepy.symbols import make_func_call_ir
       return_ir_val = make_func_call_ir(
-        func_identifier=func_identifier, func_symbol=symbol, calling_arg_types=called_types,
+        func_identifier=func_identifier, func_symbol=symbol, templ_types=templ_types, calling_arg_types=called_types,
         calling_ir_args=ir_func_args, context=context)
     else:
       return_ir_val = None
@@ -322,11 +314,8 @@ class FunctionDeclarationAst(StatementAst):
             arg_annotation.identifier, ', '.join(self.allowed_arg_annotation_identifiers)))
     return arg_types
 
-  def build_ir(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    """
+  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
+    placeholder_templ_types: List[TemplateType] = []  # TODO: add template types for function declarations
     arg_types = self.make_arg_types(symbol_table=symbol_table)
     arg_mutables = [
       self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
@@ -360,107 +349,121 @@ class FunctionDeclarationAst(StatementAst):
     if func_symbol in {symbol_table.inbuilt_symbols.get(name) for name in {'assert', 'unchecked_assert'}}:
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
         self.raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier)
-    if func_symbol == symbol_table.inbuilt_symbols.get('unchecked_assert') and len(func_symbol.concrete_funcs) >= 1:
-      self.raise_error('Cannot overload unchecked_assert(Bool condition)')
-    if func_symbol.has_concrete_func(arg_types):
-      self.raise_error('Cannot override definition of function %r with parameter types %r' % (
-        self.identifier, ', '.join([str(arg_type) for arg_type in arg_types])))
+    if not func_symbol.is_undefined_for_types(placeholder_templ_types=placeholder_templ_types, arg_types=arg_types):
+      self.raise_error('Cannot override definition of function %r with template types %r and parameter types %r' % (
+        self.identifier, ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
+        ', '.join([str(arg_type) for arg_type in arg_types])))
     if func_symbol.returns_void != (return_type == SLEEPY_VOID):
       self.raise_error(
         'Function declared with name %r must consistently return a value or consistently return void' % self.identifier)
     if self.is_inline and self.is_extern:
       self.raise_error('Extern function %r cannot be inlined' % self.identifier)
 
-    concrete_func = ConcreteFunction(
-      None, return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
-      arg_types=arg_types, arg_mutables=arg_mutables, arg_type_narrowings=arg_types, is_inline=self.is_inline)
-    func_symbol.add_concrete_func(concrete_func)
+    class DeclaredConcreteFunctionFactory(ConcreteFunctionFactory):
+      def make_concrete_func(self_, signature: FunctionSignature, concrete_templ_types: List[Type]) -> ConcreteFunction:
+        assert len(concrete_templ_types) == len(placeholder_templ_types)
+        concrete_type_replacements = {
+          templ_type: concrete_templ_type for templ_type, concrete_templ_type in zip(placeholder_templ_types, concrete_templ_types)}
+        concrete_return_type = return_type.replace_types(replacements=concrete_type_replacements)
+        concrete_arg_types = [
+          templ_arg_type.replace_types(replacements=concrete_type_replacements) for templ_arg_type in arg_types]
+        concrete_func = ConcreteFunction(
+          signature=signature, ir_func=None, make_inline_func_call_ir_callback=None,
+          concrete_templ_types=concrete_templ_types, return_type=concrete_return_type, arg_types=concrete_arg_types,
+          arg_type_narrowings=concrete_arg_types)
 
-    if self.is_extern:
-      if symbol_table.has_extern_func(self.identifier):
-        extern_concrete_func = symbol_table.get_extern_func(self.identifier)
-        if not extern_concrete_func.has_same_signature_as(concrete_func):
-          self.raise_error('Cannot redefine extern func %r previously declared as %s with new signature %s' % (
-            self.identifier, extern_concrete_func.to_signature_str(), concrete_func.to_signature_str()))
-        # Sometimes the ir_func has not been set for a previously declared extern func,
-        # e.g. because it was declared in an inlined func.
-        should_declare_func = extern_concrete_func.ir_func is None
-      else:
-        symbol_table.add_extern_func(self.identifier, concrete_func)
-        should_declare_func = True
-    else:
-      assert not self.is_extern
-      should_declare_func = True
-    if context.emits_ir and not self.is_inline:
-      ir_func_type = concrete_func.make_ir_function_type()
-      if should_declare_func:
-        ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
-        concrete_func.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
-      else:
-        assert not should_declare_func
-        assert self.is_extern and symbol_table.has_extern_func(self.identifier)
-        concrete_func.ir_func = symbol_table.get_extern_func(self.identifier).ir_func
-      assert concrete_func.ir_func.ftype == ir_func_type
-
-    if self.is_extern:
-      return
-
-    if self.is_inline:
-      def make_inline_func_call_ir(ir_func_args, caller_context):
-        """
-        :param list[ir.values.Value] ir_func_args:
-        :param CodegenContext caller_context:
-        :rtype: ir.values.Value|None
-        """
-        assert len(ir_func_args) == len(self.arg_identifiers)
-        assert caller_context.emits_ir
-        assert not caller_context.is_terminated
-        if concrete_func.return_type == SLEEPY_VOID:
-          return_val_ir_alloca = None
+        if self.is_extern:
+          if symbol_table.has_extern_func(self.identifier):
+            extern_concrete_func = symbol_table.get_extern_func(self.identifier)
+            if not extern_concrete_func.has_same_signature_as(concrete_func):
+              self.raise_error('Cannot redefine extern func %r previously declared as %s with new signature %s' % (
+                self.identifier, extern_concrete_func.signature.to_signature_str(),
+                concrete_func.signature.to_signature_str()))
+            # Sometimes the ir_func has not been set for a previously declared extern func,
+            # e.g. because it was declared in an inlined func.
+            should_declare_func = extern_concrete_func.ir_func is None
+          else:
+            symbol_table.add_extern_func(self.identifier, concrete_func)
+            should_declare_func = True
         else:
-          return_val_ir_alloca = caller_context.alloca_at_entry(
-            concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
-        collect_block = caller_context.builder.append_basic_block('collect_return_%s_block' % self.identifier)
-        inline_context = caller_context.copy_with_inline_func(
-          concrete_func, return_ir_alloca=return_val_ir_alloca, return_collect_block=collect_block)
-        self._build_body_ir(
-          parent_symbol_table=symbol_table, concrete_func=concrete_func, body_context=inline_context,
-          ir_func_args=ir_func_args)
-        assert inline_context.is_terminated
-        assert not collect_block.is_terminated
-        # use the caller_context instead of reusing the inline_context because the inline_context will be terminated
-        caller_context.builder = ir.IRBuilder(collect_block)
-        if concrete_func.return_type == SLEEPY_VOID:
-          return_val = None
+          assert not self.is_extern
+          should_declare_func = True
+        if context.emits_ir and not self.is_inline:
+          ir_func_type = concrete_func.make_ir_function_type()
+          if should_declare_func:
+            ir_func_name = symbol_table.make_ir_func_name(self.identifier, self.is_extern, concrete_func)
+            concrete_func.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
+          else:
+            assert not should_declare_func
+            assert self.is_extern and symbol_table.has_extern_func(self.identifier)
+            concrete_func.ir_func = symbol_table.get_extern_func(self.identifier).ir_func
+          assert concrete_func.ir_func.ftype == ir_func_type
+
+        if self.is_extern:
+          return concrete_func
+
+        if self.is_inline:
+          def make_inline_func_call_ir(ir_func_args: List[ir.values.Value],
+                                       caller_context: CodegenContext) -> Optional[ir.values.Value]:
+            assert len(ir_func_args) == len(self.arg_identifiers)
+            assert caller_context.emits_ir
+            assert not caller_context.is_terminated
+            if concrete_func.return_type == SLEEPY_VOID:
+              return_val_ir_alloca = None
+            else:
+              return_val_ir_alloca = caller_context.alloca_at_entry(
+                concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
+            collect_block = caller_context.builder.append_basic_block('collect_return_%s_block' % self.identifier)
+            inline_context = caller_context.copy_with_inline_func(
+              concrete_func, return_ir_alloca=return_val_ir_alloca, return_collect_block=collect_block)
+            self._build_body_ir(
+              parent_symbol_table=symbol_table, concrete_func=concrete_func, body_context=inline_context,
+              ir_func_args=ir_func_args)
+            assert inline_context.is_terminated
+            assert not collect_block.is_terminated
+            # use the caller_context instead of reusing the inline_context because the inline_context will be terminated
+            caller_context.builder = ir.IRBuilder(collect_block)
+            if concrete_func.return_type == SLEEPY_VOID:
+              return_val = None
+            else:
+              return_val = caller_context.builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
+            assert not caller_context.is_terminated
+            return return_val
+
+          concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
+          # check symbol tables without emitting ir
+          self._build_body_ir(
+            parent_symbol_table=symbol_table, concrete_func=concrete_func, body_context=context.copy_without_builder())
         else:
-          return_val = caller_context.builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
-        assert not caller_context.is_terminated
-        return return_val
+          assert not self.is_inline
+          if context.emits_ir:
+            body_block = concrete_func.ir_func.append_basic_block(name='entry')
+            body_context = context.copy_with_builder(ir.IRBuilder(body_block))
+          else:
+            body_context = context.copy_without_builder()  # proceed without emitting ir.
+          self._build_body_ir(
+            parent_symbol_table=symbol_table, concrete_func=concrete_func, body_context=body_context,
+            ir_func_args=concrete_func.ir_func.args)
 
-      concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
-      # check symbol tables without emitting ir
-      self._build_body_ir(
-        parent_symbol_table=symbol_table, concrete_func=concrete_func, body_context=context.copy_without_builder())
-    else:
-      assert not self.is_inline
-      if context.emits_ir:
-        body_block = concrete_func.ir_func.append_basic_block(name='entry')
-        body_context = context.copy_with_builder(ir.IRBuilder(body_block))
-      else:
-        body_context = context.copy_without_builder()
-      self._build_body_ir(
-        parent_symbol_table=symbol_table, concrete_func=concrete_func, body_context=body_context,
-        ir_func_args=concrete_func.ir_func.args)
+        return concrete_func
 
-  def _build_body_ir(self, parent_symbol_table, concrete_func, body_context, ir_func_args=None):
-    """
-    :param SymbolTable parent_symbol_table: of the parent function, NOT of the caller.
-    :param ConcreteFunction concrete_func:
-    :param CodegenContext body_context:
-    :param list[ir.values.Value]|None ir_func_args:
-    """
+    concrete_func_factory = DeclaredConcreteFunctionFactory()
+    signature_ = FunctionSignature(
+      concrete_func_factory=concrete_func_factory, placeholder_templ_types=placeholder_templ_types, return_type=return_type,
+      return_mutable=return_mutable, arg_identifiers=self.arg_identifiers, arg_types=arg_types,
+      arg_mutables=arg_mutables, arg_type_narrowings=arg_types, is_inline=self.is_inline)
+    func_symbol.add_signature(signature_)
+
+    # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
+
+    # Always generate IR for functions without template types
+    if not self.is_inline:
+      signature_.get_concrete_func(concrete_templ_types=[])
+
+  def _build_body_ir(self, parent_symbol_table: SymbolTable, concrete_func: ConcreteFunction,
+                     body_context: CodegenContext, ir_func_args: Optional[List[ir.values.Value]] = None):
     assert not self.is_extern
-    assert self.is_inline == concrete_func.is_inline
+    assert self.is_inline == concrete_func.signature.is_inline
     body_symbol_table = parent_symbol_table.copy_with_new_current_func(concrete_func)
 
     # add arguments as variables
@@ -619,31 +622,21 @@ class StructDeclarationAst(StatementAst):
 
   allowed_annotation_identifiers = frozenset({'ValType', 'RefType'})
 
-  def __init__(self, pos, struct_identifier, stmt_list):
-    """
-    :param TreePosition pos:
-    :param str struct_identifier:
-    :param List[StatementAst] stmt_list:
-    """
+  def __init__(self, pos: TreePosition, struct_identifier: str, templ_arg_identifiers: List[str],
+               stmt_list: List[StatementAst]):
     super().__init__(pos)
     self.struct_identifier = struct_identifier
+    self.templ_arg_identifiers = templ_arg_identifiers
     self.stmt_list = stmt_list
 
-  def is_pass_by_ref(self):
-    """
-    :rtype: bool
-    """
+  def is_pass_by_ref(self) -> bool:
     val_type = any(annotation.identifier == 'ValType' for annotation in self.annotations)
     ref_type = any(annotation.identifier == 'RefType' for annotation in self.annotations)
     if val_type and ref_type:
       self.raise_error('Cannot apply annotation %r and %r at the same time' % ('ValType', 'RefType'))
     return ref_type  # fall back to pass by value.
 
-  def build_ir(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    """
+  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     if self.struct_identifier in symbol_table.current_scope_identifiers:
       self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
     struct_symbol_table = symbol_table.copy()
@@ -669,18 +662,23 @@ class StructDeclarationAst(StatementAst):
       member_mutables.append(declared_symbol.mutable)
     assert len(member_identifiers) == len(member_types) == len(member_mutables) == len(self.stmt_list)
 
-    struct_type = StructType(
-      self.struct_identifier, member_identifiers, member_types, member_mutables, pass_by_ref=self.is_pass_by_ref())
-    constructor_symbol = struct_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
-    symbol_table[self.struct_identifier] = TypeSymbol(struct_type, constructor_symbol=constructor_symbol)
-    symbol_table.current_scope_identifiers.append(self.struct_identifier)
-    struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
+    # TODO: Add template types
+    signature_struct_type = StructType(
+      struct_identifier=self.struct_identifier, member_identifiers=member_identifiers, templ_types=[],
+      member_types=member_types, member_mutables=member_mutables, pass_by_ref=self.is_pass_by_ref())
+    type_factory = TypeFactory(placeholder_templ_types=[], signature_type=signature_struct_type)
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
-    return 'StructDeclarationAst(struct_identifier=%r, stmt_list=%r)' % (self.struct_identifier, self.stmt_list)
+    constructor_symbol = signature_struct_type.build_constructor(
+      type_factory=type_factory, parent_symbol_table=symbol_table, parent_context=context)
+    symbol_table[self.struct_identifier] = TypeSymbol(type_factory, constructor_symbol=constructor_symbol)
+    symbol_table.current_scope_identifiers.append(self.struct_identifier)
+
+    signature_struct_type.build_destructor(
+      type_factory=type_factory, parent_symbol_table=symbol_table, parent_context=context)
+
+  def __repr__(self) -> str:
+    return 'StructDeclarationAst(struct_identifier=%r, templ_arg_identifiers=%r, stmt_list=%r)' % (
+      self.struct_identifier, self.templ_arg_identifiers, self.stmt_list)
 
 
 class AssignStatementAst(StatementAst):
@@ -1022,9 +1020,10 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
       type_expr.make_type(symbol_table=symbol_table)  # just check that type exists
       return SLEEPY_BOOL
+    # TODO: add template types
     operand_exprs = [self.left_expr, self.right_expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
@@ -1036,7 +1035,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       return False
     operand_exprs = [self.left_expr, self.right_expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
@@ -1054,8 +1053,9 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       ir_val = self.left_expr.make_ir_val(symbol_table=symbol_table, context=context)
       return make_ir_val_is_type(ir_val, val_type, check_type, context=context)
     operand_exprs = [self.left_expr, self.right_expr]
+    # TODO: add template types
     return_val = self._build_func_call(
-      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
+      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
     assert return_val is not None
     return return_val
 
@@ -1109,8 +1109,9 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     assert context.emits_ir
     operand_exprs = [self.expr]
+    # TODO: Add template types
     return self._build_func_call(
-      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
+      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
 
   def __repr__(self):
     """
@@ -1349,7 +1350,8 @@ class CallExpressionAst(ExpressionAst):
     :rtype: Type
     """
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
+      func_identifier=self.func_identifier, templ_types=[], func_arg_exprs=self.func_arg_exprs,
+      symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
@@ -1358,7 +1360,8 @@ class CallExpressionAst(ExpressionAst):
     :rtype: Type
     """
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
+      func_identifier=self.func_identifier, templ_types=[], func_arg_exprs=self.func_arg_exprs,
+      symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
@@ -1368,8 +1371,9 @@ class CallExpressionAst(ExpressionAst):
     :rtype: ir.values.Value
     """
     assert context.emits_ir
+    # TODO: Add template types, also see other methods
     return self._build_func_call(
-      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs,
+      func_identifier=self.func_identifier, templ_types=[], func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table, context=context)
 
   def __repr__(self):
@@ -1506,7 +1510,8 @@ class IdentifierTypeAst(TypeAst):
     type_symbol = symbol_table[self.type_identifier]
     if not isinstance(type_symbol, TypeSymbol):
       self.raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)))
-    return type_symbol.type
+    # TODO: Add template types
+    return type_symbol.get_type(concrete_templ_types=[])
 
   def __repr__(self):
     """
@@ -1644,9 +1649,9 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           _pos, identifier=identifier(2), arg_identifiers=identifier_list(4), arg_types=type_list(4),
           arg_annotations=annotation_list(4), return_type=ast(6), return_annotation_list=annotation_list(6),
           body_scope=None))},
-    Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'): {
-      'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(
-        _pos, struct_identifier=identifier(2), stmt_list=stmt_list(4))},
+    Production('Stmt', 'struct', 'identifier', 'TemplateIdentifierList', '{', 'StmtList', '}'): {
+      'ast': lambda _pos, identifier, identifier_list, stmt_list: StructDeclarationAst(
+        _pos, struct_identifier=identifier(2), templ_arg_identifiers=identifier_list(3), stmt_list=stmt_list(5))},
     Production('Stmt', 'return', 'ExprList', ';'): {
       'ast': lambda _pos, val_list: ReturnStatementAst(_pos, return_exprs=val_list(2))},
     Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr', ';'): {
@@ -1734,9 +1739,17 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'type_list': lambda ast: [ast(2)],
       'annotation_list': lambda annotation_list: [annotation_list(1)]},
     Production('TypedIdentifierList+', 'AnnotationList', 'Type', 'identifier', ',', 'TypedIdentifierList+'): {
-      'identifier_list': lambda identifier,identifier_list: [identifier(3)] + identifier_list(5),
+      'identifier_list': lambda identifier, identifier_list: [identifier(3)] + identifier_list(5),
       'type_list': lambda ast, type_list: [ast(2)] + type_list(5),
       'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(5)},
+    Production('TemplateIdentifierList'): {
+      'identifier_list': []},
+    Production('TemplateIdentifierList', '[', 'TemplateIndentifierList+', ']'): {
+      'identifier_list': 'identifier_list.1'},
+    Production('TemplateIdentifierList+', 'identifier'): {
+      'identifier_list': lambda identifier: [identifier(1)]},
+    Production('TemplateIdentifierList+', 'identifier', ',', 'TemplateIndentifierList+'): {
+      'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(2)},
     Production('ExprList'): {
       'val_list': []},
     Production('ExprList', 'ExprList+'): {

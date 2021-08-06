@@ -1676,6 +1676,25 @@ def test_mod():
       assert_equal(main(a, b), fmod(a, b))
 
 
+def test_template_types():
+  with make_execution_engine() as engine:
+    program = """
+    struct Cool { x : Int = 0; }
+    struct Mega { y : Int = 4; }
+    func add(Cool c, Int y) -> Int {
+      return c.x + add(c, y);
+    }
+    func main() -> Int {
+      x : Int = 5;
+      y = x + 7;
+      cool = Cool(42);
+      # free(cool);
+      return add(cool, 2 * x);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False, optimize=False)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
