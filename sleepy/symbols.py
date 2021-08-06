@@ -577,6 +577,9 @@ class TemplateType(Type):
     super().__init__(ir_type=None, pass_by_ref=False, c_type=None)
     self.identifier = identifier
 
+  def __repr__(self):
+    return 'TemplateType(%r)' % self.identifier
+
   def has_templ_placeholder(self) -> bool:
     return True
 
@@ -1085,9 +1088,7 @@ class TypeFactory:
 
   def make_concrete_type(self, concrete_templ_types: List[Type]) -> Type:
     replacements = dict(zip(self.placeholder_templ_types, concrete_templ_types))
-    concrete_type = self.signature_type.replace_types(replacements)
-    assert not concrete_type.has_templ_placeholder()
-    return concrete_type
+    return self.signature_type.replace_types(replacements)
 
 
 class TypeSymbol(Symbol):
