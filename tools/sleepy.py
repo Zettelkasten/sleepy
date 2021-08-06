@@ -66,7 +66,7 @@ def main():
     main_func_symbol = symbol_table[main_func_identifier]
     if not isinstance(main_func_symbol, FunctionSymbol):
       raise CompilerError('Error: Entry point %r must be a function' % main_func_identifier)
-    if len(main_func_symbol.concrete_funcs) != 1:
+    if len(main_func_symbol.signatures) != 1:
       raise CompilerError('Error: Must declare exactly one entry point function %r' % main_func_identifier)
   except CompilerError as ce:
     if args.debug:
