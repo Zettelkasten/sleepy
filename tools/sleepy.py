@@ -56,7 +56,7 @@ def main():
   args = parser.parse_args()
 
   main_func_identifier = 'main'
-  source_file_name = args.program  # type: str
+  source_file_name: str = args.program
   with open(source_file_name) as program_file:
     program = program_file.read()
   try:
@@ -94,6 +94,14 @@ def main():
 
   object_file_name = _make_file_name(source_file_name, '.o', allow_exist=True)
   module_ref = llvm.parse_assembly(str(module_ir))
+
+  # run optimizations on module, optimizations during emit_object are different and less powerful
+  module_passes = llvm.ModulePassManager()
+  builder = llvm.PassManagerBuilder()
+  builder.opt_level = args.opt
+  builder.populate(module_passes)
+  module_passes.run(module_ref)
+
   target = llvm.Target.from_default_triple()
   machine = target.create_target_machine(opt=args.opt)
   with open(object_file_name, 'wb') as file:
