@@ -221,15 +221,15 @@ class UnionType(Type):
       '%s:%s' % (possible_type_num, possible_type)
       for possible_type_num, possible_type in zip(self.possible_type_nums, self.possible_types))
 
-  def __eq__(self, other):
-    """
-    :param Any other:
-    """
+  def __eq__(self, other) -> bool:
     if not isinstance(other, UnionType):
       return False
     self_types_dict = dict(zip(self.possible_types, self.possible_type_nums))
     other_types_dict = dict(zip(other.possible_types, other.possible_type_nums))
     return self_types_dict == other_types_dict and self.val_size == other.val_size
+
+  def __hash__(self) -> int:
+    return hash(tuple(sorted(zip(self.possible_type_nums, self.possible_types))) + (self.val_size,))
 
   def is_realizable(self):
     """
