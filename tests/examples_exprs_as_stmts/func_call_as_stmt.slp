@@ -1,0 +1,6 @@
+
+func f() -> Int { return 123; }
+
+func main() {
+    f() + f();
+}

@@ -2,14 +2,14 @@ extern_func null() -> DoublePtr;
 
 @RefType
 struct For_impl {
-    Int begin = 0;
-    Int end = 0;
-    Int index = 0;
+    begin: Int = 0;
+    end: Int = 0;
+    index: Int = 0;
 }
 
 @RefType
 struct For {
-    @Mutable For_impl it = For_impl(0, 0, 0);
+    @Mutable it: For_impl = For_impl(0, 0, 0);
 }
 
 func +(For f) -> Int {
@@ -33,12 +33,11 @@ func for(Int begin, Int end) -> For {
 }
 
 struct DPtr {
-    DoublePtr ptr = null();
+    ptr: DoublePtr = null();
 }
 
-func >=(DPtr dptr, Double d) -> DPtr {
+func =(DPtr dptr, Double d) {
     store(dptr.ptr, d);
-    return dptr;
 }
 
 func +(DPtr dptr) -> Double {
@@ -51,8 +50,8 @@ func Ptr(DoublePtr p) -> DPtr {
 }
 
 struct Matrix {
-    Int dim = 0;
-    DoublePtr data = null();
+    dim: Int = 0;
+    data: DoublePtr = null();
 }
 
 func at(Matrix m, Int i, Int j) -> DPtr {
@@ -69,15 +68,13 @@ func make_heat_sources(Matrix m) {
 
     ind = for(0, min(100, m.dim));
     while(run(ind)) {
-        ptr = at(m, 0, +ind);
-        ptr >== 50.0;
+        at(m, 0, +ind) = 50.0;
     }
 
 
     ind = for(max(0, m.dim - 100), m.dim);
     while(run(ind)) {
-        ptr = at(m, m.dim - 1, +ind);
-        ptr >== 50.0;
+        at(m, m.dim - 1, +ind) = 50.0;
     }
 }
 
@@ -98,8 +95,7 @@ func relaxation(Matrix current, Matrix next) {
             #print(" = ");
             #print_line(+at(current, +row, +col));
 
-            ptr = at(next, +row, +col);
-            ptr >== (+at(current, +row, +col + 1) +
+            at(next, +row, +col) = (+at(current, +row, +col + 1) +
                 +at(current, +row, +col - 1) +
                 +at(current, +row + 1, +col) +
                 +at(current, +row - 1, +col)) / 4.0;
@@ -135,9 +131,9 @@ func print_ppm(Matrix mat) {
 }
 
 func main() {
-    Int dim = 500;
-    Matrix current = Matrix_c(dim + 2);
-    Matrix next = Matrix_c(dim + 2);
+    dim = 500;
+    current: Matrix = Matrix_c(dim + 2);
+    next: Matrix = Matrix_c(dim + 2);
 
     make_heat_sources(current);
     make_heat_sources(next);
@@ -150,7 +146,7 @@ func main() {
         current = next;
         next = tmp;
 
-        _  = at(current, 200, 300) >= 100.0;
+        at(current, 200, 300) = 100.0;
     }
 
     print_ppm(current);

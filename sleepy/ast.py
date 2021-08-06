@@ -1,25 +1,25 @@
 from __future__ import annotations
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
-from typing import List, Optional, cast
+from typing import List, Optional, Union, cast
 
 from llvmlite import ir
 
 from sleepy.ast_value_parsing import parse_assign_op, parse_double, parse_hex_int, parse_long, parse_char, \
   parse_float, parse_string
 from sleepy.errors import SemanticError
-from sleepy.grammar import Grammar, Production, AttributeGrammar, TreePosition
-from sleepy.lexer import LexerGenerator
+from sleepy.grammar import Grammar, Production, TreePosition, AttributeGrammar
 from sleepy.parser import ParserGenerator
+from sleepy.sleepy_lexer import SLEEPY_LEXER
 from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, SLEEPY_FLOAT, Type, SLEEPY_INT, \
   SLEEPY_VOID, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
   SLEEPY_CHAR_PTR, SLEEPY_LONG
 
+SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
 from abc import ABC, abstractmethod
 
-SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is'}
 
 
 class AbstractSyntaxTree(ABC):
@@ -522,37 +522,37 @@ class FunctionDeclarationAst(StatementAst):
       self.return_type, 'extern' if self.is_extern else self.body_scope))
 
 
-class CallStatementAst(StatementAst):
+class ExpressionStatementAst(StatementAst):
   """
-  Stmt -> identifier ( ExprList )
+  Stmt -> Expr
   """
-  def __init__(self, pos, func_identifier, func_arg_exprs):
+  def __init__(self, pos: TreePosition, expr):
     """
     :param TreePosition pos:
-    :param str func_identifier:
-    :param list[ExpressionAst] func_arg_exprs:
+    :param ExpressionAst expr:
     """
     super().__init__(pos)
-    self.func_identifier = func_identifier
-    self.func_arg_exprs = func_arg_exprs
+    assert isinstance(expr, ExpressionAst)
+    self.expr = expr
 
   def build_ir(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
     :param CodegenContext context:
     """
-    self._build_func_call(
-      func_identifier=self.func_identifier, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table,
-      context=context)
+    self.expr.make_val_type(symbol_table=symbol_table)
+    if context.emits_ir:
+      # ignore return value.
+      _ = self.expr.make_ir_val(symbol_table=symbol_table, context=context)
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return self.func_arg_exprs
+    return [self.expr]
 
   def __repr__(self):
     """
     :rtype: str
     """
-    return 'CallStatementAst(func_identifier=%r, func_arg_exprs=%r)' % (self.func_identifier, self.func_arg_exprs)
+    return 'ExpressionStatementAst(expr=%r)' % self.expr
 
 
 class ReturnStatementAst(StatementAst):
@@ -714,13 +714,7 @@ class AssignStatementAst(StatementAst):
   """
   allowed_annotation_identifiers = frozenset({'Const', 'Mutable'})
 
-  def __init__(self, pos, var_target, var_val, declared_var_type):
-    """
-    :param TreePosition pos:
-    :param ExpressionAst var_target:
-    :param ExpressionAst var_val:
-    :param TypeAst|None declared_var_type:
-    """
+  def __init__(self, pos: TreePosition, var_target: ExpressionAst, var_val: ExpressionAst, declared_var_type: Union[TypeAst,None]):
     super().__init__(pos)
     assert isinstance(var_target, ExpressionAst)
     self.var_target = var_target
@@ -1670,190 +1664,178 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
       symbol_table[var_expr.var_identifier] = var_symbol.copy_with_excluded_type(check_type)
 
 
-SLEEPY_LEXER = LexerGenerator(
-  [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '.', '(', ')', '|',
-    '->', '@', 'cmp_op', 'sum_op', 'prod_op', '=', 'assign_op', '[', ']',
-    'identifier',
-    'int', 'long', 'double', 'float',
-    'char', 'str', 'hex_int',
-    None, None
-  ], [
-    'func', 'extern_func', 'struct', 'if', 'else', 'return', 'while', '{', '}', ';', ',', '\\.', '\\(', '\\)', '\\|',
-    '\\->', '@', '==|!=|<=?|>=?|is', '\\+|\\-', '\\*|/', '=', '===|!==|<==|>==|\\+=|\\-=|\\*=|/=', '\\[', '\\]',
-    '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
-    '(0|[1-9][0-9]*)', '(0|[1-9][0-9]*)l', '(0|[1-9][0-9]*)\\.([0-9]?)+d?', '(0|[1-9][0-9]*)((\\.([0-9]?))?)+f',
-    "'([^\']|\\\\[0nrt'\"])'", '"([^\"]|\\\\[0nrt\'"])*"', '0x([0-9]|[A-F]|[a-f])+',
-    '#[^\n]*\n', '[ \n\t]+'
-  ])
-SLEEPY_GRAMMAR = Grammar(
-  Production('TopLevelStmt', 'StmtList'),
-  Production('Scope', '{', 'StmtList', '}'),
-  Production('StmtList'),
-  Production('StmtList', 'AnnotationList', 'Stmt', 'StmtList'),
-  Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'),
-  Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'),
-  Production(
-    'Stmt', 'func', '(', 'AnnotationList', 'Type', 'identifier', ')', '[', 'TypedIdentifierList', ']',
-    'ReturnType', 'Scope'),
-  Production(
-    'Stmt', 'func', '(', 'AnnotationList', 'Type', 'identifier', ')', '[', 'TypedIdentifierList', ']', '=',
-    'AnnotationList', 'Type', 'identifier', 'Scope'),
-  Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'),
-  Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'),
-  Production('Stmt', 'identifier', '(', 'ExprList', ')', ';'),
-  Production('Stmt', 'return', 'ExprList', ';'),
-  Production('Stmt', 'Type', 'Target', '=', 'Expr', ';'),
-  Production('Stmt', 'Target', '=', 'Expr', ';'),
-  Production('Stmt', 'Target', 'assign_op', 'Expr', ';'),
-  Production('Stmt', 'Target', '[', 'ExprList', ']', '=', 'Expr', ';'),
-  Production('Stmt', 'if', 'Expr', 'Scope'),
-  Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'),
-  Production('Stmt', 'while', 'Expr', 'Scope'),
-  Production('Expr', 'Expr', 'cmp_op', 'SumExpr'),
-  Production('Expr', 'SumExpr'),
-  Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'),
-  Production('SumExpr', 'ProdExpr'),
-  Production('ProdExpr', 'ProdExpr', 'prod_op', 'MemberExpr'),
-  Production('ProdExpr', 'MemberExpr'),
-  Production('MemberExpr', 'MemberExpr', '.', 'identifier'),
-  Production('MemberExpr', 'NegExpr'),
-  Production('NegExpr', 'sum_op', 'PrimaryExpr'),
-  Production('NegExpr', 'PrimaryExpr'),
-  Production('PrimaryExpr', 'int'),
-  Production('PrimaryExpr', 'long'),
-  Production('PrimaryExpr', 'double'),
-  Production('PrimaryExpr', 'float'),
-  Production('PrimaryExpr', 'char'),
-  Production('PrimaryExpr', 'str'),
-  Production('PrimaryExpr', 'hex_int'),
-  Production('PrimaryExpr', 'identifier'),
-  Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'),
-  Production('PrimaryExpr', 'PrimaryExpr', '[', 'ExprList', ']'),
-  Production('PrimaryExpr', '(', 'Expr', ')'),
-  Production('Target', 'identifier'),
-  Production('Target', 'Target', '.', 'identifier'),
-  Production('AnnotationList'),
-  Production('AnnotationList', 'Annotation', 'AnnotationList'),
-  Production('Annotation', '@', 'identifier'),
-  Production('IdentifierList'),
-  Production('IdentifierList', 'IdentifierList+'),
-  Production('IdentifierList+', 'identifier'),
-  Production('IdentifierList+', 'identifier', ',', 'IdentifierList+'),
-  Production('TypedIdentifierList'),
-  Production('TypedIdentifierList', 'TypedIdentifierList+'),
-  Production('TypedIdentifierList+', 'AnnotationList', 'Type', 'identifier'),
-  Production('TypedIdentifierList+', 'AnnotationList', 'Type', 'identifier', ',', 'TypedIdentifierList+'),
-  Production('ExprList'),
-  Production('ExprList', 'ExprList+'),
-  Production('ExprList+', 'Expr'),
-  Production('ExprList+', 'Expr', ',', 'ExprList+'),
-  Production('Type', 'Type', '|', 'IdentifierType'),
-  Production('Type', 'IdentifierType'),
-  Production('IdentifierType', 'identifier'),
-  Production('IdentifierType', '(', 'Type', ')'),
-  Production('ReturnType'),
-  Production('ReturnType', '->', 'AnnotationList', 'Type'),
-  Production('Op', 'cmp_op'),
-  Production('Op', 'sum_op'),
-  Production('Op', 'prod_op')
-)
-SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
-  SLEEPY_GRAMMAR,
+SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
+  prods_attr_rules={
+    Production('TopLevelStmt', 'StmtList'): {
+      'ast': lambda _pos, stmt_list: TopLevelAst(_pos, root_scope=AbstractScopeAst(_pos, stmt_list=stmt_list(1)))},
+    Production('Scope', '{', 'StmtList', '}'): {
+      'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list=stmt_list(2))},
+    Production('StmtList'): {
+      'stmt_list': []},
+    Production('StmtList', 'AnnotationList', 'Stmt', 'StmtList'): {
+      'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
+    Production('Stmt', 'Expr', ';'): {
+      'ast': lambda _pos, ast: ExpressionStatementAst(_pos, expr=ast(1))},
+    Production('Stmt', 'func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {
+      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+        FunctionDeclarationAst(
+          _pos, identifier=identifier(2), arg_identifiers=identifier_list(4), arg_types=type_list(4),
+          arg_annotations=annotation_list(4), return_type=ast(6), return_annotation_list=annotation_list(6),
+          body_scope=ast(7)))},
+    Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {
+      'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast: (
+        FunctionDeclarationAst(
+          _pos, identifier=op(2), arg_identifiers=identifier_list(4), arg_types=type_list(4),
+          arg_annotations=annotation_list(4), return_type=ast(6), return_annotation_list=annotation_list(6),
+          body_scope=ast(7)))},
+    # TODO: Cleanup index operator
+    Production('Stmt', 'func', '(', 'AnnotationList', 'Type', 'identifier', ')', '[', 'TypedIdentifierList', ']', 'ReturnType', 'Scope'): {  # noqa
+      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+        FunctionDeclarationAst(
+          _pos, identifier='get', arg_identifiers=[identifier(5)] + identifier_list(8),
+          arg_types=[ast(4)] + type_list(8), arg_annotations=[annotation_list(3)] + annotation_list(8),
+          return_type=ast(10), return_annotation_list=annotation_list(10), body_scope=ast(11)))},
+    Production('Stmt', 'func', '(', 'AnnotationList', 'Type', 'identifier', ')', '[', 'TypedIdentifierList', ']', '=', 'AnnotationList', 'Type', 'identifier', 'Scope'): {  # noqa
+      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+        FunctionDeclarationAst(
+          _pos, identifier='set', arg_identifiers=[identifier(5)] + identifier_list(8) + [identifier(13)],
+          arg_types=[ast(4)] + type_list(8) + [ast(12)],
+          arg_annotations=[annotation_list(3)] + annotation_list(8) + [annotation_list(11)],
+          return_type=None, return_annotation_list=None, body_scope=ast(14)))},
+    Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'): {
+      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+        FunctionDeclarationAst(
+          _pos, identifier=identifier(2), arg_identifiers=identifier_list(4), arg_types=type_list(4),
+          arg_annotations=annotation_list(4), return_type=ast(6), return_annotation_list=annotation_list(6),
+          body_scope=None))},
+    Production('Stmt', 'struct', 'identifier', '{', 'StmtList', '}'): {
+      'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(
+        _pos, struct_identifier=identifier(2), stmt_list=stmt_list(4))},
+    Production('Stmt', 'return', 'ExprList', ';'): {
+      'ast': lambda _pos, val_list: ReturnStatementAst(_pos, return_exprs=val_list(2))},
+    Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr', ';'): {
+      'ast': lambda _pos, ast: AssignStatementAst(_pos, var_target=ast(1), var_val=ast(5), declared_var_type=ast(3))},
+    # TODO: Handle equality operator in a saner way
+    Production('Stmt', 'Expr', '=', 'Expr', ';'): {
+      'ast': lambda _pos, ast: (
+        AssignStatementAst(_pos, var_target=ast(1), var_val=ast(3), declared_var_type=None)
+        if isinstance(ast(1), VariableExpressionAst) or isinstance(ast(1), MemberExpressionAst)
+        else ExpressionStatementAst(_pos, BinaryOperatorExpressionAst(
+          _pos, op='=', left_expr=ast(1), right_expr=ast(3))))},
+    Production('Stmt', 'Expr', 'assign_op', 'Expr', ';'): {
+      'ast': lambda _pos, ast, op: AssignStatementAst(
+        _pos, var_target=ast(1), var_val=BinaryOperatorExpressionAst(
+          _pos, op=op(2), left_expr=ast(1), right_expr=ast(3)), declared_var_type=None)},
+    Production('Stmt', 'if', 'Expr', 'Scope'): {
+      'ast': lambda _pos, ast: IfStatementAst(_pos, condition_val=ast(2), true_scope=ast(3), false_scope=None)},
+    Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'): {
+      'ast': lambda _pos, ast: IfStatementAst(_pos, condition_val=ast(2), true_scope=ast(3), false_scope=ast(5))},
+    Production('Stmt', 'while', 'Expr', 'Scope'): {
+      'ast': lambda _pos, ast: WhileStatementAst(_pos, condition_val=ast(2), body_scope=ast(3))},
+    Production('Expr', 'Expr', 'cmp_op', 'SumExpr'): {
+      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op=op(2), left_expr=ast(1), right_expr=ast(3))},
+    Production('Expr', 'SumExpr'): {
+      'ast': 'ast.1'},
+    Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'): {
+      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
+    Production('SumExpr', 'ProdExpr'): {
+      'ast': 'ast.1'},
+    Production('ProdExpr', 'ProdExpr', 'prod_op', 'MemberExpr'): {
+      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
+    Production('ProdExpr', 'MemberExpr'): {
+      'ast': 'ast.1'},
+    Production('MemberExpr', 'MemberExpr', '.', 'identifier'): {
+      'ast': lambda _pos, ast, identifier: MemberExpressionAst(_pos, ast(1), identifier(3))},
+    Production('MemberExpr', 'NegExpr'): {
+      'ast': 'ast.1'},
+    Production('NegExpr', 'sum_op', 'PrimaryExpr'): {
+      'ast': lambda _pos, ast, op: UnaryOperatorExpressionAst(_pos, op(1), ast(2))},
+    Production('NegExpr', 'PrimaryExpr'): {
+      'ast': 'ast.1'},
+    Production('PrimaryExpr', 'int'): {
+      'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
+    Production('PrimaryExpr', 'long'): {
+      'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_LONG)},
+    Production('PrimaryExpr', 'double'): {
+      'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_DOUBLE)},
+    Production('PrimaryExpr', 'float'): {
+      'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_FLOAT)},
+    Production('PrimaryExpr', 'char'): {
+      'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_CHAR)},
+    Production('PrimaryExpr', 'str'): {
+      'ast': lambda _pos, string: StringLiteralExpressionAst(_pos, string(1))},
+    Production('PrimaryExpr', 'hex_int'): {
+      'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
+    Production('PrimaryExpr', 'identifier'): {
+      'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
+    Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'): {
+      'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
+    # TODO: Cleanup index operator
+    Production('PrimaryExpr', 'PrimaryExpr', '[', 'ExprList', ']'): {
+      'ast': lambda _pos, ast, val_list: CallExpressionAst(_pos, 'get', [ast(1)] + val_list(3))},
+    Production('PrimaryExpr', '(', 'Expr', ')'): {
+      'ast': 'ast.2'},
+    Production('AnnotationList'): {
+      'annotation_list': []},
+    Production('AnnotationList', 'Annotation', 'AnnotationList'): {
+      'annotation_list': lambda ast, annotation_list: [ast(1)] + annotation_list(2)},
+    Production('Annotation', '@', 'identifier'): {
+      'ast': lambda _pos, identifier: AnnotationAst(_pos, identifier(2))},
+    Production('IdentifierList'): {
+      'identifier_list': []},
+    Production('IdentifierList', 'IdentifierList+'): {
+      'identifier_list': 'identifier_list.1'},
+    Production('IdentifierList+', 'identifier'): {
+      'identifier_list': lambda identifier: [identifier(1)]},
+    Production('IdentifierList+', 'identifier', ',', 'IdentifierList+'): {
+      'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(3)},
+    Production('TypedIdentifierList'): {
+      'identifier_list': [], 'type_list': [], 'annotation_list': []},
+    Production('TypedIdentifierList', 'TypedIdentifierList+'): {
+      'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
+    Production('TypedIdentifierList+', 'AnnotationList', 'Type', 'identifier'): {
+      'identifier_list': lambda identifier: [identifier(3)],
+      'type_list': lambda ast: [ast(2)],
+      'annotation_list': lambda annotation_list: [annotation_list(1)]},
+    Production('TypedIdentifierList+', 'AnnotationList', 'Type', 'identifier', ',', 'TypedIdentifierList+'): {
+      'identifier_list': lambda identifier,identifier_list: [identifier(3)] + identifier_list(5),
+      'type_list': lambda ast, type_list: [ast(2)] + type_list(5),
+      'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(5)},
+    Production('ExprList'): {
+      'val_list': []},
+    Production('ExprList', 'ExprList+'): {
+      'val_list': 'val_list.1'},
+    Production('ExprList+', 'Expr'): {
+      'val_list': lambda ast: [ast(1)]},
+    Production('ExprList+', 'Expr', ',', 'ExprList+'): {
+      'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
+    Production('Type', 'Type', '|', 'IdentifierType'): {
+      'ast': lambda _pos, ast: UnionTypeAst(_pos, [ast(1), ast(3)])},
+    Production('Type', 'IdentifierType'): {
+      'ast': 'ast.1'},
+    Production('IdentifierType', 'identifier'): {
+      'ast': lambda _pos, identifier: IdentifierTypeAst(_pos, identifier(1))},
+    Production('IdentifierType', '(', 'Type', ')'): {
+      'ast': 'ast.2'},
+    Production('ReturnType'): {
+      'ast': None, 'annotation_list': None},
+    Production('ReturnType', '->', 'AnnotationList', 'Type'): {
+      'ast': 'ast.3', 'annotation_list': 'annotation_list.2'},
+    Production('Op', 'cmp_op'): {
+      'op': 'op.1'},
+    Production('Op', 'sum_op'): {
+      'op': 'op.1'},
+    Production('Op', 'prod_op'): {
+      'op': 'op.1'},
+    Production('Op', '='): {
+      'op': 'op.1'},
+  },
   syn_attrs={
     'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
     'op', 'number', 'string'},
-  prod_attr_rules=[
-    {'ast': lambda _pos, stmt_list: TopLevelAst(_pos, AbstractScopeAst(_pos, stmt_list(1)))},
-    {'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list(2))},
-    {'stmt_list': []},
-    {'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
-      FunctionDeclarationAst(
-        _pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6),
-        ast(7)))},
-    {'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast: (
-      FunctionDeclarationAst(
-        _pos, op(2), identifier_list(4), type_list(4), annotation_list(4), ast(6), annotation_list(6), ast(7)))},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
-      FunctionDeclarationAst(
-        _pos, identifier='get', arg_identifiers=[identifier(5)] + identifier_list(8),
-        arg_types=[ast(4)] + type_list(8), arg_annotations=[annotation_list(3)] + annotation_list(8),
-        return_type=ast(10), return_annotation_list=annotation_list(10), body_scope=ast(11)))},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
-      FunctionDeclarationAst(
-        _pos, identifier='set', arg_identifiers=[identifier(5)] + identifier_list(8) + [identifier(13)],
-        arg_types=[ast(4)] + type_list(8) + [ast(12)],
-        arg_annotations=[annotation_list(3)] + annotation_list(8) + [annotation_list(11)],
-        return_type=None, return_annotation_list=None, body_scope=ast(14)))},
-    {'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
-      FunctionDeclarationAst(_pos, identifier(2), identifier_list(4), type_list(4), annotation_list(4),
-        ast(6), annotation_list(6), None))},
-    {'ast': lambda _pos, identifier, stmt_list: StructDeclarationAst(_pos, identifier(2), stmt_list(4))},
-    {'ast': lambda _pos, identifier, val_list: CallStatementAst(_pos, identifier(1), val_list(3))},
-    {'ast': lambda _pos, val_list: ReturnStatementAst(_pos, val_list(2))},
-    {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(2), ast(4), ast(1))},
-    {'ast': lambda _pos, ast: AssignStatementAst(_pos, ast(1), ast(3), None)},
-    {'ast': lambda _pos, ast, op: AssignStatementAst(
-      _pos, ast(1), BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3)), None)},
-    {'ast': lambda _pos, ast, val_list: CallStatementAst(_pos, 'set', [ast(1)] + val_list(3) + [ast(6)])},
-    {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), None)},
-    {'ast': lambda _pos, ast: IfStatementAst(_pos, ast(2), ast(3), ast(5))},
-    {'ast': lambda _pos, ast: WhileStatementAst(_pos, ast(2), ast(3))}] + [
-    {'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
-    {'ast': 'ast.1'}] * 3 + [
-    {'ast': lambda _pos, ast, identifier: MemberExpressionAst(_pos, ast(1), identifier(3))},
-    {'ast': 'ast.1'},
-    {'ast': lambda _pos, ast, op: UnaryOperatorExpressionAst(_pos, op(1), ast(2))},
-    {'ast': 'ast.1'},
-    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
-    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_LONG)},
-    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_DOUBLE)},
-    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_FLOAT)},
-    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_CHAR)},
-    {'ast': lambda _pos, string: StringLiteralExpressionAst(_pos, string(1))},
-    {'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
-    {'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
-    {'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
-    {'ast': lambda _pos, ast, val_list: CallExpressionAst(_pos, 'get', [ast(1)] + val_list(3))},
-    {'ast': 'ast.2'},
-    {'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
-    {'ast': lambda _pos, ast, identifier: MemberExpressionAst(_pos, ast(1), identifier(3))},
-    {'annotation_list': []},
-    {'annotation_list': lambda ast, annotation_list: [ast(1)] + annotation_list(2)},
-    {'ast': lambda _pos, identifier: AnnotationAst(_pos, identifier(2))},
-    {'identifier_list': []},
-    {'identifier_list': 'identifier_list.1'},
-    {'identifier_list': lambda identifier: [identifier(1)]},
-    {'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(3)},
-    {'identifier_list': [], 'type_list': [], 'annotation_list': []},
-    {'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
-    {
-      'identifier_list': lambda identifier: [identifier(3)],
-      'type_list': lambda ast: [ast(2)],
-      'annotation_list': lambda annotation_list: [annotation_list(1)]
-    },
-    {
-      'identifier_list': lambda identifier, identifier_list: [identifier(3)] + identifier_list(5),
-      'type_list': lambda ast, type_list: [ast(2)] + type_list(5),
-      'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(5)
-    },
-    {'val_list': []},
-    {'val_list': 'val_list.1'},
-    {'val_list': lambda ast: [ast(1)]},
-    {'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
-    {'ast': lambda _pos, ast: UnionTypeAst(_pos, [ast(1), ast(3)])},
-    {'ast': 'ast.1'},
-    {'ast': lambda _pos, identifier: IdentifierTypeAst(_pos, identifier(1))},
-    {'ast': 'ast.2'},
-    {'ast': None, 'annotation_list': None},
-    {'ast': 'ast.3', 'annotation_list': 'annotation_list.2'},
-    {'op': 'op.1'},
-    {'op': 'op.1'},
-    {'op': 'op.1'}
-  ],
   terminal_attr_rules={
     'cmp_op': {'op': lambda value: value},
+    '=': {'op': lambda value: value},
     'sum_op': {'op': lambda value: value},
     'prod_op': {'op': lambda value: value},
     'assign_op': {'op': parse_assign_op},
@@ -1867,7 +1849,10 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar(
     'hex_int': {'number': lambda value: parse_hex_int(value)}
   }
 )
+
+SLEEPY_GRAMMAR = SLEEPY_ATTR_GRAMMAR.grammar
 SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
+
 
 def make_program_ast(program, add_preamble=True):
   """

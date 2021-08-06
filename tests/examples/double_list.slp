@@ -1,7 +1,7 @@
 @RefType struct DoubleList {
-  DoublePtr pointer = allocate_double(8);
-  Int alloc_length = 8;
-  Int length = 0;
+  pointer : DoublePtr = allocate_double(8);
+  alloc_length : Int = 8;
+  length : Int = 0;
 }
 func empty_list() -> @Mutable DoubleList {
   return DoubleList(allocate_double(8), 8, 0);

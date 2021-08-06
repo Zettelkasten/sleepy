@@ -156,6 +156,17 @@ class AttributeGrammar:
     self.terminal_attr_rules = terminal_attr_rules  # type: Dict[str, Dict[str, Union[Callable, str]]]
     self._sanity_check()
 
+  @classmethod
+  def from_dict(cls,
+                prods_attr_rules: Dict[Production, Dict[str, Union[Callable, str, Any]]],
+                terminal_attr_rules: Dict[str, Dict[str, Union[Callable, Any]]],
+                inh_attrs: Optional[Set[str]] = None, syn_attrs: Optional[Set[str]] = None,
+                start: Optional[str] = None):
+    grammar = Grammar(*prods_attr_rules.keys(), start=start)
+    return AttributeGrammar(
+      grammar=grammar, prod_attr_rules=prods_attr_rules, terminal_attr_rules=terminal_attr_rules,
+      inh_attrs=inh_attrs, syn_attrs=syn_attrs)
+
   def _split_attr_name_pos(self, attr_target):
     """
     :param str attr_target: attr.i

@@ -88,6 +88,12 @@ func >=(Double left, Int right) -> Bool { return left >= ToDouble(right); }
 @Inline func max(Int a, Int b) -> Int { if a > b { return a; } else { return b; } }
 @Inline func sign(Int a) -> Int { if a > 0 { return 1; } if a == 0 { return 0; } else { return -1; } }
 @Inline func sign(Double a) -> Double { if a > 0.0 { return 1.0; } if a == 0.0 { return 0.0; } else { return -1.0; } }
+@Inline func div(Int a, Int b) -> Int { return ToInt(ToDouble(a) / ToDouble(b)); }
+@Inline func mod(Int a, Int b) -> Int { return a - div(a, b) * b; }
+extern_func sin(Double x) -> Double;
+extern_func cos(Double x) -> Double;
+@Inline func sin(Float x) -> Float { extern_func sinf(Float f) -> Float; return sinf(x); }
+@Inline func cos(Float x) -> Float { extern_func cosf(Float f) -> Float; return cosf(x); }
 
 ## String (note: the Str struct itself is declared internally, not here.)
 # @RefType struct Str {
@@ -113,8 +119,8 @@ func copy(Str str) -> @Mutable Str {
   memcpy(new.start, str.start, str.length);
   return new;
 }
-func get(Str str, Int pos) -> Char {
-  return load(str.start + pos);
+func get(Str str, Int pos) -> CharPtr {
+  return str.start + pos;
 }
 func set(@Mutable Str str, Int pos, Char char) {
   assert(and(0 <= pos, pos < str.length + 1));
@@ -126,13 +132,18 @@ func set(@Mutable Str str, Int pos, Char char) {
     str.length += 1;
   }
 }
+func =(CharPtr ptr, Char v) { store(ptr, v); }
+func +(CharPtr ptr) -> Char { return load(ptr); }
+func =(DoublePtr ptr, Double d) { store(ptr, d); }
+func +(DoublePtr ptr) -> Double { return load(ptr); }
+
 func insert(@Mutable Str str, Char char, Int pos) {
   assert(and(0 <= pos, pos < str.length + 1));
   if str.length + 1 >= str.alloc_length {
     resize(str, max(2 * str.alloc_length, 1));
   }
   memcpy(str.start + pos + 1, str.start + pos, str.length - pos);
-  str[pos] = char;
+  set(str, pos, char);
 }
 func insert(@Mutable Str str, Char insert_char) { insert(str, insert_char, str.length); }
 func insert(@Mutable Str str, Str insert_str, Int pos) {
@@ -191,7 +202,7 @@ func *(Char c, Int repetitions) -> @Mutable Str {
 func print(Str str) {
   pos = 0;
   while pos < str.length {
-    print(str[pos]);
+    print(+str[pos]);
     pos += 1;
   }
 }

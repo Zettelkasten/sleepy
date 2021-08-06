@@ -1,0 +1,40 @@
+from sleepy.lexer import LexerGenerator
+
+SLEEPY_LEXER = LexerGenerator.from_dict(
+  {
+    'func': 'func',
+    'extern_func': 'extern_func',
+    'struct': 'struct',
+    'if': 'if',
+    'else': 'else',
+    'return': 'return',
+    'while': 'while',
+    '{': '{',
+    '}': '}',
+    ';': ';',
+    ',': ',',
+    '.': '\\.',
+    '(': '\\(',
+    ')': '\\)',
+    '|': '\\|',
+    '->': '\\->',
+    '@': '@',
+    'cmp_op': '==|!=|<=?|>=?|is',
+    'sum_op': '\\+|\\-',
+    'prod_op': '\\*|/',
+    '=': '=',
+    ':': ':',
+    'assign_op': '===|!==|<==|>==|\\+=|\\-=|\\*=|/=',
+    '[': '\\[',
+    ']': '\\]',
+    'identifier': '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*',
+    'int': '(0|[1-9][0-9]*)',
+    'long': '(0|[1-9][0-9]*)l',
+    'double': '(0|[1-9][0-9]*)\\.([0-9]?)+d?',
+    'float': '(0|[1-9][0-9]*)((\\.([0-9]?))?)+f',
+    'char': '\'([^\']|\\\\[0nrt\'"])\'',
+    'str': '"([^"]|\\\\[0nrt\'"])*"',
+    'hex_int': '0x([0-9]|[A-F]|[a-f])+'
+  },
+  ignore_token_regexes=['#[^\n]*\n', '[ \n\t]+']
+)

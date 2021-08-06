@@ -30,6 +30,17 @@ class LexerGenerator:
     self._final_states = {}  # type: Dict[Tuple[Union[int,ERROR_STATE]],str]
     self._make_final_states()
 
+  @classmethod
+  def from_dict(cls, token_names_to_regex: Dict[str, str], ignore_token_regexes: List[str]):
+    """
+    :param token_names_to_regex: pairs token name -> regex. highest priority first
+    :param ignore_token_regexes: regexes for tokens to ignore, will have lower priority than other tokens
+    """
+    assert None not in token_names_to_regex
+    token_names = list(token_names_to_regex.keys()) + [None] * len(ignore_token_regexes)  # noqa
+    token_regex_table = list(token_names_to_regex.values()) + ignore_token_regexes
+    return LexerGenerator(token_names=token_names, token_regex_table=token_regex_table)
+
   def _get_next_state(self, state, char):
     """
     :param tuple[int|None]|None state:

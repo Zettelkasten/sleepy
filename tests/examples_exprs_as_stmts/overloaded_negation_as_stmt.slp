@@ -1,0 +1,7 @@
+struct S {}
+
+func -(S s) -> Int { return 1; }
+
+func main() {
+    -S();
+}
