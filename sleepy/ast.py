@@ -1076,7 +1076,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     operand_exprs = [self.expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
@@ -1086,7 +1086,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     operand_exprs = [self.expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
@@ -1172,7 +1172,7 @@ class StringLiteralExpressionAst(ExpressionAst):
     assert 'Str' in symbol_table.inbuilt_symbols is not None
     str_symbol = symbol_table.inbuilt_symbols['Str']
     assert isinstance(str_symbol, TypeSymbol)
-    return str_symbol.type
+    return str_symbol.get_type(concrete_templ_types=[])
 
   def is_val_mutable(self, symbol_table):
     """
@@ -1191,7 +1191,7 @@ class StringLiteralExpressionAst(ExpressionAst):
     assert 'Str' in symbol_table.inbuilt_symbols is not None
     str_symbol = symbol_table.inbuilt_symbols['Str']
     assert isinstance(str_symbol, TypeSymbol)
-    str_type = str_symbol.type
+    str_type = str_symbol.get_type(concrete_templ_types=[])
     assert isinstance(str_type, StructType)
     assert str_type.member_identifiers == ['start', 'length', 'alloc_length']
 

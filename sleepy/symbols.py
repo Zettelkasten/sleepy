@@ -238,13 +238,15 @@ class UnionType(Type):
     return len(self.possible_types) > 0
 
   def replace_types(self, replacements: Dict[Type, Type]) -> UnionType:
+    if len(self.possible_types) == 0:
+      return self
     new_possible_types = [
       replacements.get(possible_type, possible_type) for possible_type in self.possible_types]
     new_possible_type_nums = self.possible_type_nums.copy()
     duplicate_indices = [
-      index for index, possible_type in enumerate(reversed(new_possible_types))
+      index for index, possible_type in enumerate(new_possible_types)
       if possible_type in new_possible_types[:index]]
-    for duplicate_index in duplicate_indices:
+    for duplicate_index in reversed(duplicate_indices):
       del new_possible_types[duplicate_index]
       del new_possible_type_nums[duplicate_index]
     val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types)
@@ -443,8 +445,8 @@ class StructType(Type):
       self.member_mutables == other.member_mutables and self.pass_by_ref == other.pass_by_ref)
 
   def __hash__(self) -> int:
-    return hash((self.__class__, self.struct_identifier, self.templ_types, self.member_identifiers, self.member_types,
-    self.member_mutables, self.pass_by_ref))
+    return hash((self.__class__, self.struct_identifier, tuple(self.templ_types), tuple(self.member_identifiers),
+    tuple(self.member_types), tuple(self.member_mutables), self.pass_by_ref))
 
   def __repr__(self):
     """
@@ -523,7 +525,8 @@ class StructType(Type):
 
     class DestructorConcreteFuncFactory(ConcreteFunctionFactory):
       def build_concrete_func_ir(self_, concrete_func: ConcreteFunction):
-        concrete_struct_type = concrete_func.return_type
+        assert len(concrete_func.arg_types) == 1
+        concrete_struct_type = concrete_func.arg_types[0]
         assert isinstance(concrete_struct_type, StructType)
         if parent_context.emits_ir:
           ir_func_name = parent_symbol_table.make_ir_func_name('free', extern=False, concrete_func=concrete_func)
@@ -1634,11 +1637,12 @@ def _make_str_symbol(symbol_table, context):
   :rtype: TypeSymbol
   """
   str_type = StructType(
-    struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'],
+    struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'], templ_types=[],
     member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT], member_mutables=[False, False, False],
     pass_by_ref=True)
   constructor_symbol = str_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
-  struct_symbol = TypeSymbol(type=str_type, constructor_symbol=constructor_symbol)
+  type_factory = TypeFactory(placeholder_templ_types=[], signature_type=str_type)
+  struct_symbol = TypeSymbol(type_factory=type_factory, constructor_symbol=constructor_symbol)
   str_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
   return struct_symbol
 
@@ -1702,11 +1706,10 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
       module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
     context.ir_func_free = ir.Function(module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
 
-  # TODO: Readd string
-  # assert 'Str' not in symbol_table
-  # str_symbol = _make_str_symbol(symbol_table=symbol_table, context=context)
-  # symbol_table['Str'] = str_symbol
-  # symbol_table.inbuilt_symbols['Str'] = str_symbol
+  assert 'Str' not in symbol_table
+  str_symbol = _make_str_symbol(symbol_table=symbol_table, context=context)
+  symbol_table['Str'] = str_symbol
+  symbol_table.inbuilt_symbols['Str'] = str_symbol
 
   for op, op_arg_type_list, op_return_type_list in zip(
     SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):
