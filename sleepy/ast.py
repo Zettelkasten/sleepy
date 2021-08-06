@@ -360,18 +360,7 @@ class FunctionDeclarationAst(StatementAst):
       self.raise_error('Extern function %r cannot be inlined' % self.identifier)
 
     class DeclaredConcreteFunctionFactory(ConcreteFunctionFactory):
-      def make_concrete_func(self_, signature: FunctionSignature, concrete_templ_types: List[Type]) -> ConcreteFunction:
-        assert len(concrete_templ_types) == len(placeholder_templ_types)
-        concrete_type_replacements = {
-          templ_type: concrete_templ_type for templ_type, concrete_templ_type in zip(placeholder_templ_types, concrete_templ_types)}
-        concrete_return_type = return_type.replace_types(replacements=concrete_type_replacements)
-        concrete_arg_types = [
-          templ_arg_type.replace_types(replacements=concrete_type_replacements) for templ_arg_type in arg_types]
-        concrete_func = ConcreteFunction(
-          signature=signature, ir_func=None, make_inline_func_call_ir_callback=None,
-          concrete_templ_types=concrete_templ_types, return_type=concrete_return_type, arg_types=concrete_arg_types,
-          arg_type_narrowings=concrete_arg_types)
-
+      def build_concrete_func_ir(self_, concrete_func: ConcreteFunction):
         if self.is_extern:
           if symbol_table.has_extern_func(self.identifier):
             extern_concrete_func = symbol_table.get_extern_func(self.identifier)
@@ -669,12 +658,11 @@ class StructDeclarationAst(StatementAst):
     type_factory = TypeFactory(placeholder_templ_types=[], signature_type=signature_struct_type)
 
     constructor_symbol = signature_struct_type.build_constructor(
-      type_factory=type_factory, parent_symbol_table=symbol_table, parent_context=context)
+      parent_symbol_table=symbol_table, parent_context=context)
     symbol_table[self.struct_identifier] = TypeSymbol(type_factory, constructor_symbol=constructor_symbol)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
 
-    signature_struct_type.build_destructor(
-      type_factory=type_factory, parent_symbol_table=symbol_table, parent_context=context)
+    signature_struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
 
   def __repr__(self) -> str:
     return 'StructDeclarationAst(struct_identifier=%r, templ_arg_identifiers=%r, stmt_list=%r)' % (
