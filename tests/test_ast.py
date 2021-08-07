@@ -60,6 +60,19 @@ def test_simple_arithmetic():
     assert_equal(func(0.0, 1.0), 0.0 - 1.0)
     assert_equal(func(3.0, 5.0), 3.0 - 5.0)
     assert_equal(func(2.5, 2.5), 2.5 - 2.5)
+  with make_execution_engine() as engine:
+    program = """
+    func divide(Int a, Int b) -> Int {
+      return a / b;
+    }
+    """
+    func = compile_program(engine, program, main_func_identifier='divide')
+    assert_equal(func(1, 2), 0)
+    assert_equal(func(14, 3), 4)
+    assert_equal(func(25, 5), 5)
+    assert_equal(func(-1, 2), 0)
+    assert_equal(func(-14, 3), -4)
+    assert_equal(func(-25, -5), 5)
 
 
 def test_empty_func():
