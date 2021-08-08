@@ -127,6 +127,7 @@ class ParserGenerator:
     self._state_action_table = []  # type: List[Dict[str, _Action]]
     self._state_goto_table = []  # type: List[Dict[str, int]]
     self._state_descr = []  # type: List[str]
+    self.first1_sets = make_first1_sets(self.grammar)
 
     self._make()
 
@@ -139,7 +140,6 @@ class ParserGenerator:
     :returns: Completed item set, action function, next symbols
     :rtype: tuple[frozenset[_LrItem], dict[str, _LrAction], list[str]]
     """
-    first1_sets = make_first1_sets(self.grammar)
     add_item_queue = initial_items.copy()
 
     state = set()
@@ -166,8 +166,8 @@ class ParserGenerator:
         # If A-> alpha . B beta in state, add all [B -> . gamma, fi(beta x)]
         word_after_next_symbol = item.prod.right[item.pointer+1:] + (() if item.la is EPSILON else (item.la,))
         add_item_queue.extend([_Item(p, 0, new_la)
-          for p in self.grammar.get_prods_for(next_symbol)
-          for new_la in get_first1_set_for_word(first1_sets, word_after_next_symbol)])
+                               for p in self.grammar.get_prods_for(next_symbol)
+                               for new_la in get_first1_set_for_word(self.first1_sets, word_after_next_symbol)])
       else:
         assert next_symbol in self.grammar.terminals
         # Shift A -> . a beta
