@@ -88,7 +88,7 @@ func >=(Double left, Int right) -> Bool { return left >= ToDouble(right); }
 @Inline func max(Int a, Int b) -> Int { if a > b { return a; } else { return b; } }
 @Inline func sign(Int a) -> Int { if a > 0 { return 1; } if a == 0 { return 0; } else { return -1; } }
 @Inline func sign(Double a) -> Double { if a > 0.0 { return 1.0; } if a == 0.0 { return 0.0; } else { return -1.0; } }
-@Inline func div(Int a, Int b) -> Int { return ToInt(ToDouble(a) / ToDouble(b)); }
+@Inline func div(Int a, Int b) -> Int { return a / b; }
 @Inline func mod(Int a, Int b) -> Int { return a - div(a, b) * b; }
 extern_func sin(Double x) -> Double;
 extern_func cos(Double x) -> Double;
