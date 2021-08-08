@@ -100,6 +100,7 @@ def main():
     module_passes = llvm.ModulePassManager()
     builder = llvm.PassManagerBuilder()
     builder.opt_level = args.opt
+    builder.inlining_threshold = 250
     builder.populate(module_passes)
     module_passes.run(module_ref)
 
