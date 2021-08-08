@@ -95,12 +95,13 @@ def main():
   object_file_name = _make_file_name(source_file_name, '.o', allow_exist=True)
   module_ref = llvm.parse_assembly(str(module_ir))
 
-  # run optimizations on module, optimizations during emit_object are different and less powerful
-  module_passes = llvm.ModulePassManager()
-  builder = llvm.PassManagerBuilder()
-  builder.opt_level = args.opt
-  builder.populate(module_passes)
-  module_passes.run(module_ref)
+  if args.opt != 0:
+    # run optimizations on module, optimizations during emit_object are different and less powerful
+    module_passes = llvm.ModulePassManager()
+    builder = llvm.PassManagerBuilder()
+    builder.opt_level = args.opt
+    builder.populate(module_passes)
+    module_passes.run(module_ref)
 
   target = llvm.Target.from_default_triple()
   machine = target.create_target_machine(opt=args.opt)
