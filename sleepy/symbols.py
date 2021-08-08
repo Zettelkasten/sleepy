@@ -3,9 +3,12 @@ Implements a symbol table.
 """
 import ctypes
 from enum import Enum
-from typing import Dict, Optional, List, Tuple, Set
+from typing import Dict, Optional, List, Tuple, Set, Callable, TypeVar, Union, Any
 
 from llvmlite import ir
+from llvmlite.ir import Value, IRBuilder
+
+from sleepy.util import concat_dicts
 
 LLVM_SIZE_TYPE = ir.types.IntType(64)
 LLVM_VOID_POINTER_TYPE = ir.PointerType(ir.types.IntType(8))
@@ -540,8 +543,14 @@ SLEEPY_TYPES: Dict[str, Type] = {
   'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR,
   'DoublePtr': SLEEPY_DOUBLE_PTR, 'FloatPtr': SLEEPY_FLOAT_PTR, 'CharPtr': SLEEPY_CHAR_PTR,
   'IntPtr': SLEEPY_INT_PTR, 'LongPtr': SLEEPY_LONG_PTR}
-SLEEPY_NUMERICAL_TYPES: Set[Type] = {SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG}
 SLEEPY_POINTER_TYPES: Set[Type] = {SLEEPY_DOUBLE_PTR, SLEEPY_FLOAT_PTR, SLEEPY_CHAR_PTR, SLEEPY_INT_PTR, SLEEPY_LONG_PTR}
+
+INT_TYPES: Set[Type] = {SLEEPY_INT, SLEEPY_LONG}
+FLOAT_TYPES: Set[Type] = {SLEEPY_FLOAT, SLEEPY_DOUBLE}
+
+SLEEPY_NUMERICAL_TYPES: Set[Type] = INT_TYPES | FLOAT_TYPES
+
+COMPARABLE_TYPES = SLEEPY_NUMERICAL_TYPES | SLEEPY_POINTER_TYPES | {SLEEPY_BOOL}
 
 
 def can_implicit_cast_to(from_type, to_type):
@@ -974,18 +983,10 @@ class SymbolTable:
       self.known_extern_funcs = copy_from.known_extern_funcs  # type: Dict[str, ConcreteFunction]
       self.inbuilt_symbols = copy_from.inbuilt_symbols  # type: Dict[str, Symbol]
 
-  def __setitem__(self, identifier, symbol):
-    """
-    :param str identifier:
-    :param Symbol symbol:
-    """
+  def __setitem__(self, identifier: str, symbol: Symbol):
     self.symbols[identifier] = symbol
 
-  def __getitem__(self, identifier):
-    """
-    :param str identifier:
-    :rtype: Symbol
-    """
+  def __getitem__(self, identifier: str) -> Symbol:
     return self.symbols[identifier]
 
   def __contains__(self, identifier):
@@ -1339,21 +1340,6 @@ def make_func_call_ir(func_identifier, func_symbol, calling_arg_types, calling_i
       return collect_return_ir_phi
 
 
-def _make_builtin_op_arg_names(op, op_arg_types):
-  """
-  :param str op:
-  :param list[Type] op_arg_types:
-  :rtype: list[str]
-  """
-  if len(op_arg_types) == 1:
-    return ['arg']
-  if len(op_arg_types) == 2:
-    return ['left', 'right']
-  assert False, 'not implemented'
-
-
-
-
 class BuiltinBinaryOps(Enum):
   Addition = '+'
   Subtraction = '-'
@@ -1367,139 +1353,12 @@ class BuiltinBinaryOps(Enum):
   GreaterOrEqual = '>='
   BitwiseOr = 'bitwise_or'
 
-
 Simple_Arithmetic_Ops: List[BuiltinBinaryOps] = \
   [BuiltinBinaryOps.Addition, BuiltinBinaryOps.Subtraction, BuiltinBinaryOps.Multiplication, BuiltinBinaryOps.Division]
 
 Simple_Comparison_Ops: List[BuiltinBinaryOps] = \
  [BuiltinBinaryOps.Equality, BuiltinBinaryOps.Inequality, BuiltinBinaryOps.Less, BuiltinBinaryOps.Greater,
-  BuiltinBinaryOps.LessOrEqual, BuiltinBinaryOps.GreaterOrEqual]
-
-
-
-SLEEPY_INBUILT_BINARY_OPS: List[str] = ['+', '-', '*', '/', '==', '!=', '<', '>', '<=', '>=', 'bitwise_or']
-SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES = ([
-  [
-    #[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
-    [SLEEPY_DOUBLE_PTR, SLEEPY_INT], [SLEEPY_FLOAT_PTR, SLEEPY_INT], [SLEEPY_CHAR_PTR, SLEEPY_INT],
-    [SLEEPY_INT_PTR, SLEEPY_INT], [SLEEPY_DOUBLE], [SLEEPY_FLOAT], [SLEEPY_INT], [SLEEPY_LONG]
-  ], [
-    #[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
-    [SLEEPY_DOUBLE], [SLEEPY_FLOAT], [SLEEPY_INT], [SLEEPY_LONG]
-  ],
-  [
-    #[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG]
-  ],
-  [
-    #[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT]
-  ]
-] + [
-    [[SLEEPY_DOUBLE, SLEEPY_DOUBLE], [SLEEPY_FLOAT, SLEEPY_FLOAT], [SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG],
-    [SLEEPY_DOUBLE_PTR, SLEEPY_DOUBLE_PTR], [SLEEPY_FLOAT_PTR, SLEEPY_FLOAT_PTR], [SLEEPY_CHAR_PTR, SLEEPY_CHAR_PTR],
-    [SLEEPY_INT_PTR, SLEEPY_INT_PTR]]] * 6 +
-  [[[SLEEPY_INT, SLEEPY_INT], [SLEEPY_LONG, SLEEPY_LONG]]])  # type: List[List[List[Type]]]
-SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES = ([
-  [
-    #SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG,
-    SLEEPY_DOUBLE_PTR, SLEEPY_FLOAT_PTR, SLEEPY_CHAR_PTR,
-    SLEEPY_INT_PTR, SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
-  [
-    #SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG,
-    SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG],
-  [
-    #SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG
-  ],
-  [
-    #SLEEPY_DOUBLE, SLEEPY_FLOAT
-  ]] + [[SLEEPY_BOOL] * 8] * 6 +
-  [[SLEEPY_INT, SLEEPY_LONG]])  # type: List[List[Type]]
-assert (
-  len(SLEEPY_INBUILT_BINARY_OPS) == len(SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES) ==
-  len(SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES))
-assert all(len(arg_types) == len(return_types) for arg_types, return_types in (
-  zip(SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES)))
-
-
-def _make_builtin_op_ir_val(op, op_arg_types, ir_func_args, caller_context):
-  """
-  :param str op:
-  :param list[Type] op_arg_types:
-  :param list[ir.values.Value] ir_func_args:
-  :param CodegenContext caller_context:
-  :rtype: ir.values.Value
-  """
-  assert caller_context.emits_ir
-  assert not caller_context.is_terminated
-  op_arg_types = tuple(op_arg_types)
-  assert len(op_arg_types) == len(ir_func_args)
-
-  def make_binary_op(single_type_instr, instr_name):
-    """
-    :param Dict[Type,Callable] single_type_instr:
-    :param str instr_name:
-    :rtype: ir.values.Value
-    """
-    assert len(op_arg_types) == len(ir_func_args) == 2
-    type_instr = {(arg_type, arg_type): instr for arg_type, instr in single_type_instr.items()}
-    return make_op(type_instr=type_instr, instr_name=instr_name)
-
-  def make_op(type_instr, instr_name):
-    """
-    :param Dict[Tuple[Type],Callable] type_instr:
-    :param str instr_name:
-    :rtype: ir.values.Value
-    """
-    assert op_arg_types in type_instr
-    return type_instr[op_arg_types](*ir_func_args, name=instr_name)
-
-  body_builder = caller_context.builder
-  if op == '*':
-    return make_binary_op({
-      SLEEPY_DOUBLE: body_builder.fmul, SLEEPY_FLOAT: body_builder.fmul, SLEEPY_INT: body_builder.mul,
-      SLEEPY_LONG: body_builder.mul}, instr_name='mul')
-  if op == '/':
-    return make_binary_op({SLEEPY_DOUBLE: body_builder.fdiv,
-                           SLEEPY_FLOAT: body_builder.fdiv,
-                           SLEEPY_INT: body_builder.sdiv,
-                           SLEEPY_LONG: body_builder.sdiv}, instr_name='div')
-  if op == '+':
-    if len(op_arg_types) == 1:
-      assert len(ir_func_args) == 1
-      return ir_func_args[0]
-    assert len(op_arg_types) == len(ir_func_args) == 2
-    left_type, right_type = op_arg_types
-    left_val, right_val = ir_func_args
-    if left_type in SLEEPY_POINTER_TYPES and right_type == SLEEPY_INT:
-      return body_builder.gep(left_val, (right_val,), name='add')
-    return make_binary_op({
-      SLEEPY_DOUBLE: body_builder.fadd, SLEEPY_FLOAT: body_builder.fadd, SLEEPY_INT: body_builder.add,
-      SLEEPY_LONG: body_builder.add}, instr_name='add')
-  if op == '-':
-    if len(op_arg_types) == 1:
-      assert len(ir_func_args) == 1
-      val_type, ir_val = op_arg_types[0], ir_func_args[0]
-      constant_minus_one = ir.Constant(val_type.ir_type, -1)
-      if val_type in {SLEEPY_DOUBLE, SLEEPY_FLOAT}:
-        return body_builder.fmul(constant_minus_one, ir_val, name='neg')
-      if val_type in {SLEEPY_INT, SLEEPY_LONG}:
-        return body_builder.mul(constant_minus_one, ir_val, name='neg')
-    return make_binary_op({
-      SLEEPY_DOUBLE: body_builder.fsub, SLEEPY_FLOAT: body_builder.fsub, SLEEPY_INT: body_builder.sub,
-      SLEEPY_LONG: body_builder.sub}, instr_name='sub')
-  if op in {'==', '!=', '<', '>', '<=', '>='}:
-    from functools import partial
-    return make_binary_op({
-      SLEEPY_DOUBLE: partial(body_builder.fcmp_ordered, op), SLEEPY_FLOAT: partial(body_builder.fcmp_ordered, op),
-      SLEEPY_INT: partial(body_builder.icmp_signed, op), SLEEPY_LONG: partial(body_builder.icmp_signed, op),
-      SLEEPY_DOUBLE_PTR: partial(body_builder.icmp_unsigned, op),
-      SLEEPY_FLOAT_PTR: partial(body_builder.icmp_unsigned, op),
-      SLEEPY_CHAR_PTR: partial(body_builder.icmp_unsigned, op),
-      SLEEPY_INT_PTR: partial(body_builder.icmp_unsigned, op)},
-      instr_name='cmp')
-  if op == 'bitwise_or':
-    return make_binary_op({SLEEPY_INT: body_builder.or_, SLEEPY_LONG: body_builder.or_}, instr_name='bitwise_or')
-  assert False, 'Operator %s not handled!' % op
-
+  BuiltinBinaryOps.GreaterOrEqual, BuiltinBinaryOps.LessOrEqual]
 
 def _make_str_symbol(symbol_table, context):
   """
@@ -1515,7 +1374,6 @@ def _make_str_symbol(symbol_table, context):
   struct_symbol = TypeSymbol(type=str_type, constructor_symbol=constructor_symbol)
   str_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
   return struct_symbol
-
 
 def build_initial_ir(symbol_table, context):
   """
@@ -1560,40 +1418,66 @@ def build_initial_ir(symbol_table, context):
   symbol_table['Str'] = str_symbol
   symbol_table.inbuilt_symbols['Str'] = str_symbol
 
-  for op, op_arg_type_list, op_return_type_list in zip(
-    SLEEPY_INBUILT_BINARY_OPS, SLEEPY_INBUILT_BINARY_OPS_ARG_TYPES, SLEEPY_INBUILT_BINARY_OPS_RETURN_TYPES):
-    make_operator_function_symbol(context.emits_ir, op, op_arg_type_list, op_return_type_list, symbol_table)
-  make_builtin_operator_functions(symbol_table, True)
+  make_builtin_operator_functions(symbol_table, context.emits_ir)
+
+
+Instructions: Dict[Tuple[BuiltinBinaryOps, Type], Callable[[CodegenContext, Value, Value], Value]] = concat_dicts([
+  {(BuiltinBinaryOps.Addition, Int): IRBuilder.add for Int in INT_TYPES},
+  {(BuiltinBinaryOps.Subtraction, Int): IRBuilder.sub for Int in INT_TYPES},
+  {(BuiltinBinaryOps.Multiplication, Int): IRBuilder.mul for Int in INT_TYPES},
+  {(BuiltinBinaryOps.Division, Int): IRBuilder.sdiv for Int in INT_TYPES},
+
+  {(BuiltinBinaryOps.Addition, T): IRBuilder.fadd for T in FLOAT_TYPES},
+  {(BuiltinBinaryOps.Subtraction, T): IRBuilder.fsub for T in FLOAT_TYPES},
+  {(BuiltinBinaryOps.Multiplication, T): IRBuilder.fmul for T in FLOAT_TYPES},
+  {(BuiltinBinaryOps.Division, T): IRBuilder.fdiv for T in FLOAT_TYPES},
+
+  {(op, T): lambda builder, lhs, rhs, op=op: builder.icmp_signed(op.value, lhs, rhs) for op in Simple_Comparison_Ops for T in INT_TYPES},
+  {(op, T): lambda builder, lhs, rhs, op=op: builder.icmp_unsigned(op.value, lhs, rhs) for op in Simple_Comparison_Ops
+   for T in SLEEPY_POINTER_TYPES | {SLEEPY_CHAR, SLEEPY_BOOL}},
+  {(op, T):
+     lambda builder, lhs, rhs, op=op: builder.fcmp_ordered(op.value, lhs, rhs)
+   for op in Simple_Comparison_Ops for T in FLOAT_TYPES}
+  ])
+
+
+BINARY_OP_DECL = (
+        [(operator, [(Instructions[(operator, arith_t)], [arith_t, arith_t], arith_t) for arith_t in SLEEPY_NUMERICAL_TYPES])
+   for operator in Simple_Arithmetic_Ops] +  # simple arithmetic on all arithmetic types
+        [
+    (BuiltinBinaryOps.Addition, [(lambda builder, arg: arg, [arith_t], arith_t) for arith_t in SLEEPY_NUMERICAL_TYPES]),
+    (BuiltinBinaryOps.Subtraction, [(lambda builder, arg, arith_t=arith_t: builder.mul(ir.Constant(arith_t.ir_type, -1), arg), [arith_t], arith_t)
+                                    for arith_t in INT_TYPES]),
+    (BuiltinBinaryOps.Subtraction, [(lambda builder, arg, arith_t=arith_t: builder.fmul(ir.Constant(arith_t.ir_type, -1), arg), [arith_t], arith_t)
+                                    for arith_t in FLOAT_TYPES]),
+  ] +  # unary plus and minus on all arithmetic types
+        [(operator, [(Instructions[(operator, comp_t)], [comp_t, comp_t], SLEEPY_BOOL) for comp_t in COMPARABLE_TYPES])
+   for operator in Simple_Comparison_Ops] +  # comparisons on all types except void and char
+        [(operator, [(lambda builder, lhs, rhs, op=operator: builder.icmp_unsigned(op.value, lhs, rhs), [SLEEPY_CHAR, SLEEPY_CHAR], SLEEPY_BOOL)])
+   for operator in [BuiltinBinaryOps.Equality, BuiltinBinaryOps.Inequality]] +
+        [(BuiltinBinaryOps.Addition, [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_t, int_t], ptr_t)
+                                      for ptr_t in SLEEPY_POINTER_TYPES for int_t in INT_TYPES])] +  # pointer arithmetic
+        [(BuiltinBinaryOps.Addition, [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [int_t, ptr_t], ptr_t)
+                                      for ptr_t in SLEEPY_POINTER_TYPES for int_t in INT_TYPES])] +  # pointer arithmetic
+        [(BuiltinBinaryOps.BitwiseOr, [(IRBuilder.or_, [int_t, int_t], int_t) for int_t in INT_TYPES])] # bitwise_or on integer types
+  )
 
 
 def make_builtin_operator_functions(symbol_table: SymbolTable, emit_ir: bool):
-  # do arithmetic operators on all arithmetic types with themselves
-  for arith_op in Simple_Arithmetic_Ops:
-    if arith_op.value not in symbol_table:
-      symbol_table[arith_op.value] = FunctionSymbol(returns_void=False)
 
-    func_symbol = symbol_table[arith_op.value]
+  for operator, overloads in BINARY_OP_DECL:
+    if operator.value not in symbol_table:
+      symbol_table[operator.value] = FunctionSymbol(returns_void=False)
+    function_symbol = symbol_table[operator.value]
 
-    symbol_table[arith_op.value] = func_symbol
-    for arithmetic_type in SLEEPY_NUMERICAL_TYPES:
-      assert not func_symbol.has_concrete_func([arithmetic_type, arithmetic_type])
-      concrete_func = make_concrete_operator_function(arith_op.value, [arithmetic_type, arithmetic_type], arithmetic_type, emit_ir)
-      func_symbol.add_concrete_func(concrete_func)
+    for instruction, arg_types, return_type in overloads:
+      concrete_function = make_concrete_operator_function(instruction, arg_types, return_type, emit_ir)
+      function_symbol.add_concrete_func(concrete_function)
 
-
-
-def make_operator_function_symbol(emit_ir: bool, op, op_arg_type_list, op_return_type_list, symbol_table):
-  assert op not in symbol_table
-  func_symbol = FunctionSymbol(returns_void=False)
-  symbol_table[op] = func_symbol
-  assert len(op_arg_type_list) == len(op_return_type_list)
-  for op_arg_types, op_return_type in zip(op_arg_type_list, op_return_type_list):
-    assert not func_symbol.has_concrete_func(op_arg_types)
-    concrete_func = make_concrete_operator_function(op, op_arg_types, op_return_type, emit_ir)
-    func_symbol.add_concrete_func(concrete_func)
-
-def make_concrete_operator_function(op, op_arg_types, op_return_type, emit_ir) -> ConcreteFunction:
-  op_arg_identifiers = _make_builtin_op_arg_names(op, op_arg_types)
+def make_concrete_operator_function(instruction: Callable[..., Value], op_arg_types: List[Type],
+                                    op_return_type: Type, emit_ir: bool, ) -> ConcreteFunction:
+  unary: bool = len(op_arg_types) == 1
+  op_arg_identifiers = ['arg'] if unary else ['lhs', 'rhs']
   assert len(op_arg_types) == len(op_arg_identifiers)
   # ir_func will be set in build_initial_module_ir
   concrete_func = ConcreteFunction(
@@ -1601,6 +1485,5 @@ def make_concrete_operator_function(op, op_arg_types, op_return_type, emit_ir) -
     arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), arg_type_narrowings=op_arg_types,
     is_inline=True)
   if emit_ir:
-    from functools import partial
-    concrete_func.make_inline_func_call_ir = partial(_make_builtin_op_ir_val, op, op_arg_types)
+      concrete_func.make_inline_func_call_ir = lambda ir_func_args, caller_context: instruction(caller_context.builder, *ir_func_args)
   return concrete_func
