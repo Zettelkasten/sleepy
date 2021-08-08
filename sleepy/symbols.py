@@ -1352,6 +1352,7 @@ class BuiltinBinaryOps(Enum):
   LessOrEqual = '<='
   GreaterOrEqual = '>='
   BitwiseOr = 'bitwise_or'
+  Mod = 'mod'
 
 Simple_Arithmetic_Ops: List[BuiltinBinaryOps] = \
   [BuiltinBinaryOps.Addition, BuiltinBinaryOps.Subtraction, BuiltinBinaryOps.Multiplication, BuiltinBinaryOps.Division]
@@ -1459,7 +1460,8 @@ BINARY_OP_DECL = (
                                       for ptr_t in SLEEPY_POINTER_TYPES for int_t in INT_TYPES])] +  # pointer arithmetic
         [(BuiltinBinaryOps.Addition, [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [int_t, ptr_t], ptr_t)
                                       for ptr_t in SLEEPY_POINTER_TYPES for int_t in INT_TYPES])] +  # pointer arithmetic
-        [(BuiltinBinaryOps.BitwiseOr, [(IRBuilder.or_, [int_t, int_t], int_t) for int_t in INT_TYPES])] # bitwise_or on integer types
+        [(BuiltinBinaryOps.BitwiseOr, [(IRBuilder.or_, [int_t, int_t], int_t) for int_t in INT_TYPES])] + # bitwise_or on integer types
+        [(BuiltinBinaryOps.Mod, [(IRBuilder.srem, [int_t, int_t], int_t) for int_t in INT_TYPES])] # modulo on integer types
   )
 
 
