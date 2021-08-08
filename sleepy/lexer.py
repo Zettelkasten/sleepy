@@ -4,6 +4,8 @@ from sleepy.automaton import ERROR_STATE
 from sleepy.errors import LexError
 from sleepy.regex import make_regex_dfa
 
+State = Union[int, ERROR_STATE]
+Comp_State = Tuple[State]
 
 class LexerGenerator:
   """
@@ -18,6 +20,8 @@ class LexerGenerator:
       Tokens with name `IGNORE_TOKEN` will be ignored later (e.g. for whitespace, comments, etc.).
     :param list[str] token_regex_table: corresponding regex's, not recognizing the empty word.
     """
+    self.transition_table: Dict[Tuple[Comp_State, str], Comp_State] = dict()
+
     assert len(token_names) == len(token_regex_table)
     self.token_names = token_names
     self.token_regex_table = token_regex_table
@@ -27,7 +31,7 @@ class LexerGenerator:
     assert all(dfa.initial_state not in dfa.final_states for dfa in self._automatons), (
       'all regex must not recognize the empty word')
     self._initial_state = tuple(dfa.initial_state for dfa in self._automatons)
-    self._final_states = {}  # type: Dict[Tuple[Union[int,ERROR_STATE]],str]
+    self._final_states: Dict[Comp_State,str] = {}
     self._make_final_states()
 
   @classmethod
@@ -41,7 +45,7 @@ class LexerGenerator:
     token_regex_table = list(token_names_to_regex.values()) + ignore_token_regexes
     return LexerGenerator(token_names=token_names, token_regex_table=token_regex_table)
 
-  def _get_next_state(self, state, char):
+  def _get_next_state(self, state: Optional[Comp_State], char):
     """
     :param tuple[int|None]|None state:
     :param str char:
@@ -50,7 +54,11 @@ class LexerGenerator:
     """
     if state is ERROR_STATE:
       return ERROR_STATE
-    next_state = tuple(dfa.get_next_state(state[i], char) for i, dfa in enumerate(self._automatons))
+    next_state = self.transition_table.get((state, char))
+    if next_state is None:
+      next_state = tuple(dfa.get_next_state(state[i], char) for i, dfa in enumerate(self._automatons))
+      self.transition_table[(state, char)] = next_state
+
     if all(dfa_state == ERROR_STATE for dfa_state in next_state):
       return ERROR_STATE
     else:
