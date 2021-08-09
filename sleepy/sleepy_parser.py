@@ -9,6 +9,7 @@ from sleepy.parser import ParserGenerator
 from sleepy.sleepy_lexer import SLEEPY_LEXER
 from sleepy.symbols import SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_CHAR
 
+
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   prods_attr_rules={
     Production('TopLevelStmt', 'StmtList'): {
@@ -167,8 +168,17 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda _pos, ast: UnionTypeAst(_pos, [ast(1), ast(3)])},
     Production('Type', 'IdentifierType'): {
       'ast': 'ast.1'},
-    Production('IdentifierType', 'identifier'): {
-      'ast': lambda _pos, identifier: IdentifierTypeAst(_pos, identifier(1))},
+    Production('IdentifierType', 'identifier', 'TemplateTypeList'): {
+      'ast': lambda _pos, identifier, type_list: IdentifierTypeAst(
+        _pos, type_identifier=identifier(1), template_types=type_list(2))},
+    Production('TemplateTypeList'): {
+      'type_list': []},
+    Production('TemplateTypeList', '[', 'TemplateTypeList+', ']'): {
+      'type_list': 'type_list.2'},
+    Production('TemplateTypeList+', 'Type'): {
+      'type_list': lambda ast: [ast(1)]},
+    Production('TemplateTypeList+', 'Type', ',', 'TemplateTypeList+'): {
+      'type_list': lambda ast, type_list: [ast(1)] + type_list(3)},
     Production('IdentifierType', '(', 'Type', ')'): {
       'ast': 'ast.2'},
     Production('ReturnType'): {
@@ -203,7 +213,6 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     'hex_int': {'number': lambda value: parse_hex_int(value)}
   }
 )
-
 
 def make_program_ast(program, add_preamble=True):
   """

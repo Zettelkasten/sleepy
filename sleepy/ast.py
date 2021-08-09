@@ -1571,35 +1571,33 @@ class IdentifierTypeAst(TypeAst):
   """
   IdentifierType -> identifier.
   """
-  def __init__(self, pos, type_identifier):
-    """
-    :param TreePosition pos:
-    :param str type_identifier:
-    """
+  def __init__(self, pos: TreePosition, type_identifier: str, template_types: List[TypeAst]):
     super().__init__(pos)
     self.type_identifier = type_identifier
+    self.template_types = template_types
 
-  def make_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_type(self, symbol_table: SymbolTable) -> Type:
     if self.type_identifier not in symbol_table:
       self.raise_error('Unknown type identifier %r' % self.type_identifier)
     type_symbol = symbol_table[self.type_identifier]
     if not isinstance(type_symbol, TypeSymbol):
       self.raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)))
-    # TODO: Add template types
-    return type_symbol.get_type(concrete_templ_types=[])
+    template_type_symbols = [
+      template_type.make_type(symbol_table=symbol_table) for template_type in self.template_types]
+    if len(template_type_symbols) != len(type_symbol.type_factory.placeholder_templ_types):
+      self.raise_error(
+        'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
+          self.type_identifier, type_symbol.type_factory.placeholder_templ_types, template_type_symbols))
+    return type_symbol.get_type(concrete_templ_types=template_type_symbols)
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return []
+    return self.template_types
 
   def __repr__(self):
     """
     :rtype: str
     """
-    return 'IdentifierType(type_identifier=%r)' % self.type_identifier
+    return 'IdentifierType(type_identifier=%r, template_types=%r)' % (self.type_identifier, self.template_types)
 
 
 class UnionTypeAst(TypeAst):
