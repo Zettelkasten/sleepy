@@ -1,3 +1,4 @@
+import glob
 import sys
 import unittest
 
@@ -40,7 +41,7 @@ def test_simple_arithmetic():
       return 4.0 + 3.0;
     }
     """
-    func = compile_program(engine, program)
+    func = compile_program(engine, program, add_preamble=False)
     assert_equal(func(), 4.0 + 3.0)
   with make_execution_engine() as engine:
     program = """
@@ -48,7 +49,7 @@ def test_simple_arithmetic():
       return 2 * 4 - 3;
     }
     """
-    func = compile_program(engine, program, main_func_identifier='test')
+    func = compile_program(engine, program, main_func_identifier='test', add_preamble=False)
     assert_equal(func(), 2 * 4 - 3)
   with make_execution_engine() as engine:
     program = """
@@ -56,10 +57,23 @@ def test_simple_arithmetic():
       return a - b;
     }
     """
-    func = compile_program(engine, program, main_func_identifier='sub')
+    func = compile_program(engine, program, main_func_identifier='sub', add_preamble=False)
     assert_equal(func(0.0, 1.0), 0.0 - 1.0)
     assert_equal(func(3.0, 5.0), 3.0 - 5.0)
     assert_equal(func(2.5, 2.5), 2.5 - 2.5)
+  with make_execution_engine() as engine:
+    program = """
+    func divide(Int a, Int b) -> Int {
+      return a / b;
+    }
+    """
+    func = compile_program(engine, program, main_func_identifier='divide', add_preamble=False)
+    assert_equal(func(1, 2), 0)
+    assert_equal(func(14, 3), 4)
+    assert_equal(func(25, 5), 5)
+    assert_equal(func(-1, 2), 0)
+    assert_equal(func(-14, 3), -4)
+    assert_equal(func(-25, -5), 5)
 
 
 def test_empty_func():
@@ -1674,6 +1688,28 @@ def test_mod():
     main = compile_program(engine, program, add_preamble=True, main_func_identifier='mod_')
     for a, b in [(4, 2), (-4, 2), (7, 3), (7, 1), (-5, 3), (-2, -2)]:
       assert_equal(main(a, b), fmod(a, b))
+
+def test_char_not_comparable():
+  for path in glob.glob('./examples_char_not_comparable/*'):
+    with make_execution_engine() as engine, open(path) as file:
+      program = file.read()
+      with assert_raises(SemanticError):
+        compile_program(engine, program, add_preamble=False)
+
+def test_templ_ternary():
+  with make_execution_engine() as engine:
+    program = """
+    func ternary[T](T true, T false, Bool cond) -> T {
+      if cond { return true; } else { return false; }
+    }
+    func main() -> Double {
+      a = ternary(4, 6, False());
+      b: Double = ternary(1.2, 5.6, True());
+      return b;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True, optimize=False)
+    assert_almost_equal(main(), 1.2)
 
 
 if __name__ == "__main__":

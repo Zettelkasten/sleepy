@@ -50,12 +50,13 @@ def main():
     '--emit-object', '-c', dest='emit_object', action='store_true', help='Emit object code, but do not link.')
   parser.add_argument('--compile-libs', '-libs', nargs='*', help='External libraries to link with', default=['m'])
   parser.add_argument('--debug', dest='debug', action='store_true', help='Print full stacktrace for all compiler errors.')
+  parser.add_argument('--Optimization', '-O', dest='opt', action='store', type=int, default=0, help='Print full stacktrace for all compiler errors.')
   parser.set_defaults(execute=False)
 
   args = parser.parse_args()
 
   main_func_identifier = 'main'
-  source_file_name = args.program  # type: str
+  source_file_name: str = args.program
   with open(source_file_name) as program_file:
     program = program_file.read()
   try:
@@ -66,7 +67,7 @@ def main():
     main_func_symbol = symbol_table[main_func_identifier]
     if not isinstance(main_func_symbol, FunctionSymbol):
       raise CompilerError('Error: Entry point %r must be a function' % main_func_identifier)
-    if len(main_func_symbol.concrete_funcs) != 1:
+    if len(main_func_symbol.signatures) != 1:
       raise CompilerError('Error: Must declare exactly one entry point function %r' % main_func_identifier)
   except CompilerError as ce:
     if args.debug:
@@ -93,8 +94,18 @@ def main():
 
   object_file_name = _make_file_name(source_file_name, '.o', allow_exist=True)
   module_ref = llvm.parse_assembly(str(module_ir))
+
+  if args.opt != 0:
+    # run optimizations on module, optimizations during emit_object are different and less powerful
+    module_passes = llvm.ModulePassManager()
+    builder = llvm.PassManagerBuilder()
+    builder.opt_level = args.opt
+    builder.inlining_threshold = 250
+    builder.populate(module_passes)
+    module_passes.run(module_ref)
+
   target = llvm.Target.from_default_triple()
-  machine = target.create_target_machine()
+  machine = target.create_target_machine(opt=args.opt)
   with open(object_file_name, 'wb') as file:
     file.write(machine.emit_object(module_ref))
   if args.emit_object:
