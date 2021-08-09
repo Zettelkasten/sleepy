@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Union, Tuple, cast
 
 from llvmlite import ir
 
@@ -18,9 +18,11 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, SLEEPY_DOUBLE, SLEEPY
   SLEEPY_CHAR_PTR, SLEEPY_LONG, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
+from abc import ABC, abstractmethod
 
 
-class AbstractSyntaxTree:
+
+class AbstractSyntaxTree(ABC):
   """
   Abstract syntax tree of a sleepy program.
   """
@@ -81,7 +83,6 @@ class AbstractSyntaxTree:
         if not called_mutable and arg_mutable:
           self.raise_error('Cannot call function %s%s declared with mutable parameter %r with immutable argument' % (
               func_identifier, concrete_func.signature.to_signature_str(), arg_identifier))
-
     return symbol, possible_concrete_funcs
 
   def _build_func_call(self, func_identifier: str, templ_types: List[Type], func_arg_exprs: List[ExpressionAst],
@@ -139,6 +140,10 @@ class AbstractSyntaxTree:
     member_num = parent_type.get_member_num(member_identifier)
     return parent_type.member_types[member_num]
 
+  @abstractmethod
+  def children(self) -> List[AbstractSyntaxTree]:
+    pass
+
   def _collect_placeholder_templ_types(self, templ_identifiers: List[str],
                                        symbol_table: SymbolTable) -> List[TemplateType]:
     templ_types = []
@@ -154,7 +159,7 @@ class AbstractSyntaxTree:
     return templ_types
 
 
-class StatementAst(AbstractSyntaxTree):
+class StatementAst(AbstractSyntaxTree, ABC):
   """
   Expr.
   """
@@ -197,7 +202,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
   """
   Used to group multiple statements, forming a scope.
   """
-  def __init__(self, pos, stmt_list):
+  def __init__(self, pos: TreePosition, stmt_list: List[StatementAst]):
     """
     :param TreePosition pos:
     :param list[StatementAst] stmt_list:
@@ -220,6 +225,9 @@ class AbstractScopeAst(AbstractSyntaxTree):
     :rtype: str
     """
     return 'AbstractScopeAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
+
+  def children(self):
+    return self.stmt_list
 
 
 class TopLevelAst(AbstractSyntaxTree):
@@ -257,6 +265,9 @@ class TopLevelAst(AbstractSyntaxTree):
     context.is_terminated = True
 
     return module, symbol_table
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return [self.root_scope]
 
   def __repr__(self):
     """
@@ -510,6 +521,10 @@ class FunctionDeclarationAst(StatementAst):
       return_ast.build_ir(symbol_table=body_symbol_table, context=body_context)
     assert body_context.is_terminated
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return cast(List[AbstractSyntaxTree], [el for lst in self.arg_annotations for el in lst])\
+           + self.arg_types + ([self.return_type] if self.return_type else [])
+
   def __repr__(self):
     """
     :rtype: str
@@ -542,6 +557,9 @@ class ExpressionStatementAst(StatementAst):
     if context.emits_ir:
       # ignore return value.
       _ = self.expr.make_ir_val(symbol_table=symbol_table, context=context)
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return [self.expr]
 
   def __repr__(self):
     """
@@ -619,6 +637,9 @@ class ReturnStatementAst(StatementAst):
       context.builder = ir.IRBuilder(collect_block)
     context.is_terminated = True
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return self.return_exprs
+
   def __repr__(self):
     """
     :rtype: str
@@ -686,9 +707,11 @@ class StructDeclarationAst(StatementAst):
       parent_symbol_table=symbol_table, parent_context=context)
     symbol_table[self.struct_identifier] = TypeSymbol(type_factory, constructor_symbol=constructor_symbol)
     symbol_table.current_scope_identifiers.append(self.struct_identifier)
-
     signature_struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return self.stmt_list
+    
   def __repr__(self) -> str:
     return 'StructDeclarationAst(struct_identifier=%r, placeholder_templ_type_identifiers=%r, stmt_list=%r)' % (
       self.struct_identifier, self.placeholder_templ_type_identifiers, self.stmt_list)
@@ -800,6 +823,9 @@ class AssignStatementAst(StatementAst):
       assert ir_ptr is not None
       context.builder.store(ir_val, ir_ptr)
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return [self.var_target, self.var_val, self.declared_var_type]
+
   def __repr__(self):
     """
     :rtype: str
@@ -874,6 +900,9 @@ class IfStatementAst(StatementAst):
           false_context.builder.branch(continue_block)
         context.builder = ir.IRBuilder(continue_block)
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return [self.condition_val, self.true_scope, self.false_scope]
+
   def __repr__(self):
     """
     :rtype: str
@@ -928,6 +957,9 @@ class WhileStatementAst(StatementAst):
     symbol_table.reset_narrowed_types()
     make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=symbol_table)
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return [self.condition_val, self.body_scope]
+
   def __repr__(self):
     """
     :rtype: str
@@ -935,7 +967,7 @@ class WhileStatementAst(StatementAst):
     return 'WhileStatementAst(condition_val=%r, body_scope=%r)' % (self.condition_val, self.body_scope)
 
 
-class ExpressionAst(AbstractSyntaxTree):
+class ExpressionAst(AbstractSyntaxTree, ABC):
   """
   Val, SumVal, ProdVal, PrimaryExpr
   """
@@ -1072,6 +1104,9 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     assert return_val is not None
     return return_val
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return [self.left_expr, self.right_expr]
+
   def __repr__(self):
     """
     :rtype: str
@@ -1126,6 +1161,9 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     return self._build_func_call(
       func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return [self.expr]
+
   def __repr__(self):
     """
     :rtype: str
@@ -1169,6 +1207,9 @@ class ConstantExpressionAst(ExpressionAst):
     """
     assert context.emits_ir
     return ir.Constant(self.constant_type.ir_type, self.constant_val)
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return []
 
   def __repr__(self):
     """
@@ -1237,6 +1278,9 @@ class StringLiteralExpressionAst(ExpressionAst):
     str_type.make_store_members_ir(
       member_ir_vals=[ir_start, ir_length, ir_length], struct_ir_alloca=str_ir_alloca, context=context)
     return str_ir_alloca
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return []
 
   def __repr__(self):
     """
@@ -1323,6 +1367,9 @@ class VariableExpressionAst(ExpressionAst):
     assert symbol.ir_alloca is not None
     return symbol.ir_alloca
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return []
+
   def __repr__(self):
     """
     :rtype: str
@@ -1407,6 +1454,9 @@ class CallExpressionAst(ExpressionAst):
       func_identifier=self.func_identifier, templ_types=templ_types, func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table, context=context)
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return self.func_arg_exprs
+
   def __repr__(self):
     """
     :rtype: str
@@ -1490,6 +1540,9 @@ class MemberExpressionAst(ExpressionAst):
     gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
     return context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return [self.parent_val_expr]
+
   def __repr__(self):
     """
     :rtype: str
@@ -1498,7 +1551,7 @@ class MemberExpressionAst(ExpressionAst):
       self.parent_val_expr, self.member_identifier)
 
 
-class TypeAst(AbstractSyntaxTree):
+class TypeAst(AbstractSyntaxTree, ABC):
   """
   Type.
   """
@@ -1544,6 +1597,9 @@ class IdentifierTypeAst(TypeAst):
     # TODO: Add template types
     return type_symbol.get_type(concrete_templ_types=[])
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return []
+
   def __repr__(self):
     """
     :rtype: str
@@ -1571,6 +1627,9 @@ class UnionTypeAst(TypeAst):
     concrete_variant_types = [variant_type.make_type(symbol_table=symbol_table) for variant_type in self.variant_types]
     return get_common_type(concrete_variant_types)
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return self.variant_types
+
   def __repr__(self):
     """
     :rtype: str
@@ -1590,6 +1649,9 @@ class AnnotationAst(AbstractSyntaxTree):
     super().__init__(pos)
     self.identifier = identifier
     # TODO: Add type checking for annotation identifiers.
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return []
 
   def __repr__(self):
     """
