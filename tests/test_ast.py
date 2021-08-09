@@ -1696,6 +1696,22 @@ def test_char_not_comparable():
       with assert_raises(SemanticError):
         compile_program(engine, program, add_preamble=False)
 
+def test_templ_ternary():
+  with make_execution_engine() as engine:
+    program = """
+    func ternary[T](T true, T false, Bool cond) -> T {
+      if cond { return true; } else { return false; }
+    }
+    func main() -> Double {
+      a = ternary(4, 6, False());
+      b: Double = ternary(1.2, 5.6, True());
+      return b;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True, optimize=False)
+    assert_almost_equal(main(), 1.2)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
