@@ -1,7 +1,8 @@
 from itertools import islice, dropwhile
 from typing import Tuple, List
 
-from sleepy.ast import make_program_ast, AssignStatementAst, AbstractSyntaxTree
+from sleepy.ast import AssignStatementAst, AbstractSyntaxTree
+from sleepy.sleepy_parser import make_program_ast
 from sleepy.program_conversions.string_functions import replace, trim_whitespace
 
 # Note: Annotation are not included in the AssignStatementAst pos, so we do not need to handle them

@@ -1,7 +1,7 @@
 import os
 from typing import Tuple, List
 
-from sleepy.ast import make_program_ast
+from sleepy.sleepy_parser import make_program_ast
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.symbols import FunctionSymbol
 

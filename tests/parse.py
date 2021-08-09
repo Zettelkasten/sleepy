@@ -1,12 +1,9 @@
-from sleepy.ast import SLEEPY_LEXER, SLEEPY_PARSER, SLEEPY_ATTR_GRAMMAR, TopLevelAst, add_preamble_to_ast
+from sleepy.ast import TopLevelAst
+from sleepy.sleepy_lexer import SLEEPY_LEXER
+from sleepy.sleepy_parser import SLEEPY_ATTR_GRAMMAR, add_preamble_to_ast, SLEEPY_PARSER
 
 
-def parse_ast(program, add_preamble=True):
-  """
-  :param str program:
-  :param bool add_preamble:
-  :rtype: TopLevelAst
-  """
+def parse_ast(program: str, add_preamble=True) -> TopLevelAst:
   print('---- input program:')
   print(program)
   tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)

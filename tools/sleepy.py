@@ -7,7 +7,7 @@ import argparse
 import better_exchook
 
 import _setup_sleepy_env  # noqa
-from sleepy.ast import make_program_ast
+from sleepy.sleepy_parser import make_program_ast
 from sleepy.errors import CompilerError
 from sleepy.jit import make_execution_engine, compile_ir, LIB_PATH
 from sleepy.symbols import FunctionSymbol
