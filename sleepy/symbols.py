@@ -1551,16 +1551,16 @@ def _make_str_symbol(symbol_table, context):
 
 
 class InbuiltOpConcreteFuncFactory(ConcreteFunctionFactory):
-  def __init__(self, op: str, op_arg_types: List[Type], op_return_type: Type, context: CodegenContext):
-    self.op = op
+  def __init__(self, instruction: Callable[..., Value], op_arg_types: List[Type], op_return_type: Type, emit_ir: bool):
+    self.instruction = instruction
     self.op_arg_types = op_arg_types
     self.op_return_type = op_return_type
-    self.context = context
+    self.emit_ir = emit_ir
 
   def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
-    if self.context.emits_ir:
-      from functools import partial
-      concrete_func.make_inline_func_call_ir = partial(_make_builtin_op_ir_val, self.op, self.op_arg_types)
+    if self.emit_ir:
+      concrete_func.make_inline_func_call_ir = (
+        lambda ir_func_args, caller_context: self.instruction(caller_context.builder, *ir_func_args))
     return concrete_func
 
 
@@ -1666,21 +1666,23 @@ def make_builtin_operator_functions(symbol_table: SymbolTable, emit_ir: bool):
     if operator.value not in symbol_table:
       symbol_table[operator.value] = FunctionSymbol(returns_void=False)
     function_symbol = symbol_table[operator.value]
+    assert isinstance(function_symbol, FunctionSymbol)
 
     for instruction, arg_types, return_type in overloads:
-      concrete_function = make_concrete_operator_function(instruction, arg_types, return_type, emit_ir)
-      function_symbol.add_concrete_func(concrete_function)
+      signature = make_function_signature(instruction, arg_types, return_type, emit_ir)
+      function_symbol.add_signature(signature)
 
-def make_concrete_operator_function(instruction: Callable[..., Value], op_arg_types: List[Type],
-                                    op_return_type: Type, emit_ir: bool, ) -> ConcreteFunction:
+def make_function_signature(instruction: Callable[..., Value], op_arg_types: List[Type],
+                            op_return_type: Type, emit_ir: bool, ) -> FunctionSignature:
   unary: bool = len(op_arg_types) == 1
   op_arg_identifiers = ['arg'] if unary else ['lhs', 'rhs']
   assert len(op_arg_types) == len(op_arg_identifiers)
   # ir_func will be set in build_initial_module_ir
-  concrete_func = ConcreteFunction(
-    ir_func=None, return_type=op_return_type, return_mutable=False, arg_identifiers=op_arg_identifiers,
+  factory = InbuiltOpConcreteFuncFactory(instruction, op_arg_types, op_return_type, emit_ir)
+
+  signature = FunctionSignature(
+    factory, placeholder_templ_types=[], return_type=op_return_type, return_mutable=False, arg_identifiers=op_arg_identifiers,
     arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), arg_type_narrowings=op_arg_types,
     is_inline=True)
-  if emit_ir:
-      concrete_func.make_inline_func_call_ir = lambda ir_func_args, caller_context: instruction(caller_context.builder, *ir_func_args)
-  return concrete_func
+
+  return signature
