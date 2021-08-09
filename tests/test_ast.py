@@ -1712,6 +1712,18 @@ def test_templ_ternary():
     assert_almost_equal(main(), 1.2)
 
 
+def test_templ_ptr():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      extern_func allocate_int(Int size) -> Ptr[Int];
+      ptr = allocate_int(2);
+    }
+    """
+    main = compile_program(engine, program, main_func_identifier='main', add_preamble=False)
+    assert_equal(main(), None)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

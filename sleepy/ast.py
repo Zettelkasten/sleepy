@@ -61,10 +61,10 @@ class AbstractSyntaxTree(ABC):
       symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=called_types)
       self.raise_error(
         'Cannot call function %r with arguments of types %r and template parameters %r, '
-        'only declared for parameter types: %r' % (
+        'only declared for parameter types:\n%s' % (
           func_identifier, ', '.join([str(called_type) for called_type in called_types]),
           ', '.join([str(templ_type) for templ_type in templ_types]),
-          ', '.join([signature.to_signature_str() for signature in symbol.signatures])))
+          '\n'.join([' - ' + signature.to_signature_str() for signature in symbol.signatures])))
     if not all(called_type.is_realizable() for called_type in called_types):
       self.raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
         func_identifier, ', '.join([str(called_type) for called_type in called_types])))

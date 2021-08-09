@@ -98,6 +98,9 @@ class VoidType(Type):
   def __init__(self):
     super().__init__(ir.VoidType(), pass_by_ref=False, c_type=None)
 
+  def __repr__(self) -> str:
+    return 'Void'
+
 
 class DoubleType(Type):
   """
@@ -105,6 +108,9 @@ class DoubleType(Type):
   """
   def __init__(self):
     super().__init__(ir.DoubleType(), pass_by_ref=False, c_type=ctypes.c_double)
+
+  def __repr__(self) -> str:
+    return 'Double'
 
 
 class FloatType(Type):
@@ -114,6 +120,9 @@ class FloatType(Type):
   def __init__(self):
     super().__init__(ir.FloatType(), pass_by_ref=False, c_type=ctypes.c_float)
 
+  def __repr__(self) -> str:
+    return 'Float'
+
 
 class BoolType(Type):
   """
@@ -121,6 +130,9 @@ class BoolType(Type):
   """
   def __init__(self):
     super().__init__(ir.IntType(bits=1), pass_by_ref=False, c_type=ctypes.c_bool)
+
+  def __repr__(self) -> str:
+    return 'Bool'
 
 
 class IntType(Type):
@@ -130,6 +142,9 @@ class IntType(Type):
   def __init__(self):
     super().__init__(ir.IntType(bits=32), pass_by_ref=False, c_type=ctypes.c_int32)
 
+  def __repr__(self) -> str:
+    return 'Int'
+
 
 class LongType(Type):
   """
@@ -137,6 +152,9 @@ class LongType(Type):
   """
   def __init__(self):
     super().__init__(ir.IntType(bits=64), pass_by_ref=False, c_type=ctypes.c_int64)
+
+  def __repr__(self) -> str:
+    return 'Long'
 
 
 class CharType(Type):
@@ -146,6 +164,8 @@ class CharType(Type):
   def __init__(self):
     super().__init__(ir.IntType(bits=8), pass_by_ref=False, c_type=ctypes.c_char)
 
+  def __repr__(self) -> str:
+    return 'Char'
 
 class DoublePtrType(Type):
   """
