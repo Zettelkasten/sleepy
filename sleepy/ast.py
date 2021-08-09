@@ -147,7 +147,7 @@ class AbstractSyntaxTree(ABC):
         self.raise_error('Cannot declare template variable %r multiple times' % templ_type_identifier)
       template_type = TemplateType(templ_type_identifier)
       templ_types.append(template_type)
-      template_type_factory = TypeFactory(placeholder_templ_types=[template_type], signature_type=template_type)
+      template_type_factory = TypeFactory(placeholder_templ_types=[], signature_type=template_type)
       template_type_symbol = TypeSymbol(type_factory=template_type_factory, constructor_symbol=None)
       symbol_table.current_scope_identifiers.append(templ_type_identifier)
       symbol_table[templ_type_identifier] = template_type_symbol
