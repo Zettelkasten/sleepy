@@ -1,4 +1,4 @@
-func main() {
+func main()  {
   my_int: Int = 21;
   my_double: Double = 4.0;
   prod: Double = my_double * my_double;
@@ -16,14 +16,14 @@ func main() {
   }
 
   # @Const can also be omitted.
-  @Inline func get_left(@Const IntPair pair) -> Int {
+  @Inline func get_left(@Const pair: IntPair) ->  Int  {
     return pair.left;
   }
-  @Inline func set_left(@Mutable IntPair pair, Int new_left) {
+  @Inline func set_left(@Mutable pair: IntPair, new_left: Int)  {
     pair.left = new_left;
   }
 
-  func print(IntPair pair) {
+  func print(pair: IntPair)  {
     print('(');
     print(pair.left);
     print('|');

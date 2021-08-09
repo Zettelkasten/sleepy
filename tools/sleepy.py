@@ -86,15 +86,12 @@ def main():
       return_val = py_func()
     print('\nExited with return value %r of type %r' % (return_val, concrete_main_func.return_type))
     return
-  if args.emit_ir:
-    ir_file_name = _make_file_name(source_file_name, '.ll', allow_exist=True)
-    with open(ir_file_name, 'w') as file:
-      file.write(str(module_ir))
-    return
+
 
   object_file_name = _make_file_name(source_file_name, '.o', allow_exist=True)
   module_ref = llvm.parse_assembly(str(module_ir))
 
+  print(f'Opt: {args.opt}')
   if args.opt != 0:
     # run optimizations on module, optimizations during emit_object are different and less powerful
     module_passes = llvm.ModulePassManager()
@@ -103,6 +100,12 @@ def main():
     builder.inlining_threshold = 250
     builder.populate(module_passes)
     module_passes.run(module_ref)
+
+  if args.emit_ir:
+    ir_file_name = _make_file_name(source_file_name, '.ll', allow_exist=True)
+    with open(ir_file_name, 'w') as file:
+      file.write(str(module_ir))
+    return
 
   target = llvm.Target.from_default_triple()
   machine = target.create_target_machine(opt=args.opt)

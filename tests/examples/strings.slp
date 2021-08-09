@@ -1,4 +1,4 @@
-func Hello() -> Str {
+func Hello() ->  Str  {
   @Mutable str = EmptyStr();
   insert(str, 'H');
   insert(str, 'e');
@@ -9,7 +9,7 @@ func Hello() -> Str {
   return str;
 }
 
-func main() {
+func main()  {
   hello = Hello();
   world = "World";
   print_line(hello + ", " + world + '!');

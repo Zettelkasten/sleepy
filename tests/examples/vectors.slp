@@ -5,14 +5,14 @@ struct Vec3 {
 }
 
 # as there are no constructors yet, do it like this:
-func unit_Vec3(Int dim) -> Vec3 {
+func unit_Vec3(dim: Int) ->  Vec3  {
   if dim == 1 { return Vec3(1.0, 0.0, 0.0); }
   if dim == 2 { return Vec3(0.0, 1.0, 0.0); }
   if dim == 3 { return Vec3(0.0, 0.0, 1.0); }
   assert(False()); return Vec3(0.0, 0.0, 0.0);
 }
 
-func print(Vec3 vec) {
+func print(vec: Vec3)  {
   print('(');
   print(vec.x);
   print(',');
@@ -22,40 +22,40 @@ func print(Vec3 vec) {
   print(')');
 }
 
-@Inline func +(Vec3 a, Vec3 b) -> Vec3 {
+@Inline func +(a: Vec3, b: Vec3) ->  Vec3  {
   return Vec3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
-@Inline func -(Vec3 a, Vec3 b) -> Vec3 {
+@Inline func -(a: Vec3, b: Vec3) ->  Vec3  {
   return Vec3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
-@Inline func *(Double a, Vec3 b) -> Vec3 {
+@Inline func *(a: Double, b: Vec3) ->  Vec3  {
   return Vec3(a * b.x, a * b.y, a * b.z);
 }
-@Inline func -(Vec3 a) -> Vec3 {
+@Inline func -(a: Vec3) ->  Vec3  {
   return -1.0 * a;
 }
-@Inline func *(Vec3 a, Vec3 b) -> Double {
+@Inline func *(a: Vec3, b: Vec3) ->  Double  {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
-@Inline func len(Vec3 v) -> Double {
-  extern_func sqrt(Double x) -> Double;
+@Inline func len(v: Vec3) ->  Double  {
+  extern_func sqrt(x: Double) ->  Double;
   return sqrt(v * v);
 }
 
-func print_and_assert(Vec3 val, Vec3 reference) {
+func print_and_assert(val: Vec3, reference: Vec3)  {
   print(val);
   assert(val.x == reference.x);
   assert(val.y == reference.y);
   assert(val.z == reference.z);
   print('\n');
 }
-func print_and_assert(Double val, Double reference) {
+func print_and_assert(val: Double, reference: Double)  {
   print(val);
   assert(val == reference);
   print('\n');
 }
 
-func main() {
+func main()  {
   unit1 = unit_Vec3(1);
   unit2 = unit_Vec3(2);
   unit3 = unit_Vec3(3);

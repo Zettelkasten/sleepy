@@ -1,4 +1,4 @@
-func main() -> Int {
+func main() ->  Int  {
   print_line("Hello, world!");
   print_line('-' * 100);
   return 0;

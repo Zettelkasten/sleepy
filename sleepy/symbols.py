@@ -1101,6 +1101,13 @@ class TypeFactory:
     replacements = dict(zip(self.placeholder_templ_types, concrete_templ_types))
     return self.signature_type.replace_types(replacements)
 
+class DummyTypeFactory(TypeFactory):
+  def __init__(self, signature_type: Type):
+    super().__init__([], signature_type)
+
+  def make_concrete_type(self, concrete_template_types: List[Type]) -> Type:
+    raise "Template place holder should not be instantiated."
+
 
 class TypeSymbol(Symbol):
   """
@@ -1262,6 +1269,10 @@ class SymbolTable:
     free_symbol = self['free']
     assert isinstance(free_symbol, FunctionSymbol)
     return free_symbol
+
+  def add_to_current_scope(self, identifier: str, symbol: Symbol):
+    self.current_scope_identifiers.append(identifier)
+    self[identifier] = symbol
 
 
 class CodegenContext:
