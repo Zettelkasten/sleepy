@@ -1712,6 +1712,22 @@ def test_templ_ternary():
     assert_almost_equal(main(), 1.2)
 
 
+def test_templ_local_var():
+  with make_execution_engine() as engine:
+    program = """
+    func foo[T](T local) -> T {
+      x: T = local;
+      return x;
+    }
+    func main(Int i) -> Int {
+      return foo(i);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False, optimize=False)
+    assert_equal(main(2), 2)
+    assert_equal(main(5), 5)
+
+
 def test_templ_ptr():
   with make_execution_engine() as engine:
     program = """
