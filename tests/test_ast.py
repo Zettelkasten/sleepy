@@ -1712,6 +1712,67 @@ def test_templ_ternary():
     assert_almost_equal(main(), 1.2)
 
 
+def test_templ_max():
+  with make_execution_engine() as engine:
+    program = """
+    func max_[T](T a, T b) -> T {
+      if a < b {
+        return b;
+      } else {
+        return a;
+      }
+    }
+    func main(Int a, Int b) -> Int {
+      return max_(a, b);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(2, 3), max(2, 3))
+    assert_equal(main(5, 3), max(5, 3))
+
+
+def test_templ_inner_func():
+  with make_execution_engine() as engine:
+    program = """
+    func times_four[T](T x) -> T {
+      func sum(T a, T b) -> T {
+        return a + b;
+      }
+      double: T = sum(x, x);
+      return sum(double, double);
+    }
+    func main(Int a) -> Int {
+      return times_four(a);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(3), 3 * 4)
+    assert_equal(main(-2), -2 * 4)
+
+
+def test_templ_inner_func2():
+  with make_execution_engine() as engine:
+    program = """
+    func ToDouble(Int i) -> Double {
+      extern_func int_to_double(Int i) -> Double;
+      return int_to_double(i);
+    }
+    func ToDouble(Double d) -> Double { return d; }
+    func add_two_pi[T](T x) -> Double {
+      func double[U](U y) -> Double {
+        return ToDouble(y + y);
+      }
+      pi = 3.1415;
+      return double(pi) + ToDouble(x);
+    }
+    func main(Int a) -> Double {
+      return add_two_pi(a);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_almost_equal(main(3), 2 * 3.1415 + 3)
+
+
 def test_templ_local_var():
   with make_execution_engine() as engine:
     program = """
