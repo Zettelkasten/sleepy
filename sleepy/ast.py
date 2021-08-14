@@ -1086,7 +1086,8 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     if self.op == 'is':
       # TODO: Then it should be a TypeExpressionAst, not a VariableExpressionAst.
       # Probably it's nicer to make an entire new ExpressionAst for `is` Expressions anyway.
-      if not isinstance(self.right_expr, VariableExpressionAst): raise self.raise_error("'is' operator must be applied to a union type and a type.")
+      if not isinstance(self.right_expr, VariableExpressionAst):
+        raise self.raise_error("'is' operator must be applied to a union type and a type.")
 
   def make_val_type(self, symbol_table):
     """
@@ -1098,10 +1099,9 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
       type_expr.make_type(symbol_table=symbol_table)  # just check that type exists
       return SLEEPY_BOOL
-    # TODO: add template types
     operand_exprs = [self.left_expr, self.right_expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
@@ -1113,7 +1113,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       return False
     operand_exprs = [self.left_expr, self.right_expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
@@ -1131,9 +1131,9 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       ir_val = self.left_expr.make_ir_val(symbol_table=symbol_table, context=context)
       return make_ir_val_is_type(ir_val, val_type, check_type, context=context)
     operand_exprs = [self.left_expr, self.right_expr]
-    # TODO: add template types
     return_val = self._build_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
+      context=context)
     assert return_val is not None
     return return_val
 
@@ -1169,7 +1169,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     operand_exprs = [self.expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
@@ -1179,7 +1179,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     operand_exprs = [self.expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
@@ -1190,9 +1190,9 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     assert context.emits_ir
     operand_exprs = [self.expr]
-    # TODO: Add template types
     return self._build_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
+      context=context)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.expr]
