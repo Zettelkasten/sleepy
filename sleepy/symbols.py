@@ -1848,7 +1848,7 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
         return True
       else:
         return before_templ_type == calling_type  # they must match
-    elif calling_type == signature_type:
+    elif can_implicit_cast_to(calling_type, signature_type):
       return True
     elif isinstance(signature_type, StructType):
       if not isinstance(calling_type, StructType):

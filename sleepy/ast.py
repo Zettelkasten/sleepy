@@ -632,7 +632,6 @@ class ReturnStatementAst(StatementAst):
       if return_val_type == SLEEPY_VOID:
         self.raise_error('Cannot use void return value')
       if not can_implicit_cast_to(return_val_type, symbol_table.current_func.return_type):
-        breakpoint()
         if symbol_table.current_func.return_type == SLEEPY_VOID:
           self.raise_error('Function declared to return void, but return value is of type %r' % (
             return_val_type))
