@@ -1053,20 +1053,18 @@ class FunctionSymbol(Symbol):
   Each of these signatures itself can have a set of concrete implementations,
   where template types have been replaced with concrete types.
   """
-  def __init__(self, returns_void: bool):
+  def __init__(self, returns_void: bool, base: Optional[FunctionSymbol] = None):
     super().__init__()
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionSignature]] = {}
     self.returns_void = returns_void
-
-  def copy(self) -> FunctionSymbol:
-    new_func_symbol = FunctionSymbol(returns_void=self.returns_void)
-    new_func_symbol.signatures_by_number_of_templ_args = {
-      num_templ_args: [signature.copy() for signature in signatures]
-      for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
-    return new_func_symbol
+    if base is None:
+      base = self
+    elif base.base is not None:
+      base = base.base
+    self.base = base
 
   def copy_replace_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionSymbol:
-    new_func_symbol = FunctionSymbol(returns_void=self.returns_void)
+    new_func_symbol = FunctionSymbol(returns_void=self.returns_void, base=self)
     new_func_symbol.signatures_by_number_of_templ_args = {
       num_templ_args: [signature.copy_replace_templ_types(templ_type_replacements) for signature in signatures]
       for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
@@ -1078,7 +1076,7 @@ class FunctionSymbol(Symbol):
      - from foo(T val) -> T make foo(Int val)
      - do not change bound variables: foo[T](T val) -> T stays the same
     """
-    new_func_symbol = FunctionSymbol(returns_void=self.returns_void)
+    new_func_symbol = FunctionSymbol(returns_void=self.returns_void, base=self)
     new_func_symbol.signatures_by_number_of_templ_args = {
       num_templ_args: [signature.copy_replace_unbound_templ_types(templ_type_replacements) for signature in signatures]
       for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}

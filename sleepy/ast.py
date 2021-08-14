@@ -151,7 +151,7 @@ class AbstractSyntaxTree(ABC):
         symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
 
     # special handling of 'assert' call
-    if symbol in {symbol_table.inbuilt_symbols.get('assert'), symbol_table.inbuilt_symbols.get('unchecked_assert')}:
+    if symbol.base in {symbol_table.inbuilt_symbols.get(identifier) for identifier in {'assert', 'unchecked_assert'}}:
       assert len(func_arg_exprs) >= 1
       condition_expr = func_arg_exprs[0]
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
@@ -632,6 +632,7 @@ class ReturnStatementAst(StatementAst):
       if return_val_type == SLEEPY_VOID:
         self.raise_error('Cannot use void return value')
       if not can_implicit_cast_to(return_val_type, symbol_table.current_func.return_type):
+        breakpoint()
         if symbol_table.current_func.return_type == SLEEPY_VOID:
           self.raise_error('Function declared to return void, but return value is of type %r' % (
             return_val_type))
