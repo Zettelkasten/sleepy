@@ -12,48 +12,26 @@ extern_func flush();
 @Inline func print_line_flush(Char|Double|Float|Int|Long|Bool line) { print_line(line); flush(); }
 
 ## Allocation
-extern_func allocate_double(Int size) -> DoublePtr;
-extern_func allocate_float(Int size) -> FloatPtr;
-extern_func allocate_char(Int size) -> CharPtr;
-extern_func allocate_int(Int size) -> IntPtr;
-extern_func allocate_long(Int size) -> LongPtr;
-func NullDoublePtr() -> DoublePtr { extern_func double_null_ptr() -> DoublePtr; return double_null_ptr(); }
-func NullFloatPtr() -> DoublePtr { extern_func float_null_ptr() -> DoublePtr; return float_null_ptr(); }
-func NullCharPtr() -> CharPtr { extern_func char_null_ptr() -> CharPtr; return char_null_ptr(); }
-func NullIntPtr() -> IntPtr { extern_func int_null_ptr() -> IntPtr; return int_null_ptr(); }
-func NullLongPtr() -> LongPtr { extern_func long_null_ptr() -> LongPtr; return long_null_ptr(); }
-func deallocate(DoublePtr ptr) { extern_func deallocate_double(DoublePtr ptr); deallocate_double(ptr); }
-func deallocate(FloatPtr ptr) { extern_func deallocate_float(FloatPtr ptr); deallocate_float(ptr); }
-func deallocate(CharPtr ptr) { extern_func deallocate_char(CharPtr ptr); deallocate_char(ptr); }
-func deallocate(IntPtr ptr) { extern_func deallocate_int(IntPtr ptr); deallocate_int(ptr); }
-func deallocate(LongPtr ptr) { extern_func deallocate_long(LongPtr ptr); deallocate_long(ptr); }
-func load(DoublePtr ptr) -> Double { extern_func load_double(DoublePtr ptr) -> Double; return load_double(ptr); }
-func load(FloatPtr ptr) -> Float { extern_func load_float(FloatPtr ptr) -> Float; return load_float(ptr); }
-func load(CharPtr ptr) -> Char { extern_func load_char(CharPtr ptr) -> Char; return load_char(ptr); }
-func load(IntPtr ptr) -> Int { extern_func load_int(IntPtr ptr) -> Int; return load_int(ptr); }
-func load(LongPtr ptr) -> Long { extern_func load_long(LongPtr ptr) -> Long; return load_long(ptr); }
-func store(DoublePtr ptr, Double value) { extern_func store_double(DoublePtr ptr, Double value); store_double(ptr, value); }
-func store(FloatPtr ptr, Float value) { extern_func store_float(FloatPtr ptr, Float value); store_float(ptr, value); }
-func store(CharPtr ptr, Char value) { extern_func store_char(CharPtr ptr, Char value); store_char(ptr, value); }
-func store(IntPtr ptr, Int value) { extern_func store_int(IntPtr ptr, Int value); store_int(ptr, value); }
-func store(LongPtr ptr, Long value) { extern_func store_long(LongPtr ptr, Long value); store_long(ptr, value); }
+extern_func allocate_double(Int size) -> Ptr[Double];
+extern_func allocate_float(Int size) -> Ptr[Float];
+extern_func allocate_char(Int size) -> Ptr[Char];
+extern_func allocate_int(Int size) -> Ptr[Int];
+extern_func allocate_long(Int size) -> Ptr[Long];
+func NullDoublePtr() -> Ptr[Double] { extern_func double_null_ptr() -> Ptr[Double]; return double_null_ptr(); }
+func NullFloatPtr() -> Ptr[Float] { extern_func float_null_ptr() -> Ptr[Float]; return float_null_ptr(); }
+func NullCharPtr() -> Ptr[Char] { extern_func char_null_ptr() -> Ptr[Char]; return char_null_ptr(); }
+func NullIntPtr() -> Ptr[Int] { extern_func int_null_ptr() -> Ptr[Int]; return int_null_ptr(); }
+func NullLongPtr() -> Ptr[Long] { extern_func long_null_ptr() -> Ptr[Long]; return long_null_ptr(); }
+func deallocate(Ptr[Double] ptr) { extern_func deallocate_double(Ptr[Double] ptr); deallocate_double(ptr); }
+extern_func deallocate_float(Ptr[Float] ptr);  # TODO: overloads with templ types
+extern_func deallocate_char(Ptr[Char] ptr);
+extern_func deallocate_int(Ptr[Int] ptr);
+extern_func deallocate_long(Ptr[Long] ptr);
 extern_func assert(Bool condition);
 @Inline func unchecked_assert(Bool condition) { }
-func memcpy(DoublePtr to, DoublePtr from, Int size) {
-  extern_func memcpy_double(DoublePtr to, DoublePtr from, Int size);
+func memcpy[T](Ptr[T] to, Ptr[T] from, Int size) {
+  extern_func memcpy_double(Ptr[T] to, Ptr[T] from, Int size);
   memcpy_double(to, from, size);
-}
-func memcpy(FloatPtr to, FloatPtr from, Int size) {
-  extern_func memcpy_float(FloatPtr to, FloatPtr from, Int size);
-  memcpy_float(to, from, size);
-}
-func memcpy(CharPtr to, CharPtr from, Int size) {
-  extern_func memcpy_char(CharPtr to, CharPtr from, Int size);
-  memcpy_char(to, from, size);
-}
-func memcpy(IntPtr to, IntPtr from, Int size) {
-  extern_func memcpy_int(IntPtr to, IntPtr from, Int size);
-  memcpy_int(to, from, size);
 }
 
 ## Boolean Logic
@@ -70,8 +48,7 @@ func ToInt(Double d) -> Int { extern_func double_to_int(Double d) -> Int; return
 func ToInt(Bool b) -> Int { if b { return 1; } else { return 0; } }
 func ToInt(Long l) -> Int { extern_func long_to_int(Long l) -> Int; return long_to_int(l); }
 func ToLong(Int i) -> Long { extern_func int_to_long(Int i) -> Long; return int_to_long(i); }
-func ToLong(CharPtr ptr) -> Long { extern_func char_ptr_to_long(CharPtr ptr) -> Long; return char_ptr_to_long(ptr); }
-func ToLong(FloatPtr ptr) -> Long { extern_func float_ptr_to_long(FloatPtr ptr) -> Long; return float_ptr_to_long(ptr); }
+func ToLong(Ptr[T] ptr) -> Long { extern_func char_ptr_to_long(Ptr[T] ptr) -> Long; return char_ptr_to_long(ptr); }
 func ToDouble(Int i) -> Double { extern_func int_to_double(Int i) -> Double; return int_to_double(i); }
 func ToBool(Int i) -> Bool { if i == 0 { return False(); } else { if i != 1 { assert(False()); } return True(); }}
 
@@ -96,7 +73,7 @@ extern_func cos(Double x) -> Double;
 
 ## String (note: the Str struct itself is declared internally, not here.)
 # @RefType struct Str {
-#   CharPtr start = allocate_char(8);
+#   Ptr[Char] start = allocate_char(8);
 #   Int length = 0;
 #   Int alloc_length = 8;
 # }
@@ -109,7 +86,7 @@ func EmptyStr() -> @Mutable Str {
 func resize(@Mutable Str str, Int new_alloc_length) {
   new_start = allocate_char(new_alloc_length);
   memcpy(new_start, str.start, str.alloc_length);
-  deallocate(str.start);
+  deallocate_char(str.start);
   str.alloc_length = new_alloc_length;
   str.start = new_start;
 }
@@ -118,7 +95,7 @@ func copy(Str str) -> @Mutable Str {
   memcpy(new.start, str.start, str.length);
   return new;
 }
-func get(Str str, Int pos) -> CharPtr {
+func get(Str str, Int pos) -> Ptr[Char] {
   return str.start + pos;
 }
 func set(@Mutable Str str, Int pos, Char char) {
@@ -131,10 +108,9 @@ func set(@Mutable Str str, Int pos, Char char) {
     str.length += 1;
   }
 }
-func =(CharPtr ptr, Char v) { store(ptr, v); }
-func +(CharPtr ptr) -> Char { return load(ptr); }
-func =(DoublePtr ptr, Double d) { store(ptr, d); }
-func +(DoublePtr ptr) -> Double { return load(ptr); }
+func =[T](Ptr[T] ptr, T v) { store(ptr, v); }
+func +(Ptr[Char] ptr) -> Char { return load(ptr); }  # TODO: template overloads
+func +(Ptr[Double] ptr) -> Double { return load(ptr); }
 
 func insert(@Mutable Str str, Char char, Int pos) {
   assert(and(0 <= pos, pos < str.length + 1));

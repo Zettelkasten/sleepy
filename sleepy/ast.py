@@ -1127,7 +1127,8 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     assert context.emits_ir
     if self.op == 'is':
       assert isinstance(self.right_expr, VariableExpressionAst)
-      check_type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
+      check_type_expr = IdentifierTypeAst(
+        self.right_expr.pos, type_identifier=self.right_expr.var_identifier, templ_types=[])
       check_type = check_type_expr.make_type(symbol_table=symbol_table)
       val_type = self.left_expr.make_val_type(symbol_table=symbol_table)
       ir_val = self.left_expr.make_ir_val(symbol_table=symbol_table, context=context)
@@ -1592,7 +1593,7 @@ class IdentifierTypeAst(TypeAst):
   """
   IdentifierType -> identifier.
   """
-  def __init__(self, pos: TreePosition, type_identifier: str, template_types: List[TypeAst]):
+  def __init__(self, pos: TreePosition, type_identifier: str, templ_types: List[TypeAst]):
     super().__init__(pos)
     self.type_identifier = type_identifier
     self.templ_types = templ_types
@@ -1604,7 +1605,7 @@ class IdentifierTypeAst(TypeAst):
     if not isinstance(type_symbol, TypeSymbol):
       self.raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)))
     template_type_symbols = [
-      template_type.make_type(symbol_table=symbol_table) for template_type in self.template_types]
+      template_type.make_type(symbol_table=symbol_table) for template_type in self.templ_types]
     if len(template_type_symbols) != len(type_symbol.type_factory.placeholder_templ_types):
       self.raise_error(
         'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
@@ -1612,13 +1613,13 @@ class IdentifierTypeAst(TypeAst):
     return type_symbol.get_type(concrete_templ_types=template_type_symbols)
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return self.template_types
+    return self.templ_types
 
   def __repr__(self):
     """
     :rtype: str
     """
-    return 'IdentifierType(type_identifier=%r, template_types=%r)' % (self.type_identifier, self.template_types)
+    return 'IdentifierType(type_identifier=%r, template_types=%r)' % (self.type_identifier, self.templ_types)
 
 
 class UnionTypeAst(TypeAst):
@@ -1704,7 +1705,8 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
       return
     var_symbol = var_expr.get_var_symbol(symbol_table=symbol_table)
     assert isinstance(cond_expr_ast.right_expr, VariableExpressionAst)
-    check_type_expr = IdentifierTypeAst(cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.var_identifier)
+    check_type_expr = IdentifierTypeAst(
+      cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.var_identifier, templ_types=[])
     check_type = check_type_expr.make_type(symbol_table=symbol_table)
     if cond_holds:
       symbol_table[var_expr.var_identifier] = var_symbol.copy_with_narrowed_type(check_type)

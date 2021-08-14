@@ -996,7 +996,7 @@ def test_overload_with_different_structs():
 def test_index_operator():
   with make_execution_engine() as engine:
     program = """
-    func get(DoublePtr ptr, Int pos) -> DoublePtr {
+    func get(Ptr[Double] ptr, Int pos) -> Ptr[Double] {
       return ptr + pos;
     }
     func main(Double val) -> Double {
@@ -1013,7 +1013,7 @@ def test_index_operator():
 def test_index_operator_syntax():
   with make_execution_engine() as engine:
     program = """
-    func get(DoublePtr ptr, Int pos) -> DoublePtr {
+    func get(Ptr[Double] ptr, Int pos) -> Ptr[Double] {
       return ptr + pos;
     }
     func main(Double val) -> Double {
@@ -1582,7 +1582,7 @@ def test_unchecked_assert_type_narrowing():
     struct S {
       val: Double = 0.0;
     }
-    func cast_to_s(S|DoublePtr ptr) -> S {
+    func cast_to_s(S|Ptr[Double] ptr) -> S {
       unchecked_assert(ptr is S);
       return ptr;
     }

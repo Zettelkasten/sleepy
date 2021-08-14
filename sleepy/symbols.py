@@ -4,6 +4,7 @@ Implements a symbol table.
 from __future__ import annotations
 
 import ctypes
+from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Dict, Optional, List, Tuple, Set, Union, Callable
 
@@ -17,7 +18,7 @@ LLVM_SIZE_TYPE = ir.types.IntType(64)
 LLVM_VOID_POINTER_TYPE = ir.PointerType(ir.types.IntType(8))
 
 
-class Symbol:
+class Symbol(ABC):
   """
   A declared symbol, with an identifier.
   """
@@ -26,6 +27,10 @@ class Symbol:
     Initialize the symbol.
     """
     self.base = self  # type: Symbol
+
+  @abstractmethod
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> Symbol:
+    raise NotImplementedError()
 
 
 class Type:
@@ -167,44 +172,29 @@ class CharType(Type):
   def __repr__(self) -> str:
     return 'Char'
 
-class DoublePtrType(Type):
-  """
-  A double pointer.
-  """
-  def __init__(self):
-    super().__init__(ir.PointerType(ir.DoubleType()), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_double))
 
+class PointerType(Type):
+  """
+  A pointer.
+  """
+  def __init__(self, pointee_type: Type):
+    super().__init__(
+      ir.PointerType(pointee_type.ir_type), pass_by_ref=False, c_type=ctypes.POINTER(pointee_type.c_type))
+    self.pointee_type = pointee_type
 
-class FloatPtrType(Type):
-  """
-  A double pointer.
-  """
-  def __init__(self):
-    super().__init__(ir.PointerType(ir.FloatType()), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_float))
+  def __repr__(self) -> str:
+    return 'Ptr[%r]' % self.pointee_type
 
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, PointerType):
+      return False
+    return self.pointee_type == other.pointee_type
 
-class CharPtrType(Type):
-  """
-  A char pointer.
-  """
-  def __init__(self):
-    super().__init__(ir.PointerType(ir.IntType(bits=8)), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_char))
+  def __hash__(self) -> int:
+    return hash((self.__class__, self.pointee_type))
 
-
-class IntPtrType(Type):
-  """
-  An int pointer.
-  """
-  def __init__(self):
-    super().__init__(ir.PointerType(ir.IntType(bits=32)), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_int32))
-
-
-class LongPtrType(Type):
-  """
-  A long pointer.
-  """
-  def __init__(self):
-    super().__init__(ir.PointerType(ir.IntType(bits=64)), pass_by_ref=False, c_type=ctypes.POINTER(ctypes.c_int64))
+  def replace_types(self, replacements: Dict[Type, Type]):
+    return PointerType(pointee_type=self.pointee_type.replace_types(replacements))
 
 
 class UnionType(Type):
@@ -242,7 +232,7 @@ class UnionType(Type):
   def __repr__(self):
     if len(self.possible_types) == 0:
       return 'NeverType'
-    return 'UnionType(%s)' % ', '.join(
+    return '|'.join(
       '%s:%s' % (possible_type_num, possible_type)
       for possible_type_num, possible_type in zip(self.possible_type_nums, self.possible_types))
 
@@ -464,6 +454,8 @@ class StructType(Type):
   def __eq__(self, other) -> bool:
     if not isinstance(other, StructType):
       return False
+    # TODO: we do not want duck-typing here: keep track of which TypeSymbol this actually belongs to and compare those
+    # instead of comparing the identifiers.
     return (
       self.struct_identifier == other.struct_identifier and self.templ_types == other.templ_types and
       self.member_identifiers == other.member_identifiers and self.member_types == other.member_types and
@@ -477,7 +469,7 @@ class StructType(Type):
     """
     :rtype: str
     """
-    return '%sType' % self.struct_identifier
+    return self.struct_identifier
 
   def make_extract_member_val_ir(self, member_identifier, struct_ir_val, context):
     """
@@ -570,10 +562,14 @@ class StructType(Type):
             concrete_member_type = concrete_struct_type.member_types[member_num]
             member_ir_val = self.make_extract_member_val_ir(
               member_identifier, struct_ir_val=self_ir_alloca, context=context)
+            # TODO: properly infer templ types, also for struct members
             assert not (isinstance(signature_member_type, StructType) and len(signature_member_type.templ_types) > 0), (
               'not implemented yet')
+            templ_types: List[Type] = []
+            if isinstance(concrete_member_type, PointerType):
+              templ_types = [concrete_member_type.pointee_type]
             make_func_call_ir(
-              func_identifier='free', func_symbol=destructor_symbol, templ_types=[],
+              func_identifier='free', func_symbol=destructor_symbol, templ_types=templ_types,
               calling_arg_types=[signature_member_type],
               calling_ir_args=[member_ir_val], context=context)
           if self.is_pass_by_ref():
@@ -603,7 +599,7 @@ class TemplateType(Type):
     self.identifier = identifier
 
   def __repr__(self):
-    return 'TemplateType(%r)' % self.identifier
+    return self.identifier
 
   def has_templ_placeholder(self) -> bool:
     return True
@@ -617,25 +613,19 @@ SLEEPY_BOOL = BoolType()
 SLEEPY_INT = IntType()
 SLEEPY_LONG = LongType()
 SLEEPY_CHAR = CharType()
-SLEEPY_DOUBLE_PTR = DoublePtrType()
-SLEEPY_FLOAT_PTR = FloatPtrType()
-SLEEPY_CHAR_PTR = CharPtrType()
-SLEEPY_INT_PTR = IntPtrType()
-SLEEPY_LONG_PTR = LongPtrType()
+
+SLEEPY_CHAR_PTR = PointerType(SLEEPY_CHAR)
 
 SLEEPY_TYPES: Dict[str, Type] = {
   'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Float': SLEEPY_FLOAT, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT,
-  'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR,
-  'DoublePtr': SLEEPY_DOUBLE_PTR, 'FloatPtr': SLEEPY_FLOAT_PTR, 'CharPtr': SLEEPY_CHAR_PTR,
-  'IntPtr': SLEEPY_INT_PTR, 'LongPtr': SLEEPY_LONG_PTR}
-SLEEPY_POINTER_TYPES: Set[Type] = {SLEEPY_DOUBLE_PTR, SLEEPY_FLOAT_PTR, SLEEPY_CHAR_PTR, SLEEPY_INT_PTR, SLEEPY_LONG_PTR}
+  'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR}
 
 INT_TYPES: Set[Type] = {SLEEPY_INT, SLEEPY_LONG}
 FLOAT_TYPES: Set[Type] = {SLEEPY_FLOAT, SLEEPY_DOUBLE}
 
 SLEEPY_NUMERICAL_TYPES: Set[Type] = INT_TYPES | FLOAT_TYPES
 
-COMPARABLE_TYPES = SLEEPY_NUMERICAL_TYPES | SLEEPY_POINTER_TYPES | {SLEEPY_BOOL}
+COMPARABLE_TYPES = SLEEPY_NUMERICAL_TYPES | {SLEEPY_BOOL}
 
 
 def can_implicit_cast_to(from_type, to_type):
@@ -802,6 +792,7 @@ class VariableSymbol(Symbol):
   """
   A declared variable.
   """
+
   def __init__(self, ir_alloca, var_type, mutable):
     """
     :param ir.instructions.AllocaInstr|None ir_alloca:
@@ -815,6 +806,11 @@ class VariableSymbol(Symbol):
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
     self.mutable = mutable
+
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> VariableSymbol:
+    assert not self.declared_var_type.has_templ_placeholder()
+    assert not self.narrowed_var_type.has_templ_placeholder()
+    return self
 
   def copy_with_narrowed_type(self, narrow_to):
     """
@@ -959,7 +955,8 @@ class FunctionSignature:
                return_type: Type, return_mutable: bool,
                arg_identifiers: List[str], arg_types: List[Type], arg_mutables: List[bool],
                arg_type_narrowings: List[Type],
-               is_inline: bool = False):
+               is_inline: bool = False,
+               base: FunctionSignature = None):
     assert isinstance(return_type, Type)
     assert len(arg_identifiers) == len(arg_types) == len(arg_mutables) == len(arg_type_narrowings)
     self.concrete_func_factory = concrete_func_factory
@@ -971,7 +968,32 @@ class FunctionSignature:
     self.arg_mutables = arg_mutables
     self.arg_type_narrowings = arg_type_narrowings
     self.is_inline = is_inline
-    self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
+    if base is not None:
+      assert base.concrete_func_factory == self.concrete_func_factory
+      assert base.arg_identifiers == self.arg_identifiers
+      assert base.arg_mutables == self.arg_mutables
+      assert base.is_inline == self.is_inline
+      # we share the initialized_templ_funcs here, so that we do not create a ConcreteFunction multiple times
+      self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = base.initialized_templ_funcs
+    else:
+      self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
+
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionSignature:
+    unbound_templ_type_replacements = {
+      templ_type: replacement for templ_type, replacement in templ_type_replacements.items()
+      if templ_type not in self.placeholder_templ_types}
+    return self.copy_replace_templ_types(unbound_templ_type_replacements)
+
+  def copy_replace_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionSignature:
+    return FunctionSignature(
+      concrete_func_factory=self.concrete_func_factory,
+      placeholder_templ_types=self.placeholder_templ_types.copy(),
+      return_type=self.return_type, return_mutable=self.return_mutable,
+      arg_identifiers=self.arg_identifiers.copy(),
+      arg_types=[arg_type.replace_types(templ_type_replacements) for arg_type in self.arg_types.copy()],
+      arg_mutables=self.arg_mutables.copy(), arg_type_narrowings=self.arg_type_narrowings.copy(),
+      is_inline=self.is_inline,
+      base=self)
 
   def to_signature_str(self) -> str:
     templ_args = '' if len(self.placeholder_templ_types) == 0 else '[%s]' % (
@@ -1035,6 +1057,32 @@ class FunctionSymbol(Symbol):
     super().__init__()
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionSignature]] = {}
     self.returns_void = returns_void
+
+  def copy(self) -> FunctionSymbol:
+    new_func_symbol = FunctionSymbol(returns_void=self.returns_void)
+    new_func_symbol.signatures_by_number_of_templ_args = {
+      num_templ_args: [signature.copy() for signature in signatures]
+      for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
+    return new_func_symbol
+
+  def copy_replace_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionSymbol:
+    new_func_symbol = FunctionSymbol(returns_void=self.returns_void)
+    new_func_symbol.signatures_by_number_of_templ_args = {
+      num_templ_args: [signature.copy_replace_templ_types(templ_type_replacements) for signature in signatures]
+      for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
+    return new_func_symbol
+
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionSymbol:
+    """
+    e.g. if replacements is T => Int:
+     - from foo(T val) -> T make foo(Int val)
+     - do not change bound variables: foo[T](T val) -> T stays the same
+    """
+    new_func_symbol = FunctionSymbol(returns_void=self.returns_void)
+    new_func_symbol.signatures_by_number_of_templ_args = {
+      num_templ_args: [signature.copy_replace_unbound_templ_types(templ_type_replacements) for signature in signatures]
+      for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
+    return new_func_symbol
 
   @property
   def signatures(self) -> List[FunctionSignature]:
@@ -1131,12 +1179,30 @@ class TypeSymbol(Symbol):
   Can have one or multiple template initializations that yield different concrete types.
   These are initialized lazily.
   """
+
   def __init__(self, type_factory: TypeFactory, constructor_symbol: Optional[FunctionSymbol]):
     super().__init__()
     assert isinstance(type_factory, TypeFactory)
     self.type_factory = type_factory
     self.constructor_symbol = constructor_symbol
     self.initialized_templ_types: Dict[Tuple[Type], Type] = {}
+
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> TypeSymbol:
+    """
+    e.g. if replacements is T -> Int:
+     - from T make Int
+     - from List[T] make List[Int]
+     - from U make U
+    """
+    new_signature_type = self.type_factory.signature_type.replace_types(replacements=templ_type_replacements)
+    new_type_factory = TypeFactory(
+      placeholder_templ_types=[
+        templ for templ in self.type_factory.placeholder_templ_types if templ not in templ_type_replacements],
+      signature_type=new_signature_type)
+    new_constructor_symbol = (
+      None if self.constructor_symbol is None
+      else self.constructor_symbol.copy_replace_unbound_templ_types(templ_type_replacements))
+    return TypeSymbol(type_factory=new_type_factory, constructor_symbol=new_constructor_symbol)
 
   def get_type(self, concrete_templ_types: List[Type]) -> Type:
     concrete_templ_types = tuple(concrete_templ_types)
@@ -1166,11 +1232,16 @@ class SymbolTable:
       self.known_extern_funcs = {}  # type: Dict[str, ConcreteFunction]
       self.inbuilt_symbols = {}  # type: Dict[str, Symbol]
     else:
-      self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
       if copy_new_current_func is None:
+        self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
         self.current_func = copy_from.current_func  # type: Optional[ConcreteFunction]
         self.current_scope_identifiers = copy_from.current_scope_identifiers.copy()  # type: List[str]
       else:
+        templ_type_replacements = dict(zip(
+          copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types))
+        self.symbols = {
+          identifier: symbol.copy_replace_unbound_templ_types(templ_type_replacements)
+          for identifier, symbol in copy_from.symbols.items()}
         self.current_func = copy_new_current_func  # type: Optional[ConcreteFunction]
         self.current_scope_identifiers = []  # type: List[str]
       self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
@@ -1184,24 +1255,13 @@ class SymbolTable:
   def __getitem__(self, identifier: str) -> Symbol:
     return self.symbols[identifier]
 
-  def __contains__(self, identifier):
-    """
-    :param str identifier:
-    :rtype: bool
-    """
+  def __contains__(self, identifier: str) -> bool:
     return identifier in self.symbols
 
-  def copy(self):
-    """
-    :rtype: SymbolTable
-    """
+  def copy(self) -> SymbolTable:
     return SymbolTable(self)
 
-  def copy_with_new_current_func(self, new_current_func):
-    """
-    :param ConcreteFunction new_current_func:
-    :rtype: SymbolTable
-    """
+  def copy_with_new_current_func(self, new_current_func: ConcreteFunction) -> SymbolTable:
     assert new_current_func is not None
     return SymbolTable(self, copy_new_current_func=new_current_func)
 
@@ -1549,19 +1609,17 @@ class BuiltinBinaryOps(Enum):
   BitwiseOr = 'bitwise_or'
   Mod = 'mod'
 
+
 Simple_Arithmetic_Ops: List[BuiltinBinaryOps] = \
   [BuiltinBinaryOps.Addition, BuiltinBinaryOps.Subtraction, BuiltinBinaryOps.Multiplication, BuiltinBinaryOps.Division]
+
 
 Simple_Comparison_Ops: List[BuiltinBinaryOps] = \
  [BuiltinBinaryOps.Equality, BuiltinBinaryOps.Inequality, BuiltinBinaryOps.Less, BuiltinBinaryOps.Greater,
   BuiltinBinaryOps.GreaterOrEqual, BuiltinBinaryOps.LessOrEqual]
 
-def _make_str_symbol(symbol_table, context):
-  """
-  :param SymbolTable symbol_table:
-  :param CodegenContext context:
-  :rtype: TypeSymbol
-  """
+
+def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext):
   str_type = StructType(
     struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'], templ_types=[],
     member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT], member_mutables=[False, False, False],
@@ -1573,15 +1631,71 @@ def _make_str_symbol(symbol_table, context):
   return struct_symbol
 
 
+def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext):
+  pointee_type = TemplateType(identifier='T')
+  ptr_type = PointerType(pointee_type=pointee_type)
+
+  assert 'load' not in symbol_table
+  load_symbol = FunctionSymbol(returns_void=False)
+  load_factory = InbuiltOpConcreteFuncFactory(
+    instruction=lambda builder, ptr: builder.load(ptr, name='load'), emits_ir=context.emits_ir)
+  load_signature = FunctionSignature(
+    concrete_func_factory=load_factory, placeholder_templ_types=[pointee_type], return_type=pointee_type,
+    return_mutable=False, arg_identifiers=['ptr'], arg_types=[ptr_type], arg_mutables=[False],
+    arg_type_narrowings=[ptr_type], is_inline=True)
+  load_symbol.add_signature(signature=load_signature)
+  symbol_table['load'] = load_symbol
+
+  assert 'store' not in symbol_table
+  store_symbol = FunctionSymbol(returns_void=True)
+  store_factory = InbuiltOpConcreteFuncFactory(
+    instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr),
+    emits_ir=context.emits_ir)
+  store_signature = FunctionSignature(
+    concrete_func_factory=store_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_VOID,
+    return_mutable=True, arg_identifiers=['ptr', 'value'], arg_types=[ptr_type, pointee_type],
+    arg_mutables=[False, False], arg_type_narrowings=[ptr_type, pointee_type], is_inline=True)
+  store_symbol.add_signature(store_signature)
+  symbol_table['store'] = store_symbol
+  type_factory = TypeFactory(placeholder_templ_types=[pointee_type], signature_type=ptr_type)
+
+  # TODO: Support Long ptr additions + left-side addition
+  PTR_OP_DECL = [
+    (
+      BuiltinBinaryOps.Addition,
+      [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_type, SLEEPY_INT], ptr_type)])]
+    # (
+    #   BuiltinBinaryOps.Addition,
+    # [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [SLEEPY_INT, ptr_type], ptr_type)])]
+  for operator, overloads in PTR_OP_DECL:
+    if operator.value not in symbol_table:
+      symbol_table[operator.value] = FunctionSymbol(returns_void=False)
+    function_symbol = symbol_table[operator.value]
+    assert isinstance(function_symbol, FunctionSymbol)
+
+    for instruction, arg_types, return_type in overloads:
+      signature = make_function_signature(
+        instruction, op_placeholder_templ_types=[pointee_type], op_arg_types=arg_types, op_return_type=return_type,
+        emits_ir=context.emits_ir)
+      function_symbol.add_signature(signature)
+
+  destructor_factory = InbuiltOpDestructorFuncFactory(symbol_table=symbol_table, context=context)
+  free_signature = FunctionSignature(
+    concrete_func_factory=destructor_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_VOID,
+    return_mutable=False, arg_types=[ptr_type], arg_identifiers=['ptr'], arg_type_narrowings=[SLEEPY_NEVER],
+    arg_mutables=[False])
+  symbol_table.free_symbol.add_signature(free_signature)
+
+  return TypeSymbol(type_factory=type_factory, constructor_symbol=None)
+
+
 class InbuiltOpConcreteFuncFactory(ConcreteFunctionFactory):
-  def __init__(self, instruction: Callable[..., Value], op_arg_types: List[Type], op_return_type: Type, emit_ir: bool):
+  def __init__(self, instruction: Callable[..., Value], emits_ir: bool):
     self.instruction = instruction
-    self.op_arg_types = op_arg_types
-    self.op_return_type = op_return_type
-    self.emit_ir = emit_ir
+    self.emits_ir = emits_ir
 
   def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
-    if self.emit_ir:
+    if self.emits_ir:
       concrete_func.make_inline_func_call_ir = (
         lambda ir_func_args, caller_context: self.instruction(caller_context.builder, *ir_func_args))
     return concrete_func
@@ -1637,6 +1751,11 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   symbol_table['Str'] = str_symbol
   symbol_table.inbuilt_symbols['Str'] = str_symbol
 
+  assert 'Ptr' not in symbol_table
+  ptr_symbol = _make_ptr_symbol(symbol_table=symbol_table, context=context)
+  symbol_table['Ptr'] = ptr_symbol
+  symbol_table.inbuilt_symbols['Ptr'] = ptr_symbol
+
   make_builtin_operator_functions(symbol_table, context.emits_ir)
 
 
@@ -1652,8 +1771,7 @@ Instructions: Dict[Tuple[BuiltinBinaryOps, Type], Callable[[CodegenContext, Valu
   {(BuiltinBinaryOps.Division, T): IRBuilder.fdiv for T in FLOAT_TYPES},
 
   {(op, T): lambda builder, lhs, rhs, op=op: builder.icmp_signed(op.value, lhs, rhs) for op in Simple_Comparison_Ops for T in INT_TYPES},
-  {(op, T): lambda builder, lhs, rhs, op=op: builder.icmp_unsigned(op.value, lhs, rhs) for op in Simple_Comparison_Ops
-   for T in SLEEPY_POINTER_TYPES | {SLEEPY_CHAR, SLEEPY_BOOL}},
+  {(op, T): lambda builder, lhs, rhs, op=op: builder.icmp_unsigned(op.value, lhs, rhs) for op in Simple_Comparison_Ops for T in {SLEEPY_CHAR, SLEEPY_BOOL}},
   {(op, T):
      lambda builder, lhs, rhs, op=op: builder.fcmp_ordered(op.value, lhs, rhs)
    for op in Simple_Comparison_Ops for T in FLOAT_TYPES}
@@ -1674,17 +1792,12 @@ BINARY_OP_DECL = (
    for operator in Simple_Comparison_Ops] +  # comparisons on all types except void and char
         [(operator, [(lambda builder, lhs, rhs, op=operator: builder.icmp_unsigned(op.value, lhs, rhs), [SLEEPY_CHAR, SLEEPY_CHAR], SLEEPY_BOOL)])
    for operator in [BuiltinBinaryOps.Equality, BuiltinBinaryOps.Inequality]] +
-        [(BuiltinBinaryOps.Addition, [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_t, int_t], ptr_t)
-                                      for ptr_t in SLEEPY_POINTER_TYPES for int_t in INT_TYPES])] +  # pointer arithmetic
-        [(BuiltinBinaryOps.Addition, [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [int_t, ptr_t], ptr_t)
-                                      for ptr_t in SLEEPY_POINTER_TYPES for int_t in INT_TYPES])] +  # pointer arithmetic
-        [(BuiltinBinaryOps.BitwiseOr, [(IRBuilder.or_, [int_t, int_t], int_t) for int_t in INT_TYPES])] + # bitwise_or on integer types
-        [(BuiltinBinaryOps.Mod, [(IRBuilder.srem, [int_t, int_t], int_t) for int_t in INT_TYPES])] # modulo on integer types
+        [(BuiltinBinaryOps.BitwiseOr, [(IRBuilder.or_, [int_t, int_t], int_t) for int_t in INT_TYPES])] +  # bitwise_or on integer types
+        [(BuiltinBinaryOps.Mod, [(IRBuilder.srem, [int_t, int_t], int_t) for int_t in INT_TYPES])]  # modulo on integer types
   )
 
 
-def make_builtin_operator_functions(symbol_table: SymbolTable, emit_ir: bool):
-
+def make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
   for operator, overloads in BINARY_OP_DECL:
     if operator.value not in symbol_table:
       symbol_table[operator.value] = FunctionSymbol(returns_void=False)
@@ -1692,21 +1805,26 @@ def make_builtin_operator_functions(symbol_table: SymbolTable, emit_ir: bool):
     assert isinstance(function_symbol, FunctionSymbol)
 
     for instruction, arg_types, return_type in overloads:
-      signature = make_function_signature(instruction, arg_types, return_type, emit_ir)
+      signature = make_function_signature(
+        instruction, op_placeholder_templ_types=[], op_arg_types=arg_types, op_return_type=return_type,
+        emits_ir=emits_ir)
       function_symbol.add_signature(signature)
 
-def make_function_signature(instruction: Callable[..., Value], op_arg_types: List[Type],
-                            op_return_type: Type, emit_ir: bool, ) -> FunctionSignature:
+
+def make_function_signature(instruction: Callable[..., Value],
+                            op_placeholder_templ_types: Union[Tuple[TemplateType], List[TemplateType]],
+                            op_arg_types: List[Type], op_return_type: Type, emits_ir: bool) -> FunctionSignature:
+  assert len(op_arg_types) in {1, 2}
   unary: bool = len(op_arg_types) == 1
   op_arg_identifiers = ['arg'] if unary else ['lhs', 'rhs']
   assert len(op_arg_types) == len(op_arg_identifiers)
   # ir_func will be set in build_initial_module_ir
-  factory = InbuiltOpConcreteFuncFactory(instruction, op_arg_types, op_return_type, emit_ir)
+  factory = InbuiltOpConcreteFuncFactory(instruction, emits_ir=emits_ir)
 
   signature = FunctionSignature(
-    factory, placeholder_templ_types=[], return_type=op_return_type, return_mutable=False, arg_identifiers=op_arg_identifiers,
-    arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types), arg_type_narrowings=op_arg_types,
-    is_inline=True)
+    factory, placeholder_templ_types=list(op_placeholder_templ_types), return_type=op_return_type, return_mutable=False,
+    arg_identifiers=op_arg_identifiers, arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types),
+    arg_type_narrowings=op_arg_types, is_inline=True)
 
   return signature
 
