@@ -1108,6 +1108,9 @@ class FunctionSymbol(Symbol):
   def __repr__(self) -> str:
     return 'FunctionSymbol(signatures=%r)' % self.signatures
 
+  def make_signature_list_str(self) -> str:
+    return '\n'.join([' - ' + signature.to_signature_str() for signature in self.signatures])
+
 
 class TypeFactory:
   """

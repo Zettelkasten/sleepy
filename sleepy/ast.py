@@ -72,7 +72,7 @@ class AbstractSyntaxTree(ABC):
         'only declared for parameter types:\n%s' % (
           func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
           ', '.join([str(templ_type) for templ_type in templ_types]),
-          '\n'.join([' - ' + signature.to_signature_str() for signature in symbol.signatures])))
+          symbol.make_signature_list_str()))
     if not all(called_type.is_realizable() for called_type in calling_types):
       self.raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
         func_identifier, ', '.join([str(called_type) for called_type in calling_types])))
@@ -101,13 +101,13 @@ class AbstractSyntaxTree(ABC):
         'Cannot infer template types for function %r from arguments of types %r, '
         'is declared for parameter types:\n%s' % (
           func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-          '\n'.join([' - ' + signature.to_signature_str() for signature in func_symbol.signatures])))
+          func_symbol.make_signature_list_str()))
     if len(possible_infers) > 1:
       self.raise_error(
         'Cannot uniquely infer template types for function %r from arguments of types %r, '
         'is declared for parameter types:\n%s' % (
           func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-          '\n'.join([' - ' + signature.to_signature_str() for signature in func_symbol.signatures])))
+          func_symbol.make_signature_list_str()))
     assert len(possible_infers) == 1
     signature_templ_types = infers[possible_infers[0]]
     assert signature_templ_types is not None
@@ -415,9 +415,10 @@ class FunctionDeclarationAst(StatementAst):
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
         self.raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier)
     if not func_symbol.is_undefined_for_types(placeholder_templ_types=placeholder_templ_types, arg_types=arg_types):
-      self.raise_error('Cannot override definition of function %r with template types %r and parameter types %r' % (
+      self.raise_error(
+        'Cannot override definition of function %r with template types %r and parameter types %r, already declared:\n%s' % (  # noqa
         self.identifier, ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
-        ', '.join([str(arg_type) for arg_type in arg_types])))
+        ', '.join([str(arg_type) for arg_type in arg_types]), func_symbol.make_signature_list_str()))
     if func_symbol.returns_void != (return_type == SLEEPY_VOID):
       self.raise_error(
         'Function declared with name %r must consistently return a value or consistently return void' % self.identifier)
@@ -1096,7 +1097,8 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     """
     if self.op == 'is':
       assert isinstance(self.right_expr, VariableExpressionAst)
-      type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
+      type_expr = IdentifierTypeAst(
+        self.right_expr.pos, type_identifier=self.right_expr.var_identifier, templ_types=[])
       type_expr.make_type(symbol_table=symbol_table)  # just check that type exists
       return SLEEPY_BOOL
     operand_exprs = [self.left_expr, self.right_expr]
@@ -1593,7 +1595,7 @@ class IdentifierTypeAst(TypeAst):
   def __init__(self, pos: TreePosition, type_identifier: str, template_types: List[TypeAst]):
     super().__init__(pos)
     self.type_identifier = type_identifier
-    self.template_types = template_types
+    self.templ_types = templ_types
 
   def make_type(self, symbol_table: SymbolTable) -> Type:
     if self.type_identifier not in symbol_table:
