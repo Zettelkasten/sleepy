@@ -1341,12 +1341,12 @@ class VariableExpressionAst(ExpressionAst):
     """
     if self.var_identifier not in symbol_table:
       self.raise_error('Variable %r referenced before declaring' % self.var_identifier)
+    symbol = symbol_table[self.var_identifier]
+    if not isinstance(symbol, VariableSymbol):
+      self.raise_error('Cannot reference a non-variable %r, got a %s' % (self.var_identifier, type(self).__name__))
     if self.var_identifier not in symbol_table.current_scope_identifiers:
       # TODO add variable captures
       self.raise_error('Cannot capture variable %r from outer scope' % self.var_identifier)
-    symbol = symbol_table[self.var_identifier]
-    if not isinstance(symbol, VariableSymbol):
-      self.raise_error('Cannot reference a non-variable %r' % self.var_identifier)
     return symbol
 
   def make_val_type(self, symbol_table):
