@@ -1,5 +1,5 @@
 @RefType struct DoubleList {
-  pointer : DoublePtr = allocate_double(8);
+  pointer : Ptr[Double] = allocate_double(8);
   alloc_length : Int = 8;
   length : Int = 0;
 }

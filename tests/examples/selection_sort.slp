@@ -1,10 +1,10 @@
-func swap(DoublePtr ptr1, DoublePtr ptr2) {
+func swap(Ptr[Double] ptr1, Ptr[Double] ptr2) {
   tmp = load(ptr1);
   store(ptr1, load(ptr2));
   store(ptr2, tmp);
 }
 
-func print_array(DoublePtr array, Int size) {
+func print_array(Ptr[Double] array, Int size) {
   if size <= 0 { return; }
   print(load(array));
   if size > 1 {
@@ -14,13 +14,13 @@ func print_array(DoublePtr array, Int size) {
   print_array(array + 1, size - 1);
 }
 
-func sort(DoublePtr array, Int size) {
-  func sort_i(DoublePtr last_sorted, DoublePtr array, Int size) {
+func sort(Ptr[Double] array, Int size) {
+  func sort_i(Ptr[Double] last_sorted, Ptr[Double] array, Int size) {
     if last_sorted == array + size {
       return;
     }
 
-    func find_smallest(DoublePtr start_at, DoublePtr current_min_pos, DoublePtr array, Int size) -> DoublePtr {
+    func find_smallest(Ptr[Double] start_at, Ptr[Double] current_min_pos, Ptr[Double] array, Int size) -> Ptr[Double] {
       if start_at >= array + size {
         return current_min_pos;
       }
@@ -42,16 +42,16 @@ func sort(DoublePtr array, Int size) {
   sort_i(array + -1, array, size);
 }
 
-func is_sorted(DoublePtr array, Int size) -> Bool {
+func Ptr[Double](Ptr[Double] array, Int size) -> Bool {
   if size <= 1 {
     return True();
   }
-  return and(load(array) <= load(array + 1), is_sorted(array + 1, size - 1));
+  return and(load(array) <= load(array + 1), Ptr[Double](array + 1, size - 1));
 }
 
 func main() {
   size = 10;
-  arr: DoublePtr = allocate_double(size);
+  arr: Ptr[Double] = allocate_double(size);
   store(arr + 0, 5.0);
   store(arr + 1, 1.0);
   store(arr + 2, 4.0);
@@ -64,7 +64,7 @@ func main() {
   store(arr + 9, 23.0);
   print_array(arr, size);
   print('\n');
-  assert(not(is_sorted(arr, size)));
+  assert(not(Ptr[Double](arr, size)));
 
   sort(arr, size);
   print_array(arr, size);
@@ -72,7 +72,7 @@ func main() {
 
   assert(load(arr + 0) == 1.0);
   assert(load(arr + 1) == 4.0);
-  assert(is_sorted(arr, size));
+  assert(Ptr[Double](arr, size));
 
   deallocate(arr);
 }
