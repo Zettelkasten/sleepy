@@ -86,6 +86,20 @@ def test_try_infer_templ_types_simple():
     [SLEEPY_DOUBLE, SLEEPY_INT])
 
 
+def test_try_infer_templ_types_ptr():
+  from sleepy.symbols import try_infer_templ_types, TemplateType, PointerType, SLEEPY_INT, SLEEPY_CHAR
+  T = TemplateType('T')
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[PointerType(SLEEPY_INT)], signature_types=[PointerType(T)], placeholder_templ_types=[T]),
+    [SLEEPY_INT])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[PointerType(SLEEPY_CHAR), SLEEPY_INT], signature_types=[PointerType(T), SLEEPY_INT],
+      placeholder_templ_types=[T]),
+    [SLEEPY_CHAR])
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
