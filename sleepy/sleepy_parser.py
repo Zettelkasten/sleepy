@@ -28,12 +28,12 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           _pos, identifier=identifier(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
           arg_types=type_list(5), arg_annotations=annotation_list(5), return_type=ast(7),
           return_annotation_list=annotation_list(7), body_scope=ast(8)))},
-    Production('Stmt', 'func', 'Op', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {
+    Production('Stmt', 'func', 'Op', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {
       'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast: (
         FunctionDeclarationAst(
-          _pos, identifier=op(2), templ_identifiers=[], arg_identifiers=identifier_list(4), arg_types=type_list(4),
-          arg_annotations=annotation_list(4), return_type=ast(6), return_annotation_list=annotation_list(6),
-          body_scope=ast(7)))},
+          _pos, identifier=op(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
+          arg_types=type_list(5), arg_annotations=annotation_list(5), return_type=ast(7),
+          return_annotation_list=annotation_list(7), body_scope=ast(8)))},
     # TODO: Cleanup index operator
     Production('Stmt', 'func', '(', 'AnnotationList', 'Type', 'identifier', ')', '[', 'TypedIdentifierList', ']', 'ReturnType', 'Scope'): {  # noqa
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
