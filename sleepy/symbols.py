@@ -797,12 +797,7 @@ class VariableSymbol(Symbol):
   A declared variable.
   """
 
-  def __init__(self, ir_alloca, var_type, mutable):
-    """
-    :param ir.instructions.AllocaInstr|None ir_alloca:
-    :param Type var_type:
-    :param bool mutable:
-    """
+  def __init__(self, ir_alloca: Optional[ir.instructions.AllocaInstr], var_type: Type, mutable: bool):
     super().__init__()
     assert ir_alloca is None or isinstance(ir_alloca, ir.instructions.AllocaInstr)
     assert var_type != SLEEPY_VOID
@@ -816,49 +811,29 @@ class VariableSymbol(Symbol):
     assert not self.narrowed_var_type.has_templ_placeholder()
     return self
 
-  def copy_with_narrowed_type(self, narrow_to):
-    """
-    :param Type narrow_to:
-    :rtype: VariableSymbol
-    """
+  def copy_with_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
     new_var_symbol.base = self if self.base is None else self.base
-    new_var_symbol.narrowed_var_type = narrow_type(self.narrowed_var_type, narrow_to)
+    # explicitly apply narrowing from declared type here: always stay compatible to the base type
+    new_var_symbol.narrowed_var_type = narrow_type(from_type=self.declared_var_type, narrow_to=new_narrow_type)
     return new_var_symbol
 
-  def copy_reset_narrowed_type(self):
-    """
-    :rtype: VariableSymbol
-    """
-    new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
-    new_var_symbol.base = self if self.base is None else self.base
-    new_var_symbol.narrowed_var_type = self.declared_var_type
-    return new_var_symbol
+  def copy_narrow_type(self, narrow_to: Type) -> VariableSymbol:
+    return self.copy_with_narrowed_type(new_narrow_type=narrow_type(self.narrowed_var_type, narrow_to))
 
-  def copy_with_excluded_type(self, excluded):
-    """
-    :param Type excluded:
-    :rtype: VariableSymbol
-    """
-    new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
-    new_var_symbol.base = self if self.base is None else self.base
-    new_var_symbol.narrowed_var_type = exclude_type(self.narrowed_var_type, excluded)
-    return new_var_symbol
+  def copy_reset_narrowed_type(self) -> VariableSymbol:
+    return self.copy_with_narrowed_type(new_narrow_type=self.declared_var_type)
 
-  def build_ir_alloca(self, context, identifier):
-    """
-    :param CodegenContext context:
-    :param str identifier:
-    """
+  def copy_exclude_type(self, excluded: Type) -> VariableSymbol:
+    return self.copy_with_narrowed_type(new_narrow_type=exclude_type(self.narrowed_var_type, excluded))
+
+  def build_ir_alloca(self, context: CodegenContext, identifier: str):
     assert self.ir_alloca is None
     if not context.emits_ir:
       return
     self.ir_alloca = context.alloca_at_entry(self.declared_var_type.ir_type, name='%s_ptr' % identifier)
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r, mutable=%r)' % (
       self.ir_alloca, self.declared_var_type, self.narrowed_var_type, self.mutable)
 
@@ -1297,11 +1272,9 @@ class SymbolTable:
     self.used_ir_func_names.add(ir_func_name)
     return ir_func_name
 
-  def apply_type_narrowings_from(self, *other_symbol_tables):
+  def apply_type_narrowings_from(self, *other_symbol_tables: SymbolTable):
     """
     For all variable symbols, copy common type of all other_symbol_tables.
-
-    :param SymbolTable other_symbol_tables: containing all variables of self
     """
     for symbol_identifier, self_symbol in self.symbols.items():
       if not isinstance(self_symbol, VariableSymbol):
@@ -1325,26 +1298,14 @@ class SymbolTable:
         if symbol.declared_var_type != symbol.narrowed_var_type:
           self[symbol_identifier] = symbol.copy_reset_narrowed_type()
 
-  def has_extern_func(self, func_identifier):
-    """
-    :param str func_identifier:
-    :rtype: bool
-    """
+  def has_extern_func(self, func_identifier: str) -> bool:
     return func_identifier in self.known_extern_funcs
 
-  def get_extern_func(self, func_identifier):
-    """
-    :param str func_identifier:
-    :rtype: ConcreteFunction
-    """
+  def get_extern_func(self, func_identifier: str) -> ConcreteFunction:
     assert self.has_extern_func(func_identifier)
     return self.known_extern_funcs[func_identifier]
 
-  def add_extern_func(self, func_identifier, concrete_func):
-    """
-    :param str func_identifier:
-    :param ConcreteFunction concrete_func:
-    """
+  def add_extern_func(self, func_identifier: str, concrete_func: ConcreteFunction):
     assert not self.has_extern_func(func_identifier)
     self.known_extern_funcs[func_identifier] = concrete_func
 

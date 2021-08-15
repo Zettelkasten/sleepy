@@ -1371,7 +1371,7 @@ def test_assign_to_union2():
 def test_assign_union_to_single():
   with make_execution_engine() as engine:
     program = """
-    func main() ->  Int  {
+    func main() -> Int {
       x: Double|Int = 3;  # at this point, the compiler asserts that x is an Int
       y: Int = x;  # so this should work
       return y;
@@ -1546,9 +1546,9 @@ def test_while_cond_type_narrowing():
     func main(initial_value: Int) ->  Bool  {
       value: Int|Bool = initial_value;
       while value is Int {
-        value = value - 1;
+        value -= 1;
         if value < 0 { value = False(); }
-        if value > 100 { value = True(); }
+        else { if value > 100 { value = True(); } }
       }
       return value;
     }
@@ -1557,6 +1557,23 @@ def test_while_cond_type_narrowing():
     assert_equal(main(17), False)
     assert_equal(main(-2), False)
     assert_equal(main(117), True)
+
+
+def test_while_cond_type_narrowing_error():
+  with make_execution_engine() as engine:
+    program = """
+    func main(initial_value: Int) ->  Bool  {
+      value: Int|Bool = initial_value;
+      while value is Int {
+        value -= 1;
+        if value < 0 { value = False(); }
+        if value > 100 { value = True(); }  # <- this should not work, value might be an Int here
+      }
+      return value;
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program)
 
 
 def test_assert_type_narrowing():
