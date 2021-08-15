@@ -42,11 +42,11 @@ func sort(Ptr[Double] array, Int size) {
   sort_i(array + -1, array, size);
 }
 
-func Ptr[Double](Ptr[Double] array, Int size) -> Bool {
+func is_sorted(Ptr[Double] array, Int size) -> Bool {
   if size <= 1 {
     return True();
   }
-  return and(load(array) <= load(array + 1), Ptr[Double](array + 1, size - 1));
+  return and(load(array) <= load(array + 1), is_sorted(array + 1, size - 1));
 }
 
 func main() {
@@ -64,7 +64,7 @@ func main() {
   store(arr + 9, 23.0);
   print_array(arr, size);
   print('\n');
-  assert(not(Ptr[Double](arr, size)));
+  assert(not(is_sorted(arr, size)));
 
   sort(arr, size);
   print_array(arr, size);
@@ -72,7 +72,7 @@ func main() {
 
   assert(load(arr + 0) == 1.0);
   assert(load(arr + 1) == 4.0);
-  assert(Ptr[Double](arr, size));
+  assert(is_sorted(arr, size));
 
   deallocate(arr);
 }
