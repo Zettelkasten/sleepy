@@ -996,7 +996,7 @@ def test_overload_with_different_structs():
 def test_index_operator():
   with make_execution_engine() as engine:
     program = """
-    func get(ptr: DoublePtr, pos: Int) ->  DoublePtr  {
+    func get(ptr: Ptr[Double], pos: Int) -> Ptr[Double] {
       return ptr + pos;
     }
     func main(val: Double) ->  Double  {
@@ -1013,7 +1013,7 @@ def test_index_operator():
 def test_index_operator_syntax():
   with make_execution_engine() as engine:
     program = """
-    func get(ptr: DoublePtr, pos: Int) ->  DoublePtr  {
+    func get(ptr: Ptr[Double], pos: Int) -> Ptr[Double] {
       return ptr + pos;
     }
     func main(val: Double) ->  Double  {
@@ -1582,7 +1582,7 @@ def test_unchecked_assert_type_narrowing():
     struct S {
       val: Double = 0.0;
     }
-    func cast_to_s(ptr: S|DoublePtr) ->  S  {
+    func cast_to_s(ptr: S|Ptr[Double]) ->  S  {
       unchecked_assert(ptr is S);
       return ptr;
     }
@@ -1689,6 +1689,7 @@ def test_mod():
     for a, b in [(4, 2), (-4, 2), (7, 3), (7, 1), (-5, 3), (-2, -2)]:
       assert_equal(main(a, b), fmod(a, b))
 
+      
 def test_char_not_comparable():
   for path in glob.glob('./examples_char_not_comparable/*'):
     with make_execution_engine() as engine, open(path) as file:
@@ -1696,6 +1697,7 @@ def test_char_not_comparable():
       with assert_raises(SemanticError):
         compile_program(engine, program, add_preamble=False)
 
+        
 def test_templ_ternary():
   with make_execution_engine() as engine:
     program = """
@@ -1710,6 +1712,179 @@ def test_templ_ternary():
     """
     main = compile_program(engine, program, add_preamble=True, optimize=False)
     assert_almost_equal(main(), 1.2)
+
+
+def test_templ_max():
+  with make_execution_engine() as engine:
+    program = """
+    func max_[T](a: T, b: T) -> T {
+      if a < b {
+        return b;
+      } else {
+        return a;
+      }
+    }
+    func main(a: Int, b: Int) -> Int {
+      return max_(a, b);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(2, 3), max(2, 3))
+    assert_equal(main(5, 3), max(5, 3))
+
+
+def test_templ_inner_func():
+  with make_execution_engine() as engine:
+    program = """
+    func times_four[T](x: T) -> T {
+      func sum(a: T, b: T) -> T {
+        return a + b;
+      }
+      double: T = sum(x, x);
+      return sum(double, double);
+    }
+    func main(a: Int) -> Int {
+      return times_four(a);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(3), 3 * 4)
+    assert_equal(main(-2), -2 * 4)
+
+
+def test_templ_inner_func2():
+  with make_execution_engine() as engine:
+    program = """
+    func ToDouble(i: Int) -> Double {
+      extern_func int_to_double(i: Int) -> Double;
+      return int_to_double(i);
+    }
+    func ToDouble(d: Double) -> Double { return d; }
+    func add_two_pi[T](x: T) -> Double {
+      func double[U](y: U) -> Double {
+        return ToDouble(y + y);
+      }
+      pi = 3.1415;
+      return double(pi) + ToDouble(x);
+    }
+    func main(a: Int) -> Double {
+      return add_two_pi(a);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_almost_equal(main(3), 2 * 3.1415 + 3)
+
+
+def test_templ_local_var():
+  with make_execution_engine() as engine:
+    program = """
+    func foo[T](local: T) -> T {
+      x: T = local;
+      return x;
+    }
+    func main(i: Int) -> Int {
+      return foo(i);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False, optimize=False)
+    assert_equal(main(2), 2)
+    assert_equal(main(5), 5)
+
+
+def test_templ_ptr():
+  with make_execution_engine() as engine:
+    program = """
+    func main(a: Int, b: Int) -> Int {  # returns a + b
+      extern_func allocate_int(size: Int) -> Ptr[Int];
+      ptr = allocate_int(2);
+      store(ptr, a);
+      store(ptr + 1, b);
+      sum = load(ptr) + load(ptr + 1);
+      extern_func deallocate_int(ptr: Ptr[Int]);
+      deallocate_int(ptr);
+      return sum;
+    }
+    """
+    main = compile_program(engine, program, main_func_identifier='main', add_preamble=False)
+    assert_equal(main(3, 5), 3 + 5)
+    assert_equal(main(-34, 23), -34 + 23)
+
+
+@unittest.skip('Template overloading not implemented yet')
+def test_templ_call_overloaded_union():
+  with make_execution_engine() as engine:
+    program = """
+    func foo[T](a: Double, b: T) -> T {
+      return b;
+    }
+    func foo[T](a: Int, b: T) -> T {
+      return b;
+    }
+    func blackbox() -> Int|Double {
+      return 2;
+    }
+    func main() {
+      x: Int|Double = blackbox();
+      y: Int|Double = foo(x, x);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    main()
+
+
+def test_ptr_loop():
+  with make_execution_engine() as engine:
+    program = """
+    func main(len: Int) -> Int {  # computes sum_i^{len-1} i
+      arr: Ptr[Int] = allocate_int(len);
+      # store numbers 0 ... len-1
+      pos = 0;
+      while pos < len {
+        store(arr + pos, pos);
+        pos += 1;
+      }
+      
+      # compute sum of all numbers
+      sum = 0;
+      ptr = arr;
+      while ptr < arr + len {
+        sum += load(ptr);
+        ptr += 1;
+      }
+      
+      deallocate(arr);
+      return sum;
+    }
+    """
+    main = compile_program(engine, program)
+    assert_equal(main(5), sum(i for i in range(5)))
+    assert_equal(main(32), sum(i for i in range(32)))
+
+
+def test_ptr_arithmetic():
+  with make_execution_engine() as engine:
+    program = """
+    func main(magic: Int) -> Int {
+      orig = allocate_int(20);
+      store(orig, magic);
+      ptr = orig;
+      ptr += 10;  # = orig + 10
+      assert(ptr > orig);
+      assert(ptr >= orig);
+      assert(not(ptr < orig));
+      ptr += -3;  # = orig + 7
+      assert(ptr > orig);
+      ptr += -7;  # = orig
+      assert(ptr == orig);
+      assert(ptr <= orig);
+      assert(not(ptr > orig));
+      magic_ = load(ptr); 
+      deallocate(orig);
+      return magic_;
+    }
+    """
+    main = compile_program(engine, program, optimize=False)
+    assert_equal(main(1234), 1234)
 
 
 if __name__ == "__main__":

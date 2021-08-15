@@ -32,9 +32,9 @@ func normalized_to_index(index: Int|Unbounded, length: Int) ->  Int  {
 # Variable dimensional vector
 @RefType struct Vec {
   dim : Int;
-  start : DoublePtr;
+  start : Ptr[Double];
 }
-func get(vec: Vec, pos: Int) ->  DoublePtr  {
+func get(vec: Vec, pos: Int) -> Ptr[Double] {
   pos = normalized_index(pos, vec.dim);
   return vec.start + pos;
 }
@@ -113,9 +113,9 @@ func free_vec(vec: Vec)  {
 @RefType struct Mat {
   num_rows : Int = 0;
   num_cols : Int = 0;
-  start : DoublePtr = allocate_double(0);
+  start : Ptr[Double] = allocate_double(0);
 }
-func get(mat: Mat, row: Int, col: Int) ->  DoublePtr  {
+func get(mat: Mat, row: Int, col: Int) -> Ptr[Double]  {
   row = normalized_index(row, mat.num_rows);
   col = normalized_index(col, mat.num_cols);
   return mat.start + row * mat.num_cols + col;

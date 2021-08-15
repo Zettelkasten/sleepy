@@ -11,13 +11,12 @@ struct L2 {
 func main() -> Int {
   left = 1000000000 / 16;  # allocate 32 GB of Vec3 after each other
   while left > 0 {
-    if mod(left, 100) == 0 {
-        print_line_flush(left);
-    }
+#    if mod(left, 100) == 0 {
+#        print_line_flush(left);
+#    }
     v = L4(L2(0.0, 0.0), L2(0.0, 0.0));
     free(v);  # if this does not work, we would quickly run out of memory
-    left = left - 1;
+    left -= 1;
   }
-  print_line_flush(42);
   return 0;
 }

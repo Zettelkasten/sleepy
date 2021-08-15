@@ -5,6 +5,8 @@ import unittest
 
 from nose.tools import assert_equal
 
+from sleepy.symbols import UnionType
+
 
 def test_narrow_type():
   from sleepy.symbols import narrow_type, UnionType, SLEEPY_INT, SLEEPY_BOOL
@@ -45,6 +47,83 @@ def test_get_common_type():
   assert_equal(get_common_type([int_bool_union, bool_int_union]), int_bool_union)
   assert_equal(
     get_common_type([int_bool_union, SLEEPY_DOUBLE]), UnionType([SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE], [0, 1, 2], 8))
+
+
+# noinspection PyPep8Naming
+def test_try_infer_templ_types_simple():
+  from sleepy.symbols import try_infer_templ_types, SLEEPY_INT, SLEEPY_DOUBLE, TemplateType
+  T = TemplateType('T')
+  U = TemplateType('U')
+  assert_equal(try_infer_templ_types(calling_types=[], signature_types=[], placeholder_templ_types=[]), [])
+  assert_equal(try_infer_templ_types(
+    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, SLEEPY_DOUBLE], placeholder_templ_types=[]),
+    [])
+  assert_equal(try_infer_templ_types(
+    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, SLEEPY_DOUBLE],
+    placeholder_templ_types=[T]),
+    None)
+  assert_equal(try_infer_templ_types(
+    calling_types=[SLEEPY_INT], signature_types=[T],
+    placeholder_templ_types=[T]),
+    [SLEEPY_INT])
+  assert_equal(try_infer_templ_types(
+    calling_types=[SLEEPY_INT, SLEEPY_INT], signature_types=[T, T],
+    placeholder_templ_types=[T]),
+    [SLEEPY_INT])
+  assert_equal(try_infer_templ_types(
+    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[T, SLEEPY_DOUBLE],
+    placeholder_templ_types=[T]),
+    [SLEEPY_INT])
+  assert_equal(try_infer_templ_types(
+    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, T],
+    placeholder_templ_types=[T]),
+    [SLEEPY_DOUBLE])
+  assert_equal(try_infer_templ_types(
+    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[T, U],
+    placeholder_templ_types=[T, U]),
+    [SLEEPY_INT, SLEEPY_DOUBLE])
+  assert_equal(try_infer_templ_types(
+    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[T, U],
+    placeholder_templ_types=[U, T]),
+    [SLEEPY_DOUBLE, SLEEPY_INT])
+
+
+def test_try_infer_templ_types_ptr():
+  from sleepy.symbols import try_infer_templ_types, TemplateType, PointerType, SLEEPY_INT, SLEEPY_CHAR
+  T = TemplateType('T')
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[PointerType(SLEEPY_INT)], signature_types=[PointerType(T)], placeholder_templ_types=[T]),
+    [SLEEPY_INT])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[PointerType(SLEEPY_CHAR), SLEEPY_INT], signature_types=[PointerType(T), SLEEPY_INT],
+      placeholder_templ_types=[T]),
+    [SLEEPY_CHAR])
+
+
+def test_try_infer_templ_types_union():
+  from sleepy.symbols import try_infer_templ_types, SLEEPY_INT, SLEEPY_CHAR
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[SLEEPY_INT],
+      signature_types=[UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR])], placeholder_templ_types=[]),
+    [])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[SLEEPY_CHAR],
+      signature_types=[UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR])], placeholder_templ_types=[]),
+    [])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR])],
+      signature_types=[UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR])], placeholder_templ_types=[]),
+    [])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR])],
+      signature_types=[UnionType.from_types([SLEEPY_CHAR, SLEEPY_INT])], placeholder_templ_types=[]),
+    [])
 
 
 if __name__ == "__main__":

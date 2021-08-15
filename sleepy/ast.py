@@ -11,7 +11,7 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SL
   TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory, DummyTypeFactory
+  SLEEPY_CHAR_PTR, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory, DummyTypeFactory, try_infer_templ_types
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
 from abc import ABC, abstractmethod
@@ -44,7 +44,8 @@ class AbstractSyntaxTree(ABC):
     """
     raise SemanticError(self.pos.word, self.pos.from_pos, self.pos.to_pos, message)
 
-  def resolve_func_call(self, func_identifier: str, templ_types: List[Type], func_arg_exprs: List[ExpressionAst],
+  def resolve_func_call(self, func_identifier: str, templ_types: Optional[List[Type]],
+                        func_arg_exprs: List[ExpressionAst],
                         symbol_table: SymbolTable) -> Tuple[FunctionSymbol, List[ConcreteFunction]]:
     if func_identifier not in symbol_table:
       self.raise_error('Function %r called before declared' % func_identifier)
@@ -57,20 +58,27 @@ class AbstractSyntaxTree(ABC):
       assert isinstance(symbol, FunctionSymbol)
     if not isinstance(symbol, FunctionSymbol):
       self.raise_error('Cannot call non-function %r' % func_identifier)
-    called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
-    if not symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=called_types):
-      symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=called_types)
+    calling_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+
+    if templ_types is None:
+      templ_types = self._infer_templ_args(
+        func_identifier=func_identifier, func_symbol=symbol, calling_types=calling_types)
+    assert templ_types is not None
+    assert all(not templ_type.has_templ_placeholder() for templ_type in templ_types)
+
+    if not symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_types):
+      symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_types)
       self.raise_error(
         'Cannot call function %r with arguments of types %r and template parameters %r, '
-        'only declared for parameter types: %r' % (
-          func_identifier, ', '.join([str(called_type) for called_type in called_types]),
+        'only declared for parameter types:\n%s' % (
+          func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
           ', '.join([str(templ_type) for templ_type in templ_types]),
-          ', '.join([signature.to_signature_str() for signature in symbol.signatures])))
-    if not all(called_type.is_realizable() for called_type in called_types):
+          symbol.make_signature_list_str()))
+    if not all(called_type.is_realizable() for called_type in calling_types):
       self.raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
-        func_identifier, ', '.join([str(called_type) for called_type in called_types])))
+        func_identifier, ', '.join([str(called_type) for called_type in calling_types])))
 
-    possible_concrete_funcs = symbol.get_concrete_funcs(templ_types=templ_types, arg_types=called_types)
+    possible_concrete_funcs = symbol.get_concrete_funcs(templ_types=templ_types, arg_types=calling_types)
     assert len(possible_concrete_funcs) >= 1
     for concrete_func in possible_concrete_funcs:
       called_mutables = [arg_expr.is_val_mutable(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
@@ -81,12 +89,60 @@ class AbstractSyntaxTree(ABC):
               func_identifier, concrete_func.signature.to_signature_str(), arg_identifier))
     return symbol, possible_concrete_funcs
 
-  def _build_func_call(self, func_identifier: str, templ_types: List[Type], func_arg_exprs: List[ExpressionAst],
-                       symbol_table: SymbolTable, context: CodegenContext):
+  def _infer_templ_args(self, func_identifier: str, func_symbol: FunctionSymbol,
+                        calling_types: List[Type]) -> List[Type]:
+    # TODO: We currently require that the template types must be statically determinable.
+    # e.g. assume that our function takes a union argument.
+    # If we have overloaded signatures each with template arguments, it can happen that you should use different
+    # template arguments depending on which union variant we are called with.
+    # Currently, this would fail. But we could support this if we wanted to.
+    # Note that that would make function calls with inferred template types more than just an auto-evaluated type arg.
+    assert all(calling_type.is_realizable() for calling_type in calling_types)
+    signature_templ_types = None
+    for expanded_calling_types in func_symbol.iter_expanded_possible_arg_types(calling_types):
+      infers = [
+        try_infer_templ_types(
+          calling_types=expanded_calling_types, signature_types=signature.arg_types,
+          placeholder_templ_types=signature.placeholder_templ_types)
+        for signature in func_symbol.signatures]
+      possible_infers = [idx for idx, infer in enumerate(infers) if infer is not None]
+      if len(possible_infers) == 0:
+        self.raise_error(
+          'Cannot infer template types for function %r from arguments of types %r, '
+          'is declared for parameter types:\n%s' % (
+            func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+            func_symbol.make_signature_list_str()))
+      if len(possible_infers) > 1:
+        self.raise_error(
+          'Cannot uniquely infer template types for function %r from arguments of types %r, '
+          'is declared for parameter types:\n%s' % (
+            func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+            func_symbol.make_signature_list_str()))
+      assert len(possible_infers) == 1
+      expanded_signature_templ_types = infers[possible_infers[0]]
+      assert expanded_signature_templ_types is not None
+      if signature_templ_types is not None and signature_templ_types != expanded_signature_templ_types:
+        self.raise_error(
+          'Cannot uniquely statically infer template types for function %r from arguments of types %r '
+          'because different expanded union types would require different template types. '
+          'Function is declared for parameter types:\n%s' % (
+            func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+            func_symbol.make_signature_list_str()))
+      signature_templ_types = expanded_signature_templ_types
+    assert signature_templ_types is not None
+    return signature_templ_types
+
+  def _build_func_call(self, func_identifier: str, templ_types: Optional[List[Type]],
+                       func_arg_exprs: List[ExpressionAst], symbol_table: SymbolTable, context: CodegenContext):
     symbol, possible_concrete_funcs = self.resolve_func_call(
       func_identifier=func_identifier, templ_types=templ_types, func_arg_exprs=func_arg_exprs,
       symbol_table=symbol_table)
-    called_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+    calling_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+
+    if templ_types is None:
+      templ_types = self._infer_templ_args(
+        func_identifier=func_identifier, func_symbol=symbol, calling_types=calling_types)
+    assert templ_types is not None
 
     for concrete_func in possible_concrete_funcs:
       if concrete_func in context.inline_func_call_stack:
@@ -99,7 +155,7 @@ class AbstractSyntaxTree(ABC):
         func_arg_expr.make_ir_val(symbol_table=symbol_table, context=context) for func_arg_expr in func_arg_exprs]
       from sleepy.symbols import make_func_call_ir
       return_ir_val = make_func_call_ir(
-        func_identifier=func_identifier, func_symbol=symbol, templ_types=templ_types, calling_arg_types=called_types,
+        func_identifier=func_identifier, func_symbol=symbol, templ_types=templ_types, calling_arg_types=calling_types,
         calling_ir_args=ir_func_args, context=context)
     else:
       return_ir_val = None
@@ -114,7 +170,7 @@ class AbstractSyntaxTree(ABC):
         symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
 
     # special handling of 'assert' call
-    if symbol in {symbol_table.inbuilt_symbols.get('assert'), symbol_table.inbuilt_symbols.get('unchecked_assert')}:
+    if symbol.base in {symbol_table.inbuilt_symbols.get(identifier) for identifier in {'assert', 'unchecked_assert'}}:
       assert len(func_arg_exprs) >= 1
       condition_expr = func_arg_exprs[0]
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
@@ -148,7 +204,7 @@ class AbstractSyntaxTree(ABC):
         self.raise_error('Cannot declare template variable %r multiple times' % templ_type_identifier)
       template_type = TemplateType(templ_type_identifier)
       templ_types.append(template_type)
-      template_type_factory = TypeFactory(placeholder_templ_types=[template_type], signature_type=template_type)
+      template_type_factory = TypeFactory(placeholder_templ_types=[], signature_type=template_type)
       template_type_symbol = TypeSymbol(type_factory=template_type_factory, constructor_symbol=None)
       symbol_table.current_scope_identifiers.append(templ_type_identifier)
       symbol_table[templ_type_identifier] = template_type_symbol
@@ -378,9 +434,10 @@ class FunctionDeclarationAst(StatementAst):
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
         self.raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier)
     if not func_symbol.is_undefined_for_types(placeholder_templ_types=placeholder_templ_types, arg_types=arg_types):
-      self.raise_error('Cannot override definition of function %r with template types %r and parameter types %r' % (
+      self.raise_error(
+        'Cannot override definition of function %r with template types %r and parameter types %r, already declared:\n%s' % (  # noqa
         self.identifier, ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
-        ', '.join([str(arg_type) for arg_type in arg_types])))
+        ', '.join([str(arg_type) for arg_type in arg_types]), func_symbol.make_signature_list_str()))
     if func_symbol.returns_void != (return_type == SLEEPY_VOID):
       self.raise_error(
         'Function declared with name %r must consistently return a value or consistently return void' % self.identifier)
@@ -1052,7 +1109,8 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     if self.op == 'is':
       # TODO: Then it should be a TypeExpressionAst, not a VariableExpressionAst.
       # Probably it's nicer to make an entire new ExpressionAst for `is` Expressions anyway.
-      if not isinstance(self.right_expr, VariableExpressionAst): raise self.raise_error("'is' operator must be applied to a union type and a type.")
+      if not isinstance(self.right_expr, VariableExpressionAst):
+        raise self.raise_error("'is' operator must be applied to a union type and a type.")
 
   def make_val_type(self, symbol_table):
     """
@@ -1061,13 +1119,13 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     """
     if self.op == 'is':
       assert isinstance(self.right_expr, VariableExpressionAst)
-      type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
+      type_expr = IdentifierTypeAst(
+        self.right_expr.pos, type_identifier=self.right_expr.var_identifier, templ_types=[])
       type_expr.make_type(symbol_table=symbol_table)  # just check that type exists
       return SLEEPY_BOOL
-    # TODO: add template types
     operand_exprs = [self.left_expr, self.right_expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
@@ -1079,7 +1137,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       return False
     operand_exprs = [self.left_expr, self.right_expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
@@ -1091,15 +1149,16 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     assert context.emits_ir
     if self.op == 'is':
       assert isinstance(self.right_expr, VariableExpressionAst)
-      check_type_expr = IdentifierTypeAst(self.right_expr.pos, self.right_expr.var_identifier)
+      check_type_expr = IdentifierTypeAst(
+        self.right_expr.pos, type_identifier=self.right_expr.var_identifier, templ_types=[])
       check_type = check_type_expr.make_type(symbol_table=symbol_table)
       val_type = self.left_expr.make_val_type(symbol_table=symbol_table)
       ir_val = self.left_expr.make_ir_val(symbol_table=symbol_table, context=context)
       return make_ir_val_is_type(ir_val, val_type, check_type, context=context)
     operand_exprs = [self.left_expr, self.right_expr]
-    # TODO: add template types
     return_val = self._build_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
+      context=context)
     assert return_val is not None
     return return_val
 
@@ -1135,7 +1194,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     operand_exprs = [self.expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table):
@@ -1145,7 +1204,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     operand_exprs = [self.expr]
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
@@ -1156,9 +1215,9 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     """
     assert context.emits_ir
     operand_exprs = [self.expr]
-    # TODO: Add template types
     return self._build_func_call(
-      func_identifier=self.op, templ_types=[], func_arg_exprs=operand_exprs, symbol_table=symbol_table, context=context)
+      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
+      context=context)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.expr]
@@ -1307,12 +1366,12 @@ class VariableExpressionAst(ExpressionAst):
     """
     if self.var_identifier not in symbol_table:
       self.raise_error('Variable %r referenced before declaring' % self.var_identifier)
+    symbol = symbol_table[self.var_identifier]
+    if not isinstance(symbol, VariableSymbol):
+      self.raise_error('Cannot reference a non-variable %r, got a %s' % (self.var_identifier, type(self).__name__))
     if self.var_identifier not in symbol_table.current_scope_identifiers:
       # TODO add variable captures
       self.raise_error('Cannot capture variable %r from outer scope' % self.var_identifier)
-    symbol = symbol_table[self.var_identifier]
-    if not isinstance(symbol, VariableSymbol):
-      self.raise_error('Cannot reference a non-variable %r' % self.var_identifier)
     return symbol
 
   def make_val_type(self, symbol_table):
@@ -1403,30 +1462,13 @@ class CallExpressionAst(ExpressionAst):
     assert symbol is not None
     return symbol
 
-  def get_templ_types(self, symbol_table: SymbolTable):
-    # TODO: Add template types properly: Add ability to specify them explicitly.
-    # Also add proper template type inference.
-    # Right now, this is a super hacky way of infering them by just copying the types of the first arguments.
-    func_symbol = symbol_table[self.func_identifier]
-    if isinstance(func_symbol, TypeSymbol):
-      func_symbol = func_symbol.constructor_symbol
-    assert isinstance(func_symbol, FunctionSymbol)
-    if len(func_symbol.signatures) == 1:
-      signature = func_symbol.signatures[0]
-      return [
-        self.func_arg_exprs[i].make_val_type(symbol_table=symbol_table)
-        for i in range(len(signature.placeholder_templ_types))]
-    else:
-      return []
-
   def make_val_type(self, symbol_table):
     """
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    templ_types = self.get_templ_types(symbol_table=symbol_table)
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.func_identifier, templ_types=templ_types, func_arg_exprs=self.func_arg_exprs,
+      func_identifier=self.func_identifier, templ_types=None, func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
@@ -1435,9 +1477,8 @@ class CallExpressionAst(ExpressionAst):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
-    templ_types = self.get_templ_types(symbol_table=symbol_table)
     _, possible_concrete_funcs = self.resolve_func_call(
-      func_identifier=self.func_identifier, templ_types=templ_types, func_arg_exprs=self.func_arg_exprs,
+      func_identifier=self.func_identifier, templ_types=None, func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
@@ -1448,9 +1489,8 @@ class CallExpressionAst(ExpressionAst):
     :rtype: ir.values.Value
     """
     assert context.emits_ir
-    templ_types = self.get_templ_types(symbol_table=symbol_table)
     return self._build_func_call(
-      func_identifier=self.func_identifier, templ_types=templ_types, func_arg_exprs=self.func_arg_exprs,
+      func_identifier=self.func_identifier, templ_types=None, func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table, context=context)
 
   def children(self) -> List[AbstractSyntaxTree]:
@@ -1575,35 +1615,33 @@ class IdentifierTypeAst(TypeAst):
   """
   IdentifierType -> identifier.
   """
-  def __init__(self, pos, type_identifier):
-    """
-    :param TreePosition pos:
-    :param str type_identifier:
-    """
+  def __init__(self, pos: TreePosition, type_identifier: str, templ_types: List[TypeAst]):
     super().__init__(pos)
     self.type_identifier = type_identifier
+    self.templ_types = templ_types
 
-  def make_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_type(self, symbol_table: SymbolTable) -> Type:
     if self.type_identifier not in symbol_table:
       self.raise_error('Unknown type identifier %r' % self.type_identifier)
     type_symbol = symbol_table[self.type_identifier]
     if not isinstance(type_symbol, TypeSymbol):
       self.raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)))
-    # TODO: Add template types
-    return type_symbol.get_type(concrete_templ_types=[])
+    template_type_symbols = [
+      template_type.make_type(symbol_table=symbol_table) for template_type in self.templ_types]
+    if len(template_type_symbols) != len(type_symbol.type_factory.placeholder_templ_types):
+      self.raise_error(
+        'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
+          self.type_identifier, type_symbol.type_factory.placeholder_templ_types, template_type_symbols))
+    return type_symbol.get_type(concrete_templ_types=template_type_symbols)
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return []
+    return self.templ_types
 
   def __repr__(self):
     """
     :rtype: str
     """
-    return 'IdentifierType(type_identifier=%r)' % self.type_identifier
+    return 'IdentifierType(type_identifier=%r, template_types=%r)' % (self.type_identifier, self.templ_types)
 
 
 class UnionTypeAst(TypeAst):
@@ -1689,7 +1727,8 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
       return
     var_symbol = var_expr.get_var_symbol(symbol_table=symbol_table)
     assert isinstance(cond_expr_ast.right_expr, VariableExpressionAst)
-    check_type_expr = IdentifierTypeAst(cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.var_identifier)
+    check_type_expr = IdentifierTypeAst(
+      cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.var_identifier, templ_types=[])
     check_type = check_type_expr.make_type(symbol_table=symbol_table)
     if cond_holds:
       symbol_table[var_expr.var_identifier] = var_symbol.copy_with_narrowed_type(check_type)
