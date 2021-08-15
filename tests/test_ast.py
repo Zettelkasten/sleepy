@@ -1830,6 +1830,62 @@ def test_templ_call_overloaded_union():
     main()
 
 
+def test_ptr_loop():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Int len) -> Int {  # computes sum_i^{len-1} i
+      arr: Ptr[Int] = allocate_int(len);
+      # store numbers 0 ... len-1
+      pos = 0;
+      while pos < len {
+        store(arr + pos, pos);
+        pos += 1;
+      }
+      
+      # compute sum of all numbers
+      sum = 0;
+      ptr = arr;
+      while ptr < arr + len {
+        sum += load(ptr);
+        ptr += 1;
+      }
+      
+      deallocate(arr);
+      return sum;
+    }
+    """
+    main = compile_program(engine, program)
+    assert_equal(main(5), sum(i for i in range(5)))
+    assert_equal(main(32), sum(i for i in range(32)))
+
+
+def test_ptr_arithmetic():
+  with make_execution_engine() as engine:
+    program = """
+    func main(Int magic) -> Int {
+      orig = allocate_int(20);
+      store(orig, magic);
+      ptr = orig;
+      ptr += 10;  # = orig + 10
+      print_line_flush('a');
+      assert(ptr > orig);
+      assert(ptr >= orig);
+      assert(not(ptr < orig));
+      ptr += -3;  # = orig + 7
+      assert(ptr > orig);
+      ptr += -7;  # = orig
+      assert(ptr == orig);
+      assert(ptr <= orig);
+      assert(not(ptr > orig));
+      magic_ = load(ptr); 
+      deallocate(orig);
+      return magic_;
+    }
+    """
+    main = compile_program(engine, program, optimize=False)
+    assert_equal(main(1234), 1234)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()

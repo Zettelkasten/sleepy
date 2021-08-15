@@ -1676,9 +1676,14 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     (
       BuiltinBinaryOps.Addition,
       [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_type, SLEEPY_INT], ptr_type)])]
-    # (
-    #   BuiltinBinaryOps.Addition,
-    # [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [SLEEPY_INT, ptr_type], ptr_type)])]
+  # (
+  #   BuiltinBinaryOps.Addition,
+  # [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [SLEEPY_INT, ptr_type], ptr_type)])]
+  PTR_OP_DECL += [
+    (
+      op,
+      [(lambda builder, lhs, rhs, op=op: builder.icmp_unsigned(op.value, lhs, rhs), [ptr_type, ptr_type], SLEEPY_BOOL)])
+    for op in Simple_Comparison_Ops]
   for operator, overloads in PTR_OP_DECL:
     if operator.value not in symbol_table:
       symbol_table[operator.value] = FunctionSymbol(returns_void=False)
