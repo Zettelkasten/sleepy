@@ -167,7 +167,7 @@ class AbstractSyntaxTree(ABC):
       if isinstance(func_arg_expr, VariableExpressionAst):
         var_symbol = symbol_table[func_arg_expr.var_identifier]
         assert isinstance(var_symbol, VariableSymbol)
-        symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_with_narrowed_type(narrowed_arg_type)
+        symbol_table[func_arg_expr.var_identifier] = var_symbol.copy_narrow_type(narrowed_arg_type)
 
     # special handling of 'assert' call
     if symbol.base in {symbol_table.inbuilt_symbols.get(identifier) for identifier in {'assert', 'unchecked_assert'}}:
@@ -865,9 +865,6 @@ class AssignStatementAst(StatementAst):
       assert self.var_target.var_identifier in symbol_table
       symbol = symbol_table[self.var_target.var_identifier]
       assert isinstance(symbol, VariableSymbol)
-      # first reset all type assumptions because we assigned with something new
-      symbol.narrowed_var_type = symbol.declared_var_type
-      # then narrow it again to the actual value we assigned
       narrowed_symbol = symbol.copy_with_narrowed_type(val_type)
       assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
       symbol_table[self.var_target.var_identifier] = narrowed_symbol
@@ -1731,6 +1728,6 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table
       cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.var_identifier, templ_types=[])
     check_type = check_type_expr.make_type(symbol_table=symbol_table)
     if cond_holds:
-      symbol_table[var_expr.var_identifier] = var_symbol.copy_with_narrowed_type(check_type)
+      symbol_table[var_expr.var_identifier] = var_symbol.copy_narrow_type(check_type)
     else:
-      symbol_table[var_expr.var_identifier] = var_symbol.copy_with_excluded_type(check_type)
+      symbol_table[var_expr.var_identifier] = var_symbol.copy_exclude_type(check_type)
