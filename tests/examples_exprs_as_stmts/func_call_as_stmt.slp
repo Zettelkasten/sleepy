@@ -1,6 +1,6 @@
 
-func f() -> Int { return 123; }
+func f() ->  Int  { return 123; }
 
-func main() {
+func main()  {
     f() + f();
 }

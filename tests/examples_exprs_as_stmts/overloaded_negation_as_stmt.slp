@@ -1,7 +1,7 @@
 struct S {}
 
-func -(S s) -> Int { return 1; }
+func -(s: S) ->  Int  { return 1; }
 
-func main() {
+func main()  {
     -S();
 }

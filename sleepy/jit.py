@@ -42,7 +42,7 @@ def compile_ir(engine, llvm_ir, optimize=True):
   if not isinstance(llvm_ir, str):
     llvm_ir = llvm_ir.__repr__()
   mod = llvm.parse_assembly(llvm_ir)
-  if optimize:
+  if False:
     pass_manager.run(mod)
   mod.verify()
   engine.add_module(mod)

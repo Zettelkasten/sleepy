@@ -1,5 +1,5 @@
-func main() {
-  func count_from_to(Int from, Int to) {
+func main()  {
+  func count_from_to(from: Int, to: Int)  {
     if from > to { return; }
     print(from);
     if from != to { print(','); print(' '); }

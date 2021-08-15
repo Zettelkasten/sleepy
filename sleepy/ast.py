@@ -11,7 +11,7 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SL
   TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory, try_infer_templ_types
+  SLEEPY_CHAR_PTR, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory, DummyTypeFactory, try_infer_templ_types
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
 from abc import ABC, abstractmethod
@@ -228,7 +228,7 @@ class StatementAst(AbstractSyntaxTree, ABC):
     """
     raise NotImplementedError()
 
-  def make_var_is_mutable(self, arg_name, arg_type, arg_annotation_list, default):
+  def make_var_is_mutable(self, arg_name, arg_annotation_list, default):
     """
     :param str arg_name:
     :param Type arg_type:
@@ -401,7 +401,7 @@ class FunctionDeclarationAst(StatementAst):
 
     arg_types = self.make_arg_types(func_symbol_table=func_symbol_table)
     arg_mutables = [
-      self.make_var_is_mutable('parameter %r' % arg_identifier, arg_type, arg_annotation_list, default=False)
+      self.make_var_is_mutable('parameter %r' % arg_identifier, arg_annotation_list, default=False)
       for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
     for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, arg_mutables):
      if not arg_type.is_pass_by_ref() and arg_mutable:
@@ -417,7 +417,7 @@ class FunctionDeclarationAst(StatementAst):
     if return_type == SLEEPY_VOID:
       return_mutable = False
     else:
-      return_mutable = self.make_var_is_mutable('return type', return_type, self.return_annotation_list, default=False)
+      return_mutable = self.make_var_is_mutable('return type', self.return_annotation_list, default=False)
     if not return_type.is_pass_by_ref() and return_mutable:
       self.raise_error(
         'Type %r of return value needs to have pass-by-reference semantics (annotated by @RefType)' % (
@@ -700,19 +700,23 @@ class ReturnStatementAst(StatementAst):
     return 'ReturnStatementAst(return_exprs=%r)' % self.return_exprs
 
 
-class StructDeclarationAst(StatementAst):
-  """
-  Stmt -> struct identifier { StmtList }
-  """
+class TypedIdentifier:
+  def __init__(self, identifier: str, type_ast: TypeAst, is_mutable: bool):
+    self.identifier = identifier
+    self.type_ast = type_ast
+    self.is_mutable = is_mutable
 
+
+class StructDeclarationAst(StatementAst):
   allowed_annotation_identifiers = frozenset({'ValType', 'RefType'})
 
-  def __init__(self, pos: TreePosition, struct_identifier: str, templ_identifiers: List[str],
-               stmt_list: List[StatementAst]):
+  def __init__(self, pos: TreePosition, struct_identifier: str, template_identifiers: List[str],
+               mem_type_asts: List[TypeAst], mem_identifiers: List[str], mem_annotations: List[List[AnnotationAst]]):
     super().__init__(pos)
     self.struct_identifier = struct_identifier
-    self.placeholder_templ_type_identifiers = templ_identifiers
-    self.stmt_list = stmt_list
+    self.template_parameter_identifiers = template_identifiers
+    self.mem_typed_ids = [TypedIdentifier(identifier, type_ast, self.make_var_is_mutable(struct_identifier, ann_list, False)) for
+                          (identifier, type_ast, ann_list) in zip(mem_identifiers, mem_type_asts, mem_annotations)]
 
   def is_pass_by_ref(self) -> bool:
     val_type = any(annotation.identifier == 'ValType' for annotation in self.annotations)
@@ -724,50 +728,49 @@ class StructDeclarationAst(StatementAst):
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     if self.struct_identifier in symbol_table.current_scope_identifiers:
       self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
-    struct_symbol_table = symbol_table.copy()
-    struct_symbol_table.current_scope_identifiers = []
-    struct_context = context.copy_without_builder()
-    placeholder_templ_types = self._collect_placeholder_templ_types(
-      self.placeholder_templ_type_identifiers, symbol_table=struct_symbol_table)
-    assert len(struct_symbol_table.current_scope_identifiers) == len(placeholder_templ_types)
-    for member_num, stmt in enumerate(self.stmt_list):
-      if not isinstance(stmt, AssignStatementAst):
-        stmt.raise_error('Can only use declare statements within a struct declaration')
-      if not isinstance(stmt.var_target, VariableExpressionAst):
-        stmt.raise_error('Can only declare variables within a struct declaration')
-      stmt.build_ir(symbol_table=struct_symbol_table, context=struct_context)
-      if len(struct_symbol_table.current_scope_identifiers) != len(placeholder_templ_types) + member_num + 1:
-        stmt.raise_error(
-          'Cannot declare member %r multiple times in struct declaration' % stmt.var_target.var_identifier)
-    assert len(placeholder_templ_types) + len(self.stmt_list) == len(struct_symbol_table.current_scope_identifiers)
-    member_identifiers, member_types, member_mutables = [], [], []
-    for stmt, declared_identifier in zip(self.stmt_list, struct_symbol_table.current_scope_identifiers):
-      assert declared_identifier in struct_symbol_table
-      declared_symbol = struct_symbol_table[declared_identifier]
-      assert isinstance(declared_symbol, VariableSymbol)
-      member_identifiers.append(declared_identifier)
-      member_types.append(declared_symbol.declared_var_type)
-      member_mutables.append(declared_symbol.mutable)
-    assert len(member_identifiers) == len(member_types) == len(member_mutables) == len(self.stmt_list)
+
+    # make types from member type asts and add type symbols to local symbol table
+    placeholder_types: List[TemplateType] = []
+    struct_symbol_table = symbol_table.copy() # symbol table including placeholder types
+
+    for template_parameter_identifier in self.template_parameter_identifiers:
+      template_type = TemplateType(template_parameter_identifier)
+      factory = DummyTypeFactory(template_type)
+      symbol = TypeSymbol(factory, None)
+
+      placeholder_types.append(template_type)
+      struct_symbol_table.add_to_current_scope(template_parameter_identifier, symbol)
+
+    # make signature type, extract PARALLEL LISTS for that 'beautiful' api
+    member_identifiers = [member.identifier for member in self.mem_typed_ids]
+    member_types = [member.type_ast.make_type(struct_symbol_table) for member in self.mem_typed_ids]
+    mutable_flags = [member.is_mutable for member in self.mem_typed_ids]
 
     signature_struct_type = StructType(
-      struct_identifier=self.struct_identifier, member_identifiers=member_identifiers,
-      templ_types=placeholder_templ_types, member_types=member_types, member_mutables=member_mutables,
-      pass_by_ref=self.is_pass_by_ref())
-    type_factory = TypeFactory(placeholder_templ_types=placeholder_templ_types, signature_type=signature_struct_type)
+      struct_identifier=self.struct_identifier,
+      templ_types=placeholder_types,
+      member_identifiers=member_identifiers,
+      member_types=member_types,
+      member_mutables=mutable_flags,
+      pass_by_ref=self.is_pass_by_ref()
+    )
 
-    constructor_symbol = signature_struct_type.build_constructor(
-      parent_symbol_table=symbol_table, parent_context=context)
-    symbol_table[self.struct_identifier] = TypeSymbol(type_factory, constructor_symbol=constructor_symbol)
-    symbol_table.current_scope_identifiers.append(self.struct_identifier)
+    struct_type_factory = TypeFactory(placeholder_templ_types=placeholder_types, signature_type=signature_struct_type)
+
+    # make ctor and dtor
+    constructor = signature_struct_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
     signature_struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
+
+    # assemble to complete type symbol
+    struct_type_symbol = TypeSymbol(type_factory=struct_type_factory, constructor_symbol=constructor)
+    symbol_table.add_to_current_scope(self.struct_identifier, struct_type_symbol)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return self.stmt_list
     
   def __repr__(self) -> str:
     return 'StructDeclarationAst(struct_identifier=%r, placeholder_templ_type_identifiers=%r, stmt_list=%r)' % (
-      self.struct_identifier, self.placeholder_templ_type_identifiers, self.stmt_list)
+      self.struct_identifier, self.template_parameter_identifiers, self.stmt_list)
 
 
 class AssignStatementAst(StatementAst):
@@ -817,7 +820,7 @@ class AssignStatementAst(StatementAst):
     if stated_type is not None:
       if not can_implicit_cast_to(val_type, stated_type):
         self.raise_error('Cannot assign variable with stated type %r a value of type %r' % (stated_type, val_type))
-    declared_mutable = self.make_var_is_mutable('left-hand-side', val_type, self.annotations, default=None)
+    declared_mutable = self.make_var_is_mutable('left-hand-side', self.annotations, default=None)
     val_mutable = self.var_val.is_val_mutable(symbol_table=symbol_table)
 
     if self.is_declaration(symbol_table=symbol_table):

@@ -55,9 +55,10 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           _pos, identifier=identifier(2), templ_identifiers=[], arg_identifiers=identifier_list(4),
           arg_types=type_list(4), arg_annotations=annotation_list(4), return_type=ast(6),
           return_annotation_list=annotation_list(6), body_scope=None))},
-    Production('Stmt', 'struct', 'identifier', 'TemplateIdentifierList', '{', 'StmtList', '}'): {
-      'ast': lambda _pos, identifier, identifier_list, stmt_list: StructDeclarationAst(
-        _pos, struct_identifier=identifier(2), templ_identifiers=identifier_list(3), stmt_list=stmt_list(5))},
+    Production('Stmt', 'struct', 'identifier', 'TemplateIdentifierList', '{', 'MemberList', '}'): {
+      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list: StructDeclarationAst(
+        _pos, struct_identifier=identifier(2), template_identifiers=identifier_list(3),
+        mem_identifiers=identifier_list(5), mem_type_asts=type_list(5), mem_annotations=annotation_list(5)) },
     Production('Stmt', 'return', 'ExprList', ';'): {
       'ast': lambda _pos, val_list: ReturnStatementAst(_pos, return_exprs=val_list(2))},
     Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr', ';'): {
@@ -136,18 +137,38 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'identifier_list': lambda identifier: [identifier(1)]},
     Production('IdentifierList+', 'identifier', ',', 'IdentifierList+'): {
       'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(3)},
+
+    # for function decls
     Production('TypedIdentifierList'): {
       'identifier_list': [], 'type_list': [], 'annotation_list': []},
     Production('TypedIdentifierList', 'TypedIdentifierList+'): {
       'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
-    Production('TypedIdentifierList+', 'AnnotationList', 'Type', 'identifier'): {
-      'identifier_list': lambda identifier: [identifier(3)],
-      'type_list': lambda ast: [ast(2)],
+    Production('TypedIdentifierList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit'): {
+      'identifier_list': lambda identifier: [identifier(2)],
+      'type_list': lambda ast: [ast(4)],
       'annotation_list': lambda annotation_list: [annotation_list(1)]},
-    Production('TypedIdentifierList+', 'AnnotationList', 'Type', 'identifier', ',', 'TypedIdentifierList+'): {
-      'identifier_list': lambda identifier, identifier_list: [identifier(3)] + identifier_list(5),
-      'type_list': lambda ast, type_list: [ast(2)] + type_list(5),
-      'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(5)},
+    Production('TypedIdentifierList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', ',', 'TypedIdentifierList+'): {
+      'identifier_list': lambda identifier, identifier_list: [identifier(2)] + identifier_list(7),
+      'type_list': lambda ast, type_list: [ast(4)] + type_list(7),
+      'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(7)},
+
+    # for structs
+    Production('MemberList'): {
+      'identifier_list': [], 'type_list': [], 'annotation_list': []},
+    Production('MemberList', 'MemberList+'): {
+      'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
+    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', ';'): {
+      'identifier_list': lambda identifier: [identifier(2)],
+      'type_list': lambda ast: [ast(4)],
+      'annotation_list': lambda annotation_list: [annotation_list(1)]},
+    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', ';',
+               'MemberList+'): {
+      'identifier_list': lambda identifier, identifier_list: [identifier(2)] + identifier_list(7),
+      'type_list': lambda ast, type_list: [ast(4)] + type_list(7),
+      'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(7)},
+
+    Production('OptDefaultInit'): {},
+    Production('OptDefaultInit', '=', 'Expr'): {},
     Production('TemplateIdentifierList'): {
       'identifier_list': []},
     Production('TemplateIdentifierList', '[', 'TemplateIdentifierList+', ']'): {

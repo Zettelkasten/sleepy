@@ -1,74 +1,74 @@
 ## Output
-func print(Char char) { extern_func print_char(Char char); print_char(char); }
-func print(Double double) { extern_func print_double(Double d); print_double(double); }
-func print(Float float) { extern_func print_float(Float f); print_float(float); }
-func print(Int int) { extern_func print_int(Int i); print_int(int); }
-func print(Long long) { extern_func print_long(Long l); print_long(long); }
-@Inline func print(Bool bool) { if bool { print('T'); } else { print('F'); } }
-@Inline func print_line() { print('\n'); }
-@Inline func print_line(Char|Double|Float|Int|Long|Bool line) { print(line); print_line(); }
-extern_func flush();
-@Inline func print_flush(Char|Double|Float|Int|Long|Bool text) { print(text); flush(); }
-@Inline func print_line_flush(Char|Double|Float|Int|Long|Bool line) { print_line(line); flush(); }
+func print(char: Char)  { extern_func print_char(char: Char) ; print_char(char); }
+func print(double: Double)  { extern_func print_double(d: Double) ; print_double(double); }
+func print(float: Float)  { extern_func print_float(f: Float) ; print_float(float); }
+func print(int: Int)  { extern_func print_int(i: Int) ; print_int(int); }
+func print(long: Long)  { extern_func print_long(l: Long) ; print_long(long); }
+@Inline func print(bool: Bool)  { if bool { print('T'); } else { print('F'); } }
+@Inline func print_line()  { print('\n'); }
+@Inline func print_line(line: Char|Double|Float|Int|Long|Bool)  { print(line); print_line(); }
+extern_func flush() ;
+@Inline func print_flush(text: Char|Double|Float|Int|Long|Bool)  { print(text); flush(); }
+@Inline func print_line_flush(line: Char|Double|Float|Int|Long|Bool)  { print_line(line); flush(); }
 
 ## Allocation
-extern_func allocate_double(Int size) -> Ptr[Double];
-extern_func allocate_float(Int size) -> Ptr[Float];
-extern_func allocate_char(Int size) -> Ptr[Char];
-extern_func allocate_int(Int size) -> Ptr[Int];
-extern_func allocate_long(Int size) -> Ptr[Long];
+extern_func allocate_double(size: Int) -> Ptr[Double];
+extern_func allocate_float(size: Int) -> Ptr[Float];
+extern_func allocate_char(size: Int) -> Ptr[Char];
+extern_func allocate_int(size: Int) -> Ptr[Int];
+extern_func allocate_long(size: Int) -> Ptr[Long];
 func NullDoublePtr() -> Ptr[Double] { extern_func double_null_ptr() -> Ptr[Double]; return double_null_ptr(); }
 func NullFloatPtr() -> Ptr[Float] { extern_func float_null_ptr() -> Ptr[Float]; return float_null_ptr(); }
 func NullCharPtr() -> Ptr[Char] { extern_func char_null_ptr() -> Ptr[Char]; return char_null_ptr(); }
 func NullIntPtr() -> Ptr[Int] { extern_func int_null_ptr() -> Ptr[Int]; return int_null_ptr(); }
 func NullLongPtr() -> Ptr[Long] { extern_func long_null_ptr() -> Ptr[Long]; return long_null_ptr(); }
-func deallocate[T](Ptr[T] ptr) {
-  extern_func deallocate_double(RawPtr ptr);  # TODO: cannot override free.
+func deallocate[T](ptr: Ptr[T]) {
+  extern_func deallocate_double(ptr: RawPtr);  # TODO: cannot override free.
   deallocate_double(RawPtr(ptr));
 }
-extern_func assert(Bool condition);
-@Inline func unchecked_assert(Bool condition) { }
-func memcpy[T](Ptr[T] to, Ptr[T] from, Int size) {
-  extern_func memcpy(RawPtr to, RawPtr from, Int size);
+extern_func assert(condition: Bool);
+@Inline func unchecked_assert(condition: Bool) { }
+func memcpy[T](to: Ptr[T], from: Ptr[T], size: Int) {
+  extern_func memcpy(to: RawPtr, from: RawPtr, size: Int);
   memcpy(RawPtr(to), RawPtr(from), size);
 }
 
 ## Boolean Logic
-@Inline func True() -> Bool { return 0 == 0; }
-@Inline func False() -> Bool { return 0 != 0; }
-@Inline func or(Bool a, Bool b) -> Bool { if a { return a; } else { return b; } }
-@Inline func or(Bool a, Bool b, Bool c) -> Bool { return or(or(a, b), c); }
-@Inline func and(Bool a, Bool b) -> Bool { if a { return b; } else { return False(); } }
-@Inline func and(Bool a, Bool b, Bool c) -> Bool { return and(and(a, b), c); }
-@Inline func not(Bool a) -> Bool { if (a) { return False(); } else { return True(); } }
+@Inline func True() ->  Bool  { return 0 == 0; }
+@Inline func False() ->  Bool  { return 0 != 0; }
+@Inline func or(a: Bool, b: Bool) ->  Bool  { if a { return a; } else { return b; } }
+@Inline func or(a: Bool, b: Bool, c: Bool) ->  Bool  { return or(or(a, b), c); }
+@Inline func and(a: Bool, b: Bool) ->  Bool  { if a { return b; } else { return False(); } }
+@Inline func and(a: Bool, b: Bool, c: Bool) ->  Bool  { return and(and(a, b), c); }
+@Inline func not(a: Bool) ->  Bool  { if (a) { return False(); } else { return True(); } }
 
 ## Conversions
-func ToInt(Double d) -> Int { extern_func double_to_int(Double d) -> Int; return double_to_int(d); }
-func ToInt(Bool b) -> Int { if b { return 1; } else { return 0; } }
-func ToInt(Long l) -> Int { extern_func long_to_int(Long l) -> Int; return long_to_int(l); }
-func ToLong(Int i) -> Long { extern_func int_to_long(Int i) -> Long; return int_to_long(i); }
-func ToLong(Ptr[Char] ptr) -> Long { extern_func char_ptr_to_long(Ptr[Char] ptr) -> Long; return char_ptr_to_long(ptr); }  # TODO: template overloads
-func ToDouble(Int i) -> Double { extern_func int_to_double(Int i) -> Double; return int_to_double(i); }
-func ToBool(Int i) -> Bool { if i == 0 { return False(); } else { if i != 1 { assert(False()); } return True(); }}
+func ToInt(d: Double) -> Int { extern_func double_to_int(d: Double) -> Int; return double_to_int(d); }
+func ToInt(b: Bool) -> Int { if b { return 1; } else { return 0; } }
+func ToInt(l: Long) -> Int { extern_func long_to_int(l: Long) -> Int; return long_to_int(l); }
+func ToLong(i: Int) -> Long { extern_func int_to_long(i: Int) -> Long; return int_to_long(i); }
+func ToLong(ptr: Ptr[Char]) -> Long { extern_func char_ptr_to_long(ptr: Ptr[Char]) -> Long; return char_ptr_to_long(ptr); }  # TODO: template overloads
+func ToDouble(i: Int) -> Double { extern_func int_to_double(i: Int) -> Double; return int_to_double(i); }
+func ToBool(i: Int) -> Bool { if i == 0 { return False(); } else { if i != 1 { assert(False()); } return True(); }}
 
 ## Simple Math
-func <(Int left, Double right) -> Bool { return ToDouble(left) < right; }
-func <(Double left, Int right) -> Bool { return left < ToDouble(right); }
-func <=(Int left, Double right) -> Bool { return ToDouble(left) <= right; }
-func <=(Double left, Int right) -> Bool { return left <= ToDouble(right); }
-func >(Int left, Double right) -> Bool { return ToDouble(left) > right; }
-func >(Double left, Int right) -> Bool { return left > ToDouble(right); }
-func >=(Int left, Double right) -> Bool { return ToDouble(left) >= right; }
-func >=(Double left, Int right) -> Bool { return left >= ToDouble(right); }
-@Inline func min(Int a, Int b) -> Int { if a < b { return a; } else { return b; } }
-@Inline func max(Int a, Int b) -> Int { if a > b { return a; } else { return b; } }
-@Inline func sign(Int a) -> Int { if a > 0 { return 1; } if a == 0 { return 0; } else { return -1; } }
-@Inline func sign(Double a) -> Double { if a > 0.0 { return 1.0; } if a == 0.0 { return 0.0; } else { return -1.0; } }
-@Inline func div(Int a, Int b) -> Int { return a / b; }
-extern_func sin(Double x) -> Double;
-extern_func cos(Double x) -> Double;
-@Inline func sin(Float x) -> Float { extern_func sinf(Float f) -> Float; return sinf(x); }
-@Inline func cos(Float x) -> Float { extern_func cosf(Float f) -> Float; return cosf(x); }
+func <(left: Int, right: Double) ->  Bool  { return ToDouble(left) < right; }
+func <(left: Double, right: Int) ->  Bool  { return left < ToDouble(right); }
+func <=(left: Int, right: Double) ->  Bool  { return ToDouble(left) <= right; }
+func <=(left: Double, right: Int) ->  Bool  { return left <= ToDouble(right); }
+func >(left: Int, right: Double) ->  Bool  { return ToDouble(left) > right; }
+func >(left: Double, right: Int) ->  Bool  { return left > ToDouble(right); }
+func >=(left: Int, right: Double) ->  Bool  { return ToDouble(left) >= right; }
+func >=(left: Double, right: Int) ->  Bool  { return left >= ToDouble(right); }
+@Inline func min(a: Int, b: Int) ->  Int  { if a < b { return a; } else { return b; } }
+@Inline func max(a: Int, b: Int) ->  Int  { if a > b { return a; } else { return b; } }
+@Inline func sign(a: Int) ->  Int  { if a > 0 { return 1; } if a == 0 { return 0; } else { return -1; } }
+@Inline func sign(a: Double) ->  Double  { if a > 0.0 { return 1.0; } if a == 0.0 { return 0.0; } else { return -1.0; } }
+@Inline func div(a: Int, b: Int) ->  Int  { return a / b; }
+extern_func sin(x: Double) ->  Double;
+extern_func cos(x: Double) ->  Double;
+@Inline func sin(x: Float) ->  Float  { extern_func sinf(f: Float) ->  Float; return sinf(x); }
+@Inline func cos(x: Float) ->  Float  { extern_func cosf(f: Float) ->  Float; return cosf(x); }
 
 ## String (note: the Str struct itself is declared internally, not here.)
 # @RefType struct Str {
@@ -76,28 +76,28 @@ extern_func cos(Double x) -> Double;
 #   Int length = 0;
 #   Int alloc_length = 8;
 # }
-func EmptyStr(Int alloc_length) -> @Mutable Str {
+func EmptyStr(alloc_length: Int) -> @Mutable  Str  {
   return Str(allocate_char(alloc_length), 0, alloc_length);
 }
-func EmptyStr() -> @Mutable Str {
+func EmptyStr() -> @Mutable  Str  {
   return EmptyStr(8);
 }
-func resize(@Mutable Str str, Int new_alloc_length) {
+func resize(@Mutable str: Str, new_alloc_length: Int)  {
   new_start = allocate_char(new_alloc_length);
   memcpy(new_start, str.start, str.alloc_length);
   deallocate(str.start);
   str.alloc_length = new_alloc_length;
   str.start = new_start;
 }
-func copy(Str str) -> @Mutable Str {
+func copy(str: Str) -> @Mutable  Str  {
   @Mutable new = Str(allocate_char(str.alloc_length), str.length, str.alloc_length);
   memcpy(new.start, str.start, str.length);
   return new;
 }
-func get(Str str, Int pos) -> Ptr[Char] {
+func get(str: Str, pos: Int) -> Ptr[Char] {
   return str.start + pos;
 }
-func set(@Mutable Str str, Int pos, Char char) {
+func set(@Mutable str: Str, pos: Int, char: Char)  {
   assert(and(0 <= pos, pos < str.length + 1));
   if pos >= str.alloc_length {
     resize(str, max(2 * str.alloc_length, 1));
@@ -107,11 +107,11 @@ func set(@Mutable Str str, Int pos, Char char) {
     str.length += 1;
   }
 }
-func =[T](Ptr[T] ptr, T v) { store(ptr, v); }
-func +(Ptr[Char] ptr) -> Char { return load(ptr); }  # TODO: template overloads
-func +(Ptr[Double] ptr) -> Double { return load(ptr); }
+func =[T](ptr: Ptr[T], v: T) { store(ptr, v); }
+func +(ptr: Ptr[Char]) -> Char { return load(ptr); }  # TODO: template overloads
+func +(ptr: Ptr[Double]) -> Double { return load(ptr); }
 
-func insert(@Mutable Str str, Char char, Int pos) {
+func insert(@Mutable str: Str, char: Char, pos: Int)  {
   assert(and(0 <= pos, pos < str.length + 1));
   if str.length + 1 >= str.alloc_length {
     resize(str, max(2 * str.alloc_length, 1));
@@ -119,8 +119,8 @@ func insert(@Mutable Str str, Char char, Int pos) {
   memcpy(str.start + pos + 1, str.start + pos, str.length - pos);
   set(str, pos, char);
 }
-func insert(@Mutable Str str, Char insert_char) { insert(str, insert_char, str.length); }
-func insert(@Mutable Str str, Str insert_str, Int pos) {
+func insert(@Mutable str: Str, insert_char: Char)  { insert(str, insert_char, str.length); }
+func insert(@Mutable str: Str, insert_str: Str, pos: Int)  {
   assert(and(0 <= pos, pos < str.length + 1));
   if str.length + insert_str.length >= str.alloc_length {
     resize(str, max(2 * str.alloc_length, str.length + insert_str.length));
@@ -129,36 +129,36 @@ func insert(@Mutable Str str, Str insert_str, Int pos) {
   memcpy(str.start + pos, insert_str.start, insert_str.length);
   str.length += insert_str.length;
 }
-func insert(@Mutable Str str, Str insert_str) { insert(str, insert_str, str.length); }
-func ToStr(Char from_char) -> @Mutable Str {
+func insert(@Mutable str: Str, insert_str: Str)  { insert(str, insert_str, str.length); }
+func ToStr(from_char: Char) -> @Mutable  Str  {
   @Mutable str = EmptyStr();
   insert(str, from_char);
   return str;
 }
-func +(Str a, Str b) -> @Mutable Str {
+func +(a: Str, b: Str) -> @Mutable  Str  {
   @Mutable res = EmptyStr(a.length + b.length);
   memcpy(res.start, a.start, a.length);
   memcpy(res.start + a.length, b.start, b.length);
   res.length = a.length + b.length;
   return res;
 }
-func +(Str a, Char b) -> @Mutable Str {
+func +(a: Str, b: Char) -> @Mutable  Str  {
   @Mutable res = copy(a);
   insert(res, b);
   return res;
 }
-func +(Char a, Str b) -> @Mutable Str {
+func +(a: Char, b: Str) -> @Mutable  Str  {
   a_ = ToStr(a);
   @Mutable res = a_ + b;
   free(a_);
   return res;
 }
-func +(Char a, Char b) -> @Mutable Str {
+func +(a: Char, b: Char) -> @Mutable  Str  {
   @Mutable res = ToStr(a);
   insert(res, b);
   return res;
 }
-func *(Str str, Int repetitions) -> @Mutable Str {
+func *(str: Str, repetitions: Int) -> @Mutable  Str  {
   @Mutable res = EmptyStr(str.length * repetitions);
   while repetitions > 0 {
     memcpy(res.start + res.length, str.start, str.length);
@@ -167,42 +167,42 @@ func *(Str str, Int repetitions) -> @Mutable Str {
   }
   return res;
 }
-func *(Char c, Int repetitions) -> @Mutable Str {
+func *(c: Char, repetitions: Int) -> @Mutable  Str  {
   c_ = ToStr(c);
   @Mutable res = c_ * repetitions;
   free(c_);
   return res;
 }
-func print(Str str) {
+func print(str: Str)  {
   pos = 0;
   while pos < str.length {
     print(+str[pos]);
     pos += 1;
   }
 }
-func print_line(Str str) {
+func print_line(str: Str)  {
   print(str); print_line();
 }
-func assert(Bool cond, Str error) {
+func assert(cond: Bool, error: Str)  {
   if not(cond) {
     print_line("Assertion failed!");
     print_line(error);
-    extern_func exit(Int exit_code);
+    extern_func exit(exit_code: Int) ;
     exit(1);
   }
 }
 
 ## Misc
-func set_random_seed(Int seed) {
-  extern_func srand(Int seed);
+func set_random_seed(seed: Int)  {
+  extern_func srand(seed: Int) ;
   srand(seed);
 }
-func random(Double min, Double max) -> Double {
+func random(min: Double, max: Double) ->  Double  {
   assert(min < max);
-  extern_func random_double() -> Double;
+  extern_func random_double() ->  Double;
   rnd = random_double();  # in [0, 1]
   return (1.0 - rnd) * min + rnd * max;  # in [min, max]
 }
-func random_int(Int min, Int max) -> Int {
+func random_int(min: Int, max: Int) ->  Int  {
   return ToInt(random(ToDouble(min), ToDouble(max)));
 }
