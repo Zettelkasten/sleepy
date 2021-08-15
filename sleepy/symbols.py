@@ -52,10 +52,7 @@ class Type:
     return self.__class__.__name__
 
   @property
-  def size(self):
-    """
-    :rtype int:
-    """
+  def size(self) -> int:
     return ctypes.sizeof(self.c_type)
 
   def is_pass_by_ref(self):
@@ -64,25 +61,8 @@ class Type:
     """
     return self.pass_by_ref
 
-  def make_ir_size(self):
-    """
-    :rtype: ir.values.Value
-    """
-    return ir.Constant(LLVM_SIZE_TYPE, self.size)
-
-  def make_ir_alloca(self, context):
-    """
-    :param CodegenContext context:
-    :rtype: ir.instructions.Instruction
-    """
-    assert context.emits_ir
-    if self.is_pass_by_ref():  # use malloc
-      assert context.ir_func_malloc is not None
-      self_ir_alloca_raw = context.builder.call(
-        context.ir_func_malloc, [self.make_ir_size()], name='self_raw_ptr')
-      return context.builder.bitcast(self_ir_alloca_raw, self.ir_type, name='self')
-    else:  # pass by value, use alloca
-      return context.alloca_at_entry(self.ir_type, name='self')
+  def make_ir_size(self, size: int) -> ir.values.Value:
+    return ir.Constant(LLVM_SIZE_TYPE, size)
 
   def is_realizable(self) -> bool:
     return True
@@ -432,15 +412,15 @@ class StructType(Type):
                member_types: List[Type], member_mutables: List[bool], pass_by_ref: bool):
     assert len(member_identifiers) == len(member_types) == len(member_mutables)
     member_ir_types = [member_type.ir_type for member_type in member_types]
-    ir_val_type = ir.types.LiteralStructType(member_ir_types)
+    self.ir_val_type = ir.types.LiteralStructType(member_ir_types)
     member_c_types = [
       (member_identifier, member_type.c_type)
       for member_identifier, member_type in zip(member_identifiers, member_types)]
-    c_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
+    self.c_val_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
     if pass_by_ref:
-      super().__init__(ir.types.PointerType(ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(c_type))
+      super().__init__(ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type))
     else:
-      super().__init__(ir_val_type, pass_by_ref=False, c_type=c_type)
+      super().__init__(self.ir_val_type, pass_by_ref=False, c_type=self.c_val_type)
     self.struct_identifier = struct_identifier
     self.templ_types = templ_types
     self.member_identifiers = member_identifiers
@@ -464,6 +444,16 @@ class StructType(Type):
 
   def has_templ_placeholder(self) -> bool:
     return any(templ_type.has_templ_placeholder() for templ_type in self.templ_types)
+
+  def make_ir_alloca(self, context: CodegenContext) -> ir.instructions.Instruction:
+    assert context.emits_ir
+    if self.is_pass_by_ref():  # use malloc
+      assert context.ir_func_malloc is not None
+      self_ir_alloca_raw = context.builder.call(
+        context.ir_func_malloc, [self.make_ir_size(ctypes.sizeof(self.c_val_type))], name='self_raw_ptr')
+      return context.builder.bitcast(self_ir_alloca_raw, self.ir_type, name='self')
+    else:  # pass by value, use alloca
+      return context.alloca_at_entry(self.ir_type, name='self')
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, StructType):
