@@ -1792,13 +1792,20 @@ def test_templ_local_var():
 def test_templ_ptr():
   with make_execution_engine() as engine:
     program = """
-    func main() {
+    func main(Int a, Int b) -> Int {  # returns a + b
       extern_func allocate_int(Int size) -> Ptr[Int];
       ptr = allocate_int(2);
+      store(ptr, a);
+      store(ptr + 1, b);
+      sum = load(ptr) + load(ptr + 1);
+      extern_func deallocate_int(Ptr[Int] ptr);
+      deallocate_int(ptr);
+      return sum;
     }
     """
     main = compile_program(engine, program, main_func_identifier='main', add_preamble=False)
-    assert_equal(main(), None)
+    assert_equal(main(3, 5), 3 + 5)
+    assert_equal(main(-34, 23), -34 + 23)
 
 
 if __name__ == "__main__":
