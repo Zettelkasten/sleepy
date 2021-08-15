@@ -43,15 +43,18 @@ def main():
   better_exchook.install()
   parser = argparse.ArgumentParser(description='Compile a Sleepy program to object code.')
   parser.add_argument('program', help='Path to source code')
-  parser.add_argument('--execute', dest='execute', action='store_true', help='Run program after compilation using JIT.')
+  parser.add_argument(
+    '--execute', dest='execute', default=False, action='store_true', help='Run program after compilation using JIT.')
   parser.add_argument(
     '--emit-ir', '-ir', dest='emit_ir', action='store_true', help='Emit LLVM intermediate representation.')
   parser.add_argument(
     '--emit-object', '-c', dest='emit_object', action='store_true', help='Emit object code, but do not link.')
   parser.add_argument('--compile-libs', '-libs', nargs='*', help='External libraries to link with', default=['m'])
-  parser.add_argument('--debug', dest='debug', action='store_true', help='Print full stacktrace for all compiler errors.')
-  parser.add_argument('--Optimization', '-O', dest='opt', action='store', type=int, default=0, help='Print full stacktrace for all compiler errors.')
-  parser.set_defaults(execute=False)
+  parser.add_argument(
+    '--debug', dest='debug', action='store_true', help='Print full stacktrace for all compiler errors.')
+  parser.add_argument(
+    '--Optimization', '-O', dest='opt', action='store', type=int, default=0, help='Optimize code.')
+  parser.add_argument('--no-preamble', default=False, action='store_true', help='Do not add preamble to source code.')
 
   args = parser.parse_args()
 
@@ -60,7 +63,7 @@ def main():
   with open(source_file_name) as program_file:
     program = program_file.read()
   try:
-    ast = make_program_ast(program)
+    ast = make_program_ast(program, add_preamble=not args.no_preamble)
     module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='default_module')
     if main_func_identifier not in symbol_table:
       raise CompilerError('Error: Entry point function %r not found' % main_func_identifier)
@@ -86,7 +89,6 @@ def main():
       return_val = py_func()
     print('\nExited with return value %r of type %r' % (return_val, concrete_main_func.return_type))
     return
-
 
   object_file_name = _make_file_name(source_file_name, '.o', allow_exist=True)
   module_ref = llvm.parse_assembly(str(module_ir))
