@@ -47,7 +47,10 @@ func ToInt(d: Double) -> Int { extern_func double_to_int(d: Double) -> Int; retu
 func ToInt(b: Bool) -> Int { if b { return 1; } else { return 0; } }
 func ToInt(l: Long) -> Int { extern_func long_to_int(l: Long) -> Int; return long_to_int(l); }
 func ToLong(i: Int) -> Long { extern_func int_to_long(i: Int) -> Long; return int_to_long(i); }
-func ToLong(ptr: Ptr[Char]) -> Long { extern_func char_ptr_to_long(ptr: Ptr[Char]) -> Long; return char_ptr_to_long(ptr); }  # TODO: template overloads
+func ToLong[T](ptr: Ptr[T]) -> Long {
+  extern_func char_ptr_to_long(ptr: RawPtr) -> Long;
+  return char_ptr_to_long(RawPtr(ptr));
+}
 func ToDouble(i: Int) -> Double { extern_func int_to_double(i: Int) -> Double; return int_to_double(i); }
 func ToBool(i: Int) -> Bool { if i == 0 { return False(); } else { if i != 1 { assert(False()); } return True(); }}
 
@@ -108,8 +111,7 @@ func set(@Mutable str: Str, pos: Int, char: Char)  {
   }
 }
 func =[T](ptr: Ptr[T], v: T) { store(ptr, v); }
-func +(ptr: Ptr[Char]) -> Char { return load(ptr); }  # TODO: template overloads
-func +(ptr: Ptr[Double]) -> Double { return load(ptr); }
+func +[T](ptr: Ptr[T]) -> T { return load(ptr); }
 
 func insert(@Mutable str: Str, char: Char, pos: Int)  {
   assert(and(0 <= pos, pos < str.length + 1));
