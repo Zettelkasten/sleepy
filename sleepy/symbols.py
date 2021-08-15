@@ -1100,7 +1100,7 @@ class FunctionSymbol(Symbol):
                               arg_types: Union[List[Type], Tuple[Type]]) -> bool:
     assert all(not templ_type.has_templ_placeholder() for templ_type in concrete_templ_types)
     assert all(not arg_type.has_templ_placeholder() for arg_type in arg_types)
-    all_expanded_arg_types = self._iter_expanded_possible_arg_types(arg_types)
+    all_expanded_arg_types = self.iter_expanded_possible_arg_types(arg_types)
     return all(
       self.can_call_with_expanded_arg_types(concrete_templ_types=concrete_templ_types, expanded_arg_types=arg_types)
       for arg_types in all_expanded_arg_types)
@@ -1113,12 +1113,12 @@ class FunctionSymbol(Symbol):
       return False
     return not any(
       signature.can_call_with_expanded_arg_types(concrete_templ_types=[], expanded_arg_types=expanded_arg_types)
-      for signature in signatures for expanded_arg_types in self._iter_expanded_possible_arg_types(arg_types))
+      for signature in signatures for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types))
 
   def get_concrete_funcs(self, templ_types: List[Type], arg_types: List[Type]) -> List[ConcreteFunction]:
     signatures = self.signatures_by_number_of_templ_args.get(len(templ_types), [])
     possible_concrete_funcs = []
-    for expanded_arg_types in self._iter_expanded_possible_arg_types(arg_types):
+    for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types):
       for signature in signatures:
         if signature.can_call_with_expanded_arg_types(
             concrete_templ_types=templ_types, expanded_arg_types=expanded_arg_types):
@@ -1142,7 +1142,7 @@ class FunctionSymbol(Symbol):
     return signature.get_concrete_func(concrete_templ_types=[])
 
   @classmethod
-  def _iter_expanded_possible_arg_types(cls, arg_types):
+  def iter_expanded_possible_arg_types(cls, arg_types):
     """
     :param list[Type]|tuple[Type] arg_types:
     :rtype: Iterator[Tuple[Type]]

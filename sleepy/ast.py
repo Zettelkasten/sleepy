@@ -64,6 +64,7 @@ class AbstractSyntaxTree(ABC):
       templ_types = self._infer_templ_args(
         func_identifier=func_identifier, func_symbol=symbol, calling_types=calling_types)
     assert templ_types is not None
+    assert all(not templ_type.has_templ_placeholder() for templ_type in templ_types)
 
     if not symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_types):
       symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_types)
@@ -90,26 +91,44 @@ class AbstractSyntaxTree(ABC):
 
   def _infer_templ_args(self, func_identifier: str, func_symbol: FunctionSymbol,
                         calling_types: List[Type]) -> List[Type]:
-    infers = [
-      try_infer_templ_types(
-        calling_types=calling_types, signature_types=signature.arg_types,
-        placeholder_templ_types=signature.placeholder_templ_types)
-      for signature in func_symbol.signatures]
-    possible_infers = [idx for idx, infer in enumerate(infers) if infer is not None]
-    if len(possible_infers) == 0:
-      self.raise_error(
-        'Cannot infer template types for function %r from arguments of types %r, '
-        'is declared for parameter types:\n%s' % (
-          func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-          func_symbol.make_signature_list_str()))
-    if len(possible_infers) > 1:
-      self.raise_error(
-        'Cannot uniquely infer template types for function %r from arguments of types %r, '
-        'is declared for parameter types:\n%s' % (
-          func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-          func_symbol.make_signature_list_str()))
-    assert len(possible_infers) == 1
-    signature_templ_types = infers[possible_infers[0]]
+    # TODO: We currently require that the template types must be statically determinable.
+    # e.g. assume that our function takes a union argument.
+    # If we have overloaded signatures each with template arguments, it can happen that you should use different
+    # template arguments depending on which union variant we are called with.
+    # Currently, this would fail. But we could support this if we wanted to.
+    # Note that that would make function calls with inferred template types more than just an auto-evaluated type arg.
+    assert all(calling_type.is_realizable() for calling_type in calling_types)
+    signature_templ_types = None
+    for expanded_calling_types in func_symbol.iter_expanded_possible_arg_types(calling_types):
+      infers = [
+        try_infer_templ_types(
+          calling_types=expanded_calling_types, signature_types=signature.arg_types,
+          placeholder_templ_types=signature.placeholder_templ_types)
+        for signature in func_symbol.signatures]
+      possible_infers = [idx for idx, infer in enumerate(infers) if infer is not None]
+      if len(possible_infers) == 0:
+        self.raise_error(
+          'Cannot infer template types for function %r from arguments of types %r, '
+          'is declared for parameter types:\n%s' % (
+            func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+            func_symbol.make_signature_list_str()))
+      if len(possible_infers) > 1:
+        self.raise_error(
+          'Cannot uniquely infer template types for function %r from arguments of types %r, '
+          'is declared for parameter types:\n%s' % (
+            func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+            func_symbol.make_signature_list_str()))
+      assert len(possible_infers) == 1
+      expanded_signature_templ_types = infers[possible_infers[0]]
+      assert expanded_signature_templ_types is not None
+      if signature_templ_types is not None and signature_templ_types != expanded_signature_templ_types:
+        self.raise_error(
+          'Cannot uniquely statically infer template types for function %r from arguments of types %r '
+          'because different expanded union types would require different template types. '
+          'Function is declared for parameter types:\n%s' % (
+            func_identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+            func_symbol.make_signature_list_str()))
+      signature_templ_types = expanded_signature_templ_types
     assert signature_templ_types is not None
     return signature_templ_types
 
