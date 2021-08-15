@@ -1808,6 +1808,28 @@ def test_templ_ptr():
     assert_equal(main(-34, 23), -34 + 23)
 
 
+@unittest.skip('Template overloading not implemented yet')
+def test_templ_call_overloaded_union():
+  with make_execution_engine() as engine:
+    program = """
+    func foo[T](Double a, T b) -> T {
+      return b;
+    }
+    func foo[T](Int a, T b) -> T {
+      return b;
+    }
+    func blackbox() -> Int|Double {
+      return 2;
+    }
+    func main() {
+      x: Int|Double = blackbox();
+      y: Int|Double = foo(x, x);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    main()
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
