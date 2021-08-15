@@ -1827,7 +1827,6 @@ def test_templ_ptr():
     assert_equal(main(-34, 23), -34 + 23)
 
 
-@unittest.skip('Template overloading not implemented yet')
 def test_templ_call_overloaded_union():
   with make_execution_engine() as engine:
     program = """
@@ -1840,13 +1839,14 @@ def test_templ_call_overloaded_union():
     func blackbox() -> Int|Double {
       return 2;
     }
-    func main() {
+    func main(b: Bool) -> Bool {
       x: Int|Double = blackbox();
-      y: Int|Double = foo(x, x);
+      y: Bool = foo(x, b);
+      return y;
     }
     """
     main = compile_program(engine, program, add_preamble=True)
-    main()
+    assert_equal(main(True), True)
 
 
 def test_ptr_loop():

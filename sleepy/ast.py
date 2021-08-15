@@ -433,7 +433,7 @@ class FunctionDeclarationAst(StatementAst):
     if func_symbol in {symbol_table.inbuilt_symbols.get(name) for name in {'assert', 'unchecked_assert'}}:
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
         self.raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier)
-    if not func_symbol.is_undefined_for_types(placeholder_templ_types=placeholder_templ_types, arg_types=arg_types):
+    if not func_symbol.is_undefined_for_arg_types(placeholder_templ_types=placeholder_templ_types, arg_types=arg_types):
       self.raise_error(
         'Cannot override definition of function %r with template types %r and parameter types %r, already declared:\n%s' % (  # noqa
         self.identifier, ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),

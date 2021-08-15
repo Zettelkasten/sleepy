@@ -1020,6 +1020,20 @@ class FunctionSignature:
     return all(
       can_implicit_cast_to(call_type, arg_type) for call_type, arg_type in zip(expanded_arg_types, concrete_arg_types))
 
+  def is_undefined_for_expanded_arg_types(self, placeholder_templ_types: List[TemplateType],
+                                          expanded_arg_types: List[Type]) -> bool:
+    assert all(not isinstance(arg_type, UnionType) for arg_type in expanded_arg_types)
+    if len(placeholder_templ_types) != len(self.placeholder_templ_types):
+      return True
+    if len(expanded_arg_types) != len(self.arg_types):
+      return True
+    # convert own template variables to calling template variables s.t. we can try to unify them
+    templ_to_templ_replacements = dict(zip(self.placeholder_templ_types, placeholder_templ_types))
+    own_arg_types = [arg_type.replace_types(templ_to_templ_replacements) for arg_type in self.arg_types]
+    inferred_templ_types = try_infer_templ_types(
+      calling_types=expanded_arg_types, signature_types=own_arg_types, placeholder_templ_types=placeholder_templ_types)
+    return inferred_templ_types is None
+
   def __repr__(self) -> str:
     return 'FunctionSignature(placeholder_templ_types=%r, return_type=%r, arg_identifiers=%r, arg_types=%r)' % (
       self.placeholder_templ_types, self.return_type, self.arg_identifiers, self.arg_types)
@@ -1065,7 +1079,7 @@ class FunctionSymbol(Symbol):
   def signatures(self) -> List[FunctionSignature]:
     return [signature for signatures in self.signatures_by_number_of_templ_args.values() for signature in signatures]
 
-  def can_call_with_expanded_arg_types(self, concrete_templ_types: List[Type], expanded_arg_types: List[Type]):
+  def can_call_with_expanded_arg_types(self, concrete_templ_types: List[Type], expanded_arg_types: List[Type]) -> bool:
     assert all(not isinstance(arg_type, UnionType) for arg_type in expanded_arg_types)
     assert all(not templ_type.has_templ_placeholder() for templ_type in concrete_templ_types)
     assert all(not arg_type.has_templ_placeholder() for arg_type in expanded_arg_types)
@@ -1084,14 +1098,11 @@ class FunctionSymbol(Symbol):
       self.can_call_with_expanded_arg_types(concrete_templ_types=concrete_templ_types, expanded_arg_types=arg_types)
       for arg_types in all_expanded_arg_types)
 
-  def is_undefined_for_types(self, placeholder_templ_types: List[TemplateType], arg_types: List[Type]):
+  def is_undefined_for_arg_types(self, placeholder_templ_types: List[TemplateType], arg_types: List[Type]):
     signatures = self.signatures_by_number_of_templ_args.get(len(placeholder_templ_types), [])
-    if len(signatures) == 0:
-      return True
-    if len(placeholder_templ_types) > 0:
-      return False
-    return not any(
-      signature.can_call_with_expanded_arg_types(concrete_templ_types=[], expanded_arg_types=expanded_arg_types)
+    return all(
+      signature.is_undefined_for_expanded_arg_types(
+        placeholder_templ_types=placeholder_templ_types, expanded_arg_types=expanded_arg_types)
       for signature in signatures for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types))
 
   def get_concrete_funcs(self, templ_types: List[Type], arg_types: List[Type]) -> List[ConcreteFunction]:
@@ -1107,7 +1118,7 @@ class FunctionSymbol(Symbol):
     return possible_concrete_funcs
 
   def add_signature(self, signature: FunctionSignature):
-    assert self.is_undefined_for_types(
+    assert self.is_undefined_for_arg_types(
       placeholder_templ_types=signature.placeholder_templ_types, arg_types=signature.arg_types)
     assert signature.returns_void == self.returns_void
     if len(signature.placeholder_templ_types) not in self.signatures_by_number_of_templ_args:
