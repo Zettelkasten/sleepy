@@ -22,16 +22,15 @@ func NullFloatPtr() -> Ptr[Float] { extern_func float_null_ptr() -> Ptr[Float]; 
 func NullCharPtr() -> Ptr[Char] { extern_func char_null_ptr() -> Ptr[Char]; return char_null_ptr(); }
 func NullIntPtr() -> Ptr[Int] { extern_func int_null_ptr() -> Ptr[Int]; return int_null_ptr(); }
 func NullLongPtr() -> Ptr[Long] { extern_func long_null_ptr() -> Ptr[Long]; return long_null_ptr(); }
-func deallocate(Ptr[Double] ptr) { extern_func deallocate_double(Ptr[Double] ptr); deallocate_double(ptr); }
-extern_func deallocate_float(Ptr[Float] ptr);  # TODO: overloads with templ types
-extern_func deallocate_char(Ptr[Char] ptr);
-extern_func deallocate_int(Ptr[Int] ptr);
-extern_func deallocate_long(Ptr[Long] ptr);
+func deallocate[T](Ptr[T] ptr) {
+  extern_func deallocate_double(RawPtr ptr);  # TODO: cannot override free.
+  deallocate_double(RawPtr(ptr));
+}
 extern_func assert(Bool condition);
 @Inline func unchecked_assert(Bool condition) { }
 func memcpy[T](Ptr[T] to, Ptr[T] from, Int size) {
-  extern_func memcpy_double(Ptr[T] to, Ptr[T] from, Int size);
-  memcpy_double(to, from, size);
+  extern_func memcpy(RawPtr to, RawPtr from, Int size);
+  memcpy(RawPtr(to), RawPtr(from), size);
 }
 
 ## Boolean Logic
@@ -86,7 +85,7 @@ func EmptyStr() -> @Mutable Str {
 func resize(@Mutable Str str, Int new_alloc_length) {
   new_start = allocate_char(new_alloc_length);
   memcpy(new_start, str.start, str.alloc_length);
-  deallocate_char(str.start);
+  deallocate(str.start);
   str.alloc_length = new_alloc_length;
   str.start = new_start;
 }

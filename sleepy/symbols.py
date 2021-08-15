@@ -175,7 +175,7 @@ class CharType(Type):
 
 class PointerType(Type):
   """
-  A pointer.
+  A (not-raw) pointer with a known underlying type.
   """
   def __init__(self, pointee_type: Type):
     super().__init__(
@@ -193,8 +193,22 @@ class PointerType(Type):
   def __hash__(self) -> int:
     return hash((self.__class__, self.pointee_type))
 
-  def replace_types(self, replacements: Dict[Type, Type]):
+  def replace_types(self, replacements: Dict[Type, Type]) -> PointerType:
     return PointerType(pointee_type=self.pointee_type.replace_types(replacements))
+
+
+class RawPointerType(Type):
+  """
+  A raw (void) pointer from which we do not know the underlying type.
+  """
+  def __init__(self):
+    super().__init__(LLVM_VOID_POINTER_TYPE, pass_by_ref=False, c_type=ctypes.c_void_p)
+
+  def __repr__(self) -> str:
+    return 'RawPtr'
+
+  def replace_types(self, replacements: Dict[Type, Type]) -> RawPointerType:
+    return self
 
 
 class UnionType(Type):
@@ -613,7 +627,7 @@ SLEEPY_BOOL = BoolType()
 SLEEPY_INT = IntType()
 SLEEPY_LONG = LongType()
 SLEEPY_CHAR = CharType()
-
+SLEEPY_RAW_PTR = RawPointerType()
 SLEEPY_CHAR_PTR = PointerType(SLEEPY_CHAR)
 
 SLEEPY_TYPES: Dict[str, Type] = {
@@ -1617,7 +1631,7 @@ Simple_Comparison_Ops: List[BuiltinBinaryOps] = \
   BuiltinBinaryOps.GreaterOrEqual, BuiltinBinaryOps.LessOrEqual]
 
 
-def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext):
+def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
   str_type = StructType(
     struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'], templ_types=[],
     member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT], member_mutables=[False, False, False],
@@ -1629,7 +1643,7 @@ def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext):
   return struct_symbol
 
 
-def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext):
+def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
   pointee_type = TemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
 
@@ -1685,6 +1699,33 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext):
   symbol_table.free_symbol.add_signature(free_signature)
 
   return TypeSymbol(type_factory=type_factory, constructor_symbol=None)
+
+
+def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
+  # add destructor
+  destructor_factory = InbuiltOpDestructorFuncFactory(symbol_table=symbol_table, context=context)
+  destructor_signature = FunctionSignature(
+    concrete_func_factory=destructor_factory, placeholder_templ_types=[], return_type=SLEEPY_VOID,
+    return_mutable=False, arg_types=[SLEEPY_RAW_PTR], arg_identifiers=['raw_ptr'], arg_type_narrowings=[SLEEPY_NEVER],
+    arg_mutables=[False])
+  symbol_table.free_symbol.add_signature(destructor_signature)
+
+  # add casts from non-raw ptr types
+  pointee_type = TemplateType(identifier='T')
+  ptr_type = PointerType(pointee_type=pointee_type)
+  constructor_symbol = FunctionSymbol(returns_void=False)
+  constructor_factory = InbuiltOpConcreteFuncFactory(
+    instruction=lambda builder, typed_ptr: builder.bitcast(typed_ptr, typ=SLEEPY_RAW_PTR.ir_type, name='load'),
+    emits_ir=context.emits_ir)
+  constructor_signature = FunctionSignature(
+    concrete_func_factory=constructor_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_RAW_PTR,
+    return_mutable=False, arg_identifiers=['ptr'], arg_types=[ptr_type], arg_mutables=[False],
+    arg_type_narrowings=[ptr_type], is_inline=True)
+  constructor_symbol.add_signature(signature=constructor_signature)
+
+  type_generator = TypeFactory(placeholder_templ_types=[], signature_type=SLEEPY_RAW_PTR)
+  raw_ptr_symbol = TypeSymbol(type_generator, constructor_symbol=constructor_symbol)
+  return raw_ptr_symbol
 
 
 class InbuiltOpConcreteFuncFactory(ConcreteFunctionFactory):
@@ -1744,15 +1785,11 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
       module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
     context.ir_func_free = ir.Function(module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
 
-  assert 'Str' not in symbol_table
-  str_symbol = _make_str_symbol(symbol_table=symbol_table, context=context)
-  symbol_table['Str'] = str_symbol
-  symbol_table.inbuilt_symbols['Str'] = str_symbol
-
-  assert 'Ptr' not in symbol_table
-  ptr_symbol = _make_ptr_symbol(symbol_table=symbol_table, context=context)
-  symbol_table['Ptr'] = ptr_symbol
-  symbol_table.inbuilt_symbols['Ptr'] = ptr_symbol
+  for symbol_identifier, setup_func in [('Str', _make_str_symbol), ('Ptr', _make_ptr_symbol), ('RawPtr', _make_raw_ptr_symbol)]:
+    assert symbol_identifier not in symbol_table
+    symbol = setup_func(symbol_table=symbol_table, context=context)
+    symbol_table[symbol_identifier] = symbol
+    symbol_table.inbuilt_symbols[symbol_identifier] = symbol
 
   make_builtin_operator_functions(symbol_table, context.emits_ir)
 
