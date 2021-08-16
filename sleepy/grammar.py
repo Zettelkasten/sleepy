@@ -527,6 +527,17 @@ class TreePosition:
       return False
     return self.word == other.word and self.from_pos == other.from_pos and self.to_pos == other.to_pos
 
+  def get_from_line_col(self) -> (int, int):
+    res = get_line_col_from_pos(
+      word=self.word, error_pos=self.from_pos, num_before_context_lines=0, num_after_context_lines=0)
+    return res[0], res[1]
+
+  def get_from_line(self) -> int:
+    return self.get_from_line_col()[0]
+
+  def get_from_col(self) -> int:
+    return self.get_from_line_col()[1]
+
   @classmethod
   def from_token_pos(cls, word, tokens_pos, from_token_pos, to_token_pos):
     """
@@ -540,3 +551,36 @@ class TreePosition:
     from_pos = tokens_pos[from_token_pos] if from_token_pos < len(tokens_pos) else len(word)
     to_pos = tokens_pos[to_token_pos] if to_token_pos < len(tokens_pos) else len(word)
     return TreePosition(word, from_pos, to_pos)
+
+
+def get_line_col_from_pos(word, error_pos, num_before_context_lines=1, num_after_context_lines=1):
+  """
+  :param str word:
+  :param int error_pos:
+  :param int num_before_context_lines:
+  :param int num_after_context_lines:
+  :return: line + column, both starting counting at 1, as well as dict with context lines
+  :rtype: tuple[int,int,dict[int,str]]
+  """
+  assert 0 <= error_pos <= len(word)
+  if len(word) == 0:
+    return 0, 1, {0: '\n'}
+  char_pos = 0
+  word_lines = word.splitlines()
+  assert len(word_lines) > 0
+  for line_num, line in enumerate(word_lines):
+    assert char_pos <= error_pos
+    if error_pos <= char_pos + len(line):
+      col_num = error_pos - char_pos
+      assert 0 <= col_num <= len(line)
+      context_lines = {
+        context_line_num + 1: word_lines[context_line_num]
+        for context_line_num in range(
+          max(0, line_num - num_before_context_lines), min(len(word_lines), line_num + num_after_context_lines + 1))}
+      return line_num + 1, col_num + 1, context_lines
+    char_pos += len(line) + 1  # consider end-of-line symbol
+  assert char_pos == len(word)
+  context_lines = {
+    context_line_num + 1: word_lines[context_line_num]
+    for context_line_num in range(max(0, len(word_lines) - num_before_context_lines), len(word_lines))}
+  return len(word_lines), len(word_lines[-1]) + 1, context_lines

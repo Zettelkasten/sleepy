@@ -8,7 +8,7 @@ from sleepy.errors import ParseError
 from sleepy.lexer import LexerGenerator
 from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
 from sleepy.grammar import EPSILON, Production, Grammar, AttributeGrammar, SyntaxTree, \
-  get_token_word_from_tokens_pos, TreePosition
+  get_token_word_from_tokens_pos, TreePosition, get_line_col_from_pos
 from sleepy.semantic import AttributeEvalGenerator
 
 
@@ -53,7 +53,6 @@ def test_AttributeGrammar_syn():
 
 
 def test_get_line_col_from_pos():
-  from sleepy.errors import get_line_col_from_pos
   assert_equal(
     get_line_col_from_pos('oh, X marks the error.', error_pos=4, num_before_context_lines=1, num_after_context_lines=1),
     (1, 5, {1: 'oh, X marks the error.'}))
