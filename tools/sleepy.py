@@ -51,10 +51,11 @@ def main():
     '--emit-object', '-c', dest='emit_object', action='store_true', help='Emit object code, but do not link.')
   parser.add_argument('--compile-libs', '-libs', nargs='*', help='External libraries to link with', default=['m'])
   parser.add_argument(
-    '--debug', dest='debug', action='store_true', help='Print full stacktrace for all compiler errors.')
+    '--verbose', dest='verbose', action='store_true', help='Print full stacktrace for all compiler errors.')
   parser.add_argument(
     '--Optimization', '-O', dest='opt', action='store', type=int, default=0, help='Optimize code.')
   parser.add_argument('--no-preamble', default=False, action='store_true', help='Do not add preamble to source code.')
+  parser.add_argument('--debug', default=False, action='store_true', help='Add debug symbols.')
 
   args = parser.parse_args()
 
@@ -64,7 +65,7 @@ def main():
     program = program_file.read()
   try:
     ast = make_program_ast(program, add_preamble=not args.no_preamble)
-    module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='default_module')
+    module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='default_module', emit_debug=args.debug)
     if main_func_identifier not in symbol_table:
       raise CompilerError('Error: Entry point function %r not found' % main_func_identifier)
     main_func_symbol = symbol_table[main_func_identifier]
@@ -73,7 +74,7 @@ def main():
     if len(main_func_symbol.signatures) != 1:
       raise CompilerError('Error: Must declare exactly one entry point function %r' % main_func_identifier)
   except CompilerError as ce:
-    if args.debug:
+    if args.verbose:
       raise ce
     else:
       print(str(ce))

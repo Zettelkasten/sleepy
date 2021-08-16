@@ -12,6 +12,7 @@ from llvmlite import ir
 from llvmlite.binding import ExecutionEngine
 from llvmlite.ir import IRBuilder, Value
 
+from sleepy.grammar import TreePosition
 from sleepy.util import concat_dicts
 
 LLVM_SIZE_TYPE = ir.types.IntType(64)
@@ -75,6 +76,11 @@ class Type:
   def has_templ_placeholder(self) -> bool:
     return False
 
+  @abstractmethod
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    raise NotImplementedError()
+
 
 class VoidType(Type):
   """
@@ -94,6 +100,12 @@ class DoubleType(Type):
   def __init__(self):
     super().__init__(ir.DoubleType(), pass_by_ref=False, c_type=ctypes.c_double)
 
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    return context.module.add_debug_info(
+      'DIBasicType',
+      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_float')})
+
   def __repr__(self) -> str:
     return 'Double'
 
@@ -104,6 +116,12 @@ class FloatType(Type):
   """
   def __init__(self):
     super().__init__(ir.FloatType(), pass_by_ref=False, c_type=ctypes.c_float)
+
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    return context.module.add_debug_info(
+      'DIBasicType',
+      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_float')})
 
   def __repr__(self) -> str:
     return 'Float'
@@ -116,6 +134,12 @@ class BoolType(Type):
   def __init__(self):
     super().__init__(ir.IntType(bits=1), pass_by_ref=False, c_type=ctypes.c_bool)
 
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    return context.module.add_debug_info(
+      'DIBasicType',
+      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_boolean')})
+
   def __repr__(self) -> str:
     return 'Bool'
 
@@ -126,6 +150,12 @@ class IntType(Type):
   """
   def __init__(self):
     super().__init__(ir.IntType(bits=32), pass_by_ref=False, c_type=ctypes.c_int32)
+
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    return context.module.add_debug_info(
+      'DIBasicType',
+      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_signed')})
 
   def __repr__(self) -> str:
     return 'Int'
@@ -138,6 +168,12 @@ class LongType(Type):
   def __init__(self):
     super().__init__(ir.IntType(bits=64), pass_by_ref=False, c_type=ctypes.c_int64)
 
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    return context.module.add_debug_info(
+      'DIBasicType',
+      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_signed')})
+
   def __repr__(self) -> str:
     return 'Long'
 
@@ -148,6 +184,12 @@ class CharType(Type):
   """
   def __init__(self):
     super().__init__(ir.IntType(bits=8), pass_by_ref=False, c_type=ctypes.c_char)
+
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    return context.module.add_debug_info(
+      'DIBasicType',
+      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_unsigned_char')})
 
   def __repr__(self) -> str:
     return 'Char'
@@ -161,6 +203,12 @@ class PointerType(Type):
     super().__init__(
       ir.PointerType(pointee_type.ir_type), pass_by_ref=False, c_type=ctypes.POINTER(pointee_type.c_type))
     self.pointee_type = pointee_type
+
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    return context.module.add_debug_info(
+      'DIBasicType',
+      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_address')})
 
   def __repr__(self) -> str:
     return 'Ptr[%r]' % self.pointee_type
@@ -183,6 +231,12 @@ class RawPointerType(Type):
   """
   def __init__(self):
     super().__init__(LLVM_VOID_POINTER_TYPE, pass_by_ref=False, c_type=ctypes.c_void_p)
+
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    return context.module.add_debug_info(
+      'DIBasicType',
+      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_address')})
 
   def __repr__(self) -> str:
     return 'RawPtr'
@@ -212,6 +266,7 @@ class UnionType(Type):
 
     self.tag_c_type = ctypes.c_uint8
     self.tag_ir_type = ir.types.IntType(8)
+    self.tag_size = 8
     # TODO: The C Type should match the IR type: Also make this an byte array.
     self.untagged_union_c_type = type(
       '%s_UntaggedCType' % self.identifier, (ctypes.Union,),
@@ -239,6 +294,26 @@ class UnionType(Type):
 
   def __hash__(self) -> int:
     return hash(tuple(sorted(zip(self.possible_type_nums, self.possible_types))) + (self.val_size,))
+
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    di_derived_types = [
+      context.module.add_debug_info(
+        'DIDerivedType', {
+          'tag': ir.DIToken('DW_TAG_inheritance'), 'baseType': member_type.make_di_type(context=context),
+          'size': member_type.size, 'align': member_type.size})
+      for member_type in self.possible_types]
+    di_tag_type = context.module.add_debug_info(
+      'DIBasicType',
+      {'name': 'tag', 'size': self.tag_size, 'align': self.tag_size, 'encoding': ir.DIToken('DW_ATE_unsigned')})
+    di_untagged_union_type = context.module.add_debug_info(
+      'DICompositeType', {
+        'name': repr(self), 'size': self.val_size, 'align': self.val_size, 'tag': ir.DIToken('DW_TAG_union_type'),
+        'file': context.current_di_file, 'elements': [di_derived_types]})
+    return context.module.add_debug_info(
+      'DICompositeType', {
+        'name': repr(self), 'size': self.size, 'align': self.size, 'tag': ir.DIToken('DW_TAG_structure_type'),
+        'elements': [di_tag_type, di_untagged_union_type]})
 
   def is_realizable(self):
     """
@@ -418,7 +493,8 @@ class StructType(Type):
       for member_identifier, member_type in zip(member_identifiers, member_types)]
     self.c_val_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
     if pass_by_ref:
-      super().__init__(ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type))
+      super().__init__(
+        ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type))
     else:
       super().__init__(self.ir_val_type, pass_by_ref=False, c_type=self.c_val_type)
     self.struct_identifier = struct_identifier
@@ -454,6 +530,19 @@ class StructType(Type):
       return context.builder.bitcast(self_ir_alloca_raw, self.ir_type, name='self')
     else:  # pass by value, use alloca
       return context.alloca_at_entry(self.ir_type, name='self')
+
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    assert context.emits_debug
+    di_derived_types = [
+      context.module.add_debug_info(
+        'DIDerivedType', {
+          'tag': ir.DIToken('DW_TAG_inheritance'), 'baseType': member_type.make_di_type(context=context),
+          'size': member_type.size, 'align': member_type.size})
+      for member_type in self.member_types]
+    return context.module.add_debug_info(
+      'DICompositeType', {
+        'name': repr(self), 'size': self.size, 'align': self.size, 'tag': ir.DIToken('DW_TAG_structure_type'),
+        'file': context.current_di_file, 'elements': di_derived_types})
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, StructType):
@@ -504,29 +593,31 @@ class StructType(Type):
       context.builder.store(ir_func_arg, member_ptr)
 
   def build_constructor(self, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> FunctionSymbol:
+    assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
+    pos = parent_context.current_pos
+
     class ConstructorConcreteFuncFactor(ConcreteFunctionFactory):
       def build_concrete_func_ir(self_, concrete_func: ConcreteFunction):
-        concrete_struct_type = concrete_func.return_type
-        assert isinstance(concrete_struct_type, StructType)
+        with parent_context.use_pos(pos):
+          concrete_struct_type = concrete_func.return_type
+          assert isinstance(concrete_struct_type, StructType)
 
-        if parent_context.emits_ir:
-          ir_func_name = parent_symbol_table.make_ir_func_name(
-            self.struct_identifier, extern=False, concrete_func=concrete_func)
-          concrete_func.ir_func = ir.Function(
-            parent_context.module, concrete_func.make_ir_function_type(), name=ir_func_name)
-          constructor_block = concrete_func.ir_func.append_basic_block(name='entry')
-          context = parent_context.copy_with_builder(ir.IRBuilder(constructor_block))
-          self_ir_alloca = concrete_struct_type.make_ir_alloca(context=context)
+          if parent_context.emits_ir:
+            concrete_func.make_ir_func(
+              identifier=self.struct_identifier, extern=False, symbol_table=parent_symbol_table, context=parent_context)
+            constructor_block = concrete_func.ir_func.append_basic_block(name='entry')
+            context = parent_context.copy_with_func(concrete_func, builder=ir.IRBuilder(constructor_block))
+            self_ir_alloca = concrete_struct_type.make_ir_alloca(context=context)
 
-          for member_identifier, ir_func_arg in zip(self.member_identifiers, concrete_func.ir_func.args):
-            ir_func_arg.identifier = member_identifier
-          concrete_struct_type.make_store_members_ir(
-            member_ir_vals=concrete_func.ir_func.args, struct_ir_alloca=self_ir_alloca, context=context)
+            for member_identifier, ir_func_arg in zip(self.member_identifiers, concrete_func.ir_func.args):
+              ir_func_arg.identifier = member_identifier
+            concrete_struct_type.make_store_members_ir(
+              member_ir_vals=concrete_func.ir_func.args, struct_ir_alloca=self_ir_alloca, context=context)
 
-          if concrete_struct_type.is_pass_by_ref():
-            context.builder.ret(self_ir_alloca)
-          else:  # pass by value
-            context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
+            if concrete_struct_type.is_pass_by_ref():
+              context.builder.ret(self_ir_alloca)
+            else:  # pass by value
+              context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
 
         return concrete_func
 
@@ -543,44 +634,46 @@ class StructType(Type):
   def build_destructor(self, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> FunctionSymbol:
     destructor_symbol = parent_symbol_table['free']
     assert isinstance(destructor_symbol, FunctionSymbol)
+    assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
+    pos = parent_context.current_pos
 
     class DestructorConcreteFuncFactory(ConcreteFunctionFactory):
       def build_concrete_func_ir(self_, concrete_func: ConcreteFunction):
-        assert len(concrete_func.arg_types) == 1
-        concrete_struct_type = concrete_func.arg_types[0]
-        assert isinstance(concrete_struct_type, StructType)
-        if parent_context.emits_ir:
-          ir_func_name = parent_symbol_table.make_ir_func_name('free', extern=False, concrete_func=concrete_func)
-          concrete_func.ir_func = ir.Function(
-            parent_context.module, concrete_func.make_ir_function_type(), name=ir_func_name)
-          destructor_block = concrete_func.ir_func.append_basic_block(name='entry')
-          context = parent_context.copy_with_builder(ir.IRBuilder(destructor_block))
+        with parent_context.use_pos(pos):
+          assert len(concrete_func.arg_types) == 1
+          concrete_struct_type = concrete_func.arg_types[0]
+          assert isinstance(concrete_struct_type, StructType)
+          if parent_context.emits_ir:
+            concrete_func.make_ir_func(
+              identifier='free', extern=False, symbol_table=parent_symbol_table, context=parent_context)
+            destructor_block = concrete_func.ir_func.append_basic_block(name='entry')
+            context = parent_context.copy_with_func(concrete_func, builder=ir.IRBuilder(destructor_block))
 
-          assert len(concrete_func.ir_func.args) == 1
-          self_ir_alloca = concrete_func.ir_func.args[0]
-          self_ir_alloca.identifier = 'self_ptr'
-          # Free members in reversed order
-          for member_num in reversed(range(len(self.member_identifiers))):
-            member_identifier = self.member_identifiers[member_num]
-            signature_member_type = self.member_types[member_num]
-            concrete_member_type = concrete_struct_type.member_types[member_num]
-            member_ir_val = self.make_extract_member_val_ir(
-              member_identifier, struct_ir_val=self_ir_alloca, context=context)
-            # TODO: properly infer templ types, also for struct members
-            assert not (isinstance(signature_member_type, StructType) and len(signature_member_type.templ_types) > 0), (
-              'not implemented yet')
-            templ_types: List[Type] = []
-            if isinstance(concrete_member_type, PointerType):
-              templ_types = [concrete_member_type.pointee_type]
-            make_func_call_ir(
-              func_identifier='free', func_symbol=destructor_symbol, templ_types=templ_types,
-              calling_arg_types=[signature_member_type],
-              calling_ir_args=[member_ir_val], context=context)
-          if self.is_pass_by_ref():
-            assert context.ir_func_free is not None
-            self_ir_alloca_raw = context.builder.bitcast(self_ir_alloca, LLVM_VOID_POINTER_TYPE, name='self_raw_ptr')
-            context.builder.call(context.ir_func_free, args=[self_ir_alloca_raw], name='free_self')
-          context.builder.ret_void()
+            assert len(concrete_func.ir_func.args) == 1
+            self_ir_alloca = concrete_func.ir_func.args[0]
+            self_ir_alloca.identifier = 'self_ptr'
+            # Free members in reversed order
+            for member_num in reversed(range(len(self.member_identifiers))):
+              member_identifier = self.member_identifiers[member_num]
+              signature_member_type = self.member_types[member_num]
+              concrete_member_type = concrete_struct_type.member_types[member_num]
+              member_ir_val = self.make_extract_member_val_ir(
+                member_identifier, struct_ir_val=self_ir_alloca, context=context)
+              # TODO: properly infer templ types, also for struct members
+              assert not (isinstance(signature_member_type, StructType) and len(signature_member_type.templ_types) > 0), (  # noqa
+                'not implemented yet')
+              templ_types: List[Type] = []
+              if isinstance(concrete_member_type, PointerType):
+                templ_types = [concrete_member_type.pointee_type]
+              make_func_call_ir(
+                func_identifier='free', func_symbol=destructor_symbol, templ_types=templ_types,
+                calling_arg_types=[signature_member_type],
+                calling_ir_args=[member_ir_val], context=context)
+            if self.is_pass_by_ref():
+              assert context.ir_func_free is not None
+              self_ir_alloca_raw = context.builder.bitcast(self_ir_alloca, LLVM_VOID_POINTER_TYPE, name='self_raw_ptr')
+              context.builder.call(context.ir_func_free, args=[self_ir_alloca_raw], name='free_self')
+            context.builder.ret_void()
 
     placeholder_templ_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, TemplateType)]
     # TODO: Narrow type to something more meaningful then SLEEPY_NEVER
@@ -598,9 +691,13 @@ class TemplateType(Type):
   """
   A template parameter.
   """
+
   def __init__(self, identifier: str):
     super().__init__(ir_type=None, pass_by_ref=False, c_type=None)
     self.identifier = identifier
+
+  def make_di_type(self, context: CodegenContext):
+    assert False, self
 
   def __repr__(self):
     return self.identifier
@@ -832,6 +929,15 @@ class VariableSymbol(Symbol):
     if not context.emits_ir:
       return
     self.ir_alloca = context.alloca_at_entry(self.declared_var_type.ir_type, name='%s_ptr' % identifier)
+    if context.emits_debug:
+      assert context.di_declare_func is not None
+      di_local_var = context.module.add_debug_info(
+        'DILocalVariable', {
+          'name': identifier, 'scope': context.current_di_scope, 'file': context.current_di_file,
+          'line': context.current_pos.get_from_line(), 'type': self.declared_var_type.make_di_type(context=context)})
+      di_expression = context.module.add_debug_info('DIExpression', {})
+      assert context.builder.debug_metadata is not None
+      context.builder.call(context.di_declare_func, args=[self.ir_alloca, di_local_var, di_expression])
 
   def __repr__(self) -> str:
     return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r, mutable=%r)' % (
@@ -845,7 +951,7 @@ class ConcreteFunction:
   def __init__(self,
                signature: FunctionSignature,
                ir_func: Optional[ir.Function],
-               make_inline_func_call_ir_callback: Optional[Callable[[List[ir.values.Value], CodegenContext], Optional[ir.values.Value]]],  # noqa
+               make_inline_func_call_ir_callback: Optional[Callable[[List[ir.values.Value], CodegenContext, TreePosition], Optional[ir.values.Value]]],  # noqa
                concrete_templ_types: List[Type], return_type: Type,
                arg_types: List[Type], arg_type_narrowings: List[Type]):
     """
@@ -871,6 +977,7 @@ class ConcreteFunction:
     self.return_type = return_type
     self.arg_types = arg_types
     self.arg_type_narrowings = arg_type_narrowings
+    self.di_subprogram: Optional[ir.DIValue] = None
 
   def get_c_arg_types(self) -> Tuple[Callable]:
     return (self.return_type.c_type,) + tuple(arg_type.c_type for arg_type in self.arg_types)
@@ -914,6 +1021,27 @@ class ConcreteFunction:
       self.return_type == other.return_type and self.signature.return_mutable == other.signature.return_mutable and
       self.arg_types == other.arg_types and self.signature.arg_mutables == other.signature.arg_mutables and
       self.arg_type_narrowings == other.arg_type_narrowings)
+
+  def make_ir_func(self, identifier: str, extern: bool, symbol_table: SymbolTable, context: CodegenContext):
+    assert context.emits_ir
+    assert not self.is_inline
+    assert self.ir_func is None
+    ir_func_name = symbol_table.make_ir_func_name(identifier, extern=extern, concrete_func=self)
+    ir_func_type = self.make_ir_function_type()
+    self.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
+    if context.emits_debug and not extern:
+      assert self.di_subprogram is None
+      di_func_type = context.module.add_debug_info(
+        'DISubroutineType', {'types': context.module.add_metadata([None])})
+      self.di_subprogram = context.module.add_debug_info(
+        'DISubprogram', {
+          'name': ir_func_name, 'file': context.current_di_file, 'scope': context.current_di_scope,
+          'line': context.current_pos.get_from_line(),
+          'type': di_func_type,
+          'isLocal': False, 'isDefinition': True,
+          'unit': context.current_di_compile_unit
+        }, is_distinct=True)
+      self.ir_func.set_metadata('dbg', self.di_subprogram)
 
 
 class ConcreteFunctionFactory:
@@ -1346,22 +1474,41 @@ class CodegenContext:
 
     if copy_from is None:
       self.emits_ir = builder is not None  # type: bool
+      self.emits_debug = self.emits_ir  # type: bool
       self.is_terminated = False
 
+      self.current_pos: Optional[TreePosition] = None
+      self.current_func: Optional[ConcreteFunction] = None
       self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
       self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
       self.inline_func_call_stack = []  # type: List[ConcreteFunction]
       self.ir_func_malloc = None  # type: Optional[ir.Function]
       self.ir_func_free = None  # type: Optional[ir.Function]
+
+      self.current_di_file: Optional[ir.DIValue] = None
+      self.current_di_compile_unit: Optional[ir.DIValue] = None
+      self.current_di_scope: Optional[ir.DIValue] = None
+      self.di_declare_func: Optional[ir.Function] = None
     else:
       self.emits_ir = copy_from.emits_ir
+      self.emits_debug = copy_from.emits_debug  # type: bool
       self.is_terminated = copy_from.is_terminated
 
+      self.current_pos: Optional[TreePosition] = copy_from.current_pos
+      self.current_func: Optional[ConcreteFunction] = copy_from.current_func
       self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
       self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
       self.inline_func_call_stack = copy_from.inline_func_call_stack.copy()  # type: List[ConcreteFunction]
       self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
       self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
+
+      self.current_di_file: Optional[ir.DIValue] = copy_from.current_di_file
+      self.current_di_compile_unit: Optional[ir.DIValue] = copy_from.current_di_compile_unit
+      self.current_di_scope: Optional[ir.DIValue] = copy_from.current_di_scope
+      self.di_declare_func: Optional[ir.Function] = copy_from.di_declare_func
+
+      if self.builder is not None:
+        self.builder.debug_metadata = copy_from.builder.debug_metadata
 
     assert all(inline_func.is_inline for inline_func in self.inline_func_call_stack)
 
@@ -1409,6 +1556,23 @@ class CodegenContext:
     """
     new_context = self.copy_with_builder(None)
     new_context.emits_ir = False
+    new_context.emits_debug = False
+    return new_context
+
+  def copy_with_func(self, concrete_func: ConcreteFunction, builder: Optional[ir.IRBuilder]):
+    assert not concrete_func.is_inline
+    new_context = self.copy_with_builder(builder)
+    new_context.current_func = concrete_func
+    new_context.current_func_inline_return_ir_alloca = None
+    new_context.current_func_inline_return_collect_block = None
+    if builder is None:
+      new_context.emits_ir = False
+      new_context.emits_debug = False
+    if new_context.emits_debug:
+      assert concrete_func.di_subprogram is not None
+      new_context.current_di_scope = concrete_func.di_subprogram
+      # as the current scope changed, reset the debug_metadata
+      new_context.builder.debug_metadata = make_di_location(pos=new_context.current_pos, context=new_context)
     return new_context
 
   def copy_with_inline_func(self, concrete_func, return_ir_alloca, return_collect_block):
@@ -1420,6 +1584,7 @@ class CodegenContext:
     assert concrete_func.is_inline
     assert concrete_func not in self.inline_func_call_stack
     new_context = self.copy()
+    new_context.current_func = concrete_func
     new_context.current_func_inline_return_ir_alloca = return_ir_alloca
     new_context.current_func_inline_return_collect_block = return_collect_block
     new_context.inline_func_call_stack.append(concrete_func)
@@ -1451,11 +1616,37 @@ class CodegenContext:
       self.builder.position_at_end(self.builder.block)
     return ir_alloca
 
+  def use_pos(self, pos: TreePosition) -> UsePosRuntimeContext:
+    return UsePosRuntimeContext(pos, context=self)
+
+
+class UsePosRuntimeContext:
+  def __init__(self, pos: TreePosition, context: CodegenContext):
+    self.pos = pos
+    self.context = context
+
+  def __enter__(self):
+    if self.context.is_terminated:
+      return
+    self.prev_pos = self.context.current_pos
+    self.context.current_pos = self.pos
+    if self.context.emits_debug:
+      self.prev_debug_metadata = self.context.builder.debug_metadata
+      self.context.builder.debug_metadata = make_di_location(self.pos, context=self.context)
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    if self.context.is_terminated:
+      return
+    self.context.current_pos = self.prev_pos
+    if self.context.emits_debug:
+      self.context.builder.debug_metadata = self.prev_debug_metadata
+
 
 def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_types: List[Type],
                       calling_arg_types: List[Type], calling_ir_args: List[ir.values.Value],
                       context: CodegenContext) -> Optional[ir.values.Value]:
   assert context.emits_ir
+  assert not context.emits_debug or context.builder.debug_metadata is not None
   assert len(calling_arg_types) == len(calling_ir_args)
 
   def make_call_func(concrete_func, concrete_calling_arg_types_, caller_context):
@@ -1465,6 +1656,8 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
     :param CodegenContext caller_context:
     :rtype: ir.values.Value
     """
+    assert caller_context.emits_ir
+    assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
     assert len(concrete_func.arg_types) == len(calling_arg_types)
     casted_ir_args = [make_implicit_cast_to_ir_val(
       from_type=called_arg_type, to_type=declared_arg_type, from_ir_val=ir_func_arg, context=caller_context,
@@ -1669,11 +1862,11 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
         emits_ir=context.emits_ir)
       function_symbol.add_signature(signature)
 
-  destructor_factory = InbuiltOpDestructorFuncFactory(symbol_table=symbol_table, context=context)
+  destructor_factory = get_dummy_destructor_function_factory(emits_ir=context.emits_ir)
   free_signature = FunctionSignature(
     concrete_func_factory=destructor_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_VOID,
     return_mutable=False, arg_types=[ptr_type], arg_identifiers=['ptr'], arg_type_narrowings=[SLEEPY_NEVER],
-    arg_mutables=[False])
+    arg_mutables=[False], is_inline=True)
   symbol_table.free_symbol.add_signature(free_signature)
 
   return TypeSymbol(type_factory=type_factory, constructor_symbol=None)
@@ -1681,11 +1874,11 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 
 def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
   # add destructor
-  destructor_factory = InbuiltOpDestructorFuncFactory(symbol_table=symbol_table, context=context)
+  destructor_factory = get_dummy_destructor_function_factory(emits_ir=context.emits_ir)
   destructor_signature = FunctionSignature(
     concrete_func_factory=destructor_factory, placeholder_templ_types=[], return_type=SLEEPY_VOID,
     return_mutable=False, arg_types=[SLEEPY_RAW_PTR], arg_identifiers=['raw_ptr'], arg_type_narrowings=[SLEEPY_NEVER],
-    arg_mutables=[False])
+    arg_mutables=[False], is_inline=True)
   symbol_table.free_symbol.add_signature(destructor_signature)
 
   # add casts from non-raw ptr types
@@ -1706,33 +1899,60 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   return raw_ptr_symbol
 
 
+def make_di_location(pos: TreePosition, context: CodegenContext):
+  assert context.emits_debug
+  assert context.current_di_scope is not None
+  line, col = pos.get_from_line_col()
+  return context.module.add_debug_info(
+    'DILocation', {'line': line, 'column': col, 'scope': context.current_di_scope})
+
+
 class InbuiltOpConcreteFuncFactory(ConcreteFunctionFactory):
-  def __init__(self, instruction: Callable[..., Value], emits_ir: bool):
+  def __init__(self, instruction: Callable[..., Optional[ir.Instruction]], emits_ir: bool):
     self.instruction = instruction
     self.emits_ir = emits_ir
 
+  def _make_inline_func_call_ir(self, ir_func_args: List[ir.Instruction],
+                                caller_context: CodegenContext) -> ir.instructions.Instruction:
+    return self.instruction(caller_context.builder, *ir_func_args)
+
   def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
+    assert concrete_func.is_inline
     if self.emits_ir:
-      concrete_func.make_inline_func_call_ir = (
-        lambda ir_func_args, caller_context: self.instruction(caller_context.builder, *ir_func_args))
+      concrete_func.make_inline_func_call_ir = self._make_inline_func_call_ir
     return concrete_func
 
 
-class InbuiltOpDestructorFuncFactory(ConcreteFunctionFactory):
-  def __init__(self, symbol_table: SymbolTable, context: CodegenContext):
-    self.symbol_table = symbol_table
-    self.context = context
-
-  def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
-    if self.context.emits_ir:
-      ir_func_name = self.symbol_table.make_ir_func_name('free', extern=False, concrete_func=concrete_func)
-      concrete_func.ir_func = ir.Function(self.context.module, concrete_func.make_ir_function_type(), name=ir_func_name)
-      destructor_block = concrete_func.ir_func.append_basic_block(name='entry')
-      destructor_context = self.context.copy_with_builder(ir.IRBuilder(destructor_block))
-      destructor_context.builder.ret_void()  # destructor does not do anything for value types
+def get_dummy_destructor_function_factory(emits_ir: bool) -> ConcreteFunctionFactory:
+  return InbuiltOpConcreteFuncFactory(instruction=lambda builder, value: None, emits_ir=emits_ir)
 
 
 def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
+  if context.emits_debug:
+    assert context.di_declare_func is None
+    di_declare_func_type = ir.FunctionType(ir.VoidType(), [ir.MetaDataType()] * 3)
+    context.di_declare_func = ir.Function(context.builder.module, di_declare_func_type, 'llvm.dbg.declare')
+
+    # TODO: Proper filename / directory
+    # TODO: Add compiler version
+    producer = 'sleepy compiler'
+    assert context.current_di_file is None and context.current_di_compile_unit is None
+    context.current_di_file = context.module.add_debug_info(
+      'DIFile', {'filename': 'tmp.slp', 'directory': '.'})
+    context.current_di_compile_unit = context.module.add_debug_info(
+      'DICompileUnit', {
+        'language': ir.DIToken('DW_LANG_C'), 'file': context.current_di_file, 'producer': producer,
+        'isOptimized': False, 'runtimeVersion': 1},
+      is_distinct=True)
+    context.current_di_scope = context.current_di_file
+
+    context.module.add_named_metadata('llvm.dbg.cu', context.current_di_compile_unit)
+    di_dwarf_version = [ir.Constant(ir.IntType(32), 2), 'Dwarf Version', ir.Constant(ir.IntType(32), 2)]
+    di_debug_info_version = [ir.Constant(ir.IntType(32), 2), 'Debug Info Version', ir.Constant(ir.IntType(32), 3)]
+    context.module.add_named_metadata('llvm.module.flags', di_dwarf_version)
+    context.module.add_named_metadata('llvm.module.flags', di_debug_info_version)
+    context.module.add_named_metadata('llvm.ident', [producer])
+
   assert 'free' not in symbol_table
   free_symbol = FunctionSymbol(returns_void=True)
   symbol_table['free'] = free_symbol
@@ -1744,12 +1964,12 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
       continue
 
     # add destructor
-    destructor_factory = InbuiltOpDestructorFuncFactory(symbol_table=symbol_table, context=context)
-    signature_ = FunctionSignature(
+    destructor_factory = get_dummy_destructor_function_factory(emits_ir=context.emits_ir)
+    destructor_signature = FunctionSignature(
       concrete_func_factory=destructor_factory, placeholder_templ_types=[], return_type=SLEEPY_VOID,
       return_mutable=False, arg_types=[inbuilt_type], arg_identifiers=['var'], arg_type_narrowings=[SLEEPY_NEVER],
-      arg_mutables=[False])
-    symbol_table.free_symbol.add_signature(signature_)
+      arg_mutables=[False], is_inline=True)
+    symbol_table.free_symbol.add_signature(destructor_signature)
 
   for assert_identifier in ['assert', 'unchecked_assert']:
     assert assert_identifier not in symbol_table
@@ -1758,18 +1978,24 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
     symbol_table.inbuilt_symbols[assert_identifier] = assert_symbol
 
   if context.emits_ir:
-    module = context.builder.module
     context.ir_func_malloc = ir.Function(
-      module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
-    context.ir_func_free = ir.Function(module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
+      context.module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
+    context.ir_func_free = ir.Function(
+      context.module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
 
-  for symbol_identifier, setup_func in [('Str', _make_str_symbol), ('Ptr', _make_ptr_symbol), ('RawPtr', _make_raw_ptr_symbol)]:
-    assert symbol_identifier not in symbol_table
-    symbol = setup_func(symbol_table=symbol_table, context=context)
-    symbol_table[symbol_identifier] = symbol
-    symbol_table.inbuilt_symbols[symbol_identifier] = symbol
+  # TODO: currently, some inbuilt free() functions are not inlined.
+  # This means that we need to add debug information to these functions, but they do not have any line numbers.
+  # We use this dummy here.
+  inbuilt_pos = TreePosition('', 0, 0)
 
-  make_builtin_operator_functions(symbol_table, context.emits_ir)
+  with context.use_pos(inbuilt_pos):
+    for symbol_identifier, setup_func in [('Str', _make_str_symbol), ('Ptr', _make_ptr_symbol), ('RawPtr', _make_raw_ptr_symbol)]:
+      assert symbol_identifier not in symbol_table
+      symbol = setup_func(symbol_table=symbol_table, context=context)
+      symbol_table[symbol_identifier] = symbol
+      symbol_table.inbuilt_symbols[symbol_identifier] = symbol
+
+    make_builtin_operator_functions(symbol_table, context.emits_ir)
 
 
 Instructions: Dict[Tuple[BuiltinBinaryOps, Type], Callable[[CodegenContext, Value, Value], Value]] = concat_dicts([

@@ -13,7 +13,7 @@ from sleepy.symbols import SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE, SLEEPY_FLOAT,
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   prods_attr_rules={
     Production('TopLevelStmt', 'StmtList'): {
-      'ast': lambda _pos, stmt_list: TopLevelAst(_pos, root_scope=AbstractScopeAst(_pos, stmt_list=stmt_list(1)))},
+      'ast': lambda _pos, stmt_list: TopLevelAst(_pos, stmt_list=stmt_list(1))},
     Production('Scope', '{', 'StmtList', '}'): {
       'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list=stmt_list(2))},
     Production('StmtList'): {
@@ -268,8 +268,7 @@ def add_preamble_to_ast(program_ast):
   """
   preamble_ast = make_preamble_ast()
   assert isinstance(preamble_ast, TopLevelAst)
-  return TopLevelAst(program_ast.pos, AbstractScopeAst(
-    preamble_ast.pos, preamble_ast.root_scope.stmt_list + program_ast.root_scope.stmt_list))
+  return TopLevelAst(program_ast.pos, preamble_ast.stmt_list + program_ast.stmt_list)
 
 
 SLEEPY_GRAMMAR = SLEEPY_ATTR_GRAMMAR.grammar
