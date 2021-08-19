@@ -485,23 +485,28 @@ class StructType(Type):
   """
   def __init__(self, struct_identifier: str, templ_types: List[Type], member_identifiers: List[str],
                member_types: List[Type], member_mutables: List[bool], pass_by_ref: bool):
-    assert len(member_identifiers) == len(member_types) == len(member_mutables)
-    member_ir_types = [member_type.ir_type for member_type in member_types]
-    self.ir_val_type = ir.types.LiteralStructType(member_ir_types)
-    member_c_types = [
-      (member_identifier, member_type.c_type)
-      for member_identifier, member_type in zip(member_identifiers, member_types)]
-    self.c_val_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
-    if pass_by_ref:
-      super().__init__(
-        ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type))
-    else:
-      super().__init__(self.ir_val_type, pass_by_ref=False, c_type=self.c_val_type)
     self.struct_identifier = struct_identifier
     self.templ_types = templ_types
     self.member_identifiers = member_identifiers
     self.member_types = member_types
     self.member_mutables = member_mutables
+    if self.has_templ_placeholder():
+      self.ir_val_type = None
+      self.c_val_type = None
+      super().__init__(None, pass_by_ref=pass_by_ref, c_type=None)
+    else:  # default case
+      assert not self.has_templ_placeholder()
+      member_ir_types = [member_type.ir_type for member_type in member_types]
+      self.ir_val_type = ir.types.LiteralStructType(member_ir_types)
+      member_c_types = [
+        (member_identifier, member_type.c_type)
+        for member_identifier, member_type in zip(member_identifiers, member_types)]
+      self.c_val_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
+      if pass_by_ref:
+        super().__init__(
+          ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type))
+      else:
+        super().__init__(self.ir_val_type, pass_by_ref=False, c_type=self.c_val_type)
 
   def get_member_num(self, member_identifier):
     """
