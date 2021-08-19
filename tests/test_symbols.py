@@ -88,6 +88,7 @@ def test_try_infer_templ_types_simple():
     [SLEEPY_DOUBLE, SLEEPY_INT])
 
 
+# noinspection PyPep8Naming
 def test_try_infer_templ_types_ptr():
   from sleepy.symbols import try_infer_templ_types, TemplateType, PointerType, SLEEPY_INT, SLEEPY_CHAR
   T = TemplateType('T')
@@ -124,6 +125,47 @@ def test_try_infer_templ_types_union():
       calling_types=[UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR])],
       signature_types=[UnionType.from_types([SLEEPY_CHAR, SLEEPY_INT])], placeholder_templ_types=[]),
     [])
+
+
+# noinspection PyPep8Naming
+def test_try_infer_templ_types_struct():
+  from sleepy.symbols import try_infer_templ_types, TemplateType, StructType, SLEEPY_INT, SLEEPY_CHAR
+  T = TemplateType('T')
+  U = TemplateType('U')
+  WrapperT = StructType(
+    'Wrapper', templ_types=[T], member_identifiers=['value'], member_types=[T], member_mutables=[False],
+    pass_by_ref=False)
+  WrapperU = WrapperT.replace_types({T: U})
+  WrapperInt = WrapperT.replace_types({T: SLEEPY_INT})
+  WrapperChar = WrapperT.replace_types({T: SLEEPY_CHAR})
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[WrapperInt], signature_types=[WrapperT], placeholder_templ_types=[T]),
+    [SLEEPY_INT])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[WrapperInt], signature_types=[T], placeholder_templ_types=[T]),
+    [WrapperInt])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[SLEEPY_INT], signature_types=[WrapperT], placeholder_templ_types=[T]),
+    None)
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[WrapperInt, WrapperInt], signature_types=[WrapperT, WrapperT], placeholder_templ_types=[T]),
+    [SLEEPY_INT])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[WrapperInt, WrapperChar], signature_types=[WrapperT, WrapperU], placeholder_templ_types=[T, U]),
+    [SLEEPY_INT, SLEEPY_CHAR])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[WrapperInt, SLEEPY_INT], signature_types=[WrapperT, T], placeholder_templ_types=[T]),
+    [SLEEPY_INT])
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[WrapperChar, SLEEPY_INT], signature_types=[WrapperT, T], placeholder_templ_types=[T]),
+    None)
 
 
 def test_context_use_pos():

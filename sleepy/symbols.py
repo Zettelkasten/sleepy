@@ -2106,7 +2106,7 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
       assert len(signature_type.member_types) == len(calling_type.member_types)
       return all(
         infer_type(calling_type=call_type, signature_type=sig_type)
-        for call_type, sig_type in zip(signature_type.member_types, calling_type.member_types))
+        for call_type, sig_type in zip(calling_type.member_types, signature_type.member_types))
     elif isinstance(signature_type, UnionType):
       if not isinstance(calling_type, UnionType):
         return False
