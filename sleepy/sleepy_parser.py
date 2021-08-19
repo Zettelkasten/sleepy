@@ -57,8 +57,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           return_annotation_list=annotation_list(6), body_scope=None))},
     Production('Stmt', 'struct', 'identifier', 'TemplateIdentifierList', '{', 'MemberList', '}'): {
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list: StructDeclarationAst(
-        _pos, struct_identifier=identifier(2), template_identifiers=identifier_list(3),
-        mem_identifiers=identifier_list(5), mem_type_asts=type_list(5), mem_annotations=annotation_list(5)) },
+        _pos, struct_identifier=identifier(2), templ_identifiers=identifier_list(3),
+        member_identifiers=identifier_list(5), member_types=type_list(5), member_annotations=annotation_list(5)) },
     Production('Stmt', 'return', 'ExprList', ';'): {
       'ast': lambda _pos, val_list: ReturnStatementAst(_pos, return_exprs=val_list(2))},
     Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr', ';'): {

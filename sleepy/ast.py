@@ -11,7 +11,7 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SL
   TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory, DummyTypeFactory, try_infer_templ_types
+  SLEEPY_CHAR_PTR, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory, try_infer_templ_types
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
 from abc import ABC, abstractmethod
@@ -694,23 +694,19 @@ class ReturnStatementAst(StatementAst):
     return 'ReturnStatementAst(return_exprs=%r)' % self.return_exprs
 
 
-class TypedIdentifier:
-  def __init__(self, identifier: str, type_ast: TypeAst, is_mutable: bool):
-    self.identifier = identifier
-    self.type_ast = type_ast
-    self.is_mutable = is_mutable
-
-
 class StructDeclarationAst(StatementAst):
   allowed_annotation_identifiers = frozenset({'ValType', 'RefType'})
 
-  def __init__(self, pos: TreePosition, struct_identifier: str, template_identifiers: List[str],
-               mem_type_asts: List[TypeAst], mem_identifiers: List[str], mem_annotations: List[List[AnnotationAst]]):
+  def __init__(self, pos: TreePosition, struct_identifier: str, templ_identifiers: List[str],
+               member_types: List[TypeAst], member_identifiers: List[str],
+               member_annotations: List[List[AnnotationAst]]):
     super().__init__(pos)
+    assert len(member_types) == len(member_identifiers) == len(member_annotations)
     self.struct_identifier = struct_identifier
-    self.template_parameter_identifiers = template_identifiers
-    self.mem_typed_ids = [TypedIdentifier(identifier, type_ast, self.make_var_is_mutable(struct_identifier, ann_list, False)) for
-                          (identifier, type_ast, ann_list) in zip(mem_identifiers, mem_type_asts, mem_annotations)]
+    self.templ_identifiers = templ_identifiers
+    self.member_types = member_types
+    self.member_identifiers = member_identifiers
+    self.member_annotations = member_annotations
 
   def is_pass_by_ref(self) -> bool:
     val_type = any(annotation.identifier == 'ValType' for annotation in self.annotations)
@@ -724,35 +720,24 @@ class StructDeclarationAst(StatementAst):
       if self.struct_identifier in symbol_table.current_scope_identifiers:
         self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
 
-      # make types from member type asts and add type symbols to local symbol table
-      placeholder_types: List[TemplateType] = []
-      struct_symbol_table = symbol_table.copy() # symbol table including placeholder types
+      struct_symbol_table = symbol_table.copy()  # symbol table including placeholder types
+      placeholder_templ_types = self._collect_placeholder_templ_types(
+        self.templ_identifiers, symbol_table=struct_symbol_table)
 
-      for template_parameter_identifier in self.template_parameter_identifiers:
-        template_type = TemplateType(template_parameter_identifier)
-        factory = DummyTypeFactory(template_type)
-        symbol = TypeSymbol(factory, None)
-
-        placeholder_types.append(template_type)
-        struct_symbol_table.add_to_current_scope(template_parameter_identifier, symbol)
-
-      # make signature type, extract PARALLEL LISTS for that 'beautiful' api
-      member_identifiers = [member.identifier for member in self.mem_typed_ids]
-      member_types = [member.type_ast.make_type(struct_symbol_table) for member in self.mem_typed_ids]
-      mutable_flags = [member.is_mutable for member in self.mem_typed_ids]
+      member_types = [type_ast.make_type(symbol_table=struct_symbol_table) for type_ast in self.member_types]
+      member_mutables = [
+        self.make_var_is_mutable(member_identifier, member_annotations, default=False)
+        for member_identifier, member_annotations in zip(self.member_identifiers, self.member_annotations)]
 
       signature_struct_type = StructType(
-        struct_identifier=self.struct_identifier,
-        templ_types=placeholder_types,
-        member_identifiers=member_identifiers,
-        member_types=member_types,
-        member_mutables=mutable_flags,
-        pass_by_ref=self.is_pass_by_ref()
-      )
+        struct_identifier=self.struct_identifier, templ_types=placeholder_templ_types,
+        member_identifiers=self.member_identifiers, member_types=member_types, member_mutables=member_mutables,
+        pass_by_ref=self.is_pass_by_ref())
 
-      struct_type_factory = TypeFactory(placeholder_templ_types=placeholder_types, signature_type=signature_struct_type)
+      struct_type_factory = TypeFactory(
+        placeholder_templ_types=placeholder_templ_types, signature_type=signature_struct_type)
 
-      # make ctor and dtor
+      # make constructor / destructor
       constructor = signature_struct_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
       signature_struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
 
@@ -761,11 +746,12 @@ class StructDeclarationAst(StatementAst):
       symbol_table.add_to_current_scope(self.struct_identifier, struct_type_symbol)
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return self.stmt_list
+    return []
     
   def __repr__(self) -> str:
-    return 'StructDeclarationAst(struct_identifier=%r, placeholder_templ_type_identifiers=%r, stmt_list=%r)' % (
-      self.struct_identifier, self.template_parameter_identifiers, self.stmt_list)
+    return (
+      'StructDeclarationAst(struct_identifier=%r, templ_identifiers=%r, member_identifiers=%r, member_types=%r)' % (
+        self.struct_identifier, self.templ_identifiers, self.member_identifiers, self.member_types))
 
 
 class AssignStatementAst(StatementAst):

@@ -1849,6 +1849,32 @@ def test_templ_call_overloaded_union():
     assert_equal(main(True), True)
 
 
+def test_templ_struct():
+  with make_execution_engine() as engine:
+    program = """
+    struct Wrapper[T] {
+      value: T;
+    }
+    func unwrap[T](wrapper: Wrapper[T]) -> T {
+      return wrapper.value;
+    }
+    func wrap[T](value: T) -> Wrapper[T] {
+      return Wrapper(value);
+    }
+    func +[T](a: Wrapper[T], b: Wrapper[T]) -> Wrapper[T] {
+      return wrap(unwrap(a) + unwrap(b));
+    }
+    func main(a: Int, b: Int) -> Int {
+      a_ = wrap(a);
+      b_ = wrap(b);
+      c_ = a_ + b_;
+      return unwrap(c_);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(23, 43), 23 + 43)
+
+
 def test_ptr_loop():
   with make_execution_engine() as engine:
     program = """

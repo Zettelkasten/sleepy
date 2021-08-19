@@ -1294,14 +1294,6 @@ class TypeFactory:
     return self.signature_type.replace_types(replacements)
 
 
-class DummyTypeFactory(TypeFactory):
-  def __init__(self, signature_type: Type):
-    super().__init__([], signature_type)
-
-  def make_concrete_type(self, concrete_templ_types: List[Type]) -> Type:
-    raise Exception("Template placeholder should not be instantiated.")
-
-
 class TypeSymbol(Symbol):
   """
   A (statically) declared (possibly) template type.
