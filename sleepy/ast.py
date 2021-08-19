@@ -1618,13 +1618,17 @@ class IdentifierTypeAst(TypeAst):
     type_symbol = symbol_table[self.type_identifier]
     if not isinstance(type_symbol, TypeSymbol):
       self.raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)))
-    template_type_symbols = [
+    templ_type_symbols = [
       template_type.make_type(symbol_table=symbol_table) for template_type in self.templ_types]
-    if len(template_type_symbols) != len(type_symbol.type_factory.placeholder_templ_types):
-      self.raise_error(
-        'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
-          self.type_identifier, type_symbol.type_factory.placeholder_templ_types, template_type_symbols))
-    return type_symbol.get_type(concrete_templ_types=template_type_symbols)
+    if len(templ_type_symbols) != len(type_symbol.type_factory.placeholder_templ_types):
+      if len(templ_type_symbols) == 0:
+        self.raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
+          self.type_identifier, type_symbol.type_factory.placeholder_templ_types))
+      else:
+        self.raise_error(
+          'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
+            self.type_identifier, type_symbol.type_factory.placeholder_templ_types, templ_type_symbols))
+    return type_symbol.get_type(concrete_templ_types=templ_type_symbols)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return self.templ_types
