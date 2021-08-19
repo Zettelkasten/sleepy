@@ -562,7 +562,7 @@ class StructType(Type):
     """
     :rtype: str
     """
-    return self.struct_identifier
+    return self.struct_identifier + ('' if len(self.templ_types) == 0 else str(self.templ_types))
 
   def make_extract_member_val_ir(self, member_identifier, struct_ir_val, context):
     """
@@ -1288,12 +1288,13 @@ class TypeFactory:
     replacements = dict(zip(self.placeholder_templ_types, concrete_templ_types))
     return self.signature_type.replace_types(replacements)
 
+
 class DummyTypeFactory(TypeFactory):
   def __init__(self, signature_type: Type):
     super().__init__([], signature_type)
 
-  def make_concrete_type(self, concrete_template_types: List[Type]) -> Type:
-    raise "Template place holder should not be instantiated."
+  def make_concrete_type(self, concrete_templ_types: List[Type]) -> Type:
+    raise Exception("Template placeholder should not be instantiated.")
 
 
 class TypeSymbol(Symbol):
