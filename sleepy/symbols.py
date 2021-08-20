@@ -34,7 +34,7 @@ class Symbol(ABC):
     raise NotImplementedError()
 
 
-class Type:
+class Type(ABC):
   """
   A type of a declared variable.
   """
@@ -77,6 +77,14 @@ class Type:
     return False
 
   @abstractmethod
+  def children(self) -> List[Type]:
+    raise NotImplementedError()
+
+  @abstractmethod
+  def has_same_symbol_as(self, other: Type) -> bool:
+    raise NotImplementedError()
+
+  @abstractmethod
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     raise NotImplementedError()
@@ -91,6 +99,21 @@ class VoidType(Type):
 
   def __repr__(self) -> str:
     return 'Void'
+
+  def children(self) -> List[Type]:
+    return []
+
+  def __eq__(self, other) -> bool:
+    return isinstance(other, VoidType)
+
+  def __hash__(self) -> int:
+    return id(type(self))
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
+
+  def make_di_type(self, context: CodegenContext):
+    assert False, self
 
 
 class DoubleType(Type):
@@ -109,6 +132,18 @@ class DoubleType(Type):
   def __repr__(self) -> str:
     return 'Double'
 
+  def children(self) -> List[Type]:
+    return []
+
+  def __eq__(self, other) -> bool:
+    return isinstance(other, DoubleType)
+
+  def __hash__(self) -> int:
+    return id(type(self))
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
+
 
 class FloatType(Type):
   """
@@ -125,6 +160,18 @@ class FloatType(Type):
 
   def __repr__(self) -> str:
     return 'Float'
+
+  def children(self) -> List[Type]:
+    return []
+
+  def __eq__(self, other) -> bool:
+    return isinstance(other, FloatType)
+
+  def __hash__(self) -> int:
+    return id(type(self))
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
 
 
 class BoolType(Type):
@@ -143,6 +190,18 @@ class BoolType(Type):
   def __repr__(self) -> str:
     return 'Bool'
 
+  def children(self) -> List[Type]:
+    return []
+
+  def __eq__(self, other) -> bool:
+    return isinstance(other, BoolType)
+
+  def __hash__(self) -> int:
+    return id(type(self))
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return isinstance(other, BoolType)
+
 
 class IntType(Type):
   """
@@ -159,6 +218,18 @@ class IntType(Type):
 
   def __repr__(self) -> str:
     return 'Int'
+
+  def children(self) -> List[Type]:
+    return []
+
+  def __eq__(self, other) -> bool:
+    return isinstance(other, IntType)
+
+  def __hash__(self) -> int:
+    return id(type(self))
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
 
 
 class LongType(Type):
@@ -177,6 +248,18 @@ class LongType(Type):
   def __repr__(self) -> str:
     return 'Long'
 
+  def children(self) -> List[Type]:
+    return []
+
+  def __eq__(self, other) -> bool:
+    return isinstance(other, LongType)
+
+  def __hash__(self) -> int:
+    return id(type(self))
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
+
 
 class CharType(Type):
   """
@@ -193,6 +276,18 @@ class CharType(Type):
 
   def __repr__(self) -> str:
     return 'Char'
+
+  def children(self) -> List[Type]:
+    return []
+
+  def __eq__(self, other) -> bool:
+    return isinstance(other, CharType)
+
+  def __hash__(self) -> int:
+    return id(type(self))
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
 
 
 class PointerType(Type):
@@ -224,6 +319,12 @@ class PointerType(Type):
   def replace_types(self, replacements: Dict[Type, Type]) -> PointerType:
     return PointerType(pointee_type=self.pointee_type.replace_types(replacements))
 
+  def children(self) -> List[Type]:
+    return [self.pointee_type]
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
+
 
 class RawPointerType(Type):
   """
@@ -243,6 +344,18 @@ class RawPointerType(Type):
 
   def replace_types(self, replacements: Dict[Type, Type]) -> RawPointerType:
     return self
+
+  def children(self) -> List[Type]:
+    return []
+
+  def __eq__(self, other) -> bool:
+    return isinstance(other, RawPointerType)
+
+  def __hash__(self) -> int:
+    return id(type(self))
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
 
 
 class UnionType(Type):
@@ -478,6 +591,12 @@ class UnionType(Type):
     val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in possible_types)
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
 
+  def children(self) -> List[Type]:
+    return self.possible_types
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return isinstance(other, UnionType)
+
 
 class StructType(Type):
   """
@@ -691,6 +810,15 @@ class StructType(Type):
     destructor_symbol.add_signature(signature_)
     return destructor_symbol
 
+  def children(self) -> List[Type]:
+    return self.member_types
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    # TODO: either store the actual symbol, or keep track of a type base (= the signature type)
+    return (
+      isinstance(other, StructType) and other.struct_identifier == self.struct_identifier and
+      self.member_types == other.member_types and self.member_identifiers == other.member_identifiers)
+
 
 class TemplateType(Type):
   """
@@ -709,6 +837,12 @@ class TemplateType(Type):
 
   def has_templ_placeholder(self) -> bool:
     return True
+
+  def children(self) -> List[Type]:
+    return []
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
 
 
 SLEEPY_VOID = VoidType()
