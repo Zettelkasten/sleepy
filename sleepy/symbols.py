@@ -323,7 +323,7 @@ class PointerType(Type):
     return [self.pointee_type]
 
   def has_same_symbol_as(self, other: Type) -> bool:
-    return self == other
+    return isinstance(other, PointerType)
 
 
 class RawPointerType(Type):
@@ -815,9 +815,10 @@ class StructType(Type):
 
   def has_same_symbol_as(self, other: Type) -> bool:
     # TODO: either store the actual symbol, or keep track of a type base (= the signature type)
+    # note: cannot compare types, those might change if they are templates.
     return (
-      isinstance(other, StructType) and other.struct_identifier == self.struct_identifier and
-      self.member_types == other.member_types and self.member_identifiers == other.member_identifiers)
+      isinstance(other, StructType) and other.struct_identifier == self.struct_identifier
+      and self.member_identifiers == other.member_identifiers)
 
 
 class TemplateType(Type):
@@ -2225,8 +2226,6 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
       assert len(calling_type.children()) == len(signature_type.children())
       return all(infer_type(calling_type=call_type, signature_type=sig_type)
         for call_type, sig_type in zip(calling_type.children(), signature_type.children()))
-    if can_implicit_cast_to(calling_type, signature_type):
-      return True
     if signature_type in placeholder_templ_types:  # template variable.
       assert isinstance(signature_type, TemplateType)
       if check_deep_type_contains(calling_type, contains=signature_type):  # recursively contains itself

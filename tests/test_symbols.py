@@ -166,6 +166,28 @@ def test_try_infer_templ_types_struct():
     try_infer_templ_types(
       calling_types=[WrapperChar, SLEEPY_INT], signature_types=[WrapperT, T], placeholder_templ_types=[T]),
     None)
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[SLEEPY_INT, SLEEPY_INT], signature_types=[WrapperT, T], placeholder_templ_types=[T]),
+    None)
+
+  # with templates in calling_types
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[T, WrapperT], signature_types=[WrapperT, WrapperT], placeholder_templ_types=[T]),
+    None)
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[WrapperT, T], signature_types=[WrapperT, WrapperT], placeholder_templ_types=[T]),
+    None)
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[WrapperT, WrapperT], signature_types=[T, WrapperT], placeholder_templ_types=[T]),
+    None)
+  assert_equal(
+    try_infer_templ_types(
+      calling_types=[WrapperT, WrapperT], signature_types=[WrapperT, T], placeholder_templ_types=[T]),
+    None)
 
 
 def test_context_use_pos():
