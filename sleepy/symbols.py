@@ -2203,11 +2203,15 @@ def make_function_signature(instruction: Callable[..., Value],
 
 def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type],
                           placeholder_templ_types: List[TemplateType]) -> Optional[List[Type]]:
+  """
+  Implements unification.
+  Mostly symmetric, however uses can_implicit_cast_to(calling_type, signature_type) only in this direction.
+  """
   if len(calling_types) != len(signature_types):
     return None
   templ_type_replacements: Dict[TemplateType, Type] = {}
 
-  def check_deep_type_contains(type: Type, contains: Type):
+  def check_deep_type_contains(type: Type, contains: Type) -> bool:
     return any(
       can_implicit_cast_to(child, contains) or check_deep_type_contains(child, contains=contains)
       for child in type.children())
@@ -2224,15 +2228,21 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
       return True
     if calling_type.has_same_symbol_as(signature_type):
       assert len(calling_type.children()) == len(signature_type.children())
-      return all(infer_type(calling_type=call_type, signature_type=sig_type)
+      return all(
+        infer_type(calling_type=call_type, signature_type=sig_type)
         for call_type, sig_type in zip(calling_type.children(), signature_type.children()))
-    if signature_type in placeholder_templ_types:  # template variable.
-      assert isinstance(signature_type, TemplateType)
-      if check_deep_type_contains(calling_type, contains=signature_type):  # recursively contains itself
+    if signature_type in placeholder_templ_types or calling_type in placeholder_templ_types:  # template variable.
+      if signature_type in placeholder_templ_types:
+        template_type, other_type = signature_type, calling_type
+      else:
+        assert calling_type in placeholder_templ_types
+        template_type, other_type = calling_type, signature_type
+      assert isinstance(template_type, TemplateType)
+      if check_deep_type_contains(other_type, contains=template_type):  # recursively contains itself
         return False
-      if signature_type not in templ_type_replacements:
-        templ_type_replacements[signature_type] = calling_type
-      assert templ_type_replacements[signature_type] == calling_type
+      if template_type not in templ_type_replacements:
+        templ_type_replacements[template_type] = other_type
+      assert templ_type_replacements[template_type] == other_type
       return True
     return False
 
