@@ -80,6 +80,11 @@ class Type(ABC):
   def children(self) -> List[Type]:
     raise NotImplementedError()
 
+  @property
+  @abstractmethod
+  def templ_types(self) -> List[Type]:
+    raise NotImplementedError()
+
   @abstractmethod
   def has_same_symbol_as(self, other: Type) -> bool:
     raise NotImplementedError()
@@ -101,6 +106,10 @@ class VoidType(Type):
     return 'Void'
 
   def children(self) -> List[Type]:
+    return []
+
+  @property
+  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -135,6 +144,10 @@ class DoubleType(Type):
   def children(self) -> List[Type]:
     return []
 
+  @property
+  def templ_types(self) -> List[Type]:
+    return []
+
   def __eq__(self, other) -> bool:
     return isinstance(other, DoubleType)
 
@@ -162,6 +175,10 @@ class FloatType(Type):
     return 'Float'
 
   def children(self) -> List[Type]:
+    return []
+
+  @property
+  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -193,6 +210,10 @@ class BoolType(Type):
   def children(self) -> List[Type]:
     return []
 
+  @property
+  def templ_types(self) -> List[Type]:
+    return []
+
   def __eq__(self, other) -> bool:
     return isinstance(other, BoolType)
 
@@ -220,6 +241,10 @@ class IntType(Type):
     return 'Int'
 
   def children(self) -> List[Type]:
+    return []
+
+  @property
+  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -251,6 +276,10 @@ class LongType(Type):
   def children(self) -> List[Type]:
     return []
 
+  @property
+  def templ_types(self) -> List[Type]:
+    return []
+
   def __eq__(self, other) -> bool:
     return isinstance(other, LongType)
 
@@ -278,6 +307,10 @@ class CharType(Type):
     return 'Char'
 
   def children(self) -> List[Type]:
+    return []
+
+  @property
+  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -320,6 +353,10 @@ class PointerType(Type):
     return PointerType(pointee_type=self.pointee_type.replace_types(replacements))
 
   def children(self) -> List[Type]:
+    return []
+
+  @property
+  def templ_types(self) -> List[Type]:
     return [self.pointee_type]
 
   def has_same_symbol_as(self, other: Type) -> bool:
@@ -347,6 +384,11 @@ class RawPointerType(Type):
 
   def children(self) -> List[Type]:
     return []
+
+  @property
+  def templ_types(self) -> List[Type]:
+    return []
+
 
   def __eq__(self, other) -> bool:
     return isinstance(other, RawPointerType)
@@ -594,6 +636,11 @@ class UnionType(Type):
   def children(self) -> List[Type]:
     return self.possible_types
 
+  @property
+  def templ_types(self) -> List[Type]:
+    return []
+
+
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, UnionType)
 
@@ -605,7 +652,7 @@ class StructType(Type):
   def __init__(self, struct_identifier: str, templ_types: List[Type], member_identifiers: List[str],
                member_types: List[Type], member_mutables: List[bool], pass_by_ref: bool):
     self.struct_identifier = struct_identifier
-    self.templ_types = templ_types
+    self._templ_types = templ_types
     self.member_identifiers = member_identifiers
     self.member_types = member_types
     self.member_mutables = member_mutables
@@ -626,6 +673,10 @@ class StructType(Type):
           ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type))
       else:
         super().__init__(self.ir_val_type, pass_by_ref=False, c_type=self.c_val_type)
+
+  @property
+  def templ_types(self) -> List[Type]:
+    return self._templ_types
 
   def get_member_num(self, member_identifier):
     """
@@ -841,6 +892,11 @@ class TemplateType(Type):
 
   def children(self) -> List[Type]:
     return []
+
+  @property
+  def templ_types(self) -> List[Type]:
+    return []
+
 
   def has_same_symbol_as(self, other: Type) -> bool:
     return self == other
@@ -2214,7 +2270,7 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
   def check_deep_type_contains(type: Type, contains: Type) -> bool:
     return any(
       can_implicit_cast_to(child, contains) or check_deep_type_contains(child, contains=contains)
-      for child in type.children())
+      for child in type.templ_types)
 
   def infer_type(calling_type: Type, signature_type: Type) -> bool:
     calling_type = calling_type.replace_types(templ_type_replacements)
@@ -2227,10 +2283,10 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
     if can_implicit_cast_to(calling_type, signature_type):
       return True
     if calling_type.has_same_symbol_as(signature_type):
-      assert len(calling_type.children()) == len(signature_type.children())
+      assert len(calling_type.templ_types) == len(signature_type.templ_types)
       return all(
         infer_type(calling_type=call_type, signature_type=sig_type)
-        for call_type, sig_type in zip(calling_type.children(), signature_type.children()))
+        for call_type, sig_type in zip(calling_type.templ_types, signature_type.templ_types))
     if signature_type in placeholder_templ_types or calling_type in placeholder_templ_types:  # template variable.
       if signature_type in placeholder_templ_types:
         template_type, other_type = signature_type, calling_type
