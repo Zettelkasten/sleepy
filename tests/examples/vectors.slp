@@ -1,18 +1,18 @@
-struct Vec3 {
-  x : Double = 0.0;
-  y : Double = 0.0;
-  z : Double = 0.0;
+struct Vec3[T] {
+  x: T = 0.0;
+  y: T = 0.0;
+  z: T = 0.0;
 }
 
 # as there are no constructors yet, do it like this:
-func unit_Vec3(dim: Int) ->  Vec3  {
+func unit_Vec3(dim: Int) -> Vec3[Double] {
   if dim == 1 { return Vec3(1.0, 0.0, 0.0); }
   if dim == 2 { return Vec3(0.0, 1.0, 0.0); }
   if dim == 3 { return Vec3(0.0, 0.0, 1.0); }
   assert(False()); return Vec3(0.0, 0.0, 0.0);
 }
 
-func print(vec: Vec3)  {
+func print[T](vec: Vec3[T])  {
   print('(');
   print(vec.x);
   print(',');
@@ -22,37 +22,33 @@ func print(vec: Vec3)  {
   print(')');
 }
 
-@Inline func +(a: Vec3, b: Vec3) ->  Vec3  {
+@Inline func +[T](a: Vec3[T], b: Vec3[T]) -> Vec3[T] {
   return Vec3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
-@Inline func -(a: Vec3, b: Vec3) ->  Vec3  {
+@Inline func -[T](a: Vec3[T], b: Vec3[T]) -> Vec3[T] {
   return Vec3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
-@Inline func *(a: Double, b: Vec3) ->  Vec3  {
+@Inline func *[T](a: T, b: Vec3[T]) -> Vec3[T] {
   return Vec3(a * b.x, a * b.y, a * b.z);
 }
-@Inline func -(a: Vec3) ->  Vec3  {
+@Inline func -[T](a: Vec3[T]) -> Vec3[T] {
   return -1.0 * a;
 }
-@Inline func *(a: Vec3, b: Vec3) ->  Double  {
+@Inline func *[T](a: Vec3[T], b: Vec3[T]) -> T {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
-@Inline func len(v: Vec3) ->  Double  {
+@Inline func len[T](v: Vec3[T]) ->  Double  {
   extern_func sqrt(x: Double) ->  Double;
   return sqrt(v * v);
 }
 
-func print_and_assert(val: Vec3, reference: Vec3)  {
-  print(val);
-  assert(val.x == reference.x);
-  assert(val.y == reference.y);
-  assert(val.z == reference.z);
-  print('\n');
+func ==[T](a: Vec3[T], b: Vec3[T]) -> Bool {
+  return and(a.x == b.x, a.y == b.y, a.z == b.z);
 }
-func print_and_assert(val: Double, reference: Double)  {
-  print(val);
+
+func print_and_assert[T](val: T, reference: T)  {
+  print_line(val);
   assert(val == reference);
-  print('\n');
 }
 
 func main()  {
@@ -64,4 +60,10 @@ func main()  {
   print_and_assert(unit1 + unit2, Vec3(1.0, 1.0, 0.0));
   print_and_assert(3.0 * unit1 - 6.0 * unit2, Vec3(3.0, -6.0, 0.0));
   print_and_assert(len(Vec3(3.0, 0.0, -4.0)), 5.0);
+
+  # can also make something entirely else:
+  axis_names = Vec3("x", "y", "z");
+  smile = " :]";
+  smiles = Vec3(smile, smile, smile);
+  print_and_assert(axis_names + smiles, Vec3("x :]", "y :]", "z :]"));
 }
