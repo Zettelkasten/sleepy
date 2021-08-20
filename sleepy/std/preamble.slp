@@ -137,6 +137,15 @@ func ToStr(from_char: Char) -> @Mutable  Str  {
   insert(str, from_char);
   return str;
 }
+func ==(a: Str, b: Str) -> Bool {
+  if a.length != b.length { return False(); }
+  pos = 0;
+  while pos < a.length {
+    if +a[pos] != +b[pos] { return False(); }
+    pos += 1;
+  }
+  return True();
+}
 func +(a: Str, b: Str) -> @Mutable  Str  {
   @Mutable res = EmptyStr(a.length + b.length);
   memcpy(res.start, a.start, a.length);
