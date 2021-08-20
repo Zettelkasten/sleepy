@@ -2204,54 +2204,43 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
                           placeholder_templ_types: List[TemplateType]) -> Optional[List[Type]]:
   if len(calling_types) != len(signature_types):
     return None
-  templ_types: List[Optional[Type]] = [None] * len(placeholder_templ_types)
+  templ_type_replacements: Dict[TemplateType, Type] = {}
+
+  def check_deep_type_contains(type: Type, contains: Type):
+    return any(
+      can_implicit_cast_to(child, contains) or check_deep_type_contains(child, contains=contains)
+      for child in type.children())
 
   def infer_type(calling_type: Type, signature_type: Type) -> bool:
+    calling_type = calling_type.replace_types(templ_type_replacements)
+    signature_type = signature_type.replace_types(templ_type_replacements)
     if isinstance(calling_type, UnionType) and len(calling_type.possible_types) == 1:
       calling_type = calling_type.possible_types[0]
     if isinstance(signature_type, UnionType) and len(signature_type.possible_types) == 1:
       signature_type = signature_type.possible_types[0]
 
-    if signature_type in placeholder_templ_types:
-      assert isinstance(signature_type, TemplateType)
-      templ_type_idx = placeholder_templ_types.index(signature_type)
-      before_templ_type = templ_types[templ_type_idx]
-      if before_templ_type is None:  # template arg not set at all, use calling_type
-        templ_types[templ_type_idx] = calling_type
-        return True
-      else:
-        return before_templ_type == calling_type  # they must match
-    elif can_implicit_cast_to(calling_type, signature_type):
+    if can_implicit_cast_to(calling_type, signature_type):
       return True
-    elif isinstance(signature_type, StructType):
-      if not isinstance(calling_type, StructType):
+    if calling_type.has_same_symbol_as(signature_type):
+      assert len(calling_type.children()) == len(signature_type.children())
+      return all(infer_type(calling_type=call_type, signature_type=sig_type)
+        for call_type, sig_type in zip(calling_type.children(), signature_type.children()))
+    if can_implicit_cast_to(calling_type, signature_type):
+      return True
+    if signature_type in placeholder_templ_types:  # template variable.
+      assert isinstance(signature_type, TemplateType)
+      if check_deep_type_contains(calling_type, contains=signature_type):  # recursively contains itself
         return False
-      if signature_type.struct_identifier != calling_type.struct_identifier:
-        # TODO: compare the TypeSymbol
-        return False
-      assert len(signature_type.member_types) == len(calling_type.member_types)
-      return all(
-        infer_type(calling_type=call_type, signature_type=sig_type)
-        for call_type, sig_type in zip(calling_type.member_types, signature_type.member_types))
-    elif isinstance(signature_type, UnionType):
-      if not isinstance(calling_type, UnionType):
-        return False
-      if len(signature_type.possible_type_nums) != len(calling_type.possible_type_nums):
-        return False
-      return all(
-        infer_type(calling_type=call_type, signature_type=sig_type)
-        for call_type, sig_type in zip(signature_type.possible_types, calling_type.possible_types))
-    elif isinstance(signature_type, PointerType):
-      if not isinstance(calling_type, PointerType):
-        return False
-      return infer_type(calling_type=calling_type.pointee_type, signature_type=signature_type.pointee_type)
-    else:
-      return False
+      if signature_type not in templ_type_replacements:
+        templ_type_replacements[signature_type] = calling_type
+      assert templ_type_replacements[signature_type] == calling_type
+      return True
+    return False
 
   for calling_type_, signature_type_ in zip(calling_types, signature_types):
     possible = infer_type(calling_type=calling_type_, signature_type=signature_type_)
     if not possible:
       return None
-  if any(templ_type is None for templ_type in templ_types):  # some templ type not set
+  if any(templ_type not in templ_type_replacements for templ_type in placeholder_templ_types):
     return None
-  return templ_types
+  return [templ_type_replacements[templ_type] for templ_type in placeholder_templ_types]
