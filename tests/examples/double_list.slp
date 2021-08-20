@@ -62,7 +62,6 @@ func print(l: DoubleList)  {
   }
   print(']');
 }
-func print_line(l: DoubleList)  { print(l); print('\n'); }
 func print_len(l: DoubleList)  { print('l'); print('e'); print('n'); print(':'); print(' '); print_line(l.length); }
 
 func main()  {
