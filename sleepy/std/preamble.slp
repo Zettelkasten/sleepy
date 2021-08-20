@@ -6,10 +6,10 @@ func print(int: Int)  { extern_func print_int(i: Int) ; print_int(int); }
 func print(long: Long)  { extern_func print_long(l: Long) ; print_long(long); }
 @Inline func print(bool: Bool)  { if bool { print('T'); } else { print('F'); } }
 @Inline func print_line()  { print('\n'); }
-@Inline func print_line(line: Char|Double|Float|Int|Long|Bool)  { print(line); print_line(); }
+@Inline func print_line[T](line: T)  { print(line); print_line(); }
 extern_func flush() ;
-@Inline func print_flush(text: Char|Double|Float|Int|Long|Bool)  { print(text); flush(); }
-@Inline func print_line_flush(line: Char|Double|Float|Int|Long|Bool)  { print_line(line); flush(); }
+@Inline func print_flush[T](text: T)  { print(text); flush(); }
+@Inline func print_line_flush[T](line: T)  { print_line(line); flush(); }
 
 ## Allocation
 extern_func allocate_double(size: Int) -> Ptr[Double];
@@ -181,9 +181,6 @@ func print(str: Str)  {
     print(+str[pos]);
     pos += 1;
   }
-}
-func print_line(str: Str)  {
-  print(str); print_line();
 }
 func assert(cond: Bool, error: Str)  {
   if not(cond) {
