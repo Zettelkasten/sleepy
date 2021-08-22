@@ -11,7 +11,7 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SL
   TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory, try_infer_templ_types
+  SLEEPY_CHAR_PTR, FunctionTemplate, TemplateType, ConcreteFunctionFactory, TypeFactory, try_infer_templ_types
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
 from abc import ABC, abstractmethod
@@ -519,7 +519,7 @@ class FunctionDeclarationAst(StatementAst):
               ir_func_args=concrete_func.ir_func.args)
 
     concrete_func_factory = DeclaredConcreteFunctionFactory()
-    signature_ = FunctionSignature(
+    signature_ = FunctionTemplate(
       concrete_func_factory=concrete_func_factory, placeholder_templ_types=placeholder_templ_types,
       return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
       arg_types=arg_types, arg_mutables=arg_mutables, arg_type_narrowings=arg_types, is_inline=self.is_inline)
