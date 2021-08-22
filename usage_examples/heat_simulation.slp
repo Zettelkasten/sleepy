@@ -1,4 +1,4 @@
-extern_func null() -> DoublePtr;
+extern_func null() -> Ptr[Double];
 
 @RefType
 struct For_impl {
@@ -12,11 +12,11 @@ struct For {
     @Mutable it: For_impl = For_impl(0, 0, 0);
 }
 
-func +(For f) -> Int {
+func +(f: For) -> Int {
     return f.it.index;
 }
 
-func run(For f) -> Bool {
+func run(f: For) -> Bool {
     f.it.begin += 1;
     f.it.index += 1;
     not_done = f.it.begin <= f.it.end;
@@ -28,42 +28,37 @@ func run(For f) -> Bool {
     return not_done;
 }
 
-func for(Int begin, Int end) -> For {
+func for(begin: Int, end: Int) -> For {
     return For(For_impl(begin, end, begin - 1));
 }
 
 struct DPtr {
-    ptr: DoublePtr = null();
+    ptr: Ptr[Double] = null();
 }
 
-func =(DPtr dptr, Double d) {
+func =(dptr: DPtr, d: Double) {
     store(dptr.ptr, d);
 }
 
-func +(DPtr dptr) -> Double {
+func +(dptr: DPtr) -> Double {
     return load(dptr.ptr);
-}
-
-# 'Generic' ptr ctor. Could write an overload for other types as well.
-func Ptr(DoublePtr p) -> DPtr {
-    return DPtr(p);
 }
 
 struct Matrix {
     dim: Int = 0;
-    data: DoublePtr = null();
+    data: Ptr[Double] = null();
 }
 
-func at(Matrix m, Int i, Int j) -> DPtr {
-    return Ptr(m.data + (i * m.dim) + j);
+func at(m: Matrix, i: Int, j: Int) -> DPtr {
+    return DPtr(m.data + (i * m.dim) + j);
 }
 
-func Matrix_c(Int dim) -> Matrix {
+func Matrix_c(dim: Int) -> Matrix {
     return Matrix(dim, allocate_double(dim * dim));
 }
 
 # Put heat sources in first row at the beginning and in last row at the end
-func make_heat_sources(Matrix m) {
+func make_heat_sources(m: Matrix) {
 
 
     ind = for(0, min(100, m.dim));
@@ -78,7 +73,7 @@ func make_heat_sources(Matrix m) {
     }
 }
 
-func relaxation(Matrix current, Matrix next) {
+func relaxation(current: Matrix, next: Matrix) {
 
     #print_line("relax");
 
@@ -107,7 +102,7 @@ func relaxation(Matrix current, Matrix next) {
     }
 }
 
-func print_ppm(Matrix mat) {
+func print_ppm(mat: Matrix) {
     print_line("P2");
 
     print(mat.dim);
