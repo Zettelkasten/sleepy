@@ -38,10 +38,8 @@ class Type(ABC):
   """
   A type of a declared variable.
   """
-  def __init__(self, ir_type: ir.types.Type, pass_by_ref: bool, c_type):
+  def __init__(self, ir_type: Optional[ir.types.Type], pass_by_ref: bool, c_type):
     """
-    :param ir.types.Type|None ir_type: may be None if this is non-realizable (e.g. template types / void)
-    :param bool pass_by_ref:
     :param ctypes._CData|None c_type: may be None if this is non-realizable (e.g. template types / void)
     """
     assert not pass_by_ref or isinstance(ir_type, ir.types.PointerType)
@@ -91,7 +89,6 @@ class Type(ABC):
 
   @abstractmethod
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
-    assert context.emits_debug
     raise NotImplementedError()
 
 
@@ -597,12 +594,7 @@ class UnionType(Type):
       if possible_type in narrow_to_types]
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=self.val_size)
 
-  def copy_with_extended_types(self, extended_types, extended_type_nums=None):
-    """
-    :param list[Type] extended_types:
-    :param None|list[int|None] extended_type_nums: suggestions for new extended type nums
-    :rtype: UnionType
-    """
+  def copy_with_extended_types(self, extended_types: List[Type], extended_type_nums: Union[List[Union[int, None]], None]=None) -> UnionType:
     assert all(not isinstance(extended_type, UnionType) for extended_type in extended_types)
     if extended_type_nums is None:
       extended_type_nums = [None] * len(extended_types)
@@ -614,7 +606,8 @@ class UnionType(Type):
         continue
       new_possible_types.append(extended_type)
       if extended_type_num is not None and extended_type_num not in new_possible_type_nums:
-        new_possible_type_nums.append(extended_type_num)
+        # noinspection PyTypeChecker
+        new_possible_type_nums.append(extended_type_num) # inspection is wrong here
       else:
         next_type_num = max(new_possible_type_nums) + 1 if len(new_possible_type_nums) > 0 else 0
         new_possible_type_nums.append(next_type_num)
