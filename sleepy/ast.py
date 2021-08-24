@@ -1046,8 +1046,14 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
       raise NotImplementedError()
     return None
 
-  def make_func(self, symbol_table: SymbolTable) -> Optional[FunctionSymbol]:
-    return None
+  @abstractmethod
+  def make_func(self, symbol_table: SymbolTable) -> FunctionSymbol:
+    """
+    Try to get the statically declared function that this expression represents.
+    Note that this is not a variable (e.g. a simple function pointer),
+    because we want to support overloading here.
+    """
+    raise NotImplementedError()
 
   def __repr__(self) -> str:
     return 'ExpressionAst'
@@ -1127,6 +1133,9 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       assert return_val is not None
       return return_val
 
+  def make_func(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use result of operator %r as function' % self.op)
+
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.left_expr, self.right_expr]
 
@@ -1190,6 +1199,9 @@ class UnaryOperatorExpressionAst(ExpressionAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.expr]
 
+  def make_func(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use result of operator %r as function' % self.op)
+
   def __repr__(self):
     """
     :rtype: str
@@ -1234,6 +1246,9 @@ class ConstantExpressionAst(ExpressionAst):
     with context.use_pos(self.pos):
       assert context.emits_ir
       return ir.Constant(self.constant_type.ir_type, self.constant_val)
+
+  def make_func(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use constant expression as function')
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
@@ -1306,6 +1321,9 @@ class StringLiteralExpressionAst(ExpressionAst):
       str_type.make_store_members_ir(
         member_ir_vals=[ir_start, ir_length, ir_length], struct_ir_alloca=str_ir_alloca, context=context)
       return str_ir_alloca
+
+  def make_func(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use string literal as function')
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
@@ -1433,6 +1451,9 @@ class CallExpressionAst(ExpressionAst):
         func=self.func_expr.make_func(symbol_table=symbol_table), templ_types=None, func_arg_exprs=self.func_arg_exprs,
         symbol_table=symbol_table, context=context)
 
+  def make_func(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use result of function call again as function')
+
   def children(self) -> List[AbstractSyntaxTree]:
     return self.func_arg_exprs
 
@@ -1521,6 +1542,9 @@ class MemberExpressionAst(ExpressionAst):
         parent_ptr = context.builder.load(parent_ptr, 'load_struct')
       gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
       return context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+
+  def make_func(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use member %r as function' % self.member_identifier)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.parent_val_expr]
