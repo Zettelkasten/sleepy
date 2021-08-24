@@ -23,15 +23,26 @@ class Symbol(ABC):
   """
   A declared symbol, with an identifier.
   """
+  kind = None
+
   def __init__(self):
     """
     Initialize the symbol.
     """
     self.base = self  # type: Symbol
+    assert self.kind is not None
 
   @abstractmethod
   def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> Symbol:
     raise NotImplementedError()
+
+  class Kind(Enum):
+    """
+    Possible symbol types.
+    """
+    VARIABLE = 'var'
+    TYPE = 'type'
+    FUNCTION = 'func'
 
 
 class Type(ABC):
@@ -1089,6 +1100,7 @@ class VariableSymbol(Symbol):
   """
   A declared variable.
   """
+  kind = Symbol.Kind.VARIABLE
 
   def __init__(self, ir_alloca: Optional[ir.instructions.AllocaInstr], var_type: Type, mutable: bool):
     super().__init__()
@@ -1370,6 +1382,8 @@ class FunctionSymbol(Symbol):
   Each of these signatures itself can have a set of concrete implementations,
   where template types have been replaced with concrete types.
   """
+  kind = Symbol.Kind.FUNCTION
+
   def __init__(self, identifier: str, returns_void: bool, base: Optional[FunctionSymbol] = None):
     super().__init__()
     self.identifier = identifier
@@ -1492,6 +1506,7 @@ class TypeSymbol(Symbol):
   Can have one or multiple template initializations that yield different concrete types.
   These are initialized lazily.
   """
+  kind = Symbol.Kind.TYPE
 
   def __init__(self, type_factory: TypeFactory, constructor_symbol: Optional[FunctionSymbol]):
     super().__init__()
