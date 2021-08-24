@@ -423,7 +423,7 @@ class FunctionDeclarationAst(StatementAst):
       if not isinstance(func_symbol, FunctionSymbol):
         self.raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier)
     else:
-      func_symbol = FunctionSymbol(returns_void=(return_type == SLEEPY_VOID))
+      func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=(return_type == SLEEPY_VOID))
       symbol_table[self.identifier] = func_symbol
       func_symbol_table[self.identifier] = func_symbol
     if func_symbol in {symbol_table.inbuilt_symbols.get(name) for name in {'assert', 'unchecked_assert'}}:

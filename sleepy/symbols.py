@@ -796,7 +796,7 @@ class StructType(Type):
 
         return concrete_func
 
-    constructor_symbol = FunctionSymbol(returns_void=False)
+    constructor_symbol = FunctionSymbol(identifier=self.struct_identifier, returns_void=False)
     placeholder_templ_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, TemplateType)]
     signature_ = FunctionSignature(
       concrete_func_factory=ConstructorConcreteFuncFactor(),
@@ -1370,8 +1370,9 @@ class FunctionSymbol(Symbol):
   Each of these signatures itself can have a set of concrete implementations,
   where template types have been replaced with concrete types.
   """
-  def __init__(self, returns_void: bool, base: Optional[FunctionSymbol] = None):
+  def __init__(self, identifier: str, returns_void: bool, base: Optional[FunctionSymbol] = None):
     super().__init__()
+    self.identifier = identifier
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionSignature]] = {}
     self.returns_void = returns_void
     if base is None:
@@ -1381,7 +1382,7 @@ class FunctionSymbol(Symbol):
     self.base = base
 
   def copy_replace_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionSymbol:
-    new_func_symbol = FunctionSymbol(returns_void=self.returns_void, base=self)
+    new_func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=self.returns_void, base=self)
     new_func_symbol.signatures_by_number_of_templ_args = {
       num_templ_args: [signature.copy_replace_templ_types(templ_type_replacements) for signature in signatures]
       for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
@@ -1393,7 +1394,7 @@ class FunctionSymbol(Symbol):
      - from foo(T val) -> T make foo(Int val)
      - do not change bound variables: foo[T](T val) -> T stays the same
     """
-    new_func_symbol = FunctionSymbol(returns_void=self.returns_void, base=self)
+    new_func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=self.returns_void, base=self)
     new_func_symbol.signatures_by_number_of_templ_args = {
       num_templ_args: [signature.copy_replace_unbound_templ_types(templ_type_replacements) for signature in signatures]
       for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
@@ -1466,7 +1467,7 @@ class FunctionSymbol(Symbol):
       arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type] for arg_type in arg_types])
 
   def __repr__(self) -> str:
-    return 'FunctionSymbol(signatures=%r)' % self.signatures
+    return 'FunctionSymbol(identifier=%r, signatures=%r)' % (self.identifier, self.signatures)
 
   def make_signature_list_str(self) -> str:
     return '\n'.join([' - ' + signature.to_signature_str() for signature in self.signatures])
@@ -2003,7 +2004,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   ptr_type = PointerType(pointee_type=pointee_type)
 
   assert 'load' not in symbol_table
-  load_symbol = FunctionSymbol(returns_void=False)
+  load_symbol = FunctionSymbol(identifier='load', returns_void=False)
   load_factory = InbuiltOpConcreteFuncFactory(
     instruction=lambda builder, ptr: builder.load(ptr, name='load'), emits_ir=context.emits_ir)
   load_signature = FunctionSignature(
@@ -2014,7 +2015,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   symbol_table['load'] = load_symbol
 
   assert 'store' not in symbol_table
-  store_symbol = FunctionSymbol(returns_void=True)
+  store_symbol = FunctionSymbol(identifier='store', returns_void=True)
   store_factory = InbuiltOpConcreteFuncFactory(
     instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr),
     emits_ir=context.emits_ir)
@@ -2041,7 +2042,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     for op in Simple_Comparison_Ops]
   for operator, overloads in PTR_OP_DECL:
     if operator.value not in symbol_table:
-      symbol_table[operator.value] = FunctionSymbol(returns_void=False)
+      symbol_table[operator.value] = FunctionSymbol(identifier=operator.value, returns_void=False)
     function_symbol = symbol_table[operator.value]
     assert isinstance(function_symbol, FunctionSymbol)
 
@@ -2073,7 +2074,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   # add casts from non-raw ptr types
   pointee_type = TemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
-  constructor_symbol = FunctionSymbol(returns_void=False)
+  constructor_symbol = FunctionSymbol(identifier='RawPtr', returns_void=False)
   constructor_factory = InbuiltOpConcreteFuncFactory(
     instruction=lambda builder, typed_ptr: builder.bitcast(typed_ptr, typ=SLEEPY_RAW_PTR.ir_type, name='load'),
     emits_ir=context.emits_ir)
@@ -2143,7 +2144,7 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
     context.module.add_named_metadata('llvm.ident', [producer])
 
   assert 'free' not in symbol_table
-  free_symbol = FunctionSymbol(returns_void=True)
+  free_symbol = FunctionSymbol(identifier='free', returns_void=True)
   symbol_table['free'] = free_symbol
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     type_generator = TypeFactory(placeholder_templ_types=[], signature_type=inbuilt_type)
@@ -2162,7 +2163,7 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
 
   for assert_identifier in ['assert', 'unchecked_assert']:
     assert assert_identifier not in symbol_table
-    assert_symbol = FunctionSymbol(returns_void=True)
+    assert_symbol = FunctionSymbol(identifier=assert_identifier, returns_void=True)
     symbol_table[assert_identifier] = assert_symbol
     symbol_table.inbuilt_symbols[assert_identifier] = assert_symbol
 
@@ -2228,7 +2229,7 @@ BINARY_OP_DECL = (
 def make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
   for operator, overloads in BINARY_OP_DECL:
     if operator.value not in symbol_table:
-      symbol_table[operator.value] = FunctionSymbol(returns_void=False)
+      symbol_table[operator.value] = FunctionSymbol(identifier=operator.value, returns_void=False)
     function_symbol = symbol_table[operator.value]
     assert isinstance(function_symbol, FunctionSymbol)
 
