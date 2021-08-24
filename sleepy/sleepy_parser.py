@@ -1,5 +1,5 @@
 from sleepy.ast import TopLevelAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, FunctionDeclarationAst, \
-  StructDeclarationAst, ReturnStatementAst, AssignStatementAst, VariableExpressionAst, MemberExpressionAst, \
+  StructDeclarationAst, ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   BinaryOperatorExpressionAst, IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
   StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
@@ -67,7 +67,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('Stmt', 'Expr', '=', 'Expr', ';'): {
       'ast': lambda _pos, ast: (
         AssignStatementAst(_pos, var_target=ast(1), var_val=ast(3), declared_var_type=None)
-        if isinstance(ast(1), VariableExpressionAst) or isinstance(ast(1), MemberExpressionAst)
+        if isinstance(ast(1), IdentifierExpressionAst) or isinstance(ast(1), MemberExpressionAst)
         else ExpressionStatementAst(_pos, BinaryOperatorExpressionAst(
           _pos, op='=', left_expr=ast(1), right_expr=ast(3))))},
     Production('Stmt', 'Expr', 'assign_op', 'Expr', ';'): {
@@ -115,12 +115,14 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('PrimaryExpr', 'hex_int'): {
       'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
     Production('PrimaryExpr', 'identifier'): {
-      'ast': lambda _pos, identifier: VariableExpressionAst(_pos, identifier(1))},
-    Production('PrimaryExpr', 'identifier', '(', 'ExprList', ')'): {
-      'ast': lambda _pos, identifier, val_list: CallExpressionAst(_pos, identifier(1), val_list(3))},
+      'ast': lambda _pos, identifier: IdentifierExpressionAst(_pos, identifier(1))},
+    Production('PrimaryExpr', 'PrimaryExpr', '(', 'ExprList', ')'): {
+      'ast': lambda _pos, ast, val_list: CallExpressionAst(
+        _pos, func_expr=ast(1), func_arg_exprs=val_list(3))},
     # TODO: Cleanup index operator
     Production('PrimaryExpr', 'PrimaryExpr', '[', 'ExprList', ']'): {
-      'ast': lambda _pos, ast, val_list: CallExpressionAst(_pos, 'get', [ast(1)] + val_list(3))},
+      'ast': lambda _pos, ast, val_list: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, identifier='get'), func_arg_exprs=[ast(1)] + val_list(3))},
     Production('PrimaryExpr', '(', 'Expr', ')'): {
       'ast': 'ast.2'},
     Production('AnnotationList'): {

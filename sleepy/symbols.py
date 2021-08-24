@@ -852,7 +852,7 @@ class StructType(Type):
               if isinstance(concrete_member_type, PointerType):
                 templ_types = [concrete_member_type.pointee_type]
               make_func_call_ir(
-                func_identifier='free', func_symbol=destructor_symbol, templ_types=templ_types,
+                func=destructor_symbol, templ_types=templ_types,
                 calling_arg_types=[signature_member_type],
                 calling_ir_args=[member_ir_val], context=context)
             if self.is_pass_by_ref():
@@ -1847,7 +1847,7 @@ class UsePosRuntimeContext:
       self.context.builder.debug_metadata = self.prev_debug_metadata
 
 
-def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_types: List[Type],
+def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
                       calling_arg_types: List[Type], calling_ir_args: List[ir.values.Value],
                       context: CodegenContext) -> Optional[ir.values.Value]:
   assert context.emits_ir
@@ -1877,10 +1877,10 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
     else:
       ir_func = concrete_func.ir_func
       assert ir_func is not None and len(ir_func.args) == len(calling_arg_types)
-      return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func_identifier)
+      return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
 
-  assert func_symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
-  possible_concrete_funcs = func_symbol.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
+  assert func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
+  possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
   if len(possible_concrete_funcs) == 1:
     return make_call_func(
       concrete_func=possible_concrete_funcs[0], concrete_calling_arg_types_=calling_arg_types, caller_context=context)
@@ -1905,7 +1905,7 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
     # Go through all concrete functions, and add one block for each
     concrete_func_caller_contexts = [
       context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
-        func_identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))))
+        func.identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))))
       for concrete_func in possible_concrete_funcs]
     for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
       concrete_func_block = concrete_caller_context.block
@@ -1935,10 +1935,10 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
       base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
       base_ir = ir.Constant(tag_ir_type, base)
       tag_ir = calling_arg_type.make_extract_tag(
-        ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (func_identifier, arg_num))
+        ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (func.identifier, arg_num))
       call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
     call_block_index_ir = context.builder.zext(
-      call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % func_identifier)
+      call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % func.identifier)
 
     # Look it up in the table and call the function
     ir_block_addresses_type = ir.types.VectorType(
@@ -1951,7 +1951,7 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
       indirect_branch.add_destination(concrete_caller_context.block)
 
     # Execute the concrete functions and collect their return value
-    collect_block = context.builder.append_basic_block("collect_%s_overload" % func_identifier)
+    collect_block = context.builder.append_basic_block("collect_%s_overload" % func.identifier)
     context.builder = ir.IRBuilder(collect_block)
     concrete_func_return_ir_vals = []  # type: List[ir.values.Value]
     for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
@@ -1963,15 +1963,15 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
       concrete_func_return_ir_vals.append(concrete_return_ir_val)
       assert not concrete_caller_context.is_terminated
       concrete_caller_context.builder.branch(collect_block)
-      assert concrete_func.signature.returns_void == func_symbol.returns_void
+      assert concrete_func.signature.returns_void == func.returns_void
     assert len(possible_concrete_funcs) == len(concrete_func_return_ir_vals)
 
-    if func_symbol.returns_void:
+    if func.returns_void:
       return None
     else:
       common_return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
       collect_return_ir_phi = context.builder.phi(
-        common_return_type.ir_type, name="collect_%s_overload_return" % func_identifier)
+        common_return_type.ir_type, name="collect_%s_overload_return" % func.identifier)
       for concrete_return_ir_val, concrete_caller_context in zip(
           concrete_func_return_ir_vals, concrete_func_caller_contexts):
         collect_return_ir_phi.add_incoming(concrete_return_ir_val, concrete_caller_context.block)
