@@ -1875,6 +1875,21 @@ def test_templ_struct():
     assert_equal(main(23, 43), 23 + 43)
 
 
+def test_templ_explicit_types():
+  with make_execution_engine() as engine:
+    program = """
+    func noop[T](x: T) -> T {
+      return x;
+    }
+    func main(a: Int) -> Int {
+      b = noop[Int](a);
+      return b;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(3), 3)
+
+
 def test_ptr_loop():
   with make_execution_engine() as engine:
     program = """

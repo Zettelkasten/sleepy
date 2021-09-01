@@ -23,22 +23,33 @@ class Symbol(ABC):
   """
   A declared symbol, with an identifier.
   """
+  kind = None
+
   def __init__(self):
     """
     Initialize the symbol.
     """
     self.base = self  # type: Symbol
+    assert self.kind is not None
 
   @abstractmethod
   def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> Symbol:
     raise NotImplementedError()
+
+  class Kind(Enum):
+    """
+    Possible symbol types.
+    """
+    VARIABLE = 'var'
+    TYPE = 'type'
+    FUNCTION = 'func'
 
 
 class Type(ABC):
   """
   A type of a declared variable.
   """
-  def __init__(self, ir_type: Optional[ir.types.Type], pass_by_ref: bool, c_type):
+  def __init__(self, ir_type: Optional[ir.types.Type], pass_by_ref: bool, c_type, constructor: Optional[FunctionSymbol]):
     """
     :param ctypes._CData|None c_type: may be None if this is non-realizable (e.g. template types / void)
     """
@@ -46,6 +57,7 @@ class Type(ABC):
     self.ir_type = ir_type
     self.pass_by_ref = pass_by_ref
     self.c_type = c_type
+    self._constructor: Optional[FunctionSymbol] = constructor
 
   def __repr__(self):
     return self.__class__.__name__
@@ -91,13 +103,22 @@ class Type(ABC):
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     raise NotImplementedError()
 
+  @property
+  def constructor(self) -> Optional[FunctionSymbol]:
+    return self._constructor
+
+  @constructor.setter
+  def constructor(self, new_constructor: FunctionSymbol):
+    assert new_constructor is None or not new_constructor.returns_void
+    self._constructor = new_constructor
+
 
 class VoidType(Type):
   """
   Type returned when nothing is returned.
   """
   def __init__(self):
-    super().__init__(ir.VoidType(), pass_by_ref=False, c_type=None)
+    super().__init__(ir.VoidType(), pass_by_ref=False, c_type=None, constructor=None)
 
   def __repr__(self) -> str:
     return 'Void'
@@ -127,7 +148,7 @@ class DoubleType(Type):
   A double.
   """
   def __init__(self):
-    super().__init__(ir.DoubleType(), pass_by_ref=False, c_type=ctypes.c_double)
+    super().__init__(ir.DoubleType(), pass_by_ref=False, c_type=ctypes.c_double, constructor=None)
 
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -160,7 +181,7 @@ class FloatType(Type):
   A double.
   """
   def __init__(self):
-    super().__init__(ir.FloatType(), pass_by_ref=False, c_type=ctypes.c_float)
+    super().__init__(ir.FloatType(), pass_by_ref=False, c_type=ctypes.c_float, constructor=None)
 
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -193,7 +214,7 @@ class BoolType(Type):
   A 1-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=1), pass_by_ref=False, c_type=ctypes.c_bool)
+    super().__init__(ir.IntType(bits=1), pass_by_ref=False, c_type=ctypes.c_bool, constructor=None)
 
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -226,7 +247,7 @@ class IntType(Type):
   An 32-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=32), pass_by_ref=False, c_type=ctypes.c_int32)
+    super().__init__(ir.IntType(bits=32), pass_by_ref=False, c_type=ctypes.c_int32, constructor=None)
 
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -259,7 +280,7 @@ class LongType(Type):
   A 64-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=64), pass_by_ref=False, c_type=ctypes.c_int64)
+    super().__init__(ir.IntType(bits=64), pass_by_ref=False, c_type=ctypes.c_int64, constructor=None)
 
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -292,7 +313,7 @@ class CharType(Type):
   An 8-bit character.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=8), pass_by_ref=False, c_type=ctypes.c_char)
+    super().__init__(ir.IntType(bits=8), pass_by_ref=False, c_type=ctypes.c_char, constructor=None)
 
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -324,9 +345,10 @@ class PointerType(Type):
   """
   A (not-raw) pointer with a known underlying type.
   """
-  def __init__(self, pointee_type: Type):
+  def __init__(self, pointee_type: Type, constructor: Optional[FunctionSymbol] = None):
     super().__init__(
-      ir.PointerType(pointee_type.ir_type), pass_by_ref=False, c_type=ctypes.POINTER(pointee_type.c_type))
+      ir.PointerType(pointee_type.ir_type), pass_by_ref=False, c_type=ctypes.POINTER(pointee_type.c_type),
+      constructor=constructor)
     self.pointee_type = pointee_type
 
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
@@ -347,7 +369,7 @@ class PointerType(Type):
     return hash((self.__class__, self.pointee_type))
 
   def replace_types(self, replacements: Dict[Type, Type]) -> PointerType:
-    return PointerType(pointee_type=self.pointee_type.replace_types(replacements))
+    return PointerType(pointee_type=self.pointee_type.replace_types(replacements), constructor=self.constructor)
 
   def children(self) -> List[Type]:
     return []
@@ -365,7 +387,7 @@ class RawPointerType(Type):
   A raw (void) pointer from which we do not know the underlying type.
   """
   def __init__(self):
-    super().__init__(LLVM_VOID_POINTER_TYPE, pass_by_ref=False, c_type=ctypes.c_void_p)
+    super().__init__(LLVM_VOID_POINTER_TYPE, pass_by_ref=False, c_type=ctypes.c_void_p, constructor=None)
 
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -386,7 +408,6 @@ class RawPointerType(Type):
   def templ_types(self) -> List[Type]:
     return []
 
-
   def __eq__(self, other) -> bool:
     return isinstance(other, RawPointerType)
 
@@ -401,12 +422,8 @@ class UnionType(Type):
   """
   A tagged union, i.e. a type that can be one of a set of different types.
   """
-  def __init__(self, possible_types, possible_type_nums, val_size):
-    """
-    :param list[Type] possible_types:
-    :param list[int] possible_type_nums:
-    :param int val_size: size of untagged union in bytes
-    """
+  def __init__(self, possible_types: List[Type], possible_type_nums: List[int], val_size: int,
+               constructor: Optional[FunctionSymbol] = None):
     assert len(possible_types) == len(possible_type_nums)
     assert SLEEPY_VOID not in possible_types
     assert len(set(possible_types)) == len(possible_types)
@@ -428,7 +445,7 @@ class UnionType(Type):
       '%s_CType' % self.identifier, (ctypes.Structure,),
       {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
     ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
-    super().__init__(ir_type, pass_by_ref=False, c_type=c_type)
+    super().__init__(ir_type, pass_by_ref=False, c_type=c_type, constructor=constructor)
 
   def __repr__(self):
     if len(self.possible_types) == 0:
@@ -486,7 +503,9 @@ class UnionType(Type):
       del new_possible_types[duplicate_index]
       del new_possible_type_nums[duplicate_index]
     val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types)
-    return UnionType(possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=val_size)
+    return UnionType(
+      possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=val_size,
+      constructor=self.constructor)
 
   def has_templ_placeholder(self) -> bool:
     return any(possible_type.has_templ_placeholder() for possible_type in self.possible_types)
@@ -633,7 +652,6 @@ class UnionType(Type):
   def templ_types(self) -> List[Type]:
     return []
 
-
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, UnionType)
 
@@ -643,16 +661,18 @@ class StructType(Type):
   A struct.
   """
   def __init__(self, struct_identifier: str, templ_types: List[Type], member_identifiers: List[str],
-               member_types: List[Type], member_mutables: List[bool], pass_by_ref: bool):
+               member_types: List[Type], member_mutables: List[bool], pass_by_ref: bool,
+               constructor: Optional[FunctionSymbol] = None):
     self.struct_identifier = struct_identifier
     self._templ_types = templ_types
     self.member_identifiers = member_identifiers
     self.member_types = member_types
     self.member_mutables = member_mutables
+    self._constructor = None  # type: Optional[FunctionSymbol]
     if self.has_templ_placeholder():
       self.ir_val_type = None
       self.c_val_type = None
-      super().__init__(None, pass_by_ref=pass_by_ref, c_type=None)
+      super().__init__(None, pass_by_ref=pass_by_ref, c_type=None, constructor=constructor)
     else:  # default case
       assert not self.has_templ_placeholder()
       member_ir_types = [member_type.ir_type for member_type in member_types]
@@ -663,9 +683,10 @@ class StructType(Type):
       self.c_val_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
       if pass_by_ref:
         super().__init__(
-          ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type))
+          ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type),
+          constructor=constructor)
       else:
-        super().__init__(self.ir_val_type, pass_by_ref=False, c_type=self.c_val_type)
+        super().__init__(self.ir_val_type, pass_by_ref=False, c_type=self.c_val_type, constructor=constructor)
 
   @property
   def templ_types(self) -> List[Type]:
@@ -682,9 +703,11 @@ class StructType(Type):
   def replace_types(self, replacements: Dict[Type, Type]) -> StructType:
     new_templ_types = [replacements.get(templ_type, templ_type) for templ_type in self.templ_types]
     new_member_types = [replacements.get(member_type, member_type) for member_type in self.member_types]
-    return StructType(
+    new_struct = StructType(
       struct_identifier=self.struct_identifier, templ_types=new_templ_types, member_identifiers=self.member_identifiers,
-      member_types=new_member_types, member_mutables=self.member_mutables, pass_by_ref=self.pass_by_ref)
+      member_types=new_member_types, member_mutables=self.member_mutables, pass_by_ref=self.pass_by_ref,
+      constructor=self.constructor)
+    return new_struct
 
   def has_templ_placeholder(self) -> bool:
     return any(templ_type.has_templ_placeholder() for templ_type in self.templ_types)
@@ -789,7 +812,7 @@ class StructType(Type):
 
         return concrete_func
 
-    constructor_symbol = FunctionSymbol(returns_void=False)
+    constructor_symbol = FunctionSymbol(identifier=self.struct_identifier, returns_void=False)
     placeholder_templ_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, TemplateType)]
     signature_ = FunctionTemplate(
       concrete_func_factory=ConstructorConcreteFuncFactor(),
@@ -834,7 +857,7 @@ class StructType(Type):
               if isinstance(concrete_member_type, PointerType):
                 templ_types = [concrete_member_type.pointee_type]
               make_func_call_ir(
-                func_identifier='free', func_symbol=destructor_symbol, templ_types=templ_types,
+                func=destructor_symbol, templ_types=templ_types,
                 calling_arg_types=[signature_member_type],
                 calling_ir_args=[member_ir_val], context=context)
             if self.is_pass_by_ref():
@@ -871,7 +894,7 @@ class TemplateType(Type):
   """
 
   def __init__(self, identifier: str):
-    super().__init__(ir_type=None, pass_by_ref=False, c_type=None)
+    super().__init__(ir_type=None, pass_by_ref=False, c_type=None, constructor=None)
     self.identifier = identifier
 
   def make_di_type(self, context: CodegenContext):
@@ -890,9 +913,12 @@ class TemplateType(Type):
   def templ_types(self) -> List[Type]:
     return []
 
-
   def has_same_symbol_as(self, other: Type) -> bool:
     return self == other
+
+  @property
+  def constructor(self) -> Optional[FunctionSymbol]:
+    return None
 
 
 SLEEPY_VOID = VoidType()
@@ -1082,6 +1108,7 @@ class VariableSymbol(Symbol):
   """
   A declared variable.
   """
+  kind = Symbol.Kind.VARIABLE
 
   def __init__(self, ir_alloca: Optional[ir.instructions.AllocaInstr], var_type: Type, mutable: bool):
     super().__init__()
@@ -1275,18 +1302,19 @@ class FunctionTemplate:
       self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
 
   def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionTemplate:
+    assert all(isinstance(key, TemplateType) for key in templ_type_replacements)
     unbound_templ_type_replacements = {
       templ_type: replacement for templ_type, replacement in templ_type_replacements.items()
       if templ_type not in self.placeholder_templ_types}
-    return self.copy_replace_templ_types(unbound_templ_type_replacements)
+    return self.copy_replace_types(unbound_templ_type_replacements)
 
-  def copy_replace_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionTemplate:
+  def copy_replace_types(self, type_replacements: Dict[Type, Type]) -> FunctionTemplate:
     return FunctionTemplate(
       concrete_func_factory=self.concrete_func_factory,
       placeholder_templ_types=self.placeholder_templ_types.copy(),
       return_type=self.return_type, return_mutable=self.return_mutable,
       arg_identifiers=self.arg_identifiers.copy(),
-      arg_types=[arg_type.replace_types(templ_type_replacements) for arg_type in self.arg_types.copy()],
+      arg_types=[arg_type.replace_types(type_replacements) for arg_type in self.arg_types.copy()],
       arg_mutables=self.arg_mutables.copy(), arg_type_narrowings=self.arg_type_narrowings.copy(),
       is_inline=self.is_inline,
       base=self)
@@ -1361,8 +1389,11 @@ class FunctionSymbol(Symbol):
   Each of these signatures itself can have a set of concrete implementations,
   where template types have been replaced with concrete types.
   """
-  def __init__(self, returns_void: bool, base: Optional[FunctionSymbol] = None):
+  kind = Symbol.Kind.FUNCTION
+
+  def __init__(self, identifier: str, returns_void: bool, base: Optional[FunctionSymbol] = None):
     super().__init__()
+    self.identifier = identifier
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionTemplate]] = {}
     self.returns_void = returns_void
     if base is None:
@@ -1371,10 +1402,10 @@ class FunctionSymbol(Symbol):
       base = base.base
     self.base = base
 
-  def copy_replace_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionSymbol:
-    new_func_symbol = FunctionSymbol(returns_void=self.returns_void, base=self)
+  def copy_replace_types(self, type_replacements: Dict[Type, Type]) -> FunctionSymbol:
+    new_func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=self.returns_void, base=self)
     new_func_symbol.signatures_by_number_of_templ_args = {
-      num_templ_args: [signature.copy_replace_templ_types(templ_type_replacements) for signature in signatures]
+      num_templ_args: [signature.copy_replace_types(type_replacements) for signature in signatures]
       for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
     return new_func_symbol
 
@@ -1384,7 +1415,7 @@ class FunctionSymbol(Symbol):
      - from foo(T val) -> T make foo(Int val)
      - do not change bound variables: foo[T](T val) -> T stays the same
     """
-    new_func_symbol = FunctionSymbol(returns_void=self.returns_void, base=self)
+    new_func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=self.returns_void, base=self)
     new_func_symbol.signatures_by_number_of_templ_args = {
       num_templ_args: [signature.copy_replace_unbound_templ_types(templ_type_replacements) for signature in signatures]
       for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
@@ -1457,10 +1488,23 @@ class FunctionSymbol(Symbol):
       arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type] for arg_type in arg_types])
 
   def __repr__(self) -> str:
-    return 'FunctionSymbol(signatures=%r)' % self.signatures
+    return 'FunctionSymbol(identifier=%r, signatures=%r)' % (self.identifier, self.signatures)
 
   def make_signature_list_str(self) -> str:
     return '\n'.join([' - ' + signature.to_signature_str() for signature in self.signatures])
+
+
+class FunctionSymbolCaller:
+  """
+  A FunctionSymbol plus template types it is called with.
+  """
+  def __init__(self, func: FunctionSymbol, templ_types: Optional[List[Type]] = None):
+    self.func = func
+    self.templ_types = templ_types
+
+  def copy_with_templ_types(self, templ_types: List[Type]) -> FunctionSymbolCaller:
+    assert self.templ_types is None
+    return FunctionSymbolCaller(func=self.func, templ_types=templ_types)
 
 
 class TypeFactory:
@@ -1482,12 +1526,12 @@ class TypeSymbol(Symbol):
   Can have one or multiple template initializations that yield different concrete types.
   These are initialized lazily.
   """
+  kind = Symbol.Kind.TYPE
 
-  def __init__(self, type_factory: TypeFactory, constructor_symbol: Optional[FunctionSymbol]):
+  def __init__(self, type_factory: TypeFactory):
     super().__init__()
     assert isinstance(type_factory, TypeFactory)
     self.type_factory = type_factory
-    self.constructor_symbol = constructor_symbol
     self.initialized_templ_types: Dict[Tuple[Type], Type] = {}
 
   def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> TypeSymbol:
@@ -1502,10 +1546,7 @@ class TypeSymbol(Symbol):
       placeholder_templ_types=[
         templ for templ in self.type_factory.placeholder_templ_types if templ not in templ_type_replacements],
       signature_type=new_signature_type)
-    new_constructor_symbol = (
-      None if self.constructor_symbol is None
-      else self.constructor_symbol.copy_replace_unbound_templ_types(templ_type_replacements))
-    return TypeSymbol(type_factory=new_type_factory, constructor_symbol=new_constructor_symbol)
+    return TypeSymbol(type_factory=new_type_factory)
 
   def get_type(self, concrete_templ_types: List[Type]) -> Type:
     concrete_templ_types = tuple(concrete_templ_types)
@@ -1822,7 +1863,7 @@ class UsePosRuntimeContext:
       self.context.builder.debug_metadata = self.prev_debug_metadata
 
 
-def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_types: List[Type],
+def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
                       calling_arg_types: List[Type], calling_ir_args: List[ir.values.Value],
                       context: CodegenContext) -> Optional[ir.values.Value]:
   assert context.emits_ir
@@ -1852,10 +1893,10 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
     else:
       ir_func = concrete_func.ir_func
       assert ir_func is not None and len(ir_func.args) == len(calling_arg_types)
-      return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func_identifier)
+      return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
 
-  assert func_symbol.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
-  possible_concrete_funcs = func_symbol.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
+  assert func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
+  possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
   if len(possible_concrete_funcs) == 1:
     return make_call_func(
       concrete_func=possible_concrete_funcs[0], concrete_calling_arg_types_=calling_arg_types, caller_context=context)
@@ -1880,7 +1921,7 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
     # Go through all concrete functions, and add one block for each
     concrete_func_caller_contexts = [
       context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
-        func_identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))))
+        func.identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))))
       for concrete_func in possible_concrete_funcs]
     for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
       concrete_func_block = concrete_caller_context.block
@@ -1910,10 +1951,10 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
       base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
       base_ir = ir.Constant(tag_ir_type, base)
       tag_ir = calling_arg_type.make_extract_tag(
-        ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (func_identifier, arg_num))
+        ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (func.identifier, arg_num))
       call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
     call_block_index_ir = context.builder.zext(
-      call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % func_identifier)
+      call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % func.identifier)
 
     # Look it up in the table and call the function
     ir_block_addresses_type = ir.types.VectorType(
@@ -1926,7 +1967,7 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
       indirect_branch.add_destination(concrete_caller_context.block)
 
     # Execute the concrete functions and collect their return value
-    collect_block = context.builder.append_basic_block("collect_%s_overload" % func_identifier)
+    collect_block = context.builder.append_basic_block("collect_%s_overload" % func.identifier)
     context.builder = ir.IRBuilder(collect_block)
     concrete_func_return_ir_vals = []  # type: List[ir.values.Value]
     for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
@@ -1938,15 +1979,15 @@ def make_func_call_ir(func_identifier: str, func_symbol: FunctionSymbol, templ_t
       concrete_func_return_ir_vals.append(concrete_return_ir_val)
       assert not concrete_caller_context.is_terminated
       concrete_caller_context.builder.branch(collect_block)
-      assert concrete_func.signature.returns_void == func_symbol.returns_void
+      assert concrete_func.signature.returns_void == func.returns_void
     assert len(possible_concrete_funcs) == len(concrete_func_return_ir_vals)
 
-    if func_symbol.returns_void:
+    if func.returns_void:
       return None
     else:
       common_return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
       collect_return_ir_phi = context.builder.phi(
-        common_return_type.ir_type, name="collect_%s_overload_return" % func_identifier)
+        common_return_type.ir_type, name="collect_%s_overload_return" % func.identifier)
       for concrete_return_ir_val, concrete_caller_context in zip(
           concrete_func_return_ir_vals, concrete_func_caller_contexts):
         collect_return_ir_phi.add_incoming(concrete_return_ir_val, concrete_caller_context.block)
@@ -1983,8 +2024,9 @@ def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT], member_mutables=[False, False, False],
     pass_by_ref=True)
   constructor_symbol = str_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
+  str_type.constructor = constructor_symbol
   type_factory = TypeFactory(placeholder_templ_types=[], signature_type=str_type)
-  struct_symbol = TypeSymbol(type_factory=type_factory, constructor_symbol=constructor_symbol)
+  struct_symbol = TypeSymbol(type_factory=type_factory)
   str_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
   return struct_symbol
 
@@ -1994,7 +2036,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   ptr_type = PointerType(pointee_type=pointee_type)
 
   assert 'load' not in symbol_table
-  load_symbol = FunctionSymbol(returns_void=False)
+  load_symbol = FunctionSymbol(identifier='load', returns_void=False)
   load_factory = InbuiltOpConcreteFuncFactory(
     instruction=lambda builder, ptr: builder.load(ptr, name='load'), emits_ir=context.emits_ir)
   load_signature = FunctionTemplate(
@@ -2005,7 +2047,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   symbol_table['load'] = load_symbol
 
   assert 'store' not in symbol_table
-  store_symbol = FunctionSymbol(returns_void=True)
+  store_symbol = FunctionSymbol(identifier='store', returns_void=True)
   store_factory = InbuiltOpConcreteFuncFactory(
     instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr),
     emits_ir=context.emits_ir)
@@ -2032,7 +2074,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     for op in Simple_Comparison_Ops]
   for operator, overloads in PTR_OP_DECL:
     if operator.value not in symbol_table:
-      symbol_table[operator.value] = FunctionSymbol(returns_void=False)
+      symbol_table[operator.value] = FunctionSymbol(identifier=operator.value, returns_void=False)
     function_symbol = symbol_table[operator.value]
     assert isinstance(function_symbol, FunctionSymbol)
 
@@ -2049,7 +2091,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     arg_mutables=[False], is_inline=True)
   symbol_table.free_symbol.add_signature(free_signature)
 
-  return TypeSymbol(type_factory=type_factory, constructor_symbol=None)
+  return TypeSymbol(type_factory=type_factory)
 
 
 def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
@@ -2064,7 +2106,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   # add casts from non-raw ptr types
   pointee_type = TemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
-  constructor_symbol = FunctionSymbol(returns_void=False)
+  constructor_symbol = FunctionSymbol(identifier='RawPtr', returns_void=False)
   constructor_factory = InbuiltOpConcreteFuncFactory(
     instruction=lambda builder, typed_ptr: builder.bitcast(typed_ptr, typ=SLEEPY_RAW_PTR.ir_type, name='load'),
     emits_ir=context.emits_ir)
@@ -2073,9 +2115,10 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
     return_mutable=False, arg_identifiers=['ptr'], arg_types=[ptr_type], arg_mutables=[False],
     arg_type_narrowings=[ptr_type], is_inline=True)
   constructor_symbol.add_signature(signature=constructor_signature)
+  SLEEPY_RAW_PTR.constructor = constructor_symbol
 
   type_generator = TypeFactory(placeholder_templ_types=[], signature_type=SLEEPY_RAW_PTR)
-  raw_ptr_symbol = TypeSymbol(type_generator, constructor_symbol=constructor_symbol)
+  raw_ptr_symbol = TypeSymbol(type_generator)
   return raw_ptr_symbol
 
 
@@ -2134,12 +2177,16 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
     context.module.add_named_metadata('llvm.ident', [producer])
 
   assert 'free' not in symbol_table
-  free_symbol = FunctionSymbol(returns_void=True)
+  free_symbol = FunctionSymbol(identifier='free', returns_void=True)
   symbol_table['free'] = free_symbol
+
+  assert 'get' not in symbol_table
+  symbol_table['get'] = FunctionSymbol(identifier='get', returns_void=False)
+
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     type_generator = TypeFactory(placeholder_templ_types=[], signature_type=inbuilt_type)
     assert type_identifier not in symbol_table
-    symbol_table[type_identifier] = TypeSymbol(type_generator, constructor_symbol=None)
+    symbol_table[type_identifier] = TypeSymbol(type_generator)
     if inbuilt_type == SLEEPY_VOID:
       continue
 
@@ -2153,7 +2200,7 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
 
   for assert_identifier in ['assert', 'unchecked_assert']:
     assert assert_identifier not in symbol_table
-    assert_symbol = FunctionSymbol(returns_void=True)
+    assert_symbol = FunctionSymbol(identifier=assert_identifier, returns_void=True)
     symbol_table[assert_identifier] = assert_symbol
     symbol_table.inbuilt_symbols[assert_identifier] = assert_symbol
 
@@ -2219,7 +2266,7 @@ BINARY_OP_DECL = (
 def make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
   for operator, overloads in BINARY_OP_DECL:
     if operator.value not in symbol_table:
-      symbol_table[operator.value] = FunctionSymbol(returns_void=False)
+      symbol_table[operator.value] = FunctionSymbol(identifier=operator.value, returns_void=False)
     function_symbol = symbol_table[operator.value]
     assert isinstance(function_symbol, FunctionSymbol)
 
