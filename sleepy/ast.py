@@ -11,7 +11,8 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SL
   TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory, try_infer_templ_types, Symbol
+  SLEEPY_CHAR_PTR, FunctionSignature, TemplateType, ConcreteFunctionFactory, TypeFactory, try_infer_templ_types, Symbol, \
+  FunctionSymbolCaller
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
 from abc import ABC, abstractmethod
@@ -50,20 +51,15 @@ class AbstractSyntaxTree(ABC):
     if func_identifier not in symbol_table:
       self.raise_error('Function %r called before declared' % func_identifier)
     symbol = symbol_table[func_identifier]
-    if isinstance(symbol, TypeSymbol):
-      if symbol.constructor_symbol is None:
-        self.raise_error(
-          'Cannot construct an instance of type %r that does not specify a constructor' % func_identifier)
-      symbol = symbol.constructor_symbol
-      assert isinstance(symbol, FunctionSymbol)
     if not isinstance(symbol, FunctionSymbol):
       self.raise_error('Cannot call non-function %r' % func_identifier)
+    func_caller = FunctionSymbolCaller(func=symbol, templ_types=templ_types)
     return self.resolve_func_call(
-      func=symbol, templ_types=templ_types, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
+      func_caller=func_caller, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
 
-  def resolve_func_call(self, func: Union[FunctionSymbol, TypeSymbol], templ_types: Optional[List[Type]],
-                        func_arg_exprs: List[ExpressionAst],
+  def resolve_func_call(self, func_caller: FunctionSymbolCaller, func_arg_exprs: List[ExpressionAst],
                         symbol_table: SymbolTable) -> List[ConcreteFunction]:
+    func, templ_types = func_caller.func, func_caller.templ_types
     calling_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
 
     if templ_types is None:
@@ -136,10 +132,11 @@ class AbstractSyntaxTree(ABC):
     assert signature_templ_types is not None
     return signature_templ_types
 
-  def _build_func_call(self, func: FunctionSymbol, templ_types: Optional[List[Type]],
-                       func_arg_exprs: List[ExpressionAst], symbol_table: SymbolTable, context: CodegenContext):
+  def _build_func_call(self, func_caller: FunctionSymbolCaller, func_arg_exprs: List[ExpressionAst],
+                       symbol_table: SymbolTable, context: CodegenContext):
+    func, templ_types = func_caller.func, func_caller.templ_types
     possible_concrete_funcs = self.resolve_func_call(
-      func=func, templ_types=templ_types, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
+      func_caller=func_caller, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
     calling_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
 
     if templ_types is None:
@@ -207,7 +204,7 @@ class AbstractSyntaxTree(ABC):
       template_type = TemplateType(templ_type_identifier)
       templ_types.append(template_type)
       template_type_factory = TypeFactory(placeholder_templ_types=[], signature_type=template_type)
-      template_type_symbol = TypeSymbol(type_factory=template_type_factory, constructor_symbol=None)
+      template_type_symbol = TypeSymbol(type_factory=template_type_factory)
       symbol_table.current_scope_identifiers.append(templ_type_identifier)
       symbol_table[templ_type_identifier] = template_type_symbol
     return templ_types
@@ -741,10 +738,11 @@ class StructDeclarationAst(StatementAst):
 
       # make constructor / destructor
       constructor = signature_struct_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
+      signature_struct_type.constructor = constructor
       signature_struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
 
       # assemble to complete type symbol
-      struct_type_symbol = TypeSymbol(type_factory=struct_type_factory, constructor_symbol=constructor)
+      struct_type_symbol = TypeSymbol(type_factory=struct_type_factory)
       symbol_table.add_to_current_scope(self.struct_identifier, struct_type_symbol)
 
   def children(self) -> List[AbstractSyntaxTree]:
@@ -1015,6 +1013,10 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
     super().__init__(pos)
 
   @abstractmethod
+  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
+    raise NotImplementedError()
+
+  @abstractmethod
   def make_val_type(self, symbol_table: SymbolTable) -> Type:
     raise NotImplementedError()
 
@@ -1047,12 +1049,17 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
     return None
 
   @abstractmethod
-  def make_func(self, symbol_table: SymbolTable) -> FunctionSymbol:
+  def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     """
     Try to get the statically declared function that this expression represents.
     Note that this is not a variable (e.g. a simple function pointer),
     because we want to support overloading here.
+    The FunctionSymbolCaller object also keeps track of the template parameters.
     """
+    raise NotImplementedError()
+
+  @abstractmethod
+  def make_as_type(self, symbol_table: SymbolTable) -> Type:
     raise NotImplementedError()
 
   def __repr__(self) -> str:
@@ -1079,6 +1086,9 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       # Probably it's nicer to make an entire new ExpressionAst for `is` Expressions anyway.
       if not isinstance(self.right_expr, IdentifierExpressionAst):
         raise self.raise_error("'is' operator must be applied to a union type and a type.")
+
+  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
+    return Symbol.Kind.VARIABLE
 
   def make_val_type(self, symbol_table):
     """
@@ -1128,13 +1138,16 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       assert isinstance(func, FunctionSymbol)
       operand_exprs = [self.left_expr, self.right_expr]
       return_val = self._build_func_call(
-        func=func, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
+        func_caller=FunctionSymbolCaller(func), func_arg_exprs=operand_exprs, symbol_table=symbol_table,
         context=context)
       assert return_val is not None
       return return_val
 
-  def make_func(self, symbol_table: SymbolTable):
+  def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use result of operator %r as function' % self.op)
+
+  def make_as_type(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use result of operator %r as type' % self.op)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.left_expr, self.right_expr]
@@ -1160,6 +1173,9 @@ class UnaryOperatorExpressionAst(ExpressionAst):
     super().__init__(pos)
     self.op = op
     self.expr = expr
+
+  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
+    return Symbol.Kind.VARIABLE
 
   def make_val_type(self, symbol_table):
     """
@@ -1193,14 +1209,17 @@ class UnaryOperatorExpressionAst(ExpressionAst):
       assert isinstance(func, FunctionSymbol)
       operand_exprs = [self.expr]
       return self._build_func_call(
-        func=func, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
+        func_caller=FunctionSymbolCaller(func), func_arg_exprs=operand_exprs, symbol_table=symbol_table,
         context=context)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.expr]
 
-  def make_func(self, symbol_table: SymbolTable):
+  def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use result of operator %r as function' % self.op)
+
+  def make_as_type(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use result of operator %r as type' % self.op)
 
   def __repr__(self):
     """
@@ -1222,6 +1241,9 @@ class ConstantExpressionAst(ExpressionAst):
     super().__init__(pos)
     self.constant_val = constant_val
     self.constant_type = constant_type
+
+  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
+    return Symbol.Kind.VARIABLE
 
   def make_val_type(self, symbol_table):
     """
@@ -1247,8 +1269,11 @@ class ConstantExpressionAst(ExpressionAst):
       assert context.emits_ir
       return ir.Constant(self.constant_type.ir_type, self.constant_val)
 
-  def make_func(self, symbol_table: SymbolTable):
+  def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use constant expression as function')
+
+  def make_as_type(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use constant expression as type')
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
@@ -1271,6 +1296,9 @@ class StringLiteralExpressionAst(ExpressionAst):
     """
     super().__init__(pos)
     self.constant_str = constant_str
+
+  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
+    return Symbol.Kind.VARIABLE
 
   def make_val_type(self, symbol_table):
     """
@@ -1322,8 +1350,11 @@ class StringLiteralExpressionAst(ExpressionAst):
         member_ir_vals=[ir_start, ir_length, ir_length], struct_ir_alloca=str_ir_alloca, context=context)
       return str_ir_alloca
 
-  def make_func(self, symbol_table: SymbolTable):
+  def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use string literal as function')
+
+  def make_as_type(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use string literal as type')
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
@@ -1347,6 +1378,9 @@ class IdentifierExpressionAst(ExpressionAst):
     super().__init__(pos)
     self.identifier = identifier
 
+  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
+    return self.get_symbol(symbol_table=symbol_table).kind
+
   def get_symbol(self, symbol_table: SymbolTable) -> Symbol:
     if self.identifier not in symbol_table:
       self.raise_error('Identifier %r referenced before declaring' % self.identifier)
@@ -1365,9 +1399,10 @@ class IdentifierExpressionAst(ExpressionAst):
   def get_func_symbol(self, symbol_table: SymbolTable) -> FunctionSymbol:
     symbol = self.get_symbol(symbol_table=symbol_table)
     if isinstance(symbol, TypeSymbol):
-      if symbol.constructor_symbol is None:
-        self.raise_error('Cannot reference non existing constructor of type %r' % self.identifier)
-      symbol = symbol.constructor_symbol
+      type = self.make_as_type(symbol_table=symbol_table)
+      if type.constructor is None:
+        self.raise_error('Cannot call non-existing constructor of type %r' % type)
+      symbol = type.constructor
     if not isinstance(symbol, FunctionSymbol):
       self.raise_error('Cannot reference a non-function %r, got a %s' % (self.identifier, symbol.kind))
     return symbol
@@ -1397,8 +1432,14 @@ class IdentifierExpressionAst(ExpressionAst):
       assert symbol.ir_alloca is not None
       return symbol.ir_alloca
 
-  def make_func(self, symbol_table: SymbolTable) -> FunctionSymbol:
-    return self.get_func_symbol(symbol_table=symbol_table)
+  def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
+    return FunctionSymbolCaller(func=self.get_func_symbol(symbol_table=symbol_table))
+
+  def make_as_type(self, symbol_table: SymbolTable) -> Type:
+    type_symbol = self.get_symbol(symbol_table=symbol_table)
+    if not isinstance(type_symbol, TypeSymbol):
+      self.raise_error('%r is not a type, but a %r' % (self.identifier, type_symbol.kind))
+    return type_symbol.type_factory.signature_type
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
@@ -1412,47 +1453,95 @@ class IdentifierExpressionAst(ExpressionAst):
 
 class CallExpressionAst(ExpressionAst):
   """
-  PrimaryExpr -> identifier ( ExprList )
+  PrimaryExpr -> PrimaryExpr ( ExprList )
   """
   def __init__(self, pos: TreePosition, func_expr: ExpressionAst, func_arg_exprs: List[ExpressionAst]):
     super().__init__(pos)
     self.func_expr = func_expr
     self.func_arg_exprs = func_arg_exprs
 
-  def make_val_type(self, symbol_table):
+  def _maybe_get_specified_templ_types(self, symbol_table: SymbolTable) -> Optional[List[Type]]:
     """
-    :param SymbolTable symbol_table:
-    :rtype: Type
+    There is some special logic currently because we do not support functions that operate on types
+    and return new functions yet.
+    This function handles the special case that this is foo[Types...],
+    in which case we assume that `foo` is a function or a template type,
+    and we specify some template types with concrete types by setting the template parameters.
     """
+    if not isinstance(self.func_expr, IdentifierExpressionAst) or self.func_expr.identifier not in {'get', 'set'}:
+      return None
+    if not len(self.func_arg_exprs) >= 1:
+      return None
+    signature_func_expr, *templ_arg_exprs = self.func_arg_exprs
+    if signature_func_expr.make_symbol_kind(symbol_table=symbol_table) not in {Symbol.Kind.FUNCTION, Symbol.Kind.TYPE}:
+      return None
+    return [templ_arg.make_as_type(symbol_table=symbol_table) for templ_arg in templ_arg_exprs]
+
+  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
+    concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
+    func_kind = self.func_expr.make_symbol_kind(symbol_table=symbol_table)
+
+    if concrete_templ_types is not None:  # is a templ type specialization, keeps kind.
+      if func_kind not in {Symbol.Kind.FUNCTION, Symbol.Kind.TYPE}:
+        self.raise_error('Cannot specify template parameters for symbol of kind %r' % func_kind)
+      return func_kind
+    if func_kind == Symbol.Kind.FUNCTION:
+      return Symbol.Kind.VARIABLE
+    if func_kind == Symbol.Kind.TYPE:
+      called_type = self.func_expr.make_as_type(symbol_table=symbol_table)
+      if called_type.constructor is None:
+        self.raise_error('Cannot call constructor of type %r because it does not exist' % called_type)
+      return Symbol.Kind.VARIABLE
+    self.raise_error('Cannot call non-function symbol, is a %r' % func_kind)
+
+  def make_val_type(self, symbol_table: SymbolTable) -> Type:
+    assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     possible_concrete_funcs = self.resolve_func_call(
-      func=self.func_expr.make_func(symbol_table=symbol_table), templ_types=None, func_arg_exprs=self.func_arg_exprs,
+      func_caller=self.func_expr.make_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
-  def is_val_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def is_val_mutable(self, symbol_table: SymbolTable) -> bool:
+    assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     possible_concrete_funcs = self.resolve_func_call(
-      func=self.func_expr.make_func(symbol_table=symbol_table), templ_types=None, func_arg_exprs=self.func_arg_exprs,
+      func_caller=self.func_expr.make_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
-  def make_ir_val(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.values.Value
-    """
+  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
+    assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     with context.use_pos(self.pos):
       assert context.emits_ir
       return self._build_func_call(
-        func=self.func_expr.make_func(symbol_table=symbol_table), templ_types=None, func_arg_exprs=self.func_arg_exprs,
+        func_caller=self.func_expr.make_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
         symbol_table=symbol_table, context=context)
 
-  def make_func(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use result of function call again as function')
+  def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
+    assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.FUNCTION
+    concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
+    if concrete_templ_types is None:
+      return self.func_expr.make_as_func_caller(symbol_table=symbol_table)
+    else:
+      func_caller = self.func_arg_exprs[0].make_as_func_caller(symbol_table=symbol_table)
+      if func_caller.templ_types is not None:
+        self.raise_error('Cannot specify template types multiple times')
+      return func_caller.copy_with_templ_types(concrete_templ_types)
+
+  def make_as_type(self, symbol_table: SymbolTable):
+    assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.TYPE
+    concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
+    assert concrete_templ_types is not None
+    signature_type = self.func_expr.make_as_type(symbol_table=symbol_table)
+    if len(concrete_templ_types) != len(signature_type.templ_types):
+      if len(concrete_templ_types) == 0:
+        self.raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
+          signature_type, signature_type.templ_types))
+      else:
+        self.raise_error(
+          'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
+            signature_type, signature_type.templ_types, concrete_templ_types))
+    replacements = dict(zip(signature_type.templ_types, concrete_templ_types))
+    return signature_type.replace_types(replacements=replacements)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return self.func_arg_exprs
@@ -1477,6 +1566,9 @@ class MemberExpressionAst(ExpressionAst):
     super().__init__(pos)
     self.parent_val_expr = parent_val_expr
     self.member_identifier = member_identifier
+
+  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
+    return Symbol.Kind.VARIABLE
 
   def make_val_type(self, symbol_table):
     """
@@ -1543,8 +1635,11 @@ class MemberExpressionAst(ExpressionAst):
       gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
       return context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
 
-  def make_func(self, symbol_table: SymbolTable):
+  def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use member %r as function' % self.member_identifier)
+
+  def make_as_type(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use member %r as type' % self.member_identifier)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.parent_val_expr]
@@ -1560,6 +1655,11 @@ class MemberExpressionAst(ExpressionAst):
 class TypeAst(AbstractSyntaxTree, ABC):
   """
   Type.
+
+  TODO: We do not want this anymore: Make this IdentifierExpressionAst.
+  This means that we need to overload operator | and [..] for building union types and templated types.
+  These are essentially functions operating on types.
+  But these functions need to be executed at compile time, so for now, handle them in special cases everywhere.
   """
   def __init__(self, pos):
     """
