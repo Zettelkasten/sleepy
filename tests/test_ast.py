@@ -1875,7 +1875,7 @@ def test_templ_struct():
     assert_equal(main(23, 43), 23 + 43)
 
 
-def test_templ_explicit_types():
+def test_templ_explicit_types_redundant():
   with make_execution_engine() as engine:
     program = """
     func noop[T](x: T) -> T {
@@ -1888,6 +1888,47 @@ def test_templ_explicit_types():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(3), 3)
+
+
+def test_templ_explicit_types_multiple_times():
+  with make_execution_engine() as engine:
+    program = """
+    func noop[T](x: T) -> T {
+      return x;
+    }
+    func main(a: Int) -> Int {
+      b = noop[Int][Double](a);  # <- thats one too much!
+      return b;
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program, add_preamble=False)
+
+
+def test_templ_explicit_types_needed():
+  with make_execution_engine() as engine:
+    program = """
+    func noop[T]() {
+      # does absolutely nothing.
+    }
+    func main() {
+      noop[Int]();
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    main()  # just check that it runs
+
+
+def test_templ_explicit_types_struct_needed():
+  with make_execution_engine() as engine:
+    program = """
+    struct Empty[T] { }
+    func main() {
+      x = Empty[Int]();
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    main()  # just check that it runs
 
 
 def test_ptr_loop():
