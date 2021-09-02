@@ -2001,6 +2001,26 @@ def test_ptr_arithmetic():
     assert_equal(main(1234), 1234)
 
 
+def test_ptr_casts():
+  with make_execution_engine() as engine:
+    program = """
+    func main(val: Int) -> Int {
+      ptr: Ptr[Int] = allocate_int(3);
+      store(ptr, val);
+      raw_ptr = RawPtr(ptr);
+      raw_ptr += 1;
+      raw_ptr -= 1l;
+      ptr1 = Ptr[Int](raw_ptr);
+      if ptr != ptr1 { return -1; }
+      val1 = load(ptr1);
+      deallocate(ptr1);
+      return val1;
+    }
+    """
+    main = compile_program(engine, program, optimize=False)
+    assert_equal(main(1234), 1234)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
