@@ -2084,7 +2084,9 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   PTR_OP_DECL = [(
     BuiltinBinaryOps.Addition,
     [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_type, i], ptr_type) for i in INT_TYPES] +
-    [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [i, ptr_type], ptr_type) for i in INT_TYPES])]
+    [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [i, ptr_type], ptr_type) for i in INT_TYPES]),
+    (BuiltinBinaryOps.Subtraction,
+    [(lambda builder, lhs, rhs: builder.gep(lhs, (builder.mul(ir.Constant(i.ir_type, -1), rhs),)), [ptr_type, i], ptr_type) for i in INT_TYPES])]  # noqa
   PTR_OP_DECL += [
     (
       op,
@@ -2266,12 +2268,18 @@ BINARY_OP_DECL = (
         [(operator, [(Instructions[(operator, arith_t)], [arith_t, arith_t], arith_t) for arith_t in SLEEPY_NUMERICAL_TYPES])
    for operator in Simple_Arithmetic_Ops] +  # simple arithmetic on all arithmetic types
         [
-    (BuiltinBinaryOps.Addition, [(lambda builder, arg: arg, [arith_t], arith_t) for arith_t in SLEEPY_NUMERICAL_TYPES]),
+    (BuiltinBinaryOps.Addition,
+      [(lambda builder, arg: arg, [arith_t], arith_t) for arith_t in SLEEPY_NUMERICAL_TYPES] +
+      [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [SLEEPY_RAW_PTR, i], SLEEPY_RAW_PTR) for i in INT_TYPES] +
+      [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [i, SLEEPY_RAW_PTR], SLEEPY_RAW_PTR) for i in INT_TYPES]
+    ),
     (BuiltinBinaryOps.Subtraction, [(lambda builder, arg, arith_t=arith_t: builder.mul(ir.Constant(arith_t.ir_type, -1), arg), [arith_t], arith_t)
                                     for arith_t in INT_TYPES]),
     (BuiltinBinaryOps.Subtraction, [(lambda builder, arg, arith_t=arith_t: builder.fmul(ir.Constant(arith_t.ir_type, -1), arg), [arith_t], arith_t)
                                     for arith_t in FLOAT_TYPES]),
-  ] +  # unary plus and minus on all arithmetic types
+    (BuiltinBinaryOps.Subtraction, [(lambda builder, lhs, rhs: builder.gep(lhs, (builder.mul(ir.Constant(arith_t.ir_type, -1), rhs),)), [SLEEPY_RAW_PTR, arith_t], SLEEPY_RAW_PTR)  # noqa
+      for arith_t in INT_TYPES])]  # noqa
+     +  # unary plus and minus on all arithmetic types
         [(operator, [(Instructions[(operator, comp_t)], [comp_t, comp_t], SLEEPY_BOOL) for comp_t in COMPARABLE_TYPES])
    for operator in Simple_Comparison_Ops] +  # comparisons on all types except void and char
         [(operator, [(lambda builder, lhs, rhs, op=operator: builder.icmp_unsigned(op.value, lhs, rhs), [SLEEPY_CHAR, SLEEPY_CHAR], SLEEPY_BOOL)])
