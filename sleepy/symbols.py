@@ -2059,14 +2059,10 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   symbol_table['store'] = store_symbol
   type_factory = TypeFactory(placeholder_templ_types=[pointee_type], signature_type=ptr_type)
 
-  # TODO: Support Long ptr additions + left-side addition
-  PTR_OP_DECL = [
-    (
-      BuiltinBinaryOps.Addition,
-      [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_type, SLEEPY_INT], ptr_type)])]
-  # (
-  #   BuiltinBinaryOps.Addition,
-  # [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [SLEEPY_INT, ptr_type], ptr_type)])]
+  PTR_OP_DECL = [(
+    BuiltinBinaryOps.Addition,
+    [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_type, i], ptr_type) for i in INT_TYPES] +
+    [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [i, ptr_type], ptr_type) for i in INT_TYPES])]
   PTR_OP_DECL += [
     (
       op,
