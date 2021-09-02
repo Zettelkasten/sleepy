@@ -109,7 +109,7 @@ class AbstractSyntaxTree(ABC):
       if len(possible_infers) == 0:
         self.raise_error(
           'Cannot infer template types for function %r from arguments of types %r, '
-          'is declared for parameter types:\n%s' % (
+          'is declared for parameter types:\n%s\n\nSpecify the template types explicitly.' % (
             func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
             func.make_signature_list_str()))
       if len(possible_infers) > 1:
