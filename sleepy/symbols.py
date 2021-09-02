@@ -2123,18 +2123,28 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
     arg_mutables=[False], is_inline=True)
   symbol_table.free_symbol.add_signature(destructor_signature)
 
-  # add casts from non-raw ptr types
   pointee_type = TemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
   constructor_symbol = FunctionSymbol(identifier='RawPtr', returns_void=False)
-  constructor_factory = InbuiltOpConcreteFuncFactory(
+  # RawPtr[T](Ptr[T]) -> RawPtr
+  from_specific_factory = InbuiltOpConcreteFuncFactory(
     instruction=lambda builder, typed_ptr: builder.bitcast(typed_ptr, typ=SLEEPY_RAW_PTR.ir_type, name='ptr_cast'),
     emits_ir=context.emits_ir)
-  constructor_signature = FunctionTemplate(
-    concrete_func_factory=constructor_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_RAW_PTR,
+  from_specific_signature = FunctionTemplate(
+    concrete_func_factory=from_specific_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_RAW_PTR,
     return_mutable=False, arg_identifiers=['ptr'], arg_types=[ptr_type], arg_mutables=[False],
     arg_type_narrowings=[ptr_type], is_inline=True)
-  constructor_symbol.add_signature(signature=constructor_signature)
+  constructor_symbol.add_signature(signature=from_specific_signature)
+  # RawPtr(Int) -> RawPtr
+  for int_type in INT_TYPES:
+    from_int_factory = InbuiltOpConcreteFuncFactory(
+      instruction=lambda builder, int: builder.inttoptr(int, typ=SLEEPY_RAW_PTR.ir_type, name='int_to_ptr'),
+      emits_ir=context.emits_ir)
+    from_int_signature = FunctionTemplate(
+      concrete_func_factory=from_int_factory, placeholder_templ_types=[], return_type=SLEEPY_RAW_PTR,
+      return_mutable=False, arg_identifiers=['int'], arg_types=[int_type], arg_mutables=[False],
+      arg_type_narrowings=[int_type], is_inline=True)
+    constructor_symbol.add_signature(from_int_signature)
   SLEEPY_RAW_PTR.constructor = constructor_symbol
 
   type_generator = TypeFactory(placeholder_templ_types=[], signature_type=SLEEPY_RAW_PTR)

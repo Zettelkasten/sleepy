@@ -17,11 +17,8 @@ extern_func allocate_float(size: Int) -> Ptr[Float];
 extern_func allocate_char(size: Int) -> Ptr[Char];
 extern_func allocate_int(size: Int) -> Ptr[Int];
 extern_func allocate_long(size: Int) -> Ptr[Long];
-func NullDoublePtr() -> Ptr[Double] { extern_func double_null_ptr() -> Ptr[Double]; return double_null_ptr(); }
-func NullFloatPtr() -> Ptr[Float] { extern_func float_null_ptr() -> Ptr[Float]; return float_null_ptr(); }
-func NullCharPtr() -> Ptr[Char] { extern_func char_null_ptr() -> Ptr[Char]; return char_null_ptr(); }
-func NullIntPtr() -> Ptr[Int] { extern_func int_null_ptr() -> Ptr[Int]; return int_null_ptr(); }
-func NullLongPtr() -> Ptr[Long] { extern_func long_null_ptr() -> Ptr[Long]; return long_null_ptr(); }
+func NullRawPtr() -> RawPtr { return RawPtr(0l); }
+func NullPtr[T]() -> Ptr[T] { return Ptr[T](NullRawPtr()); }
 func deallocate[T](ptr: Ptr[T]) {
   extern_func deallocate_double(ptr: RawPtr);  # TODO: cannot override free.
   deallocate_double(RawPtr(ptr));
