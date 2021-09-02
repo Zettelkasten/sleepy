@@ -2059,6 +2059,28 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   symbol_table['store'] = store_symbol
   type_factory = TypeFactory(placeholder_templ_types=[pointee_type], signature_type=ptr_type)
 
+  # cast from RawPtr -> Ptr[T]
+  class PtrFunctionFactory(ConcreteFunctionFactory):
+    def __init__(self, emits_ir: bool):
+      self.emits_ir = emits_ir
+
+    def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
+      assert concrete_func.is_inline
+      if self.emits_ir:
+        specific_type = concrete_func.return_type
+        assert isinstance(specific_type, PointerType)
+        concrete_func.make_inline_func_call_ir = lambda caller_context, ir_func_args: (
+          caller_context.builder.bitcast(ir_func_args[0], typ=specific_type.ir_type, name='ptr_cast'))
+
+  constructor_symbol = FunctionSymbol(identifier='Ptr', returns_void=False)
+  constructor_factory = PtrFunctionFactory(emits_ir=context.emits_ir)
+  constructor_signature = FunctionTemplate(
+    concrete_func_factory=constructor_factory, placeholder_templ_types=[pointee_type], return_type=ptr_type,
+    return_mutable=False, arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR], arg_mutables=[False],
+    arg_type_narrowings=[ptr_type], is_inline=True)
+  constructor_symbol.add_signature(signature=constructor_signature)
+  ptr_type.constructor = constructor_symbol
+
   PTR_OP_DECL = [(
     BuiltinBinaryOps.Addition,
     [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_type, i], ptr_type) for i in INT_TYPES] +
@@ -2104,7 +2126,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   ptr_type = PointerType(pointee_type=pointee_type)
   constructor_symbol = FunctionSymbol(identifier='RawPtr', returns_void=False)
   constructor_factory = InbuiltOpConcreteFuncFactory(
-    instruction=lambda builder, typed_ptr: builder.bitcast(typed_ptr, typ=SLEEPY_RAW_PTR.ir_type, name='load'),
+    instruction=lambda builder, typed_ptr: builder.bitcast(typed_ptr, typ=SLEEPY_RAW_PTR.ir_type, name='ptr_cast'),
     emits_ir=context.emits_ir)
   constructor_signature = FunctionTemplate(
     concrete_func_factory=constructor_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_RAW_PTR,
