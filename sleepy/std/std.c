@@ -46,7 +46,7 @@ long* allocate_long(int size) {
     return malloc((size_t) size * sizeof(long));
 }
 
-void deallocate_double(double* ptr) {
+void deallocate(void* ptr) {
     free(ptr);
 }
 

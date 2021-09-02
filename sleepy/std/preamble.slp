@@ -20,8 +20,8 @@ extern_func allocate_long(size: Int) -> Ptr[Long];
 func NullRawPtr() -> RawPtr { return RawPtr(0l); }
 func NullPtr[T]() -> Ptr[T] { return Ptr[T](NullRawPtr()); }
 func deallocate[T](ptr: Ptr[T]) {
-  extern_func deallocate_double(ptr: RawPtr);  # TODO: cannot override free.
-  deallocate_double(RawPtr(ptr));
+  extern_func deallocate(ptr: RawPtr);  # TODO: cannot override free.
+  deallocate(RawPtr(ptr));
 }
 extern_func assert(condition: Bool);
 @Inline func unchecked_assert(condition: Bool) { }

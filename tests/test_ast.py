@@ -1817,8 +1817,8 @@ def test_templ_ptr():
       store(ptr, a);
       store(ptr + 1, b);
       sum = load(ptr) + load(ptr + 1);
-      extern_func deallocate_int(ptr: Ptr[Int]);
-      deallocate_int(ptr);
+      extern_func deallocate(ptr: Ptr[Int]);
+      deallocate(ptr);
       return sum;
     }
     """
