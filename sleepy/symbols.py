@@ -2018,6 +2018,18 @@ Simple_Comparison_Ops: List[BuiltinBinaryOps] = \
   BuiltinBinaryOps.GreaterOrEqual, BuiltinBinaryOps.LessOrEqual]
 
 
+class BitcastFunctionFactory(ConcreteFunctionFactory):
+  def __init__(self, emits_ir: bool):
+    self.emits_ir = emits_ir
+
+  def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
+    assert concrete_func.is_inline
+    if self.emits_ir:
+      to_type = concrete_func.return_type
+      concrete_func.make_inline_func_call_ir = lambda caller_context, ir_func_args: (
+        caller_context.builder.bitcast(ir_func_args[0], typ=to_type.ir_type, name='bitcast'))
+
+
 def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
   str_type = StructType(
     struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'], templ_types=[],
@@ -2060,20 +2072,8 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   type_factory = TypeFactory(placeholder_templ_types=[pointee_type], signature_type=ptr_type)
 
   # cast from RawPtr -> Ptr[T]
-  class PtrFunctionFactory(ConcreteFunctionFactory):
-    def __init__(self, emits_ir: bool):
-      self.emits_ir = emits_ir
-
-    def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
-      assert concrete_func.is_inline
-      if self.emits_ir:
-        specific_type = concrete_func.return_type
-        assert isinstance(specific_type, PointerType)
-        concrete_func.make_inline_func_call_ir = lambda caller_context, ir_func_args: (
-          caller_context.builder.bitcast(ir_func_args[0], typ=specific_type.ir_type, name='ptr_cast'))
-
   constructor_symbol = FunctionSymbol(identifier='Ptr', returns_void=False)
-  constructor_factory = PtrFunctionFactory(emits_ir=context.emits_ir)
+  constructor_factory = BitcastFunctionFactory(emits_ir=context.emits_ir)
   constructor_signature = FunctionTemplate(
     concrete_func_factory=constructor_factory, placeholder_templ_types=[pointee_type], return_type=ptr_type,
     return_mutable=False, arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR], arg_mutables=[False],
@@ -2140,6 +2140,18 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   type_generator = TypeFactory(placeholder_templ_types=[], signature_type=SLEEPY_RAW_PTR)
   raw_ptr_symbol = TypeSymbol(type_generator)
   return raw_ptr_symbol
+
+
+def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> FunctionSymbol:
+  bitcast_func = FunctionSymbol(identifier='bitcast', returns_void=False)
+  func_factory = BitcastFunctionFactory(emits_ir=context.emits_ir)
+  to_type, from_type = TemplateType('T'), TemplateType('U')
+  bitcast_signature = FunctionTemplate(
+    concrete_func_factory=func_factory, placeholder_templ_types=[to_type, from_type], return_type=to_type,
+    return_mutable=False, arg_identifiers=['from'], arg_types=[from_type], arg_mutables=[False],
+    arg_type_narrowings=[to_type], is_inline=True)
+  bitcast_func.add_signature(bitcast_signature)
+  return bitcast_func
 
 
 def make_di_location(pos: TreePosition, context: CodegenContext):
@@ -2235,8 +2247,10 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   # We use this dummy here.
   inbuilt_pos = TreePosition('', 0, 0)
 
+  inbuilt_symbols = {
+    'Str': _make_str_symbol, 'Ptr':_make_ptr_symbol, 'RawPtr': _make_raw_ptr_symbol, 'bitcast': _make_bitcast_symbol}
   with context.use_pos(inbuilt_pos):
-    for symbol_identifier, setup_func in [('Str', _make_str_symbol), ('Ptr', _make_ptr_symbol), ('RawPtr', _make_raw_ptr_symbol)]:
+    for symbol_identifier, setup_func in inbuilt_symbols.items():
       assert symbol_identifier not in symbol_table
       symbol = setup_func(symbol_table=symbol_table, context=context)
       symbol_table[symbol_identifier] = symbol
