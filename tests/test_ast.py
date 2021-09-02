@@ -1905,6 +1905,21 @@ def test_templ_explicit_types_multiple_times():
       compile_program(engine, program, add_preamble=False)
 
 
+def test_templ_explicit_types_mismatch():
+  with make_execution_engine() as engine:
+    program = """
+    func noop[T](x: T) -> T {
+      return x;
+    }
+    func main(a: Int) -> Int {
+      b = noop[Double](a);  # <- can't call a Double version with an Int!
+      return b;
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program, add_preamble=False)
+
+
 def test_templ_explicit_types_needed():
   with make_execution_engine() as engine:
     program = """
