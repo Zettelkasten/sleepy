@@ -33,7 +33,7 @@ class Symbol(ABC):
     assert self.kind is not None
 
   @abstractmethod
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> Symbol:
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> Symbol:
     raise NotImplementedError()
 
   class Kind(Enum):
@@ -823,7 +823,7 @@ class StructType(Type):
         return concrete_func
 
     constructor_symbol = FunctionSymbol(identifier=self.struct_identifier, returns_void=False)
-    placeholder_templ_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, TemplateType)]
+    placeholder_templ_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
     signature_ = FunctionTemplate(
       concrete_func_factory=ConstructorConcreteFuncFactor(),
       placeholder_templ_types=placeholder_templ_types, return_type=self, return_mutable=True,
@@ -876,7 +876,7 @@ class StructType(Type):
               context.builder.call(context.ir_func_free, args=[self_ir_alloca_raw], name='free_self')
             context.builder.ret_void()
 
-    placeholder_templ_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, TemplateType)]
+    placeholder_templ_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
     # TODO: Narrow type to something more meaningful then SLEEPY_NEVER
     # E.g. make a copy of the never union type and give that a name ("Freed" or sth)
     signature_ = FunctionTemplate(
@@ -898,7 +898,7 @@ class StructType(Type):
       and self.member_identifiers == other.member_identifiers)
 
 
-class TemplateType(Type):
+class PlaceholderTemplateType(Type):
   """
   A template parameter.
   """
@@ -1129,7 +1129,7 @@ class VariableSymbol(Symbol):
     self.narrowed_var_type = var_type
     self.mutable = mutable
 
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> VariableSymbol:
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> VariableSymbol:
     assert not self.declared_var_type.has_templ_placeholder()
     assert not self.narrowed_var_type.has_templ_placeholder()
     return self
@@ -1284,7 +1284,7 @@ class FunctionTemplate:
   """
   def __init__(self,
                concrete_func_factory: ConcreteFunctionFactory,
-               placeholder_templ_types: List[TemplateType],
+               placeholder_templ_types: List[PlaceholderTemplateType],
                return_type: Type, return_mutable: bool,
                arg_identifiers: List[str], arg_types: List[Type], arg_mutables: List[bool],
                arg_type_narrowings: List[Type],
@@ -1292,7 +1292,7 @@ class FunctionTemplate:
                base: FunctionTemplate = None):
     assert isinstance(return_type, Type)
     assert len(arg_identifiers) == len(arg_types) == len(arg_mutables) == len(arg_type_narrowings)
-    assert all(isinstance(templ_type, TemplateType) for templ_type in placeholder_templ_types)
+    assert all(isinstance(templ_type, PlaceholderTemplateType) for templ_type in placeholder_templ_types)
     self.concrete_func_factory = concrete_func_factory
     self.placeholder_templ_types = placeholder_templ_types
     self.return_type = return_type
@@ -1312,8 +1312,8 @@ class FunctionTemplate:
     else:
       self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
 
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionTemplate:
-    assert all(isinstance(key, TemplateType) for key in templ_type_replacements)
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionTemplate:
+    assert all(isinstance(key, PlaceholderTemplateType) for key in templ_type_replacements)
     unbound_templ_type_replacements = {
       templ_type: replacement for templ_type, replacement in templ_type_replacements.items()
       if templ_type not in self.placeholder_templ_types}
@@ -1323,7 +1323,7 @@ class FunctionTemplate:
     new_placeholder_templ_types = [
       type_replacements.get(templ_type, templ_type) for templ_type in self.placeholder_templ_types]
     new_placeholder_templ_types = [
-      templ_type for templ_type in new_placeholder_templ_types if isinstance(templ_type, TemplateType)]
+      templ_type for templ_type in new_placeholder_templ_types if isinstance(templ_type, PlaceholderTemplateType)]
     return FunctionTemplate(
       concrete_func_factory=self.concrete_func_factory,
       placeholder_templ_types=new_placeholder_templ_types,
@@ -1377,7 +1377,7 @@ class FunctionTemplate:
     return all(
       can_implicit_cast_to(call_type, arg_type) for call_type, arg_type in zip(expanded_arg_types, concrete_arg_types))
 
-  def is_undefined_for_expanded_arg_types(self, placeholder_templ_types: List[TemplateType],
+  def is_undefined_for_expanded_arg_types(self, placeholder_templ_types: List[PlaceholderTemplateType],
                                           expanded_arg_types: List[Type]) -> bool:
     assert all(not isinstance(arg_type, UnionType) for arg_type in expanded_arg_types)
     if len(placeholder_templ_types) != len(self.placeholder_templ_types):
@@ -1424,7 +1424,7 @@ class FunctionSymbol(Symbol):
       for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
     return new_func_symbol
 
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> FunctionSymbol:
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionSymbol:
     """
     e.g. if replacements is T => Int:
      - from foo(T val) -> T make foo(Int val)
@@ -1459,7 +1459,7 @@ class FunctionSymbol(Symbol):
       self.can_call_with_expanded_arg_types(concrete_templ_types=concrete_templ_types, expanded_arg_types=arg_types)
       for arg_types in all_expanded_arg_types)
 
-  def is_undefined_for_arg_types(self, placeholder_templ_types: List[TemplateType], arg_types: List[Type]):
+  def is_undefined_for_arg_types(self, placeholder_templ_types: List[PlaceholderTemplateType], arg_types: List[Type]):
     signatures = self.signatures_by_number_of_templ_args.get(len(placeholder_templ_types), [])
     return all(
       signature.is_undefined_for_expanded_arg_types(
@@ -1528,7 +1528,7 @@ class TypeFactory:
   """
   Lazily generates concrete types with initialized template arguments.
   """
-  def __init__(self, placeholder_templ_types: List[TemplateType], signature_type: Type):
+  def __init__(self, placeholder_templ_types: List[PlaceholderTemplateType], signature_type: Type):
     self.placeholder_templ_types = placeholder_templ_types
     self.signature_type = signature_type
 
@@ -1551,7 +1551,7 @@ class TypeSymbol(Symbol):
     self.type_factory = type_factory
     self.initialized_templ_types: Dict[Tuple[Type], Type] = {}
 
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[TemplateType, Type]) -> TypeSymbol:
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> TypeSymbol:
     """
     e.g. if replacements is T -> Int:
      - from T make Int
@@ -2063,7 +2063,7 @@ def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 
 
 def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
-  pointee_type = TemplateType(identifier='T')
+  pointee_type = PlaceholderTemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
 
   assert 'load' not in symbol_table
@@ -2142,7 +2142,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
     arg_mutables=[False], is_inline=True)
   symbol_table.free_symbol.add_signature(destructor_signature)
 
-  pointee_type = TemplateType(identifier='T')
+  pointee_type = PlaceholderTemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
   constructor_symbol = FunctionSymbol(identifier='RawPtr', returns_void=False)
   # RawPtr[T](Ptr[T]) -> RawPtr
@@ -2174,7 +2174,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
 def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> FunctionSymbol:
   bitcast_func = FunctionSymbol(identifier='bitcast', returns_void=False)
   func_factory = BitcastFunctionFactory(emits_ir=context.emits_ir)
-  to_type, from_type = TemplateType('T'), TemplateType('U')
+  to_type, from_type = PlaceholderTemplateType('T'), PlaceholderTemplateType('U')
   bitcast_signature = FunctionTemplate(
     concrete_func_factory=func_factory, placeholder_templ_types=[to_type, from_type], return_type=to_type,
     return_mutable=False, arg_identifiers=['from'], arg_types=[from_type], arg_mutables=[False],
@@ -2353,7 +2353,7 @@ def make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
 
 
 def make_function_signature(instruction: Callable[..., Value],
-                            op_placeholder_templ_types: Union[Tuple[TemplateType], List[TemplateType]],
+                            op_placeholder_templ_types: Union[Tuple[PlaceholderTemplateType], List[PlaceholderTemplateType]],
                             op_arg_types: List[Type], op_return_type: Type, emits_ir: bool) -> FunctionTemplate:
   assert len(op_arg_types) in {1, 2}
   unary: bool = len(op_arg_types) == 1
@@ -2371,14 +2371,14 @@ def make_function_signature(instruction: Callable[..., Value],
 
 
 def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type],
-                          placeholder_templ_types: List[TemplateType]) -> Optional[List[Type]]:
+                          placeholder_templ_types: List[PlaceholderTemplateType]) -> Optional[List[Type]]:
   """
   Implements unification.
   Mostly symmetric, however uses can_implicit_cast_to(calling_type, signature_type) only in this direction.
   """
   if len(calling_types) != len(signature_types):
     return None
-  templ_type_replacements: Dict[TemplateType, Type] = {}
+  templ_type_replacements: Dict[PlaceholderTemplateType, Type] = {}
 
   def check_deep_type_contains(type: Type, contains: Type) -> bool:
     return any(
@@ -2406,7 +2406,7 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
       else:
         assert calling_type in placeholder_templ_types
         template_type, other_type = calling_type, signature_type
-      assert isinstance(template_type, TemplateType)
+      assert isinstance(template_type, PlaceholderTemplateType)
       if check_deep_type_contains(other_type, contains=template_type):  # recursively contains itself
         return False
       if template_type not in templ_type_replacements:
