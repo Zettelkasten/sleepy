@@ -50,7 +50,7 @@ func set(@Mutable vec: Vec, slice: Slice, val: Double)  {
   }
 }
 func ZeroVec(dim: Int) -> @Mutable  Vec  {
-  @Mutable v = Vec(dim, allocate_double(dim));
+  @Mutable v = Vec(dim, allocate[Double](dim));
   set(v, SliceAll(), 0.0);
   return v;
 }
@@ -113,7 +113,7 @@ func free_vec(vec: Vec)  {
 @RefType struct Mat {
   num_rows : Int = 0;
   num_cols : Int = 0;
-  start : Ptr[Double] = allocate_double(0);
+  start : Ptr[Double] = allocate[Double](0);
 }
 func get(mat: Mat, row: Int, col: Int) -> Ptr[Double]  {
   row = normalized_index(row, mat.num_rows);
@@ -151,7 +151,7 @@ func set(@Mutable mat: Mat, row_slice: Slice, col_slice: Slice, val: Double)  {
   }
 }
 func ZeroMat(num_rows: Int, num_cols: Int) -> @Mutable  Mat  {
-  @Mutable mat = Mat(num_rows, num_cols, allocate_double(num_rows * num_cols * 8));
+  @Mutable mat = Mat(num_rows, num_cols, allocate[Double](num_rows * num_cols * 8));
   set(mat, SliceAll(), SliceAll(), 0.0);
   return mat;
 }

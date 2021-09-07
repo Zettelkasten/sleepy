@@ -51,7 +51,7 @@ func is_sorted(array: Ptr[Double], size: Int) ->  Bool  {
 
 func main()  {
   size = 10;
-  arr: Ptr[Double] = allocate_double(size);
+  arr: Ptr[Double] = allocate[Double](size);
   store(arr + 0, 5.0);
   store(arr + 1, 1.0);
   store(arr + 2, 4.0);
