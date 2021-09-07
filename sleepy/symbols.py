@@ -1292,6 +1292,7 @@ class FunctionTemplate:
                base: FunctionTemplate = None):
     assert isinstance(return_type, Type)
     assert len(arg_identifiers) == len(arg_types) == len(arg_mutables) == len(arg_type_narrowings)
+    assert all(isinstance(templ_type, TemplateType) for templ_type in placeholder_templ_types)
     self.concrete_func_factory = concrete_func_factory
     self.placeholder_templ_types = placeholder_templ_types
     self.return_type = return_type
@@ -1513,6 +1514,8 @@ class FunctionSymbolCaller:
   A FunctionSymbol plus template types it is called with.
   """
   def __init__(self, func: FunctionSymbol, templ_types: Optional[List[Type]] = None):
+    if templ_types is not None:
+      assert all(not templ_type.has_templ_placeholder() for templ_type in templ_types)
     self.func = func
     self.templ_types = templ_types
 
