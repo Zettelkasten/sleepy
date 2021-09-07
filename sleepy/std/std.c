@@ -30,22 +30,9 @@ void assert(_Bool property) {
     }
 }
 
-double* allocate_double(int size) {
-    return malloc((size_t) size * sizeof(double));
+void* allocate(size_t size) {
+    return malloc(size);
 }
-float* allocate_float(int size) {
-    return malloc((size_t) size * sizeof(float));
-}
-char* allocate_char(int size) {
-    return malloc((size_t) size * sizeof(char));
-}
-int* allocate_int(int size) {
-    return malloc((size_t) size * sizeof(int));
-}
-long* allocate_long(int size) {
-    return malloc((size_t) size * sizeof(long));
-}
-
 void deallocate(void* ptr) {
     free(ptr);
 }

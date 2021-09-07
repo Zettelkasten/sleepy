@@ -11,24 +11,14 @@ extern_func flush() ;
 @Inline func print_flush[T](text: T)  { print(text); flush(); }
 @Inline func print_line_flush[T](line: T)  { print_line(line); flush(); }
 
-## Allocation
-extern_func allocate_double(size: Int) -> Ptr[Double];
-extern_func allocate_float(size: Int) -> Ptr[Float];
-extern_func allocate_char(size: Int) -> Ptr[Char];
-extern_func allocate_int(size: Int) -> Ptr[Int];
-extern_func allocate_long(size: Int) -> Ptr[Long];
-func NullRawPtr() -> RawPtr { return RawPtr(0l); }
-func NullPtr[T]() -> Ptr[T] { return Ptr[T](NullRawPtr()); }
-func deallocate[T](ptr: Ptr[T]) {
-  extern_func deallocate(ptr: RawPtr);  # TODO: cannot override free.
-  deallocate(RawPtr(ptr));
-}
+## Assertions
 extern_func assert(condition: Bool);
 @Inline func unchecked_assert(condition: Bool) { }
 func memcpy[T](to: Ptr[T], from: Ptr[T], size: Int) {
   extern_func memcpy(to: RawPtr, from: RawPtr, size: Int);
   memcpy(RawPtr(to), RawPtr(from), size);
 }
+
 
 ## Boolean Logic
 @Inline func True() ->  Bool  { return 0 == 0; }
@@ -50,6 +40,19 @@ func ToLong[T](ptr: Ptr[T]) -> Long {
 }
 func ToDouble(i: Int) -> Double { extern_func int_to_double(i: Int) -> Double; return int_to_double(i); }
 func ToBool(i: Int) -> Bool { if i == 0 { return False(); } else { if i != 1 { assert(False()); } return True(); }}
+
+## Allocation
+func allocate[T](amount: Long) -> Ptr[T] {
+  extern_func allocate(size: Long) -> RawPtr;  # TODO: cannot override malloc.
+  return Ptr[T](allocate(amount * size(T)));
+}
+func allocate[T](amount: Int) -> Ptr[T] { return allocate[T](ToLong(amount)); }
+func NullRawPtr() -> RawPtr { return RawPtr(0l); }
+func NullPtr[T]() -> Ptr[T] { return Ptr[T](NullRawPtr()); }
+func deallocate[T](ptr: Ptr[T]) {
+  extern_func deallocate(ptr: RawPtr);  # TODO: cannot override free.
+  deallocate(RawPtr(ptr));
+}
 
 ## Simple Math
 func <(left: Int, right: Double) ->  Bool  { return ToDouble(left) < right; }
@@ -77,20 +80,20 @@ extern_func cos(x: Double) ->  Double;
 #   Int alloc_length = 8;
 # }
 func EmptyStr(alloc_length: Int) -> @Mutable  Str  {
-  return Str(allocate_char(alloc_length), 0, alloc_length);
+  return Str(allocate[Char](alloc_length), 0, alloc_length);
 }
 func EmptyStr() -> @Mutable  Str  {
   return EmptyStr(8);
 }
 func resize(@Mutable str: Str, new_alloc_length: Int)  {
-  new_start = allocate_char(new_alloc_length);
+  new_start = allocate[Char](new_alloc_length);
   memcpy(new_start, str.start, str.alloc_length);
   deallocate(str.start);
   str.alloc_length = new_alloc_length;
   str.start = new_start;
 }
 func copy(str: Str) -> @Mutable  Str  {
-  @Mutable new = Str(allocate_char(str.alloc_length), str.length, str.alloc_length);
+  @Mutable new = Str(allocate[Char](str.alloc_length), str.length, str.alloc_length);
   memcpy(new.start, str.start, str.length);
   return new;
 }
