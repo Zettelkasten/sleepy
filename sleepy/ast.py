@@ -1482,9 +1482,11 @@ class CallExpressionAst(ExpressionAst):
     func_kind = self.func_expr.make_symbol_kind(symbol_table=symbol_table)
 
     if concrete_templ_types is not None:  # is a templ type specialization, keeps kind.
-      if func_kind not in {Symbol.Kind.FUNCTION, Symbol.Kind.TYPE}:
+      assert func_kind == Symbol.Kind.FUNCTION  # func is get/set
+      func_caller_kind = self.func_arg_exprs[0].make_symbol_kind(symbol_table=symbol_table)
+      if func_caller_kind not in {Symbol.Kind.FUNCTION, Symbol.Kind.TYPE}:
         self.raise_error('Cannot specify template parameters for symbol of kind %r' % func_kind)
-      return func_kind
+      return func_caller_kind
     if func_kind == Symbol.Kind.FUNCTION:
       return Symbol.Kind.VARIABLE
     if func_kind == Symbol.Kind.TYPE:
@@ -1552,7 +1554,7 @@ class CallExpressionAst(ExpressionAst):
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.TYPE
     concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
     assert concrete_templ_types is not None
-    signature_type = self.func_expr.make_as_type(symbol_table=symbol_table)
+    signature_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
     if len(concrete_templ_types) != len(signature_type.templ_types):
       if len(concrete_templ_types) == 0:
         self.raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
