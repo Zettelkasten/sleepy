@@ -107,6 +107,14 @@ class Type(ABC):
   def constructor(self) -> Optional[FunctionSymbol]:
     return self._constructor
 
+  @property
+  def constructor_caller(self) -> FunctionSymbolCaller:
+    assert self.constructor is not None
+    # TODO: We do not currently keep track if the user specifies template types anywhere.
+    # this means saying MyType[][][] is okay currently.
+    templ_types = self.templ_types if len(self.templ_types) > 0 else None
+    return FunctionSymbolCaller(self.constructor, templ_types=templ_types)
+
   @constructor.setter
   def constructor(self, new_constructor: FunctionSymbol):
     assert new_constructor is None or not new_constructor.returns_void
