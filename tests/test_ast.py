@@ -1812,8 +1812,8 @@ def test_templ_ptr():
   with make_execution_engine() as engine:
     program = """
     func main(a: Int, b: Int) -> Int {  # returns a + b
-      extern_func allocate_int(size: Int) -> Ptr[Int];
-      ptr = allocate_int(2);
+      extern_func allocate(size: Int) -> Ptr[Int];
+      ptr = allocate(2);
       store(ptr, a);
       store(ptr + 1, b);
       sum = load(ptr) + load(ptr + 1);
@@ -1950,7 +1950,7 @@ def test_ptr_loop():
   with make_execution_engine() as engine:
     program = """
     func main(len: Int) -> Int {  # computes sum_i^{len-1} i
-      arr: Ptr[Int] = allocate_int(len);
+      arr: Ptr[Int] = allocate[Int](len);
       # store numbers 0 ... len-1
       pos = 0;
       while pos < len {
@@ -1979,7 +1979,7 @@ def test_ptr_arithmetic():
   with make_execution_engine() as engine:
     program = """
     func main(magic: Int) -> Int {
-      orig = allocate_int(20);
+      orig = allocate[Int](20);
       store(orig, magic);
       ptr = orig;
       ptr += 10;  # = orig + 10
@@ -2005,7 +2005,7 @@ def test_ptr_casts():
   with make_execution_engine() as engine:
     program = """
     func main(val: Int) -> Int {
-      ptr: Ptr[Int] = allocate_int(3);
+      ptr: Ptr[Int] = allocate[Int](3);
       store(ptr, val);
       raw_ptr = RawPtr(ptr);
       raw_ptr += 1;

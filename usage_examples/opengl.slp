@@ -6,7 +6,7 @@
 ### Vector / Matrix functions ###
 @RefType struct Vector {
   Int size = 0;
-  FloatPtr start = allocate_float(0);
+  FloatPtr start = allocate[Float](0);
 }
 func get(Vector vec, Int pos) -> Float {
   assert(and(0 <= pos, pos < vec.size));
@@ -24,7 +24,7 @@ func fill(@Mutable Vector vec, Float val) {
   }
 }
 func ZeroVector(Int size) -> @Mutable Vector {
-  @Mutable v = Vector(size, allocate_float(size));
+  @Mutable v = Vector(size, allocate[Float](size));
   fill(v, 0.0f);
   return v;
 }
@@ -46,7 +46,7 @@ func print(Vector vec) {
 func print_line(Vector vec) { print(vec); print_line(); }
 @RefType struct Matrix {
   Int dim_x = 0; Int dim_y = 0;
-  FloatPtr start = allocate_float(0);
+  FloatPtr start = allocate[Float](0);
 }
 func get(Matrix mat, Int x, Int y) -> Float {
   assert(and(0 <= x, x < mat.dim_x));
@@ -70,7 +70,7 @@ func fill(@Mutable Matrix mat, Float val) {
   }
 }
 func ZeroMatrix(Int xs, Int ys) -> @Mutable Matrix {
-  @Mutable m = Matrix(xs, ys, allocate_float(xs * ys));
+  @Mutable m = Matrix(xs, ys, allocate[Float](xs * ys));
   fill(m, 0.0f);
   return m;
 }
@@ -254,7 +254,7 @@ struct VertexArray { Int id = 0; }
 func generate_vertex_array() -> VertexArray {
   extern_func glGenVertexArrays(Int n, IntPtr arrays);
   # as there is no reference operator yet, temporarily allocate some memory to obtain the id.
-  tmp_ptr = allocate_int(1);
+  tmp_ptr = allocate[Int](1);
   glGenVertexArrays(1, tmp_ptr);
   arr = VertexArray(load(tmp_ptr));
   deallocate(tmp_ptr);
@@ -269,7 +269,7 @@ struct Buffer { Int id = 0; }
 func generate_buffer() -> Buffer {
   extern_func glGenBuffers(Int n, IntPtr buffers);
   # as there is no reference operator yet, temporarily allocate some memory to obtain the id.
-  tmp_ptr = allocate_int(1);
+  tmp_ptr = allocate[Int](1);
   glGenBuffers(1, tmp_ptr);
   buffer = Buffer(load(tmp_ptr));
   deallocate(tmp_ptr);
@@ -324,7 +324,7 @@ func set_source(Shader shader, Str shader_code) {
   # as there is no reference operator yet, temporarily allocate some memory to obtain the string and length.
   code_ptr = allocate_long(1);
   store(code_ptr, ToLong(shader_code.start));
-  len_ptr = allocate_int(1);
+  len_ptr = allocate[Int](1);
   store(len_ptr, shader_code.length);
   glShaderSource(shader, 1, code_ptr, len_ptr);
   deallocate(code_ptr);
@@ -344,7 +344,7 @@ func print(CompileSuccess status) { print("Compile Success"); }
 func print(CompileError status) { print("Compile Error:\n"); print(status.message); }
 func print_line(CompileSuccess|CompileError status) { print(status); print_line(); }
 func get_compile_status(Shader shader) -> CompileSuccess|CompileError {
-  res = allocate_int(1);
+  res = allocate[Int](1);
   glGetShaderiv(shader, ShaderCompileStatus(), res);
   success = ToBool(load(res));
   if success {
@@ -389,7 +389,7 @@ func print(LinkSuccess status) { print("Link Success"); }
 func print(LinkError status) { print("Link Error:\n"); print(status.message); }
 func print_line(LinkSuccess|LinkError status) { print(status); print_line(); }
 func get_link_status(ShaderProgram program) -> LinkSuccess|LinkError {
-  res = allocate_int(1);
+  res = allocate[Int](1);
   glGetProgramiv(program, ShaderProgramLinkStatus(), res);
   success = ToBool(load(res));
   if success {
