@@ -2021,6 +2021,41 @@ def test_ptr_casts():
     assert_equal(main(1234), 1234)
 
 
+def test_size_simple():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Int {
+      if size(Bool) != 1l { return 0; }
+      if size(Int) != 4l { return 0; }
+      if size(Long) != 8l { return 0; }
+      return 1;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 1)
+
+
+def test_size_templ():
+  with make_execution_engine() as engine:
+    program = """
+    func templ_size[T]() -> Long {
+      return size(T);
+    }
+    func main() -> Int {
+      if templ_size[Bool]() != 1l { return 0; }
+      if templ_size[Int]() != 4l { return 0; }
+      if templ_size[Long]() != 8l { return 0; }
+      if templ_size[Double]() != 8l { return 0; }
+      struct Vec3[T] { x: T; y: T; z: T; }
+      if templ_size[Vec3[Int]]() != 3l * templ_size[Int]() { return 0; }
+      if templ_size[Vec3[Double]]() != 3l * templ_size[Double]() { return 0; }
+      return 1;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 1)
+
+
 if __name__ == "__main__":
   try:
     better_exchook.install()
