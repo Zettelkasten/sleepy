@@ -51,9 +51,9 @@ def test_get_common_type():
 
 # noinspection PyPep8Naming
 def test_try_infer_templ_types_simple():
-  from sleepy.symbols import try_infer_templ_types, SLEEPY_INT, SLEEPY_DOUBLE, TemplateType
-  T = TemplateType('T')
-  U = TemplateType('U')
+  from sleepy.symbols import try_infer_templ_types, SLEEPY_INT, SLEEPY_DOUBLE, PlaceholderTemplateType
+  T = PlaceholderTemplateType('T')
+  U = PlaceholderTemplateType('U')
   assert_equal(try_infer_templ_types(calling_types=[], signature_types=[], placeholder_templ_types=[]), [])
   assert_equal(try_infer_templ_types(
     calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, SLEEPY_DOUBLE], placeholder_templ_types=[]),
@@ -90,8 +90,8 @@ def test_try_infer_templ_types_simple():
 
 # noinspection PyPep8Naming
 def test_try_infer_templ_types_ptr():
-  from sleepy.symbols import try_infer_templ_types, TemplateType, PointerType, SLEEPY_INT, SLEEPY_CHAR
-  T = TemplateType('T')
+  from sleepy.symbols import try_infer_templ_types, PlaceholderTemplateType, PointerType, SLEEPY_INT, SLEEPY_CHAR
+  T = PlaceholderTemplateType('T')
   assert_equal(
     try_infer_templ_types(
       calling_types=[PointerType(SLEEPY_INT)], signature_types=[PointerType(T)], placeholder_templ_types=[T]),
@@ -129,9 +129,9 @@ def test_try_infer_templ_types_union():
 
 # noinspection PyPep8Naming
 def test_try_infer_templ_types_struct():
-  from sleepy.symbols import try_infer_templ_types, TemplateType, StructType, SLEEPY_INT, SLEEPY_CHAR
-  T = TemplateType('T')
-  U = TemplateType('U')
+  from sleepy.symbols import try_infer_templ_types, PlaceholderTemplateType, StructType, SLEEPY_INT, SLEEPY_CHAR
+  T = PlaceholderTemplateType('T')
+  U = PlaceholderTemplateType('U')
   WrapperT = StructType(
     'Wrapper', templ_types=[T], member_identifiers=['value'], member_types=[T], member_mutables=[False],
     pass_by_ref=False)

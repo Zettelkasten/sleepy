@@ -11,7 +11,7 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SL
   TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, FunctionTemplate, TemplateType, ConcreteFunctionFactory, TypeFactory, try_infer_templ_types, Symbol, \
+  SLEEPY_CHAR_PTR, FunctionTemplate, PlaceholderTemplateType, ConcreteFunctionFactory, TypeFactory, try_infer_templ_types, Symbol, \
   FunctionSymbolCaller
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
@@ -195,12 +195,12 @@ class AbstractSyntaxTree(ABC):
     pass
 
   def _collect_placeholder_templ_types(self, templ_identifiers: List[str],
-                                       symbol_table: SymbolTable) -> List[TemplateType]:
+                                       symbol_table: SymbolTable) -> List[PlaceholderTemplateType]:
     templ_types = []
     for templ_type_identifier in templ_identifiers:
       if templ_type_identifier in symbol_table.current_scope_identifiers:
         self.raise_error('Cannot declare template variable %r multiple times' % templ_type_identifier)
-      template_type = TemplateType(templ_type_identifier)
+      template_type = PlaceholderTemplateType(templ_type_identifier)
       templ_types.append(template_type)
       template_type_factory = TypeFactory(placeholder_templ_types=[], signature_type=template_type)
       template_type_symbol = TypeSymbol(type_factory=template_type_factory)
