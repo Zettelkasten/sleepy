@@ -1496,6 +1496,9 @@ class CallExpressionAst(ExpressionAst):
 
   def make_val_type(self, symbol_table: SymbolTable) -> Type:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
+    if self._is_size_call(symbol_table=symbol_table):
+      from sleepy.symbols import SLEEPY_LONG
+      return SLEEPY_LONG
     possible_concrete_funcs = self.resolve_func_call(
       func_caller=self.func_expr.make_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table)
@@ -1503,15 +1506,33 @@ class CallExpressionAst(ExpressionAst):
 
   def is_val_mutable(self, symbol_table: SymbolTable) -> bool:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
+    if self._is_size_call(symbol_table=symbol_table):
+      return False
     possible_concrete_funcs = self.resolve_func_call(
       func_caller=self.func_expr.make_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
+  def _is_size_call(self, symbol_table: SymbolTable):
+    # TODO: make this a normal compile time function operating on types
+    if not isinstance(self.func_expr, IdentifierExpressionAst):
+      return False
+    from sleepy.symbols import SLEEPY_SIZE_FUNC
+    if self.func_expr.make_as_func_caller(symbol_table=symbol_table).func.base != SLEEPY_SIZE_FUNC.base:
+      return False
+    return True
+
   def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     with context.use_pos(self.pos):
       assert context.emits_ir
+      if self._is_size_call(symbol_table=symbol_table):
+        if len(self.func_arg_exprs) != 1:
+          self.raise_error('Must call size(type: Type) with exactly one argument')
+        size_of_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
+        from sleepy.symbols import LLVM_SIZE_TYPE
+        return ir.Constant(LLVM_SIZE_TYPE, size_of_type.size)
+
       return self._build_func_call(
         func_caller=self.func_expr.make_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
         symbol_table=symbol_table, context=context)

@@ -2194,6 +2194,9 @@ def get_dummy_destructor_function_factory(emits_ir: bool) -> ConcreteFunctionFac
   return InbuiltOpConcreteFuncFactory(instruction=lambda builder, value: None, emits_ir=emits_ir)
 
 
+SLEEPY_SIZE_FUNC = FunctionSymbol(identifier='size', returns_void=False)
+
+
 def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   if context.emits_debug:
     assert context.di_declare_func is None
@@ -2226,6 +2229,9 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
 
   assert 'get' not in symbol_table
   symbol_table['get'] = FunctionSymbol(identifier='get', returns_void=False)
+
+  assert 'size' not in symbol_table
+  symbol_table['size'] = SLEEPY_SIZE_FUNC
 
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     type_generator = TypeFactory(placeholder_templ_types=[], signature_type=inbuilt_type)
