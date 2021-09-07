@@ -331,7 +331,7 @@ def test_extern_func_simple_alloc():
   with make_execution_engine() as engine:
     program = """
     func main() ->  Double  {
-      arr = allocate_double(3);
+      arr = allocate[Double](3);
       store(arr, 42.0);
       res = load(arr);
       return res;
@@ -1000,7 +1000,7 @@ def test_index_operator():
       return ptr + pos;
     }
     func main(val: Double) ->  Double  {
-      ptr = allocate_double(8);
+      ptr = allocate[Double](8);
       ptr[0] = val;
       loaded = +ptr[0];
       return loaded;
@@ -1017,7 +1017,7 @@ def test_index_operator_syntax():
       return ptr + pos;
     }
     func main(val: Double) ->  Double  {
-      ptr = allocate_double(8);
+      ptr = allocate[Double](8);
       ptr[0] = val;
       loaded = ptr[0];
       return +loaded;
@@ -1604,7 +1604,7 @@ def test_unchecked_assert_type_narrowing():
       return ptr;
     }
     func main(val: Double) ->  Double  {
-      ptr = allocate_double(2);
+      ptr = allocate[Double](2);
       store(ptr, val);
       s: S = cast_to_s(ptr);
       return s.val;
