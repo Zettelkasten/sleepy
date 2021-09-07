@@ -1319,10 +1319,14 @@ class FunctionTemplate:
     return self.copy_replace_types(unbound_templ_type_replacements)
 
   def copy_replace_types(self, type_replacements: Dict[Type, Type]) -> FunctionTemplate:
+    new_placeholder_templ_types = [
+      type_replacements.get(templ_type, templ_type) for templ_type in self.placeholder_templ_types]
+    new_placeholder_templ_types = [
+      templ_type for templ_type in new_placeholder_templ_types if isinstance(templ_type, TemplateType)]
     return FunctionTemplate(
       concrete_func_factory=self.concrete_func_factory,
-      placeholder_templ_types=self.placeholder_templ_types.copy(),
-      return_type=self.return_type, return_mutable=self.return_mutable,
+      placeholder_templ_types=new_placeholder_templ_types,
+      return_type=self.return_type.replace_types(type_replacements), return_mutable=self.return_mutable,
       arg_identifiers=self.arg_identifiers.copy(),
       arg_types=[arg_type.replace_types(type_replacements) for arg_type in self.arg_types.copy()],
       arg_mutables=self.arg_mutables.copy(), arg_type_narrowings=self.arg_type_narrowings.copy(),
