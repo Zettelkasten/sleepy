@@ -68,7 +68,6 @@ class AbstractSyntaxTree(ABC):
     assert all(not templ_type.has_templ_placeholder() for templ_type in templ_types)
 
     if not func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_types):
-      func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_types)
       self.raise_error(
         'Cannot call function %r with arguments of types %r and template parameters %r, '
         'only declared for parameter types:\n%s' % (
@@ -797,6 +796,8 @@ class AssignStatementAst(StatementAst):
         stated_type = self.declared_var_type.make_type(symbol_table=symbol_table)  # type: Optional[Type]
       else:
         stated_type = None  # type: Optional[Type]
+      if not self.var_val.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE:
+        self.raise_error('Can only reassign variables')
       val_type = self.var_val.make_val_type(symbol_table=symbol_table)
       if val_type == SLEEPY_VOID:
         self.raise_error('Cannot assign void to variable')
@@ -1496,22 +1497,35 @@ class CallExpressionAst(ExpressionAst):
       return Symbol.Kind.VARIABLE
     self.raise_error('Cannot call non-function symbol, is a %r' % func_kind)
 
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
+  def _make_func_expr_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
+    func_kind = self.func_expr.make_symbol_kind(symbol_table=symbol_table)
+    if func_kind == Symbol.Kind.FUNCTION:
+      return self.func_expr.make_as_func_caller(symbol_table=symbol_table)
+    elif func_kind == Symbol.Kind.TYPE:
+      called_type = self.func_expr.make_as_type(symbol_table=symbol_table)
+      if called_type.constructor is None:
+        self.raise_error('Cannot call constructor of type %r because it does not exist' % called_type)
+      return called_type.constructor_caller
+    else:
+      self.raise_error('Cannot call an expression of kind %r' % (
+        self.func_expr.make_symbol_kind(symbol_table=symbol_table)))
+
+  def make_val_type(self, symbol_table: SymbolTable) -> Type:
     if self._is_size_call(symbol_table=symbol_table):
       from sleepy.symbols import SLEEPY_LONG
       return SLEEPY_LONG
+    func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
     possible_concrete_funcs = self.resolve_func_call(
-      func_caller=self.func_expr.make_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
-      symbol_table=symbol_table)
+      func_caller=func_caller, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
   def is_val_mutable(self, symbol_table: SymbolTable) -> bool:
-    assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     if self._is_size_call(symbol_table=symbol_table):
       return False
+    func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
     possible_concrete_funcs = self.resolve_func_call(
-      func_caller=self.func_expr.make_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
+      func_caller=func_caller, func_arg_exprs=self.func_arg_exprs,
       symbol_table=symbol_table)
     return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
@@ -1536,7 +1550,7 @@ class CallExpressionAst(ExpressionAst):
         return ir.Constant(LLVM_SIZE_TYPE, size_of_type.size)
 
       return self._build_func_call(
-        func_caller=self.func_expr.make_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
+        func_caller=self._make_func_expr_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
         symbol_table=symbol_table, context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
