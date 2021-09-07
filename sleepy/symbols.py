@@ -112,7 +112,10 @@ class Type(ABC):
     assert self.constructor is not None
     # TODO: We do not currently keep track if the user specifies template types anywhere.
     # this means saying MyType[][][] is okay currently.
-    templ_types = self.templ_types if len(self.templ_types) > 0 else None
+    templ_types = (
+      self.templ_types
+      if len(self.templ_types) > 0 and all(not templ_type.has_templ_placeholder() for templ_type in self.templ_types)
+      else None)
     return FunctionSymbolCaller(self.constructor, templ_types=templ_types)
 
   @constructor.setter
