@@ -709,6 +709,8 @@ class StructType(Type):
     return self.member_identifiers.index(member_identifier)
 
   def replace_types(self, replacements: Dict[Type, Type]) -> StructType:
+    if len(replacements) == 0:
+      return self
     new_templ_types = [replacements.get(templ_type, templ_type) for templ_type in self.templ_types]
     new_member_types = [replacements.get(member_type, member_type) for member_type in self.member_types]
     new_struct = StructType(
