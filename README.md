@@ -32,18 +32,18 @@ Or this more complicated example implements a variable-sized list for doubles:
   Int alloc_length = 8;
   Int length = 0;
 }
-func empty_list() -> @Mutable DoubleList {
+func empty_list() -> DoubleList {
   return DoubleList(allocate(8), 8, 0);
 }
 func get(DoubleList l, Int idx) -> Double {
   assert(and(idx >= 0, idx < l.length));
   return load(l.pointer + idx);
 }
-func set(@Mutable DoubleList l, Int idx, Double val) {
+func set(DoubleList l, Int idx, Double val) {
   assert(and(idx >= 0, idx < l.length));
   store(l.pointer + idx, val);
 }
-func insert(@Mutable DoubleList l, Double val) {
+func insert(DoubleList l, Double val) {
   if l.length >= l.alloc_length {
     # no space left, resize
     new_alloc_length = 2 * l.alloc_length;
@@ -57,7 +57,7 @@ func insert(@Mutable DoubleList l, Double val) {
   l.length = l.length + 1;
   set(l, new_idx, val);
 }
-func insert_all(@Mutable DoubleList l, DoubleList other) {
+func insert_all(DoubleList l, DoubleList other) {
   other_length = other.length;
   idx = 0;
   while idx < other_length {
@@ -65,7 +65,7 @@ func insert_all(@Mutable DoubleList l, DoubleList other) {
     idx = idx + 1;
   }
 }
-func remove(@Mutable DoubleList l, Int idx) {
+func remove(DoubleList l, Int idx) {
   assert(and(idx >= 0, idx < l.length));
   # move all elements after idx one to front
   move_idx = idx + 1;
@@ -90,7 +90,7 @@ func print(DoubleList l) {
 which you can then use e.g. like this:
 ```c++
 func main() {
-  @Mutable list = empty_list();
+  list = empty_list();
   insert(list, 5.0);
   insert(list, 7.0);
   insert_all(list, list);

@@ -1,5 +1,5 @@
 func Hello() ->  Str  {
-  @Mutable str = EmptyStr();
+  str = EmptyStr();
   insert(str, 'H');
   insert(str, 'e');
   insert(str, 'l');

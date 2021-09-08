@@ -4,36 +4,37 @@
 
 
 ### Vector / Matrix functions ###
-@RefType struct Vector {
-  Int size = 0;
-  FloatPtr start = allocate[Float](0);
+# Fixed size vector implementation
+@RefType struct Vector[T] {
+  size: Int;
+  start: Ptr[T];
 }
-func get(Vector vec, Int pos) -> Float {
+func get[T](vec: Vector[T], pos: Int) -> T {
   assert(and(0 <= pos, pos < vec.size));
   return load(vec.start + pos);
 }
-func set(@Mutable Vector vec, Int pos, Float val) {
+func set[T](vec: Vector[T], pos: Int, val: T) {
   assert(and(0 <= pos, pos < vec.size));
   store(vec.start + pos, val);
 }
-func fill(@Mutable Vector vec, Float val) {
+func fill[T: Type](vec: Vector[T], val: T) {
   pos = 0;
   while pos < vec.size {
     vec[pos] = val;
     pos += 1;
   }
 }
-func ZeroVector(Int size) -> @Mutable Vector {
-  @Mutable v = Vector(size, allocate[Float](size));
-  fill(v, 0.0f);
+func ZeroVector[T](size: Int) -> Vector[T] {
+  v = Vector(size, allocate[T](size));
+  fill(v, 0 as T);
   return v;
 }
-func Vector3(Float x, Float y, Float z) -> @Mutable Vector {
-  @Mutable vec = ZeroVector(3);
+func Vector3(x: Float, y: Float, z: Float) -> Vector {
+  vec = ZeroVector(3);
   vec[0] = x; vec[1] = y; vec[2] = z;
   return vec;
 }
-func print(Vector vec) {
+func print[T](vec: Vector[T]) {
   print('[');
   pos = 0;
   while pos < vec.size {
@@ -53,12 +54,12 @@ func get(Matrix mat, Int x, Int y) -> Float {
   assert(and(0 <= y, y < mat.dim_y));
   return load(mat.start + x * mat.dim_x + y);
 }
-func set(@Mutable Matrix mat, Int x, Int y, Float val) {
+func set(Matrix mat, Int x, Int y, Float val) {
   assert(and(0 <= x, x < mat.dim_x));
   assert(and(0 <= y, y < mat.dim_y));
   store(mat.start + x * mat.dim_x + y, val);
 }
-func fill(@Mutable Matrix mat, Float val) {
+func fill(Matrix mat, Float val) {
   x = 0;
   while x < mat.dim_x {
     y = 0;
@@ -69,13 +70,13 @@ func fill(@Mutable Matrix mat, Float val) {
     x += 1;
   }
 }
-func ZeroMatrix(Int xs, Int ys) -> @Mutable Matrix {
-  @Mutable m = Matrix(xs, ys, allocate[Float](xs * ys));
+func ZeroMatrix(Int xs, Int ys) -> Matrix {
+  m = Matrix(xs, ys, allocate[Float](xs * ys));
   fill(m, 0.0f);
   return m;
 }
-func IdentityMatrix(Int dim) -> @Mutable Matrix {
-  @Mutable mat = ZeroMatrix(dim, dim);
+func IdentityMatrix(Int dim) -> Matrix {
+  mat = ZeroMatrix(dim, dim);
   pos = 0;
   while pos < dim {
     mat[pos, pos] = 1.0f;
@@ -83,8 +84,8 @@ func IdentityMatrix(Int dim) -> @Mutable Matrix {
   }
   return mat;
 }
-func ScaleMatrix(Vector scale) -> @Mutable Matrix {
-  @Mutable mat = ZeroMatrix(scale.size + 1, scale.size + 1);
+func ScaleMatrix(Vector scale) -> Matrix {
+  mat = ZeroMatrix(scale.size + 1, scale.size + 1);
   pos = 0;
   while pos < scale.size {
     mat[pos, pos] = scale[pos];
@@ -93,8 +94,8 @@ func ScaleMatrix(Vector scale) -> @Mutable Matrix {
   mat[scale.size, scale.size] = 1.0f;
   return mat;
 }
-func TranslateMatrix(Vector translation) -> @Mutable Matrix {
-  @Mutable mat = ZeroMatrix(translation.size + 1, translation.size + 1);
+func TranslateMatrix(Vector translation) -> Matrix {
+  mat = ZeroMatrix(translation.size + 1, translation.size + 1);
   pos = 0;
   while pos < translation.size {
     mat[pos, pos] = 1.0f;
@@ -122,9 +123,9 @@ func print(Matrix mat) {
   print(']');
 }
 func print_line(Matrix mat) { print(mat); print_line(); }
-func dot(Matrix left, Matrix right) -> @Mutable Matrix {
+func dot(Matrix left, Matrix right) -> Matrix {
   assert(left.dim_x == right.dim_y);
-  @Mutable Matrix new = ZeroMatrix(left.dim_y, right.dim_x);
+  Matrix new = ZeroMatrix(left.dim_y, right.dim_x);
   x = 0;
   while x < new.dim_x {
     y = 0;
@@ -144,7 +145,7 @@ func dot(Matrix left, Matrix right) -> @Mutable Matrix {
 }
 
 ### Reading Files ###
-func read_file(Str file_name) -> @Mutable Str {
+func read_file(Str file_name) -> Str {
   struct File { IntPtr ptr = NullIntPtr(); }
   struct SeekOrigin { Int val = 0; }
   func SeekBeginning() -> SeekOrigin { return SeekOrigin(0); }
@@ -171,7 +172,7 @@ func read_file(Str file_name) -> @Mutable Str {
     assert(False(), "File too big: " + file_name);
   }
 
-  @Mutable file_content = EmptyStr(ToInt(file_size));
+  file_content = EmptyStr(ToInt(file_size));
   fread(file_content.start, file_size, 1l, file);  # read file content
   file_content.length = ToInt(file_size);
 
@@ -354,7 +355,7 @@ func get_compile_status(Shader shader) -> CompileSuccess|CompileError {
     # get error message
     glGetShaderiv(shader, ShaderInfoLogLength(), res);
     log_length = load(res);
-    @Mutable log = EmptyStr(log_length);
+    log = EmptyStr(log_length);
     extern_func glGetShaderInfoLog(Shader shader, Int max_length, IntPtr length, CharPtr info_log);
     glGetShaderInfoLog(shader, log.alloc_length, res, log.start);
     log.length = load(res);
@@ -399,7 +400,7 @@ func get_link_status(ShaderProgram program) -> LinkSuccess|LinkError {
     # get error message
     glGetProgramiv(program, ShaderProgramInfoLogLength(), res);
     log_length = load(res);
-    @Mutable log = EmptyStr(log_length);
+    log = EmptyStr(log_length);
     extern_func glGetProgramInfoLog(ShaderProgram program, Int max_length, IntPtr length, CharPtr info_log);
     glGetProgramInfoLog(program, log.alloc_length, res, log.start);
     log.length = load(res);
@@ -466,7 +467,7 @@ func terminate(Str error) {
 }
 
 func make_triangle() -> Vector {
-  @Mutable data = ZeroVector(9);
+  data = ZeroVector(9);
   data[0] = -0.8f; data[1] = -0.8f;
   data[3] = 0.8f;  data[4] = -0.8f;
                    data[7] = 0.8f;
@@ -475,7 +476,7 @@ func make_triangle() -> Vector {
 }
 func make_cube() -> Vector {
   num_triangles = 2 * 2 * 3;
-  @Mutable data = ZeroVector(9 * num_triangles);
+  data = ZeroVector(9 * num_triangles);
   data_pos = 0;
   normal_axis = 0;  # axis in which normal faces
   while normal_axis < 3 {
@@ -581,10 +582,10 @@ func main() {
   mesh = make_cube();
   set_data(ArrayBufferTarget(), mesh, StaticDrawBufferUsage());
 
-  func translate_and_scale(Float translate_x, Float translate_y, Float translate_z, Float scale_x, Float scale_y, Float scale_z) -> @Mutable Matrix {
+  func translate_and_scale(Float translate_x, Float translate_y, Float translate_z, Float scale_x, Float scale_y, Float scale_z) -> Matrix {
     scale = Vector3(translate_x, translate_y, translate_z);
     translate = Vector3(scale_x, scale_y, scale_z);
-    @Mutable projection = dot(TranslateMatrix(translate), ScaleMatrix(scale));
+    projection = dot(TranslateMatrix(translate), ScaleMatrix(scale));
     return projection;
   }
 
@@ -592,7 +593,7 @@ func main() {
   fragment_shader_path = "shaders/fragment.glsl";
   program = make_program(vertex_shader_path, fragment_shader_path);
   projection_uniform = get_uniform_location(program, "projection");
-  @Mutable projection = translate_and_scale(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
+  projection = translate_and_scale(0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f);
 
   time = 0.0f;
 

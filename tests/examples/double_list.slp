@@ -3,19 +3,19 @@
   alloc_length : Int = 8;
   length : Int = 0;
 }
-func empty_list() -> @Mutable  DoubleList  {
+func empty_list() ->  DoubleList  {
   return DoubleList(allocate[Double](8), 8, 0);
 }
 func get(l: DoubleList, idx: Int) ->  Double  {
   assert(and(idx >= 0, idx < l.length));
   return load(l.pointer + idx);
 }
-func set(@Mutable l: DoubleList, idx: Int, val: Double)  {
+func set(l: DoubleList, idx: Int, val: Double)  {
   # compiler cannot enforce that the list has to be mutable, but we will anyway.
   assert(and(idx >= 0, idx < l.length));
   store(l.pointer + idx, val);
 }
-func insert(@Mutable l: DoubleList, val: Double)  {
+func insert(l: DoubleList, val: Double)  {
   if l.length >= l.alloc_length {
     # no space left, resize
     new_alloc_length = 2 * l.alloc_length;
@@ -29,7 +29,7 @@ func insert(@Mutable l: DoubleList, val: Double)  {
   l.length = l.length + 1;
   set(l, new_idx, val);
 }
-func insert_all(@Mutable l: DoubleList, other: DoubleList)  {
+func insert_all(l: DoubleList, other: DoubleList)  {
   # could be smarter: e.g. use memcpy
   other_length = other.length;  # store in case l == other, we do not want to increase this.
   # To make this nicer: use a range(..) object and iterate over that
@@ -41,7 +41,7 @@ func insert_all(@Mutable l: DoubleList, other: DoubleList)  {
   # Thoughts: This function is problematic, if l == other.
   # Then, we would ideally want other to be a copy of l before we do anything
 }
-func remove(@Mutable l: DoubleList, idx: Int)  {
+func remove(l: DoubleList, idx: Int)  {
   assert(and(idx >= 0, idx < l.length));
   # move all elements after idx one to front
   move_idx = idx + 1;
@@ -65,7 +65,7 @@ func print(l: DoubleList)  {
 func print_len(l: DoubleList)  { print('l'); print('e'); print('n'); print(':'); print(' '); print_line(l.length); }
 
 func main()  {
-  @Mutable l = empty_list();
+  l = empty_list();
   print_line(l);
   insert(l, 4.2);
   insert(l, 12.0);

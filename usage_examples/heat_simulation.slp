@@ -9,7 +9,7 @@ struct For_impl {
 
 @RefType
 struct For {
-    @Mutable it: For_impl = For_impl(0, 0, 0);
+    it: For_impl = For_impl(0, 0, 0);
 }
 
 func +(f: For) -> Int {
