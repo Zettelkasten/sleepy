@@ -545,11 +545,11 @@ def test_pass_by_reference():
     struct Foo {
       value: Int = 0;
     }
-    func inc_val(@Mutable of: Foo)  {
+    func inc_val(of: Foo)  {
       of.value = of.value + 1;
     }
     func main() ->  Int  {
-      @Mutable my_foo = Foo(0);
+      my_foo = Foo(0);
       my_foo.value = 4;
       inc_val(my_foo);  # now my_foo.value should be 5.
       return my_foo.value;
@@ -559,59 +559,18 @@ def test_pass_by_reference():
     assert_equal(main(), 5)
 
 
-def test_pass_by_value():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType struct Foo { value: Int = 0; }
-    func inc_val(of: Foo)  {
-      of.value = of.value + 1;  # cannot redefine a immutable parameter!
-    }
-    func main()  { }
-    """
-    with assert_raises(SemanticError):
-      compile_program(engine, program)
-
-
 def test_mutable_val_type_local_var():
   with make_execution_engine() as engine:
     program = """
     struct Box { mem: Int = 123; }
     func main() ->  Int  {
-      @Mutable x: Box = Box(42);
+      x: Box = Box(42);
       x.mem = 17;
       return x.mem;
     }
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 17)
-
-
-def test_mutable_val_type_arg():
-  with make_execution_engine() as engine:
-    program = """
-    struct Box { mem: Int = 123; }
-    func not_allowed(@Mutable b: Box)  { # <- cannot have mutable non-ref type as argument
-    }
-    func main()  {
-    }
-    """
-    with assert_raises(SemanticError):
-      compile_program(engine, program, add_preamble=False)
-
-
-def test_mutable_val_type_return():
-  with make_execution_engine() as engine:
-    program = """
-    struct Box { mem: Int = 123; }
-    func not_allowed() -> @Mutable  Box  { # <- cannot have mutable non-ref type as return type
-      @Mutable cool: Box = Box(123);
-      return cool;
-    }
-    func main()  {
-    }
-    """
-    with assert_raises(SemanticError):
-      compile_program(engine, program, add_preamble=False)
 
 
 def test_struct_free():
@@ -644,12 +603,12 @@ def test_struct_free_nested():
       z: Double = 0.0;
     }
     @RefType struct Mat3x3 {
-      @Mutable x: Vec3 = Vec3(0.0, 0.0, 0.0);
-      @Mutable y: Vec3 = Vec3(0.0, 0.0, 0.0);
-      @Mutable z: Vec3 = Vec3(0.0, 0.0, 0.0);
+      x: Vec3 = Vec3(0.0, 0.0, 0.0);
+      y: Vec3 = Vec3(0.0, 0.0, 0.0);
+      z: Vec3 = Vec3(0.0, 0.0, 0.0);
     }
     func main()  {
-      @Mutable mat = Mat3x3(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0));
+      mat = Mat3x3(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0));
       mat.x.y = 42.0;
       free(mat);
     }
@@ -704,13 +663,13 @@ def test_const_add_vs_assign_add():
     func add(a: Vec2, b: Vec2) ->  Vec2  {
       return Vec2(a.x + b.x, a.y + b.y);
     }
-    func assign_add(@Mutable a: Vec2, b: Vec2)  {
+    func assign_add(a: Vec2, b: Vec2)  {
       a.x = a.x + b.x;
       a.y = a.y + b.y;
     }
     func main() ->  Double  {
       v1 = Vec2(5.0, 7.0);
-      @Mutable v2 = Vec2(0.0, 3.0);
+      v2 = Vec2(0.0, 3.0);
       v3 = add(v1, v2);  # should be (5.0, 10.0)
       assign_add(v2, v3);  # v2 = (5.0, 13.0);
       v4 = add(v1, v2);  # should be (10.0, 20.0)
@@ -721,67 +680,23 @@ def test_const_add_vs_assign_add():
     assert_equal(main(), 10.0 + 20.0)
 
 
-def test_call_mutable_with_const_var():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType struct Counter { value: Int = 0; }
-    func inc(@Mutable c: Counter)  { c.value = c.value + 1; }
-    func inc_wrapper(c: Counter)  { inc(c); }  # <-- cannot call a function taking sth mutable with const argument!
-    func main()  {
-      c = Counter(0);
-      inc_wrapper(c);
-    }
-    """
-    with assert_raises(SemanticError):
-      compile_program(engine, program)
-
-
-def test_assign_mutable_to_const():
-  with make_execution_engine() as engine:
-    program = """
-    struct Counter { value: Int = 0; }
-    func main() ->  Int  {
-      @Const con = Counter(-42);
-      @Mutable mut = Counter(123);
-      con = mut;
-      return con.value;
-    }
-    """
-    main = compile_program(engine, program)
-    assert_equal(main(), 123)
-
-
-def test_assign_const_to_mutable():
-  with make_execution_engine() as engine:
-    program = """
-    struct Counter { value: Int = 0; }
-    func main() ->  Int  {
-      @Const con = Counter(-42);
-      @Mutable mut = Counter(123);
-      mut = con;  # not allowed.
-      return con.value;
-    }
-    """
-    compile_program(engine, program)
-
-
 def test_counter_is_empty():
   with make_execution_engine() as engine:
     program = """
     @RefType struct Counter { value: Int = 0; }
-    func increase(@Mutable c: Counter)  {
+    func increase(c: Counter)  {
       c.value= c.value+ 1;
     }
     func is_empty(c: Counter) ->  Bool  {
       return c.value== 0;
     }
-    func increase_if_empty(@Mutable c: Counter)  {
+    func increase_if_empty(c: Counter)  {
       if is_empty(c) {
         increase(c);
       }
     }
     func main() ->  Int  {
-      @Mutable c = Counter(0);
+      c = Counter(0);
       increase(c);
       increase_if_empty(c);  # should not do anything
       c.value= c.value- 1;
@@ -792,43 +707,6 @@ def test_counter_is_empty():
     """
     main = compile_program(engine, program)
     assert_equal(main(), 2)
-
-
-def test_return_mutable_var_as_mutable():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType struct Container { value: Int = 0; }
-    func identity(@Mutable c: Container) -> @Mutable  Container  {
-      return c;
-    }
-    func main()  { }
-    """
-    compile_program(engine, program)  # just check that it compiles.
-
-
-def test_return_const_var_as_mutable():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType struct Container { value: Int = 0; }
-    func identity(c: Container) -> @Mutable  Container  {
-      return c;  # shouldn't be allowed, cannot make something immutable suddenly mutable!
-    }
-    func main()  { }
-    """
-    with assert_raises(SemanticError):
-      compile_program(engine, program)
-
-
-def test_return_mutable_var_as_const():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType struct Container { value: Int = 0; }
-    func identity(@Mutable c: Container) ->  Container  {
-      return c;  # giving up that something can be edited is fine though.
-    }
-    func main()  { }
-    """
-    compile_program(engine, program)  # just check that compiles
 
 
 def test_if_inside_while():
@@ -879,57 +757,6 @@ def test_wrong_return_void():
     func nothing()  { }
     func main()  {
       return nothing();  # cannot return void.
-    }
-    """
-    with assert_raises(SemanticError):
-      compile_program(engine, program)
-
-
-def test_mutable_struct_member_const():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType struct Box { value: Int = 42; }
-    @RefType struct SuperBox { @Mutable b: Box = Box(42); }
-    func main()  {
-      @Mutable b: Box = Box(42);
-      sb: SuperBox = SuperBox(Box(42));
-      sb.b = b;  # should fail, sb is immutable.
-      free(b); free(sb);
-    }
-    """
-    with assert_raises(SemanticError):
-      compile_program(engine, program)
-
-
-def test_mutable_struct_member_mutable():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType struct Box { value: Int = 42; }
-    @RefType struct SuperBox { @Mutable b: Box = Box(42); }
-    func main() ->  Int  {
-      @Mutable b: Box = Box(42);
-      @Mutable sb: SuperBox = SuperBox(Box(42));
-      sb.b = b;  # should work now.
-      # can now even change b, and sb should be effected too:
-      b.value = 123;
-      return sb.b.value;
-    }
-    """
-    main = compile_program(engine, program)
-    assert_equal(main(), 123)
-
-
-def test_immutable_struct_member_assign_mutable_member():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType struct Box { value: Int = 42; }
-    @RefType struct SuperBox { b: Box = Box(42); }
-    func main() ->  Int  {
-      @Mutable b: Box = Box(42);
-      b.value = 27;
-      sb: SuperBox = SuperBox(Box(42));
-      sb.b = b;  # should fail as sb is immutable.
-      free(b); free(sb);
     }
     """
     with assert_raises(SemanticError):
@@ -1105,19 +932,6 @@ def test_func_inline_void():
     """
     main = compile_program(engine, program, add_preamble=False)
     main()
-
-
-def test_func_inline_mutable_arg():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType struct Nothing {}
-    @Inline func my_func(@Mutable wow: Nothing) ->  Int  {
-      return 32;
-    }
-    func main() ->  Int  { return my_func(Nothing()); }
-    """
-    main = compile_program(engine, program)
-    assert_equal(main(), 32)
 
 
 def test_func_inline_own_symbol_table():

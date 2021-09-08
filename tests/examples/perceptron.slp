@@ -38,24 +38,24 @@ func get(vec: Vec, pos: Int) -> Ptr[Double] {
   pos = normalized_index(pos, vec.dim);
   return vec.start + pos;
 }
-func set(@Mutable vec: Vec, pos: Int, val: Double)  {
+func set(vec: Vec, pos: Int, val: Double)  {
   pos = normalized_index(pos, vec.dim);
   store(vec.start + pos, val);
 }
-func set(@Mutable vec: Vec, slice: Slice, val: Double)  {
+func set(vec: Vec, slice: Slice, val: Double)  {
   pos = normalized_from_index(slice.from, vec.dim);
   while pos < normalized_to_index(slice.to, vec.dim) {
     vec[pos] = val;
     pos += 1;
   }
 }
-func ZeroVec(dim: Int) -> @Mutable  Vec  {
-  @Mutable v = Vec(dim, allocate[Double](dim));
+func ZeroVec(dim: Int) ->  Vec  {
+  v = Vec(dim, allocate[Double](dim));
   set(v, SliceAll(), 0.0);
   return v;
 }
-func RandomVec(dim: Int) -> @Mutable  Vec  {
-  @Mutable res = ZeroVec(dim);
+func RandomVec(dim: Int) ->  Vec  {
+  res = ZeroVec(dim);
   pos = 0;
   while pos < res.dim {
     res[pos] = random(-1.0, 1.0);
@@ -63,8 +63,8 @@ func RandomVec(dim: Int) -> @Mutable  Vec  {
   }
   return res;
 }
-func *(scale: Double, vec: Vec) -> @Mutable  Vec  {
-  @Mutable res = ZeroVec(vec.dim);
+func *(scale: Double, vec: Vec) ->  Vec  {
+  res = ZeroVec(vec.dim);
   pos = 0;
   while pos < vec.dim {
     res[pos] = scale * +vec[pos];
@@ -72,9 +72,9 @@ func *(scale: Double, vec: Vec) -> @Mutable  Vec  {
   }
   return res;
 }
-func +(a: Vec, b: Vec) -> @Mutable  Vec  {
+func +(a: Vec, b: Vec) ->  Vec  {
   assert(a.dim == b.dim);
-  @Mutable res = ZeroVec(a.dim);
+  res = ZeroVec(a.dim);
   pos = 0;
   while pos < res.dim {
     res[pos] = +a[pos] + +b[pos];
@@ -120,8 +120,8 @@ func get(mat: Mat, row: Int, col: Int) -> Ptr[Double]  {
   col = normalized_index(col, mat.num_cols);
   return mat.start + row * mat.num_cols + col;
 }
-func get(mat: Mat, row: Int) -> @Mutable  Vec  {
-  @Mutable row_vec = ZeroVec(mat.num_cols);
+func get(mat: Mat, row: Int) ->  Vec  {
+  row_vec = ZeroVec(mat.num_cols);
   col = 0;
   while col < mat.num_cols {
     row_vec[col] = +mat[row, col];
@@ -129,17 +129,17 @@ func get(mat: Mat, row: Int) -> @Mutable  Vec  {
   }
   return row_vec;
 }
-func set(@Mutable mat: Mat, row: Int, col: Int, val: Double)  {
+func set(mat: Mat, row: Int, col: Int, val: Double)  {
   assert(and(0 <= row, row < mat.num_rows));
   assert(and(0 <= col, col < mat.num_cols));
   store(mat.start + row * mat.num_cols + col, val);
 }
-func set(@Mutable mat: Mat, row: Int, row_vec: Vec)  {
+func set(mat: Mat, row: Int, row_vec: Vec)  {
   assert(and(0 <= row, row < mat.num_rows));
   assert(row_vec.dim == mat.num_cols);
   memcpy(mat.start + row * mat.num_cols, row_vec.start, row_vec.dim * 8);
 }
-func set(@Mutable mat: Mat, row_slice: Slice, col_slice: Slice, val: Double)  {
+func set(mat: Mat, row_slice: Slice, col_slice: Slice, val: Double)  {
   row = normalized_from_index(row_slice.from, mat.num_rows);
   while row < normalized_to_index(row_slice.to, mat.num_rows) {
     col = normalized_from_index(col_slice.from, mat.num_cols);
@@ -150,13 +150,13 @@ func set(@Mutable mat: Mat, row_slice: Slice, col_slice: Slice, val: Double)  {
     row += 1;
   }
 }
-func ZeroMat(num_rows: Int, num_cols: Int) -> @Mutable  Mat  {
-  @Mutable mat = Mat(num_rows, num_cols, allocate[Double](num_rows * num_cols * 8));
+func ZeroMat(num_rows: Int, num_cols: Int) ->  Mat  {
+  mat = Mat(num_rows, num_cols, allocate[Double](num_rows * num_cols * 8));
   set(mat, SliceAll(), SliceAll(), 0.0);
   return mat;
 }
-func RandomMat(num_rows: Int, num_cols: Int) -> @Mutable  Mat  {
-  @Mutable mat = ZeroMat(num_rows, num_cols);
+func RandomMat(num_rows: Int, num_cols: Int) ->  Mat  {
+  mat = ZeroMat(num_rows, num_cols);
   row = 0;
   while row < num_rows {
     col = 0;
@@ -176,7 +176,7 @@ func free_mat(mat: Mat)  {
 func main()  {
   # training data: try to learn signum(sum of features).
   func make_sample_labels(x: Mat) ->  Vec  {
-    @Mutable y = ZeroVec(x.num_rows);
+    y = ZeroVec(x.num_rows);
     sample = 0;
     while sample < x.num_rows {
       feature_sum = 0.0;
@@ -225,7 +225,7 @@ func main()  {
     likelihood = weights * x + bias;
     return sign(likelihood);
   }
-  @Mutable test = ZeroVec(feature_dim);
+  test = ZeroVec(feature_dim);
   test[0] = -4.0;
   print_line(predict(weights, bias, test));
   print("The fitted hyperplane is "); print(weights); print(" * x + "); print(bias); print_line();

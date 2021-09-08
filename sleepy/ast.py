@@ -80,13 +80,6 @@ class AbstractSyntaxTree(ABC):
 
     possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_types)
     assert len(possible_concrete_funcs) >= 1
-    for concrete_func in possible_concrete_funcs:
-      called_mutables = [arg_expr.is_val_mutable(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
-      for arg_identifier, arg_mutable, called_mutable in zip(
-          concrete_func.arg_identifiers, concrete_func.arg_mutables, called_mutables):
-        if not called_mutable and arg_mutable:
-          self.raise_error('Cannot call function %s%s declared with mutable parameter %r with immutable argument' % (
-              func.identifier, concrete_func.signature.to_signature_str(), arg_identifier))
     return possible_concrete_funcs
 
   def _infer_templ_args(self, func: FunctionSymbol, calling_types: List[Type]) -> List[Type]:
@@ -226,21 +219,6 @@ class StatementAst(AbstractSyntaxTree, ABC):
     """
     raise NotImplementedError()
 
-  def make_var_is_mutable(self, arg_name, arg_annotation_list, default):
-    """
-    :param str arg_name:
-    :param Type arg_type:
-    :param list[AnnotationAst] arg_annotation_list:
-    :param bool|None default:
-    :rtype: bool|None
-    """
-    assert isinstance(arg_annotation_list, (tuple, list))
-    has_mutable = any(annotation.identifier == 'Mutable' for annotation in arg_annotation_list)
-    has_const = any(annotation.identifier == 'Const' for annotation in arg_annotation_list)
-    if has_mutable and has_const:
-      self.raise_error('Cannot annotate %r with both %r and %r' % (arg_name, 'Mutable', 'Const'))
-    return default if (not has_mutable and not has_const) else has_mutable
-
   def __repr__(self):
     """
     :rtype: str
@@ -328,7 +306,7 @@ class FunctionDeclarationAst(StatementAst):
   """
 
   allowed_annotation_identifiers = {'Inline'}
-  allowed_arg_annotation_identifiers = {'Const', 'Mutable'}
+  allowed_arg_annotation_identifiers = {}
 
   def __init__(self, pos: TreePosition, identifier: str, templ_identifiers: List[str], arg_identifiers: List[str],
                arg_types: List[TypeAst], arg_annotations: List[List[AnnotationAst]], return_type: Optional[TypeAst],
@@ -394,28 +372,12 @@ class FunctionDeclarationAst(StatementAst):
       self.templ_identifiers, symbol_table=func_symbol_table)
 
     arg_types = self.make_arg_types(func_symbol_table=func_symbol_table)
-    arg_mutables = [
-      self.make_var_is_mutable('parameter %r' % arg_identifier, arg_annotation_list, default=False)
-      for arg_identifier, arg_type, arg_annotation_list in zip(self.arg_identifiers, arg_types, self.arg_annotations)]
-    for arg_identifier, arg_type, arg_mutable in zip(self.arg_identifiers, arg_types, arg_mutables):
-     if not arg_type.is_pass_by_ref() and arg_mutable:
-       self.raise_error(
-         'Type %r of mutable parameter %r needs to have pass-by-reference semantics (annotated by @RefType)' % (
-           arg_identifier, arg_type))
     if self.return_type is None:
       return_type = SLEEPY_VOID
     else:
       return_type = self.return_type.make_type(symbol_table=func_symbol_table)
     if return_type is None:
       self.raise_error('Need to specify return type of function %r' % self.identifier)
-    if return_type == SLEEPY_VOID:
-      return_mutable = False
-    else:
-      return_mutable = self.make_var_is_mutable('return type', self.return_annotation_list, default=False)
-    if not return_type.is_pass_by_ref() and return_mutable:
-      self.raise_error(
-        'Type %r of return value needs to have pass-by-reference semantics (annotated by @RefType)' % (
-          return_type))
     if self.identifier in symbol_table:
       func_symbol = symbol_table[self.identifier]
       if not isinstance(func_symbol, FunctionSymbol):
@@ -519,8 +481,8 @@ class FunctionDeclarationAst(StatementAst):
     concrete_func_factory = DeclaredConcreteFunctionFactory()
     signature_ = FunctionTemplate(
       concrete_func_factory=concrete_func_factory, placeholder_templ_types=placeholder_templ_types,
-      return_type=return_type, return_mutable=return_mutable, arg_identifiers=self.arg_identifiers,
-      arg_types=arg_types, arg_mutables=arg_mutables, arg_type_narrowings=arg_types, is_inline=self.is_inline)
+      return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types, arg_type_narrowings=arg_types,
+      is_inline=self.is_inline)
     func_symbol.add_signature(signature_)
 
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
@@ -536,9 +498,8 @@ class FunctionDeclarationAst(StatementAst):
     body_symbol_table = parent_symbol_table.copy_with_new_current_func(concrete_func)
 
     # add arguments as variables
-    for arg_identifier, arg_type, arg_mutable in zip(
-        concrete_func.arg_identifiers, concrete_func.arg_types, concrete_func.arg_mutables):
-      var_symbol = VariableSymbol(None, arg_type, arg_mutable)
+    for arg_identifier, arg_type in zip(concrete_func.arg_identifiers, concrete_func.arg_types):
+      var_symbol = VariableSymbol(None, arg_type)
       var_symbol.build_ir_alloca(context=body_context, identifier=arg_identifier)
       assert arg_identifier not in body_symbol_table.current_scope_identifiers
       body_symbol_table.current_scope_identifiers.append(arg_identifier)
@@ -649,10 +610,6 @@ class ReturnStatementAst(StatementAst):
           else:
             self.raise_error('Function declared to return type %r, but return value is of type %r' % (
               symbol_table.current_func.return_type, return_val_type))
-        return_val_mutable = return_expr.is_val_mutable(symbol_table=symbol_table)
-        if not return_val_mutable and symbol_table.current_func.return_mutable:
-          self.raise_error(
-            'Function declared to return a mutable type %r, but return value is not mutable' % return_val_type)
 
         if context.emits_ir:
           ir_val = return_expr.make_ir_val(symbol_table=symbol_table, context=context)
@@ -723,14 +680,9 @@ class StructDeclarationAst(StatementAst):
         self.templ_identifiers, symbol_table=struct_symbol_table)
 
       member_types = [type_ast.make_type(symbol_table=struct_symbol_table) for type_ast in self.member_types]
-      member_mutables = [
-        self.make_var_is_mutable(member_identifier, member_annotations, default=False)
-        for member_identifier, member_annotations in zip(self.member_identifiers, self.member_annotations)]
-
       signature_struct_type = StructType(
         struct_identifier=self.struct_identifier, templ_types=placeholder_templ_types,
-        member_identifiers=self.member_identifiers, member_types=member_types, member_mutables=member_mutables,
-        pass_by_ref=self.is_pass_by_ref())
+        member_identifiers=self.member_identifiers, member_types=member_types, pass_by_ref=self.is_pass_by_ref())
 
       struct_type_factory = TypeFactory(
         placeholder_templ_types=placeholder_templ_types, signature_type=signature_struct_type)
@@ -757,7 +709,7 @@ class AssignStatementAst(StatementAst):
   """
   Stmt -> identifier = Expr ;
   """
-  allowed_annotation_identifiers = frozenset({'Const', 'Mutable'})
+  allowed_annotation_identifiers = frozenset({})
 
   def __init__(self, pos: TreePosition, var_target: ExpressionAst, var_val: ExpressionAst,
                declared_var_type: Optional[TypeAst]):
@@ -804,8 +756,6 @@ class AssignStatementAst(StatementAst):
       if stated_type is not None:
         if not can_implicit_cast_to(val_type, stated_type):
           self.raise_error('Cannot assign variable with stated type %r a value of type %r' % (stated_type, val_type))
-      declared_mutable = self.make_var_is_mutable('left-hand-side', self.annotations, default=None)
-      val_mutable = self.var_val.is_val_mutable(symbol_table=symbol_table)
 
       if self.is_declaration(symbol_table=symbol_table):
         assert isinstance(self.var_target, IdentifierExpressionAst)
@@ -815,10 +765,8 @@ class AssignStatementAst(StatementAst):
           declared_type = stated_type
         else:
           declared_type = val_type
-        if declared_mutable is None:
-          declared_mutable = False
         # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
-        symbol = VariableSymbol(None, var_type=declared_type, mutable=declared_mutable)
+        symbol = VariableSymbol(None, var_type=declared_type)
         symbol.build_ir_alloca(context=context, identifier=var_identifier)
         symbol_table[var_identifier] = symbol
         symbol_table.current_scope_identifiers.append(var_identifier)
@@ -831,17 +779,8 @@ class AssignStatementAst(StatementAst):
         if not can_implicit_cast_to(val_type, declared_type):
           self.raise_error('Cannot redefine variable of type %r with variable of type %r' % (declared_type, val_type))
         if not self.var_target.is_val_assignable(symbol_table=symbol_table):
-          self.raise_error('Cannot reassign member of a non-mutable variable')
-        if declared_mutable is None:
-          declared_mutable = val_mutable
-        if declared_mutable != val_mutable:
-          if declared_mutable:
-            self.raise_error('Cannot redefine a variable declared as non-mutable to mutable')
-          else:
-            self.raise_error('Cannot redefine a variable declared as mutable to non-mutable')
+          self.raise_error('Cannot reassign this variable')
       assert declared_type is not None
-      if declared_mutable and not val_mutable:
-        self.raise_error('Cannot assign a non-mutable value of type %r to a mutable variable' % declared_type)
       assert self.var_target.is_val_assignable(symbol_table=symbol_table)
 
       # if we assign to a variable, narrow type to val_type
@@ -1022,12 +961,9 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
     raise NotImplementedError()
 
   def make_declared_val_type(self, symbol_table: SymbolTable) -> Type:
-    if self.is_val_mutable(symbol_table=symbol_table) or self.is_val_assignable(symbol_table=symbol_table):
+    if self.is_val_assignable(symbol_table=symbol_table):
       raise NotImplementedError()
     return self.make_val_type(symbol_table=symbol_table)
-
-  def is_val_mutable(self, symbol_table: SymbolTable) -> bool:
-    return False
 
   def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
     return False
@@ -1045,7 +981,7 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
   def make_ir_val_ptr(self, symbol_table: SymbolTable,
                       context: CodegenContext) -> Optional[ir.instructions.Instruction]:
     assert context.emits_ir
-    if self.is_val_mutable(symbol_table=symbol_table) or self.is_val_assignable(symbol_table=symbol_table):
+    if self.is_val_assignable(symbol_table=symbol_table):
       raise NotImplementedError()
     return None
 
@@ -1106,18 +1042,6 @@ class BinaryOperatorExpressionAst(ExpressionAst):
     possible_concrete_funcs = self.resolve_func_call_by_identifier(
       func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
-
-  def is_val_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    if self.op == 'is':
-      return False
-    operand_exprs = [self.left_expr, self.right_expr]
-    possible_concrete_funcs = self.resolve_func_call_by_identifier(
-      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
-    return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def make_ir_val(self, symbol_table, context):
     """
@@ -1188,16 +1112,6 @@ class UnaryOperatorExpressionAst(ExpressionAst):
       func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
-  def is_val_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    operand_exprs = [self.expr]
-    possible_concrete_funcs = self.resolve_func_call_by_identifier(
-      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
-    return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
-
   def make_ir_val(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
@@ -1253,13 +1167,6 @@ class ConstantExpressionAst(ExpressionAst):
     """
     return self.constant_type
 
-  def is_val_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    return False
-
   def make_ir_val(self, symbol_table, context):
     """
     :param SymbolTable symbol_table:
@@ -1310,13 +1217,6 @@ class StringLiteralExpressionAst(ExpressionAst):
     str_symbol = symbol_table.inbuilt_symbols['Str']
     assert isinstance(str_symbol, TypeSymbol)
     return str_symbol.get_type(concrete_templ_types=[])
-
-  def is_val_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    return True
 
   def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
     """
@@ -1413,9 +1313,6 @@ class IdentifierExpressionAst(ExpressionAst):
 
   def make_declared_val_type(self, symbol_table: SymbolTable) -> Type:
     return self.get_var_symbol(symbol_table=symbol_table).declared_var_type
-
-  def is_val_mutable(self, symbol_table: SymbolTable) -> bool:
-    return self.get_var_symbol(symbol_table=symbol_table).mutable
 
   def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
     return True
@@ -1519,15 +1416,6 @@ class CallExpressionAst(ExpressionAst):
     possible_concrete_funcs = self.resolve_func_call(
       func_caller=func_caller, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
-
-  def is_val_mutable(self, symbol_table: SymbolTable) -> bool:
-    if self._is_size_call(symbol_table=symbol_table):
-      return False
-    func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
-    possible_concrete_funcs = self.resolve_func_call(
-      func_caller=func_caller, func_arg_exprs=self.func_arg_exprs,
-      symbol_table=symbol_table)
-    return all(concrete_func.return_mutable for concrete_func in possible_concrete_funcs)
 
   def _is_size_call(self, symbol_table: SymbolTable):
     # TODO: make this a normal compile time function operating on types
@@ -1636,23 +1524,8 @@ class MemberExpressionAst(ExpressionAst):
       return parent_type.make_extract_member_val_ir(
         self.member_identifier, struct_ir_val=parent_ir_val, context=context)
 
-  def is_val_mutable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
-    parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
-    assert isinstance(parent_type, StructType)
-    member_num = parent_type.get_member_num(self.member_identifier)
-    member_mutable = parent_type.member_mutables[member_num]
-    return member_mutable
-
-  def is_val_assignable(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype bool:
-    """
-    return self.parent_val_expr.is_val_mutable(symbol_table=symbol_table)
+  def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
+    return True
 
   def make_ir_val_ptr(self, symbol_table, context):
     """

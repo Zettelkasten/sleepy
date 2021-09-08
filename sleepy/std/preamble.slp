@@ -63,8 +63,10 @@ func >(left: Int, right: Double) ->  Bool  { return ToDouble(left) > right; }
 func >(left: Double, right: Int) ->  Bool  { return left > ToDouble(right); }
 func >=(left: Int, right: Double) ->  Bool  { return ToDouble(left) >= right; }
 func >=(left: Double, right: Int) ->  Bool  { return left >= ToDouble(right); }
-@Inline func min(a: Int, b: Int) ->  Int  { if a < b { return a; } else { return b; } }
-@Inline func max(a: Int, b: Int) ->  Int  { if a > b { return a; } else { return b; } }
+@Inline func min(a: Int, b: Int) -> Int { if a < b { return a; } else { return b; } }
+@Inline func max(a: Int, b: Int) -> Int { if a > b { return a; } else { return b; } }
+@Inline func min(a: Long, b: Long) -> Long { if a < b { return a; } else { return b; } }
+@Inline func max(a: Long, b: Long) -> Long { if a > b { return a; } else { return b; } }
 @Inline func sign(a: Int) ->  Int  { if a > 0 { return 1; } if a == 0 { return 0; } else { return -1; } }
 @Inline func sign(a: Double) ->  Double  { if a > 0.0 { return 1.0; } if a == 0.0 { return 0.0; } else { return -1.0; } }
 @Inline func div(a: Int, b: Int) ->  Int  { return a / b; }
@@ -79,28 +81,28 @@ extern_func cos(x: Double) ->  Double;
 #   Int length = 0;
 #   Int alloc_length = 8;
 # }
-func EmptyStr(alloc_length: Int) -> @Mutable  Str  {
+func EmptyStr(alloc_length: Int) ->  Str  {
   return Str(allocate[Char](alloc_length), 0, alloc_length);
 }
-func EmptyStr() -> @Mutable  Str  {
+func EmptyStr() ->  Str  {
   return EmptyStr(8);
 }
-func resize(@Mutable str: Str, new_alloc_length: Int)  {
+func resize(str: Str, new_alloc_length: Int)  {
   new_start = allocate[Char](new_alloc_length);
   memcpy(new_start, str.start, str.alloc_length);
   deallocate(str.start);
   str.alloc_length = new_alloc_length;
   str.start = new_start;
 }
-func copy(str: Str) -> @Mutable  Str  {
-  @Mutable new = Str(allocate[Char](str.alloc_length), str.length, str.alloc_length);
+func copy(str: Str) ->  Str  {
+  new = Str(allocate[Char](str.alloc_length), str.length, str.alloc_length);
   memcpy(new.start, str.start, str.length);
   return new;
 }
 func get(str: Str, pos: Int) -> Ptr[Char] {
   return str.start + pos;
 }
-func set(@Mutable str: Str, pos: Int, char: Char)  {
+func set(str: Str, pos: Int, char: Char)  {
   assert(and(0 <= pos, pos < str.length + 1));
   if pos >= str.alloc_length {
     resize(str, max(2 * str.alloc_length, 1));
@@ -113,7 +115,7 @@ func set(@Mutable str: Str, pos: Int, char: Char)  {
 func =[T](ptr: Ptr[T], v: T) { store(ptr, v); }
 func +[T](ptr: Ptr[T]) -> T { return load(ptr); }
 
-func insert(@Mutable str: Str, char: Char, pos: Int)  {
+func insert(str: Str, char: Char, pos: Int)  {
   assert(and(0 <= pos, pos < str.length + 1));
   if str.length + 1 >= str.alloc_length {
     resize(str, max(2 * str.alloc_length, 1));
@@ -121,8 +123,8 @@ func insert(@Mutable str: Str, char: Char, pos: Int)  {
   memcpy(str.start + pos + 1, str.start + pos, str.length - pos);
   set(str, pos, char);
 }
-func insert(@Mutable str: Str, insert_char: Char)  { insert(str, insert_char, str.length); }
-func insert(@Mutable str: Str, insert_str: Str, pos: Int)  {
+func insert(str: Str, insert_char: Char)  { insert(str, insert_char, str.length); }
+func insert(str: Str, insert_str: Str, pos: Int)  {
   assert(and(0 <= pos, pos < str.length + 1));
   if str.length + insert_str.length >= str.alloc_length {
     resize(str, max(2 * str.alloc_length, str.length + insert_str.length));
@@ -131,9 +133,9 @@ func insert(@Mutable str: Str, insert_str: Str, pos: Int)  {
   memcpy(str.start + pos, insert_str.start, insert_str.length);
   str.length += insert_str.length;
 }
-func insert(@Mutable str: Str, insert_str: Str)  { insert(str, insert_str, str.length); }
-func ToStr(from_char: Char) -> @Mutable  Str  {
-  @Mutable str = EmptyStr();
+func insert(str: Str, insert_str: Str)  { insert(str, insert_str, str.length); }
+func ToStr(from_char: Char) ->  Str  {
+  str = EmptyStr();
   insert(str, from_char);
   return str;
 }
@@ -146,31 +148,31 @@ func ==(a: Str, b: Str) -> Bool {
   }
   return True();
 }
-func +(a: Str, b: Str) -> @Mutable  Str  {
-  @Mutable res = EmptyStr(a.length + b.length);
+func +(a: Str, b: Str) ->  Str  {
+  res = EmptyStr(a.length + b.length);
   memcpy(res.start, a.start, a.length);
   memcpy(res.start + a.length, b.start, b.length);
   res.length = a.length + b.length;
   return res;
 }
-func +(a: Str, b: Char) -> @Mutable  Str  {
-  @Mutable res = copy(a);
+func +(a: Str, b: Char) ->  Str  {
+  res = copy(a);
   insert(res, b);
   return res;
 }
-func +(a: Char, b: Str) -> @Mutable  Str  {
+func +(a: Char, b: Str) ->  Str  {
   a_ = ToStr(a);
-  @Mutable res = a_ + b;
+  res = a_ + b;
   free(a_);
   return res;
 }
-func +(a: Char, b: Char) -> @Mutable  Str  {
-  @Mutable res = ToStr(a);
+func +(a: Char, b: Char) ->  Str  {
+  res = ToStr(a);
   insert(res, b);
   return res;
 }
-func *(str: Str, repetitions: Int) -> @Mutable  Str  {
-  @Mutable res = EmptyStr(str.length * repetitions);
+func *(str: Str, repetitions: Int) ->  Str  {
+  res = EmptyStr(str.length * repetitions);
   while repetitions > 0 {
     memcpy(res.start + res.length, str.start, str.length);
     res.length += str.length;
@@ -178,9 +180,9 @@ func *(str: Str, repetitions: Int) -> @Mutable  Str  {
   }
   return res;
 }
-func *(c: Char, repetitions: Int) -> @Mutable  Str  {
+func *(c: Char, repetitions: Int) ->  Str  {
   c_ = ToStr(c);
-  @Mutable res = c_ * repetitions;
+  res = c_ * repetitions;
   free(c_);
   return res;
 }

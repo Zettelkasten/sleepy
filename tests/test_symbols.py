@@ -133,8 +133,7 @@ def test_try_infer_templ_types_struct():
   T = PlaceholderTemplateType('T')
   U = PlaceholderTemplateType('U')
   WrapperT = StructType(
-    'Wrapper', templ_types=[T], member_identifiers=['value'], member_types=[T], member_mutables=[False],
-    pass_by_ref=False)
+    'Wrapper', templ_types=[T], member_identifiers=['value'], member_types=[T], pass_by_ref=False)
   WrapperU = WrapperT.replace_types({T: U})
   WrapperInt = WrapperT.replace_types({T: SLEEPY_INT})
   WrapperChar = WrapperT.replace_types({T: SLEEPY_CHAR})

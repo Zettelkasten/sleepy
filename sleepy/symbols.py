@@ -672,13 +672,12 @@ class StructType(Type):
   A struct.
   """
   def __init__(self, struct_identifier: str, templ_types: List[Type], member_identifiers: List[str],
-               member_types: List[Type], member_mutables: List[bool], pass_by_ref: bool,
+               member_types: List[Type], pass_by_ref: bool,
                constructor: Optional[FunctionSymbol] = None):
     self.struct_identifier = struct_identifier
     self._templ_types = templ_types
     self.member_identifiers = member_identifiers
     self.member_types = member_types
-    self.member_mutables = member_mutables
     self._constructor = None  # type: Optional[FunctionSymbol]
     if self.has_templ_placeholder():
       self.ir_val_type = None
@@ -718,7 +717,7 @@ class StructType(Type):
     new_member_types = [member_type.replace_types(replacements) for member_type in self.member_types]
     new_struct = StructType(
       struct_identifier=self.struct_identifier, templ_types=new_templ_types, member_identifiers=self.member_identifiers,
-      member_types=new_member_types, member_mutables=self.member_mutables, pass_by_ref=self.pass_by_ref,
+      member_types=new_member_types, pass_by_ref=self.pass_by_ref,
       constructor=self.constructor)
     return new_struct
 
@@ -756,11 +755,11 @@ class StructType(Type):
     return (
       self.struct_identifier == other.struct_identifier and self.templ_types == other.templ_types and
       self.member_identifiers == other.member_identifiers and self.member_types == other.member_types and
-      self.member_mutables == other.member_mutables and self.pass_by_ref == other.pass_by_ref)
+      self.pass_by_ref == other.pass_by_ref)
 
   def __hash__(self) -> int:
     return hash((self.__class__, self.struct_identifier, tuple(self.templ_types), tuple(self.member_identifiers),
-      tuple(self.member_types), tuple(self.member_mutables), self.pass_by_ref))
+      tuple(self.member_types), self.pass_by_ref))
 
   def __repr__(self):
     """
@@ -829,9 +828,8 @@ class StructType(Type):
     placeholder_templ_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
     signature_ = FunctionTemplate(
       concrete_func_factory=ConstructorConcreteFuncFactor(),
-      placeholder_templ_types=placeholder_templ_types, return_type=self, return_mutable=True,
-      arg_identifiers=self.member_identifiers, arg_types=self.member_types, arg_mutables=self.member_mutables,
-      arg_type_narrowings=self.member_types, is_inline=False)
+      placeholder_templ_types=placeholder_templ_types, return_type=self, arg_identifiers=self.member_identifiers,
+      arg_types=self.member_types, arg_type_narrowings=self.member_types, is_inline=False)
     constructor_symbol.add_signature(signature_)
     return constructor_symbol
 
@@ -884,9 +882,8 @@ class StructType(Type):
     # E.g. make a copy of the never union type and give that a name ("Freed" or sth)
     signature_ = FunctionTemplate(
       concrete_func_factory=DestructorConcreteFuncFactory(),
-      placeholder_templ_types=placeholder_templ_types, return_type=SLEEPY_VOID, return_mutable=False,
-      arg_types=[self], arg_identifiers=['var'], arg_type_narrowings=[SLEEPY_NEVER],
-      arg_mutables=[False])
+      placeholder_templ_types=placeholder_templ_types, return_type=SLEEPY_VOID, arg_types=[self],
+      arg_identifiers=['var'], arg_type_narrowings=[SLEEPY_NEVER])
     destructor_symbol.add_signature(signature_)
     return destructor_symbol
 
@@ -1123,14 +1120,13 @@ class VariableSymbol(Symbol):
   """
   kind = Symbol.Kind.VARIABLE
 
-  def __init__(self, ir_alloca: Optional[ir.instructions.AllocaInstr], var_type: Type, mutable: bool):
+  def __init__(self, ir_alloca: Optional[ir.instructions.AllocaInstr], var_type: Type):
     super().__init__()
     assert ir_alloca is None or isinstance(ir_alloca, ir.instructions.AllocaInstr)
     assert var_type != SLEEPY_VOID
     self.ir_alloca = ir_alloca
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
-    self.mutable = mutable
 
   def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> VariableSymbol:
     assert not self.declared_var_type.has_templ_placeholder()
@@ -1138,7 +1134,7 @@ class VariableSymbol(Symbol):
     return self
 
   def copy_with_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
-    new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type, self.mutable)
+    new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)
     new_var_symbol.base = self if self.base is None else self.base
     # explicitly apply narrowing from declared type here: always stay compatible to the base type
     new_var_symbol.narrowed_var_type = narrow_type(from_type=self.declared_var_type, narrow_to=new_narrow_type)
@@ -1169,8 +1165,8 @@ class VariableSymbol(Symbol):
       context.builder.call(context.di_declare_func, args=[self.ir_alloca, di_local_var, di_expression])
 
   def __repr__(self) -> str:
-    return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r, mutable=%r)' % (
-      self.ir_alloca, self.declared_var_type, self.narrowed_var_type, self.mutable)
+    return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r)' % (
+      self.ir_alloca, self.declared_var_type, self.narrowed_var_type)
 
 
 class ConcreteFunction:
@@ -1228,14 +1224,6 @@ class ConcreteFunction:
     return self.signature.arg_identifiers
 
   @property
-  def arg_mutables(self) -> List[bool]:
-    return self.signature.arg_mutables
-
-  @property
-  def return_mutable(self) -> bool:
-    return self.signature.return_mutable
-
-  @property
   def is_inline(self) -> bool:
     return self.signature.is_inline
 
@@ -1247,8 +1235,7 @@ class ConcreteFunction:
 
   def has_same_signature_as(self, other: ConcreteFunction) -> bool:
     return (
-      self.return_type == other.return_type and self.signature.return_mutable == other.signature.return_mutable and
-      self.arg_types == other.arg_types and self.signature.arg_mutables == other.signature.arg_mutables and
+      self.return_type == other.return_type and self.arg_types == other.arg_types and
       self.arg_type_narrowings == other.arg_type_narrowings)
 
   def make_ir_func(self, identifier: str, extern: bool, symbol_table: SymbolTable, context: CodegenContext):
@@ -1288,27 +1275,23 @@ class FunctionTemplate:
   def __init__(self,
                concrete_func_factory: ConcreteFunctionFactory,
                placeholder_templ_types: List[PlaceholderTemplateType],
-               return_type: Type, return_mutable: bool,
-               arg_identifiers: List[str], arg_types: List[Type], arg_mutables: List[bool],
+               return_type: Type, arg_identifiers: List[str], arg_types: List[Type],
                arg_type_narrowings: List[Type],
                is_inline: bool = False,
                base: FunctionTemplate = None):
     assert isinstance(return_type, Type)
-    assert len(arg_identifiers) == len(arg_types) == len(arg_mutables) == len(arg_type_narrowings)
+    assert len(arg_identifiers) == len(arg_types) == len(arg_type_narrowings)
     assert all(isinstance(templ_type, PlaceholderTemplateType) for templ_type in placeholder_templ_types)
     self.concrete_func_factory = concrete_func_factory
     self.placeholder_templ_types = placeholder_templ_types
     self.return_type = return_type
-    self.return_mutable = return_mutable
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
-    self.arg_mutables = arg_mutables
     self.arg_type_narrowings = arg_type_narrowings
     self.is_inline = is_inline
     if base is not None:
       assert base.concrete_func_factory == self.concrete_func_factory
       assert base.arg_identifiers == self.arg_identifiers
-      assert base.arg_mutables == self.arg_mutables
       assert base.is_inline == self.is_inline
       # we share the initialized_templ_funcs here, so that we do not create a ConcreteFunction multiple times
       self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = base.initialized_templ_funcs
@@ -1330,11 +1313,10 @@ class FunctionTemplate:
     return FunctionTemplate(
       concrete_func_factory=self.concrete_func_factory,
       placeholder_templ_types=new_placeholder_templ_types,
-      return_type=self.return_type.replace_types(type_replacements), return_mutable=self.return_mutable,
+      return_type=self.return_type.replace_types(type_replacements),
       arg_identifiers=self.arg_identifiers.copy(),
       arg_types=[arg_type.replace_types(type_replacements) for arg_type in self.arg_types.copy()],
-      arg_mutables=self.arg_mutables.copy(), arg_type_narrowings=self.arg_type_narrowings.copy(),
-      is_inline=self.is_inline,
+      arg_type_narrowings=self.arg_type_narrowings.copy(), is_inline=self.is_inline,
       base=self)
 
   def to_signature_str(self) -> str:
@@ -2055,7 +2037,7 @@ class BitcastFunctionFactory(ConcreteFunctionFactory):
 def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
   str_type = StructType(
     struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'], templ_types=[],
-    member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT], member_mutables=[False, False, False],
+    member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT],
     pass_by_ref=True)
   constructor_symbol = str_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
   str_type.constructor = constructor_symbol
@@ -2075,8 +2057,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     instruction=lambda builder, ptr: builder.load(ptr, name='load'), emits_ir=context.emits_ir)
   load_signature = FunctionTemplate(
     concrete_func_factory=load_factory, placeholder_templ_types=[pointee_type], return_type=pointee_type,
-    return_mutable=False, arg_identifiers=['ptr'], arg_types=[ptr_type], arg_mutables=[False],
-    arg_type_narrowings=[ptr_type], is_inline=True)
+    arg_identifiers=['ptr'], arg_types=[ptr_type], arg_type_narrowings=[ptr_type], is_inline=True)
   load_symbol.add_signature(signature=load_signature)
   symbol_table['load'] = load_symbol
 
@@ -2087,8 +2068,8 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     emits_ir=context.emits_ir)
   store_signature = FunctionTemplate(
     concrete_func_factory=store_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_VOID,
-    return_mutable=True, arg_identifiers=['ptr', 'value'], arg_types=[ptr_type, pointee_type],
-    arg_mutables=[False, False], arg_type_narrowings=[ptr_type, pointee_type], is_inline=True)
+    arg_identifiers=['ptr', 'value'], arg_types=[ptr_type, pointee_type], arg_type_narrowings=[ptr_type, pointee_type],
+    is_inline=True)
   store_symbol.add_signature(store_signature)
   symbol_table['store'] = store_symbol
   type_factory = TypeFactory(placeholder_templ_types=[pointee_type], signature_type=ptr_type)
@@ -2098,8 +2079,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   constructor_factory = BitcastFunctionFactory(emits_ir=context.emits_ir)
   constructor_signature = FunctionTemplate(
     concrete_func_factory=constructor_factory, placeholder_templ_types=[pointee_type], return_type=ptr_type,
-    return_mutable=False, arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR], arg_mutables=[False],
-    arg_type_narrowings=[ptr_type], is_inline=True)
+    arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR], arg_type_narrowings=[ptr_type], is_inline=True)
   constructor_symbol.add_signature(signature=constructor_signature)
   ptr_type.constructor = constructor_symbol
 
@@ -2129,8 +2109,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   destructor_factory = get_dummy_destructor_function_factory(emits_ir=context.emits_ir)
   free_signature = FunctionTemplate(
     concrete_func_factory=destructor_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_VOID,
-    return_mutable=False, arg_types=[ptr_type], arg_identifiers=['ptr'], arg_type_narrowings=[SLEEPY_NEVER],
-    arg_mutables=[False], is_inline=True)
+    arg_types=[ptr_type], arg_identifiers=['ptr'], arg_type_narrowings=[SLEEPY_NEVER], is_inline=True)
   symbol_table.free_symbol.add_signature(free_signature)
 
   return TypeSymbol(type_factory=type_factory)
@@ -2141,8 +2120,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   destructor_factory = get_dummy_destructor_function_factory(emits_ir=context.emits_ir)
   destructor_signature = FunctionTemplate(
     concrete_func_factory=destructor_factory, placeholder_templ_types=[], return_type=SLEEPY_VOID,
-    return_mutable=False, arg_types=[SLEEPY_RAW_PTR], arg_identifiers=['raw_ptr'], arg_type_narrowings=[SLEEPY_NEVER],
-    arg_mutables=[False], is_inline=True)
+    arg_types=[SLEEPY_RAW_PTR], arg_identifiers=['raw_ptr'], arg_type_narrowings=[SLEEPY_NEVER], is_inline=True)
   symbol_table.free_symbol.add_signature(destructor_signature)
 
   pointee_type = PlaceholderTemplateType(identifier='T')
@@ -2154,8 +2132,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
     emits_ir=context.emits_ir)
   from_specific_signature = FunctionTemplate(
     concrete_func_factory=from_specific_factory, placeholder_templ_types=[pointee_type], return_type=SLEEPY_RAW_PTR,
-    return_mutable=False, arg_identifiers=['ptr'], arg_types=[ptr_type], arg_mutables=[False],
-    arg_type_narrowings=[ptr_type], is_inline=True)
+    arg_identifiers=['ptr'], arg_types=[ptr_type], arg_type_narrowings=[ptr_type], is_inline=True)
   constructor_symbol.add_signature(signature=from_specific_signature)
   # RawPtr(Int) -> RawPtr
   for int_type in INT_TYPES:
@@ -2164,8 +2141,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
       emits_ir=context.emits_ir)
     from_int_signature = FunctionTemplate(
       concrete_func_factory=from_int_factory, placeholder_templ_types=[], return_type=SLEEPY_RAW_PTR,
-      return_mutable=False, arg_identifiers=['int'], arg_types=[int_type], arg_mutables=[False],
-      arg_type_narrowings=[int_type], is_inline=True)
+      arg_identifiers=['int'], arg_types=[int_type], arg_type_narrowings=[int_type], is_inline=True)
     constructor_symbol.add_signature(from_int_signature)
   SLEEPY_RAW_PTR.constructor = constructor_symbol
 
@@ -2180,8 +2156,7 @@ def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   to_type, from_type = PlaceholderTemplateType('T'), PlaceholderTemplateType('U')
   bitcast_signature = FunctionTemplate(
     concrete_func_factory=func_factory, placeholder_templ_types=[to_type, from_type], return_type=to_type,
-    return_mutable=False, arg_identifiers=['from'], arg_types=[from_type], arg_mutables=[False],
-    arg_type_narrowings=[to_type], is_inline=True)
+    arg_identifiers=['from'], arg_types=[from_type], arg_type_narrowings=[to_type], is_inline=True)
   bitcast_func.add_signature(bitcast_signature)
   return bitcast_func
 
@@ -2264,8 +2239,7 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
     destructor_factory = get_dummy_destructor_function_factory(emits_ir=context.emits_ir)
     destructor_signature = FunctionTemplate(
       concrete_func_factory=destructor_factory, placeholder_templ_types=[], return_type=SLEEPY_VOID,
-      return_mutable=False, arg_types=[inbuilt_type], arg_identifiers=['var'], arg_type_narrowings=[SLEEPY_NEVER],
-      arg_mutables=[False], is_inline=True)
+      arg_types=[inbuilt_type], arg_identifiers=['var'], arg_type_narrowings=[SLEEPY_NEVER], is_inline=True)
     symbol_table.free_symbol.add_signature(destructor_signature)
 
   for assert_identifier in ['assert', 'unchecked_assert']:
@@ -2366,9 +2340,8 @@ def make_function_signature(instruction: Callable[..., Value],
   factory = InbuiltOpConcreteFuncFactory(instruction, emits_ir=emits_ir)
 
   signature = FunctionTemplate(
-    factory, placeholder_templ_types=list(op_placeholder_templ_types), return_type=op_return_type, return_mutable=False,
-    arg_identifiers=op_arg_identifiers, arg_types=op_arg_types, arg_mutables=[False] * len(op_arg_types),
-    arg_type_narrowings=op_arg_types, is_inline=True)
+    factory, placeholder_templ_types=list(op_placeholder_templ_types), return_type=op_return_type,
+    arg_identifiers=op_arg_identifiers, arg_types=op_arg_types, arg_type_narrowings=op_arg_types, is_inline=True)
 
   return signature
 

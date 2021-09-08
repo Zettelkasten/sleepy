@@ -19,7 +19,7 @@ SLEEPY_LEXER = LexerGenerator.from_dict(
     '|': '\\|',
     '->': '\\->',
     '@': '@',
-    'cmp_op': '==|!=|<=?|>=?|is',
+    'cmp_op': '==|!=|<=?|>=?|is|in|as',
     'sum_op': '\\+|\\-',
     'prod_op': '\\*|/',
     '=': '=',
