@@ -14,10 +14,6 @@ extern_func flush() ;
 ## Assertions
 extern_func assert(condition: Bool);
 @Inline func unchecked_assert(condition: Bool) { }
-func memcpy[T](to: Ptr[T], from: Ptr[T], size: Int) {
-  extern_func memcpy(to: RawPtr, from: RawPtr, size: Int);
-  memcpy(RawPtr(to), RawPtr(from), size);
-}
 
 
 ## Boolean Logic
@@ -53,6 +49,11 @@ func deallocate[T](ptr: Ptr[T]) {
   extern_func deallocate(ptr: RawPtr);  # TODO: cannot override free.
   deallocate(RawPtr(ptr));
 }
+func memcpy[T](to: Ptr[T], from: Ptr[T], size: Long) {
+  extern_func memcpy(to: RawPtr, from: RawPtr, size: Long);
+  memcpy(RawPtr(to), RawPtr(from), size);
+}
+func memcpy[T](to: Ptr[T], from: Ptr[T], size: Int) { memcpy[T](to, from, ToLong(size)); }
 
 ## Simple Math
 func <(left: Int, right: Double) ->  Bool  { return ToDouble(left) < right; }
