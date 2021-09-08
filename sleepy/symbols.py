@@ -447,10 +447,7 @@ class UnionType(Type):
     self.tag_c_type = ctypes.c_uint8
     self.tag_ir_type = ir.types.IntType(8)
     self.tag_size = 8
-    # TODO: The C Type should match the IR type: Also make this an byte array.
-    self.untagged_union_c_type = type(
-      '%s_UntaggedCType' % self.identifier, (ctypes.Union,),
-      {'_fields_': [('variant%s' % num, possible_type.c_type) for num, possible_type in enumerate(possible_types)]})
+    self.untagged_union_c_type = ctypes.c_ubyte * max((ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
     self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), val_size)
     c_type = type(
       '%s_CType' % self.identifier, (ctypes.Structure,),
