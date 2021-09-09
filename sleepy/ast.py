@@ -1343,11 +1343,8 @@ class IdentifierExpressionAst(ExpressionAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return []
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
-    return 'VariableExpressionAst(var_identifier=%r)' % self.identifier
+  def __repr__(self) -> str:
+    return 'IdentifierExpressionAst(var_identifier=%r)' % self.identifier
 
 
 class CallExpressionAst(ExpressionAst):
