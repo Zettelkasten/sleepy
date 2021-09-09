@@ -13,6 +13,7 @@ from llvmlite.binding import ExecutionEngine
 from llvmlite.ir import IRBuilder, Value
 
 from sleepy.grammar import TreePosition
+from sleepy.symbol_table import HierarchicalDict
 from sleepy.util import concat_dicts
 
 LLVM_SIZE_TYPE = ir.types.IntType(64)
@@ -1399,12 +1400,7 @@ class FunctionSymbol(Symbol):
       base = base.base
     self.base = base
 
-  def copy_replace_types(self, type_replacements: Dict[Type, Type]) -> FunctionSymbol:
-    new_func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=self.returns_void, base=self)
-    new_func_symbol.signatures_by_number_of_templ_args = {
-      num_templ_args: [signature.copy_replace_types(type_replacements) for signature in signatures]
-      for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
-    return new_func_symbol
+
 
   def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionSymbol:
     """
@@ -1556,75 +1552,52 @@ class TypeSymbol(Symbol):
     return templ_type
 
 
-class SymbolTable:
+class SymbolTable(HierarchicalDict[str, Symbol]):
   """
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
-  def __init__(self, copy_from=None, copy_new_current_func=None):
-    """
-    :param SymbolTable|None copy_from:
-    :param ConcreteFunction|None copy_new_current_func:
-    """
-    if copy_from is None:
+  def __init__(self, parent: Optional[SymbolTable] = None, copy_new_current_func: Optional[ConcreteFunction] = None):
+    super().__init__(parent)
+    if parent is None:
       assert copy_new_current_func is None
       self.symbols: Dict[str, Symbol] = {}
       self.current_func: Optional[ConcreteFunction] = None
       self.current_scope_identifiers: List[str] = []
       self.used_ir_func_names: Set[str] = set()
-      self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
       self.inbuilt_symbols: Dict[str, Symbol] = {}
+      self.known_extern_funcs = HierarchicalDict()
+      self.template_type_substitutions = HierarchicalDict()
     else:
       if copy_new_current_func is None:
-        self.symbols: Dict[str, Symbol] = copy_from.symbols.copy()
-        self.current_func: Optional[ConcreteFunction] = copy_from.current_func
-        self.current_scope_identifiers: List[str] = copy_from.current_scope_identifiers.copy()
+        self.current_func: Optional[ConcreteFunction] = parent.current_func
+        self.current_scope_identifiers: List[str] = parent.current_scope_identifiers.copy()
+        self.template_type_substitutions = HierarchicalDict(parent=parent.template_type_substitutions)
       else:
-        templ_type_replacements = dict(zip(
-          copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types))
-        self.symbols = {
-          identifier: symbol.copy_replace_unbound_templ_types(templ_type_replacements)
-          for identifier, symbol in copy_from.symbols.items()}
+        self.template_type_substitutions = HierarchicalDict(parent=parent.template_type_substitutions, init_with=dict(zip(
+          copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types)))
         self.current_func: Optional[ConcreteFunction] = copy_new_current_func
         self.current_scope_identifiers: List[str] = []
-      self.used_ir_func_names: Set[str] = copy_from.used_ir_func_names
-      # do not copy known_extern_funcs, but reference back as we want those to be shared globally
-      self.known_extern_funcs: Dict[str, ConcreteFunction] = copy_from.known_extern_funcs
-      self.inbuilt_symbols: Dict[str, Symbol] = copy_from.inbuilt_symbols
 
-  def __setitem__(self, identifier: str, symbol: Symbol):
-    self.symbols[identifier] = symbol
-
-  def __getitem__(self, identifier: str) -> Symbol:
-    return self.symbols[identifier]
-
-  def __contains__(self, identifier: str) -> bool:
-    return identifier in self.symbols
+      self.known_extern_funcs = HierarchicalDict(parent=parent.known_extern_funcs)
+      self.used_ir_func_names: Set[str] = parent.used_ir_func_names
+      self.inbuilt_symbols: Dict[str, Symbol] = parent.inbuilt_symbols
 
   def copy(self) -> SymbolTable:
-    return SymbolTable(self)
+    return SymbolTable(parent=self)
 
   def copy_with_new_current_func(self, new_current_func: ConcreteFunction) -> SymbolTable:
     assert new_current_func is not None
     return SymbolTable(self, copy_new_current_func=new_current_func)
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__
 
-  def make_ir_func_name(self, func_identifier, extern, concrete_func):
-    """
-    :param str func_identifier:
-    :param bool extern:
-    :param ConcreteFunction concrete_func:
-    :rtype: str
-    """
+  def make_ir_func_name(self, func_identifier: str, extern: bool, concrete_func: ConcreteFunction) -> str:
     if extern:
       ir_func_name = func_identifier
-      if ir_func_name in self.known_extern_funcs:
-        assert self.known_extern_funcs[ir_func_name].has_same_signature_as(concrete_func)
+      if self.has_extern_func(ir_func_name):
+        assert self.get_extern_func(ir_func_name).has_same_signature_as(concrete_func)
     else:
       ir_func_name = '_'.join(
         [func_identifier]
@@ -1637,7 +1610,7 @@ class SymbolTable:
     """
     For all variable symbols, copy common type of all other_symbol_tables.
     """
-    for symbol_identifier, self_symbol in self.symbols.items():
+    for symbol_identifier, self_symbol in self.items():
       if not isinstance(self_symbol, VariableSymbol):
         continue
       assert all(symbol_identifier in symbol_table for symbol_table in other_symbol_tables)
