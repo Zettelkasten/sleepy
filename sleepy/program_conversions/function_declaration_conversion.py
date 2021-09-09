@@ -1,8 +1,8 @@
 from typing import List, Tuple
 
 from sleepy.ast import AbstractSyntaxTree, FunctionDeclarationAst, AnnotationAst
-from sleepy.sleepy_parser import make_program_ast
 from sleepy.program_conversions.string_functions import replace, trim_whitespace
+from sleepy.sleepy_parser import make_program_ast
 
 
 def covert_program(input_program: str):

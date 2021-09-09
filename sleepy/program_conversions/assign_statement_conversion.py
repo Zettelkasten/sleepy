@@ -1,9 +1,9 @@
-from itertools import islice, dropwhile
 from typing import Tuple, List
 
 from sleepy.ast import AssignStatementAst, AbstractSyntaxTree
-from sleepy.sleepy_parser import make_program_ast
 from sleepy.program_conversions.string_functions import replace, trim_whitespace
+from sleepy.sleepy_parser import make_program_ast
+
 
 # Note: Annotation are not included in the AssignStatementAst pos, so we do not need to handle them
 def walk_ast(ast: AbstractSyntaxTree, input_program: str) -> List[Tuple[slice, str]]:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
-from typing import List, Optional, Union, Tuple, cast
+from typing import List, Optional, cast
 
 from llvmlite import ir
 
@@ -11,7 +11,8 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SL
   TypeSymbol, \
   StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, FunctionTemplate, PlaceholderTemplateType, ConcreteFunctionFactory, TypeFactory, try_infer_templ_types, Symbol, \
+  SLEEPY_CHAR_PTR, FunctionTemplate, PlaceholderTemplateType, ConcreteFunctionFactory, TypeFactory, \
+  try_infer_templ_types, Symbol, \
   FunctionSymbolCaller
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
