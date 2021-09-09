@@ -1240,7 +1240,7 @@ class ConcreteFunction:
     assert context.emits_ir
     assert not self.is_inline
     assert self.ir_func is None
-    ir_func_name = symbol_table.make_ir_func_name(identifier, extern=extern, concrete_func=self)
+    ir_func_name = context.make_ir_function_name(identifier, self, extern)
     ir_func_type = self.make_ir_function_type()
     self.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
     if context.emits_debug and not extern:
@@ -1564,7 +1564,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
       self.symbols: Dict[str, Symbol] = {}
       self.current_func: Optional[ConcreteFunction] = None
       self.current_scope_identifiers: List[str] = []
-      self.used_ir_func_names: Set[str] = set()
       self.inbuilt_symbols: Dict[str, Symbol] = {}
       self.known_extern_funcs = HierarchicalDict()
       self.template_type_substitutions = HierarchicalDict()
@@ -1580,7 +1579,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
         self.current_scope_identifiers: List[str] = []
 
       self.known_extern_funcs = HierarchicalDict(parent=parent.known_extern_funcs)
-      self.used_ir_func_names: Set[str] = parent.used_ir_func_names
       self.inbuilt_symbols: Dict[str, Symbol] = parent.inbuilt_symbols
 
   def copy(self) -> SymbolTable:
@@ -1592,19 +1590,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
 
   def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__
-
-  def make_ir_func_name(self, func_identifier: str, extern: bool, concrete_func: ConcreteFunction) -> str:
-    if extern:
-      ir_func_name = func_identifier
-      if self.has_extern_func(ir_func_name):
-        assert self.get_extern_func(ir_func_name).has_same_signature_as(concrete_func)
-    else:
-      ir_func_name = '_'.join(
-        [func_identifier]
-        + [str(arg_type) for arg_type in concrete_func.concrete_templ_types + concrete_func.arg_types])
-      assert ir_func_name not in self.used_ir_func_names
-    self.used_ir_func_names.add(ir_func_name)
-    return ir_func_name
 
   def apply_type_narrowings_from(self, *other_symbol_tables: SymbolTable):
     """
@@ -1708,10 +1693,7 @@ class CodegenContext:
     assert all(inline_func.is_inline for inline_func in self.inline_func_call_stack)
 
   @property
-  def module(self):
-    """
-    :rtype: ir.Module
-    """
+  def module(self) -> ir.Module:
     assert self.emits_ir
     assert self.builder is not None
     return self.builder.module
@@ -1813,6 +1795,17 @@ class CodegenContext:
 
   def use_pos(self, pos: TreePosition) -> UsePosRuntimeContext:
     return UsePosRuntimeContext(pos, context=self)
+
+  def make_ir_function_name(self, identifier: str, concrete_function: ConcreteFunction, extern: bool):
+    if extern:
+      if any(f.name == identifier for f in  self.module.functions): return None
+      return identifier
+    else:
+      ir_func_name = '_'.join(
+        [identifier]
+        + [str(arg_type) for arg_type in concrete_function.concrete_templ_types + concrete_function.arg_types])
+      return self.module.get_unique_name(ir_func_name)
+
 
 
 class UsePosRuntimeContext:

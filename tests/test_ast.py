@@ -1869,6 +1869,30 @@ def test_size_templ():
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 1)
 
+def test_scoped_function_redefinition():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Int {
+      func a() -> Int {
+          func inner() -> Int { return 1; }
+          return inner() + 2;
+      }
+  
+      func b() -> Double {
+          func inner() -> Double { return 5.5; }
+          return inner() * 2.1;
+      }
+  
+      if a() == 3 {
+          if b() >= 11.1 { return 1; }
+      }
+  
+      return 0;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 1)
+
 
 if __name__ == "__main__":
   try:
