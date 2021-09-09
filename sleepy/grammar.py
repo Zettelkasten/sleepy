@@ -41,7 +41,7 @@ class Production:
     if isinstance(right, list):
       right = tuple(right)
     assert '' not in right
-    self.right = right  # type: Tuple[str]
+    self.right: Tuple[str] = right
 
   def __repr__(self):
     return 'Production[%r -> %s]' % (self.left, ' '.join([repr(symbol) for symbol in self.right]))
@@ -68,7 +68,7 @@ class Grammar:
     if not isinstance(prods, tuple):
       assert isinstance(prods, list)
       prods = tuple(prods)
-    self.prods = prods  # type: Tuple[Production]
+    self.prods: Tuple[Production] = prods
     if start is None:
       start = self.prods[0].left
     self.start = start
@@ -141,19 +141,19 @@ class AttributeGrammar:
     self.grammar = grammar
     if inh_attrs is None:
       inh_attrs = set()
-    self.inh_attrs = inh_attrs  # type: Set[str]
+    self.inh_attrs: Set[str] = inh_attrs
     if syn_attrs is None:
       syn_attrs = set()
-    self.syn_attrs = syn_attrs  # type: Set[str]
+    self.syn_attrs: Set[str] = syn_attrs
     assert self.inh_attrs & self.syn_attrs == set(), 'inherited and synthesized attributes must be disjoint'
     if isinstance(prod_attr_rules, (list, tuple)):
       assert len(self.grammar.prods) == len(prod_attr_rules)
       prod_attr_rules = dict(zip(self.grammar.prods, prod_attr_rules))
     assert isinstance(prod_attr_rules, dict)
-    self.prod_attr_rules = prod_attr_rules  # type: Dict[Production, Dict[str, Union[Callable, str, Any]]]
+    self.prod_attr_rules: Dict[Production, Dict[str, Union[Callable, str, Any]]] = prod_attr_rules
     assert tuple(prod_attr_rules.keys()) == self.grammar.prods, 'need one rule set for each production'
     self.prod_attr_rules = prod_attr_rules
-    self.terminal_attr_rules = terminal_attr_rules  # type: Dict[str, Dict[str, Union[Callable, str]]]
+    self.terminal_attr_rules: Dict[str, Dict[str, Union[Callable, str]]] = terminal_attr_rules
     self._sanity_check()
 
   @classmethod
@@ -276,7 +276,7 @@ class AttributeGrammar:
     if terminal not in self.terminal_attr_rules:
       return {}
 
-    attr_eval = {}  # type: Dict[str, Any]
+    attr_eval: Dict[str, Any] = {}
     if terminal not in self.terminal_attr_rules:
       return attr_eval
     for attr_target, func in self.terminal_attr_rules[terminal].items():
@@ -344,7 +344,7 @@ class AttributeGrammar:
 
       return get
 
-    attr_eval = {}  # type: Dict[str, Any]
+    attr_eval: Dict[str, Any] = {}
     if eval_pos == 0:
       attr_eval.update(left_attr_eval)
     else:
@@ -460,7 +460,7 @@ class SyntaxTree:
     assert len(prod.right) == len(right)
     assert all(subtree is None or subtree.left == symbol for subtree, symbol in zip(right, prod.right))
     self.prod = prod
-    self.right = right  # type: Tuple[Optional[SyntaxTree]]
+    self.right: Tuple[Optional[SyntaxTree]] = right
 
   @property
   def left(self):

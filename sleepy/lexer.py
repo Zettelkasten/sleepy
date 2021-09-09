@@ -79,8 +79,8 @@ class LexerGenerator:
     Compute and set `_final_states`.
     """
     self._final_states.clear()
-    states_to_check = {self._initial_state}  # type: Set[Tuple[Union[int,ERROR_STATE]]]
-    visited_states = set()  # type: Set[Tuple[Union[int,ERROR_STATE]]]
+    states_to_check: Set[Tuple[Union[int,ERROR_STATE]]] = {self._initial_state}
+    visited_states: Set[Tuple[Union[int,ERROR_STATE]]] = set()
     while len(states_to_check) >= 1:
       state = states_to_check.pop()
       if state in visited_states:
@@ -104,10 +104,10 @@ class LexerGenerator:
     """
     pos = 0
     state = self._initial_state
-    backtrack_mode = self.NORMAL_MODE  # type: Union[str, LexerGenerator.NORMAL_MODE]
-    backtrack_pos = None  # type: Optional[int]
-    analysis = []  # type: List[str]
-    decomposition = []  # type: List[int]
+    backtrack_mode: Union[str, LexerGenerator.NORMAL_MODE] = self.NORMAL_MODE
+    backtrack_pos: Optional[int] = None
+    analysis: List[str] = []
+    decomposition: List[int] = []
     token_begin_pos = 0
 
     def do_backtrack():

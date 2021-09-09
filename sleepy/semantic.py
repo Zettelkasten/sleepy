@@ -33,11 +33,11 @@ class AttributeEvalGenerator:
     assert root_tree.prod.left == self.grammar.start
     assert len(tokens) == len(tokens_pos)
     token_pos = 0
-    tree_stack = [root_tree]  # type: List[SyntaxTree]
-    prod_pos_stack = [0]  # type: List[int]
-    left_attr_eval_stack = [{}]  # type: List[Dict[str, Any]]
-    right_attr_eval_stack = [[{} for _ in range(len(root_tree.right))]]  # type: List[List[Dict[str, Any]]]
-    root_eval = None  # type: Optional[Dict[str, Any]]
+    tree_stack: List[SyntaxTree] = [root_tree]
+    prod_pos_stack: List[int] = [0]
+    left_attr_eval_stack: List[Dict[str, Any]] = [{}]
+    right_attr_eval_stack: List[List[Dict[str, Any]]] = [[{} for _ in range(len(root_tree.right))]]
+    root_eval: Optional[Dict[str, Any]] = None
 
     while len(tree_stack) >= 1:
       current_tree, current_prod_pos = tree_stack[-1], prod_pos_stack[-1]

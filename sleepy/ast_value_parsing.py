@@ -75,7 +75,7 @@ def parse_string(value):
   assert len(value) >= 2
   assert value[0] == value[-1] == '"'
   value = value[1:-1]
-  res = []  # type: List[chr]
+  res: List[chr] = []
   pos = 0
   while pos < len(value):
     char = value[pos]

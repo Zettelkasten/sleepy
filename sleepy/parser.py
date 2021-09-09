@@ -11,9 +11,9 @@ def make_first1_sets(grammar):
   :rtype: dict[str, set[str|None]]
   """
   # fi(x) = {x} for all terminals, compute non-terminals iteratively
-  first1_sets = {
+  first1_sets: Dict[str, Set[Optional[str]]] = {
     symbol: {symbol} if symbol in grammar.terminals else set()
-    for symbol in grammar.symbols}  # type: Dict[str, Set[Optional[str]]]
+    for symbol in grammar.symbols}
   changes = True
   while changes:
     changes = False
@@ -123,10 +123,10 @@ class ParserGenerator:
     self._start_prod = start_prods[0]
 
     self._initial_state = 0
-    self._num_states = 0  # type: int
-    self._state_action_table = []  # type: List[Dict[str, _Action]]
-    self._state_goto_table = []  # type: List[Dict[str, int]]
-    self._state_descr = []  # type: List[str]
+    self._num_states: int = 0
+    self._state_action_table: List[Dict[str, _Action]] = []
+    self._state_goto_table: List[Dict[str, int]] = []
+    self._state_descr: List[str] = []
     self.first1_sets = make_first1_sets(self.grammar)
 
     self._make()
@@ -143,7 +143,7 @@ class ParserGenerator:
     add_item_queue = initial_items.copy()
 
     state = set()
-    actions = {}  # type: Dict[str,_Action]
+    actions: Dict[str,_Action] = {}
     next_symbols = set()
 
     while len(add_item_queue) >= 1:
@@ -182,9 +182,9 @@ class ParserGenerator:
     """
     Construct the automaton.
     """
-    states = {}  # type: Dict[FrozenSet[_Item], int]
-    state_action_table = []  # type: List[Dict[str, _Action]]
-    state_goto_table = []  # type: List[Dict[str, int]]
+    states: Dict[FrozenSet[_Item], int] = {}
+    state_action_table: List[Dict[str, _Action]] = []
+    state_goto_table: List[Dict[str, int]] = []
 
     def add_next_state(from_state, symbol):
       """
@@ -259,9 +259,9 @@ class ParserGenerator:
     accepted = False
     pos = 0
     state_stack = [self._initial_state]
-    attr_eval_stack = []  # type: List[Dict[str, Any]]
-    start_pos_stack = []  # type: List[int]
-    rev_analysis = []  # type: List[Production]
+    attr_eval_stack: List[Dict[str, Any]] = []
+    start_pos_stack: List[int] = []
+    rev_analysis: List[Production] = []
 
     while not accepted:
       while pos < len(tokens) and tokens[pos] is IGNORED_TOKEN:
@@ -277,7 +277,7 @@ class ParserGenerator:
         attr_eval_stack.append(attr_grammar.get_terminal_syn_attr_eval(shifted_token, shifted_token_word))
         start_pos_stack.append(pos - 1)
       elif isinstance(action, _ReduceAction):
-        right_attr_evals = attr_eval_stack[len(attr_eval_stack) - len(action.prod.right):]  # type: List[Dict[str, Any]]
+        right_attr_evals: List[Dict[str, Any]] = attr_eval_stack[len(attr_eval_stack) - len(action.prod.right):]
         if len(action.prod.right) > 0:
           prod_start_pos = start_pos_stack[len(attr_eval_stack) - len(action.prod.right)]
         else:
@@ -296,7 +296,7 @@ class ParserGenerator:
       elif isinstance(action, _AcceptAction) and len(state_stack) == 2:
         assert state_stack[0] == self._initial_state
         assert len(attr_eval_stack) == len(start_pos_stack) == len(self._start_prod.right) == 1
-        right_attr_evals = attr_eval_stack[-len(self._start_prod.right):]  # type: List[Dict[str, Any]]
+        right_attr_evals: List[Dict[str, Any]] = attr_eval_stack[-len(self._start_prod.right):]
         prod_start_pos = start_pos_stack[-len(self._start_prod.right)]
         assert len(right_attr_evals) == len(self._start_prod.right)
         state_stack.clear()

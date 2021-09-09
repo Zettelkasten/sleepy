@@ -29,7 +29,7 @@ class Symbol(ABC):
     """
     Initialize the symbol.
     """
-    self.base = self  # type: Symbol
+    self.base: Symbol = self
     assert self.kind is not None
 
   @abstractmethod
@@ -675,7 +675,7 @@ class StructType(Type):
     self._templ_types = templ_types
     self.member_identifiers = member_identifiers
     self.member_types = member_types
-    self._constructor = None  # type: Optional[FunctionSymbol]
+    self._constructor: Optional[FunctionSymbol] = None
     if self.has_templ_placeholder():
       self.ir_val_type = None
       self.c_val_type = None
@@ -1568,17 +1568,17 @@ class SymbolTable:
     """
     if copy_from is None:
       assert copy_new_current_func is None
-      self.symbols = {}  # type: Dict[str, Symbol]
-      self.current_func = None  # type: Optional[ConcreteFunction]
-      self.current_scope_identifiers = []  # type: List[str]
-      self.used_ir_func_names = set()  # type: Set[str]
-      self.known_extern_funcs = {}  # type: Dict[str, ConcreteFunction]
-      self.inbuilt_symbols = {}  # type: Dict[str, Symbol]
+      self.symbols: Dict[str, Symbol] = {}
+      self.current_func: Optional[ConcreteFunction] = None
+      self.current_scope_identifiers: List[str] = []
+      self.used_ir_func_names: Set[str] = set()
+      self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
+      self.inbuilt_symbols: Dict[str, Symbol] = {}
     else:
       if copy_new_current_func is None:
-        self.symbols = copy_from.symbols.copy()  # type: Dict[str, Symbol]
-        self.current_func = copy_from.current_func  # type: Optional[ConcreteFunction]
-        self.current_scope_identifiers = copy_from.current_scope_identifiers.copy()  # type: List[str]
+        self.symbols: Dict[str, Symbol] = copy_from.symbols.copy()
+        self.current_func: Optional[ConcreteFunction] = copy_from.current_func
+        self.current_scope_identifiers: List[str] = copy_from.current_scope_identifiers.copy()
       else:
         templ_type_replacements = dict(zip(
           copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types))
@@ -1695,17 +1695,17 @@ class CodegenContext:
     self.builder = builder
 
     if copy_from is None:
-      self.emits_ir = builder is not None  # type: bool
-      self.emits_debug = self.emits_ir  # type: bool
+      self.emits_ir: bool = builder is not None
+      self.emits_debug: bool = self.emits_ir
       self.is_terminated = False
 
       self.current_pos: Optional[TreePosition] = None
       self.current_func: Optional[ConcreteFunction] = None
-      self.current_func_inline_return_collect_block = None  # type: Optional[ir.Block]
-      self.current_func_inline_return_ir_alloca = None  # type: Optional[ir.instructions.AllocaInstr]
-      self.inline_func_call_stack = []  # type: List[ConcreteFunction]
-      self.ir_func_malloc = None  # type: Optional[ir.Function]
-      self.ir_func_free = None  # type: Optional[ir.Function]
+      self.current_func_inline_return_collect_block: Optional[ir.Block] = None
+      self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = None
+      self.inline_func_call_stack: List[ConcreteFunction] = []
+      self.ir_func_malloc: Optional[ir.Function] = None
+      self.ir_func_free: Optional[ir.Function] = None
 
       self.current_di_file: Optional[ir.DIValue] = None
       self.current_di_compile_unit: Optional[ir.DIValue] = None
@@ -1713,16 +1713,16 @@ class CodegenContext:
       self.di_declare_func: Optional[ir.Function] = None
     else:
       self.emits_ir = copy_from.emits_ir
-      self.emits_debug = copy_from.emits_debug  # type: bool
+      self.emits_debug: bool = copy_from.emits_debug
       self.is_terminated = copy_from.is_terminated
 
       self.current_pos: Optional[TreePosition] = copy_from.current_pos
       self.current_func: Optional[ConcreteFunction] = copy_from.current_func
-      self.current_func_inline_return_collect_block = copy_from.current_func_inline_return_collect_block  # type: Optional[ir.Block]  # noqa
-      self.current_func_inline_return_ir_alloca = copy_from.current_func_inline_return_ir_alloca  # type: Optional[ir.instructions.AllocaInstr]  # noqa
-      self.inline_func_call_stack = copy_from.inline_func_call_stack.copy()  # type: List[ConcreteFunction]
-      self.ir_func_malloc = copy_from.ir_func_malloc  # type: Optional[ir.Function]
-      self.ir_func_free = copy_from.ir_func_free  # type: Optional[ir.Function]
+      self.current_func_inline_return_collect_block: Optional[ir.Block] = copy_from.current_func_inline_return_collect_block
+      self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = copy_from.current_func_inline_return_ir_alloca
+      self.inline_func_call_stack: List[ConcreteFunction] = copy_from.inline_func_call_stack.copy()
+      self.ir_func_malloc: Optional[ir.Function] = copy_from.ir_func_malloc
+      self.ir_func_free: Optional[ir.Function] = copy_from.ir_func_free
 
       self.current_di_file: Optional[ir.DIValue] = copy_from.current_di_file
       self.current_di_compile_unit: Optional[ir.DIValue] = copy_from.current_di_compile_unit
@@ -1821,7 +1821,7 @@ class CodegenContext:
     :rtype: ir.instructions.AllocaInstr
     """
     assert self.emits_ir
-    entry_block = self.block.function.entry_basic_block  # type: ir.Block
+    entry_block: ir.Block = self.block.function.entry_basic_block
     entry_builder = ir.IRBuilder(entry_block)
     if len(entry_block.instructions) == 0 or not isinstance(entry_block.instructions[0], ir.instructions.AllocaInstr):
       entry_builder.position_at_start(entry_block)
@@ -1911,8 +1911,8 @@ def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
       if isinstance(calling_arg_type, UnionType)]
     assert len(distinguishing_arg_nums) >= 1
     # noinspection PyTypeChecker
-    distinguishing_calling_arg_types = [
-      calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]  # type: List[UnionType]
+    distinguishing_calling_arg_types: List[UnionType] = [
+      calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
     assert all(isinstance(calling_arg, UnionType) for calling_arg in distinguishing_calling_arg_types)
     # To distinguish which concrete func to call, use this table
     block_addresses_distinguished_mapping = np.ndarray(
@@ -1970,7 +1970,7 @@ def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
     # Execute the concrete functions and collect their return value
     collect_block = context.builder.append_basic_block("collect_%s_overload" % func.identifier)
     context.builder = ir.IRBuilder(collect_block)
-    concrete_func_return_ir_vals = []  # type: List[ir.values.Value]
+    concrete_func_return_ir_vals: List[ir.values.Value] = []
     for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
       concrete_calling_arg_types = [
         narrow_type(calling_arg_type, concrete_arg_type)

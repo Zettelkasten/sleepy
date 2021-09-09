@@ -114,10 +114,10 @@ def make_dfa_from_nfa(nfa):
   :param NonDeterministicAutomaton nfa:
   :rtype: DeterministicAutomaton
   """
-  powerset_idx_transition_table = []  # type: List[Dict[str, int]]
-  final_powersets_idx = set()  # type: Set[int]
-  added_powersets = {}  # type: Dict[FrozenSet[int], int]
-  dirty_powersets = set()  # type: Set[FrozenSet[int]]
+  powerset_idx_transition_table: List[Dict[str, int]] = []
+  final_powersets_idx: Set[int] = set()
+  added_powersets: Dict[FrozenSet[int], int] = {}
+  dirty_powersets: Set[FrozenSet[int]] = set()
 
   def add_next_powersets(powerset):
     """
@@ -125,7 +125,7 @@ def make_dfa_from_nfa(nfa):
     """
     assert powerset in added_powersets
     powerset_idx = added_powersets[powerset]
-    added_chars = set()  # type: Set[str]
+    added_chars: Set[str] = set()
     for state in powerset:
       for char in nfa.state_transition_table[state].keys():
         if char in added_chars or char is EPSILON:

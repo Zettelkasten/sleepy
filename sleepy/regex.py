@@ -79,13 +79,13 @@ def make_regex_nfa(regex):
   analysis = REGEX_PARSER.parse_analysis(regex, tokens, tokens_pos)
 
   num_states = 0
-  state_transition_table = []  # type: List[Dict[Optional[str], Set[int]]]
+  state_transition_table: List[Dict[Optional[str], Set[int]]] = []
   # TODO: replace this with attribute grammars when we have that
   # for each subregex, build a epsilon-NFA with start state in from_stack, and single final state in to_stack.
   # invariant: no ingoing transitions into start, no outgoing transitions from end
-  from_stack = []  # type: List[int]
-  to_stack = []  # type: List[int]
-  range_lits = set()  # type: Set[str]
+  from_stack: List[int] = []
+  to_stack: List[int] = []
+  range_lits: Set[str] = set()
   pos = 0
 
   def next_literal_name():

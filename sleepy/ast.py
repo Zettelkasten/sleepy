@@ -31,7 +31,7 @@ class AbstractSyntaxTree(ABC):
     :param TreePosition pos: position where this AST starts
     """
     self.pos = pos
-    self.annotations = []  # type: List[AnnotationAst]
+    self.annotations: List[AnnotationAst] = []
 
   def __repr__(self):
     """
@@ -745,9 +745,9 @@ class AssignStatementAst(StatementAst):
     """
     with context.use_pos(self.pos):
       if self.declared_var_type is not None:
-        stated_type = self.declared_var_type.make_type(symbol_table=symbol_table)  # type: Optional[Type]
+        stated_type: Optional[Type] = self.declared_var_type.make_type(symbol_table=symbol_table)
       else:
-        stated_type = None  # type: Optional[Type]
+        stated_type: Optional[Type] = None
       if not self.var_val.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE:
         self.raise_error('Can only reassign variables')
       val_type = self.var_val.make_val_type(symbol_table=symbol_table)
@@ -845,8 +845,8 @@ class IfStatementAst(StatementAst):
       if context.emits_ir:
         ir_cond = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
         assert isinstance(ir_cond, ir.values.Value)
-        true_block = context.builder.append_basic_block('true_branch')  # type: ir.Block
-        false_block = context.builder.append_basic_block('false_branch')  # type: ir.Block
+        true_block: ir.Block = context.builder.append_basic_block('true_branch')
+        false_block: ir.Block = context.builder.append_basic_block('false_branch')
         context.builder.cbranch(ir_cond, true_block, false_block)
         true_context = context.copy_with_builder(ir.IRBuilder(true_block))
         false_context = context.copy_with_builder(ir.IRBuilder(false_block))
@@ -870,7 +870,7 @@ class IfStatementAst(StatementAst):
           assert not true_context.is_terminated and not false_context.is_terminated
           symbol_table.apply_type_narrowings_from(true_symbol_table, false_symbol_table)
         if context.emits_ir:
-          continue_block = context.builder.append_basic_block('continue_branch')  # type: ir.Block
+          continue_block: ir.Block = context.builder.append_basic_block('continue_branch')
           if not true_context.is_terminated:
             true_context.builder.branch(continue_block)
           if not false_context.is_terminated:
@@ -917,8 +917,8 @@ class WhileStatementAst(StatementAst):
 
       if context.emits_ir:
         cond_ir = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
-        body_block = context.builder.append_basic_block('while_body')  # type: ir.Block
-        continue_block = context.builder.append_basic_block('continue_branch')  # type: ir.Block
+        body_block: ir.Block = context.builder.append_basic_block('while_body')
+        continue_block: ir.Block = context.builder.append_basic_block('continue_branch')
         context.builder.cbranch(cond_ir, body_block, continue_block)
         context.builder = ir.IRBuilder(continue_block)
 
