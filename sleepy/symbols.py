@@ -1585,12 +1585,12 @@ class SymbolTable:
         self.symbols = {
           identifier: symbol.copy_replace_unbound_templ_types(templ_type_replacements)
           for identifier, symbol in copy_from.symbols.items()}
-        self.current_func = copy_new_current_func  # type: Optional[ConcreteFunction]
-        self.current_scope_identifiers = []  # type: List[str]
-      self.used_ir_func_names = copy_from.used_ir_func_names  # type: Set[str]
+        self.current_func: Optional[ConcreteFunction] = copy_new_current_func
+        self.current_scope_identifiers: List[str] = []
+      self.used_ir_func_names: Set[str] = copy_from.used_ir_func_names
       # do not copy known_extern_funcs, but reference back as we want those to be shared globally
-      self.known_extern_funcs = copy_from.known_extern_funcs  # type: Dict[str, ConcreteFunction]
-      self.inbuilt_symbols = copy_from.inbuilt_symbols  # type: Dict[str, Symbol]
+      self.known_extern_funcs: Dict[str, ConcreteFunction] = copy_from.known_extern_funcs
+      self.inbuilt_symbols: Dict[str, Symbol] = copy_from.inbuilt_symbols
 
   def __setitem__(self, identifier: str, symbol: Symbol):
     self.symbols[identifier] = symbol
