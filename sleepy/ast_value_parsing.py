@@ -17,10 +17,9 @@ class InvalidLiteralError(CompilerError):
 ESCAPE_CHARACTERS = {'n': '\n', 'r': '\r', 't': '\t', "'": "'", '"': '"', '0': '\0'}
 
 
-def parse_long(value):
+def parse_long(value: str) -> int:
   """
-  :param str value: e.g. 123l, ...
-  :rtype: str
+  :param value: e.g. 123l, ...
   """
   assert value[-1] in {'l', 'L'}
   try:
@@ -29,10 +28,9 @@ def parse_long(value):
     raise InvalidLiteralError(value, "Invalid long literal.") from e
 
 
-def parse_float(value):
+def parse_float(value: str) -> float:
   """
-  :param str value: e.g. 0.5f, ...
-  :rtype: str
+  :param value: e.g. 0.5f, ...
   """
   assert value[-1] in {'f', 'F'}
   try:
@@ -41,10 +39,9 @@ def parse_float(value):
     raise InvalidLiteralError(value, "Invalid float literal.") from e
 
 
-def parse_double(value: str):
+def parse_double(value: str) -> float:
   """
-  :param str value: e.g. 0.5, ...
-  :rtype: str
+  :param value: e.g. 0.5, ...
   """
   try:
     return float(value)
@@ -52,10 +49,9 @@ def parse_double(value: str):
     raise InvalidLiteralError(value, "Invalid double literal.") from e
 
 
-def parse_char(value):
+def parse_char(value: str) -> str:
   """
-  :param str value: e.g. 'a', '\n', ...
-  :rtype: str
+  :param value: e.g. 'a', '\n', ...
   """
   assert 3 <= len(value) <= 4
   assert value[0] == value[-1] == "'"
@@ -67,10 +63,9 @@ def parse_char(value):
   return ESCAPE_CHARACTERS[value[1]]
 
 
-def parse_string(value):
+def parse_string(value: str) -> str:
   """
-  :param str value: e.g. "abc", "", "cool \"stuff\""
-  :rtype: str
+  :param value: e.g. "abc", "", "cool \"stuff\""
   """
   assert len(value) >= 2
   assert value[0] == value[-1] == '"'
@@ -90,18 +85,16 @@ def parse_string(value):
   return ''.join(res)
 
 
-def parse_hex_int(value):
+def parse_hex_int(value: str) -> int:
   """
-  :param str value: e.g. 0x0043fabc
-  :rtype: int
+  :param value: e.g. 0x0043fabc
   """
   return int(value, 0)
 
 
-def parse_assign_op(value):
+def parse_assign_op(value: str) -> str:
   """
-  :param str value: e.g. +=
-  :rtype: str
+  :param value: e.g. +=
   """
   assert len(value) >= 2
   assert value[-1] == '='
