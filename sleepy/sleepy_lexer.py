@@ -9,6 +9,7 @@ SLEEPY_LEXER = LexerGenerator.from_dict(
     'else': 'else',
     'return': 'return',
     'while': 'while',
+    'ref': 'ref',
     '{': '{',
     '}': '}',
     ';': ';',

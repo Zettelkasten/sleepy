@@ -1,9 +1,9 @@
 from sleepy.ast import TopLevelAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   BinaryOperatorExpressionAst, IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
-  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst
-from sleepy.functions import FunctionDeclarationAst
+  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
   parse_hex_int
+from sleepy.functions import FunctionDeclarationAst
 from sleepy.grammar import AttributeGrammar, Production
 from sleepy.parser import ParserGenerator
 from sleepy.sleepy_lexer import SLEEPY_LEXER
@@ -119,6 +119,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('PrimaryExpr', 'PrimaryExpr', '(', 'ExprList', ')'): {
       'ast': lambda _pos, ast, val_list: CallExpressionAst(
         _pos, func_expr=ast(1), func_arg_exprs=val_list(3))},
+    Production('PrimaryExpr', 'ref', '(', 'Expr', ')'): {
+      'ast': lambda _pos, ast: ReferenceExpressionAst(_pos, arg_expr=ast(3))},
     # TODO: Cleanup index operator
     Production('PrimaryExpr', 'PrimaryExpr', '[', 'ExprList', ']'): {
       'ast': lambda _pos, ast, val_list: CallExpressionAst(
