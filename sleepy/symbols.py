@@ -1557,28 +1557,31 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
-  def __init__(self, parent: Optional[SymbolTable] = None, copy_new_current_func: Optional[ConcreteFunction] = None):
+  def __init__(self, parent: Optional[SymbolTable]=None, copy_new_current_func: Optional[ConcreteFunction]=None):
     super().__init__(parent)
     if parent is None:
       assert copy_new_current_func is None
       self.symbols: Dict[str, Symbol] = {}
       self.current_func: Optional[ConcreteFunction] = None
       self.current_scope_identifiers: List[str] = []
+      self.used_ir_func_names: Set[str] = set()
+      self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
       self.inbuilt_symbols: Dict[str, Symbol] = {}
-      self.known_extern_funcs = HierarchicalDict()
-      self.template_type_substitutions = HierarchicalDict()
     else:
       if copy_new_current_func is None:
         self.current_func: Optional[ConcreteFunction] = parent.current_func
         self.current_scope_identifiers: List[str] = parent.current_scope_identifiers.copy()
-        self.template_type_substitutions = HierarchicalDict(parent=parent.template_type_substitutions)
       else:
-        self.template_type_substitutions = HierarchicalDict(parent=parent.template_type_substitutions, init_with=dict(zip(
-          copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types)))
+        templ_type_replacements = dict(zip(
+          copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types))
+        self.underlying_dict = {
+          identifier: symbol.copy_replace_unbound_templ_types(templ_type_replacements)
+          for identifier, symbol in parent.items()}
         self.current_func: Optional[ConcreteFunction] = copy_new_current_func
         self.current_scope_identifiers: List[str] = []
-
-      self.known_extern_funcs = HierarchicalDict(parent=parent.known_extern_funcs)
+      self.used_ir_func_names: Set[str] = parent.used_ir_func_names
+      # do not copy known_extern_funcs, but reference back as we want those to be shared globally
+      self.known_extern_funcs: Dict[str, ConcreteFunction] = parent.known_extern_funcs
       self.inbuilt_symbols: Dict[str, Symbol] = parent.inbuilt_symbols
 
   def copy(self) -> SymbolTable:
@@ -1612,7 +1615,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     """
     Applies symbol.copy_reset_narrowed_type() for all variable symbols.
     """
-    for symbol_identifier, symbol in self.symbols.items():
+    for symbol_identifier, symbol in self.items():
       if isinstance(symbol, VariableSymbol):
         if symbol.declared_var_type != symbol.narrowed_var_type:
           self[symbol_identifier] = symbol.copy_reset_narrowed_type()
