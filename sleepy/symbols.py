@@ -1564,7 +1564,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
       self.symbols: Dict[str, Symbol] = {}
       self.current_func: Optional[ConcreteFunction] = None
       self.current_scope_identifiers: List[str] = []
-      self.used_ir_func_names: Set[str] = set()
       self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
       self.inbuilt_symbols: Dict[str, Symbol] = {}
     else:
@@ -1579,7 +1578,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
           for identifier, symbol in parent.items()}
         self.current_func: Optional[ConcreteFunction] = copy_new_current_func
         self.current_scope_identifiers: List[str] = []
-      self.used_ir_func_names: Set[str] = parent.used_ir_func_names
       # do not copy known_extern_funcs, but reference back as we want those to be shared globally
       self.known_extern_funcs: Dict[str, ConcreteFunction] = parent.known_extern_funcs
       self.inbuilt_symbols: Dict[str, Symbol] = parent.inbuilt_symbols
