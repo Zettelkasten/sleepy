@@ -13,6 +13,7 @@ from llvmlite.binding import ExecutionEngine
 from llvmlite.ir import IRBuilder, Value
 
 from sleepy.grammar import TreePosition
+from sleepy.symbol_table import HierarchicalDict
 from sleepy.util import concat_dicts
 
 LLVM_SIZE_TYPE = ir.types.IntType(64)
@@ -1239,7 +1240,7 @@ class ConcreteFunction:
     assert context.emits_ir
     assert not self.is_inline
     assert self.ir_func is None
-    ir_func_name = symbol_table.make_ir_func_name(identifier, extern=extern, concrete_func=self)
+    ir_func_name = context.make_ir_function_name(identifier, self, extern)
     ir_func_type = self.make_ir_function_type()
     self.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
     if context.emits_debug and not extern:
@@ -1399,12 +1400,7 @@ class FunctionSymbol(Symbol):
       base = base.base
     self.base = base
 
-  def copy_replace_types(self, type_replacements: Dict[Type, Type]) -> FunctionSymbol:
-    new_func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=self.returns_void, base=self)
-    new_func_symbol.signatures_by_number_of_templ_args = {
-      num_templ_args: [signature.copy_replace_types(type_replacements) for signature in signatures]
-      for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
-    return new_func_symbol
+
 
   def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionSymbol:
     """
@@ -1556,88 +1552,51 @@ class TypeSymbol(Symbol):
     return templ_type
 
 
-class SymbolTable:
+class SymbolTable(HierarchicalDict[str, Symbol]):
   """
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
-  def __init__(self, copy_from=None, copy_new_current_func=None):
-    """
-    :param SymbolTable|None copy_from:
-    :param ConcreteFunction|None copy_new_current_func:
-    """
-    if copy_from is None:
+  def __init__(self, parent: Optional[SymbolTable]=None, copy_new_current_func: Optional[ConcreteFunction]=None):
+    super().__init__(parent)
+    if parent is None:
       assert copy_new_current_func is None
       self.symbols: Dict[str, Symbol] = {}
       self.current_func: Optional[ConcreteFunction] = None
       self.current_scope_identifiers: List[str] = []
-      self.used_ir_func_names: Set[str] = set()
       self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
       self.inbuilt_symbols: Dict[str, Symbol] = {}
     else:
       if copy_new_current_func is None:
-        self.symbols: Dict[str, Symbol] = copy_from.symbols.copy()
-        self.current_func: Optional[ConcreteFunction] = copy_from.current_func
-        self.current_scope_identifiers: List[str] = copy_from.current_scope_identifiers.copy()
+        self.current_func: Optional[ConcreteFunction] = parent.current_func
+        self.current_scope_identifiers: List[str] = parent.current_scope_identifiers.copy()
       else:
         templ_type_replacements = dict(zip(
           copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types))
-        self.symbols = {
+        self.underlying_dict = {
           identifier: symbol.copy_replace_unbound_templ_types(templ_type_replacements)
-          for identifier, symbol in copy_from.symbols.items()}
+          for identifier, symbol in parent.items()}
         self.current_func: Optional[ConcreteFunction] = copy_new_current_func
         self.current_scope_identifiers: List[str] = []
-      self.used_ir_func_names: Set[str] = copy_from.used_ir_func_names
       # do not copy known_extern_funcs, but reference back as we want those to be shared globally
-      self.known_extern_funcs: Dict[str, ConcreteFunction] = copy_from.known_extern_funcs
-      self.inbuilt_symbols: Dict[str, Symbol] = copy_from.inbuilt_symbols
-
-  def __setitem__(self, identifier: str, symbol: Symbol):
-    self.symbols[identifier] = symbol
-
-  def __getitem__(self, identifier: str) -> Symbol:
-    return self.symbols[identifier]
-
-  def __contains__(self, identifier: str) -> bool:
-    return identifier in self.symbols
+      self.known_extern_funcs: Dict[str, ConcreteFunction] = parent.known_extern_funcs
+      self.inbuilt_symbols: Dict[str, Symbol] = parent.inbuilt_symbols
 
   def copy(self) -> SymbolTable:
-    return SymbolTable(self)
+    return SymbolTable(parent=self)
 
   def copy_with_new_current_func(self, new_current_func: ConcreteFunction) -> SymbolTable:
     assert new_current_func is not None
     return SymbolTable(self, copy_new_current_func=new_current_func)
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__
-
-  def make_ir_func_name(self, func_identifier, extern, concrete_func):
-    """
-    :param str func_identifier:
-    :param bool extern:
-    :param ConcreteFunction concrete_func:
-    :rtype: str
-    """
-    if extern:
-      ir_func_name = func_identifier
-      if ir_func_name in self.known_extern_funcs:
-        assert self.known_extern_funcs[ir_func_name].has_same_signature_as(concrete_func)
-    else:
-      ir_func_name = '_'.join(
-        [func_identifier]
-        + [str(arg_type) for arg_type in concrete_func.concrete_templ_types + concrete_func.arg_types])
-      assert ir_func_name not in self.used_ir_func_names
-    self.used_ir_func_names.add(ir_func_name)
-    return ir_func_name
 
   def apply_type_narrowings_from(self, *other_symbol_tables: SymbolTable):
     """
     For all variable symbols, copy common type of all other_symbol_tables.
     """
-    for symbol_identifier, self_symbol in self.symbols.items():
+    for symbol_identifier, self_symbol in self.items():
       if not isinstance(self_symbol, VariableSymbol):
         continue
       assert all(symbol_identifier in symbol_table for symbol_table in other_symbol_tables)
@@ -1654,7 +1613,7 @@ class SymbolTable:
     """
     Applies symbol.copy_reset_narrowed_type() for all variable symbols.
     """
-    for symbol_identifier, symbol in self.symbols.items():
+    for symbol_identifier, symbol in self.items():
       if isinstance(symbol, VariableSymbol):
         if symbol.declared_var_type != symbol.narrowed_var_type:
           self[symbol_identifier] = symbol.copy_reset_narrowed_type()
@@ -1735,10 +1694,7 @@ class CodegenContext:
     assert all(inline_func.is_inline for inline_func in self.inline_func_call_stack)
 
   @property
-  def module(self):
-    """
-    :rtype: ir.Module
-    """
+  def module(self) -> ir.Module:
     assert self.emits_ir
     assert self.builder is not None
     return self.builder.module
@@ -1840,6 +1796,17 @@ class CodegenContext:
 
   def use_pos(self, pos: TreePosition) -> UsePosRuntimeContext:
     return UsePosRuntimeContext(pos, context=self)
+
+  def make_ir_function_name(self, identifier: str, concrete_function: ConcreteFunction, extern: bool):
+    if extern:
+      if any(f.name == identifier for f in  self.module.functions): return None
+      return identifier
+    else:
+      ir_func_name = '_'.join(
+        [identifier]
+        + [str(arg_type) for arg_type in concrete_function.concrete_templ_types + concrete_function.arg_types])
+      return self.module.get_unique_name(ir_func_name)
+
 
 
 class UsePosRuntimeContext:
