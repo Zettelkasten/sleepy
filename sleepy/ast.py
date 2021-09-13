@@ -198,7 +198,6 @@ class AbstractSyntaxTree(ABC):
       templ_types.append(template_type)
       template_type_factory = TypeFactory(placeholder_templ_types=[], signature_type=template_type)
       template_type_symbol = TypeSymbol(type_factory=template_type_factory)
-      symbol_table.current_scope_identifiers.append(templ_type_identifier)
       symbol_table[templ_type_identifier] = template_type_symbol
     return templ_types
 
@@ -366,8 +365,7 @@ class FunctionDeclarationAst(StatementAst):
     return arg_types
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
-    func_symbol_table = symbol_table.copy()
-    func_symbol_table.current_scope_identifiers = []
+    func_symbol_table = symbol_table.copy(new_variable_scope=True)
 
     placeholder_templ_types = self._collect_placeholder_templ_types(
       self.templ_identifiers, symbol_table=func_symbol_table)
@@ -503,7 +501,6 @@ class FunctionDeclarationAst(StatementAst):
       var_symbol = VariableSymbol(None, arg_type)
       var_symbol.build_ir_alloca(context=body_context, identifier=arg_identifier)
       assert arg_identifier not in body_symbol_table.current_scope_identifiers
-      body_symbol_table.current_scope_identifiers.append(arg_identifier)
       body_symbol_table[arg_identifier] = var_symbol
     # set function argument values
     if body_context.emits_ir:
@@ -676,7 +673,7 @@ class StructDeclarationAst(StatementAst):
       if self.struct_identifier in symbol_table.current_scope_identifiers:
         self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
 
-      struct_symbol_table = symbol_table.copy()  # symbol table including placeholder types
+      struct_symbol_table = symbol_table.copy(new_variable_scope=True)  # symbol table including placeholder types
       placeholder_templ_types = self._collect_placeholder_templ_types(
         self.templ_identifiers, symbol_table=struct_symbol_table)
 
@@ -695,7 +692,7 @@ class StructDeclarationAst(StatementAst):
 
       # assemble to complete type symbol
       struct_type_symbol = TypeSymbol(type_factory=struct_type_factory)
-      symbol_table.add_to_current_scope(self.struct_identifier, struct_type_symbol)
+      symbol_table[self.struct_identifier] = struct_type_symbol
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
@@ -770,7 +767,6 @@ class AssignStatementAst(StatementAst):
         symbol = VariableSymbol(None, var_type=declared_type)
         symbol.build_ir_alloca(context=context, identifier=var_identifier)
         symbol_table[var_identifier] = symbol
-        symbol_table.current_scope_identifiers.append(var_identifier)
       else:
         # variable name in this scope already declared. just check that types match, but do not change symbol_table.
         declared_type = self.var_target.make_declared_val_type(symbol_table=symbol_table)
@@ -838,8 +834,9 @@ class IfStatementAst(StatementAst):
       cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
       if not cond_type == SLEEPY_BOOL:
         self.raise_error('Cannot use expression of type %r as if-condition' % cond_type)
-  
-      true_symbol_table, false_symbol_table = symbol_table.copy(), symbol_table.copy()
+
+      true_symbol_table, false_symbol_table = symbol_table.copy(new_variable_scope=False), symbol_table.copy(
+        new_variable_scope=False)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=true_symbol_table)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=false_symbol_table)
   
@@ -913,7 +910,7 @@ class WhileStatementAst(StatementAst):
       if not cond_type == SLEEPY_BOOL:
         self.raise_error('Cannot use expression of type %r as while-condition' % cond_type)
 
-      body_symbol_table = symbol_table.copy()
+      body_symbol_table = symbol_table.copy(new_variable_scope=False)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=body_symbol_table)
 
       if context.emits_ir:

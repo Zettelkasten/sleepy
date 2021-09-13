@@ -1557,37 +1557,51 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
-  def __init__(self, parent: Optional[SymbolTable]=None, copy_new_current_func: Optional[ConcreteFunction]=None):
+  def __init__(self, parent: Optional[SymbolTable]=None, copy_new_current_func: Optional[ConcreteFunction]=None, *, new_variable_scope=None):
     super().__init__(parent)
+    if parent is None: new_variable_scope = True
+    else: assert(new_variable_scope is not None)
+    self.new_scope = new_variable_scope
     if parent is None:
       assert copy_new_current_func is None
       self.symbols: Dict[str, Symbol] = {}
       self.current_func: Optional[ConcreteFunction] = None
-      self.current_scope_identifiers: List[str] = []
       self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
       self.inbuilt_symbols: Dict[str, Symbol] = {}
     else:
       if copy_new_current_func is None:
         self.current_func: Optional[ConcreteFunction] = parent.current_func
-        self.current_scope_identifiers: List[str] = parent.current_scope_identifiers.copy()
       else:
         templ_type_replacements = dict(zip(
           copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types))
-        self.underlying_dict = {
+        self.underlying_dict: Dict[str, Symbol] = {
           identifier: symbol.copy_replace_unbound_templ_types(templ_type_replacements)
           for identifier, symbol in parent.items()}
         self.current_func: Optional[ConcreteFunction] = copy_new_current_func
-        self.current_scope_identifiers: List[str] = []
+
       # do not copy known_extern_funcs, but reference back as we want those to be shared globally
       self.known_extern_funcs: Dict[str, ConcreteFunction] = parent.known_extern_funcs
       self.inbuilt_symbols: Dict[str, Symbol] = parent.inbuilt_symbols
 
-  def copy(self) -> SymbolTable:
-    return SymbolTable(parent=self)
+  @property
+  def current_scope_identifiers(self):
+    return self.underlying_dict.keys() if self.new_scope else self.underlying_dict.keys() | self.parent.current_scope_identifiers
+
+  def identifier_in_scope(self, identifier: str) -> bool:
+    if self.new_scope:
+      return identifier in self.underlying_dict
+    else:
+      return identifier in self.underlying_dict or self.parent.underlying_dict.keys()
+
+  def copy(self, new_variable_scope) -> SymbolTable:
+    return SymbolTable(parent=self, new_variable_scope=new_variable_scope)
 
   def copy_with_new_current_func(self, new_current_func: ConcreteFunction) -> SymbolTable:
     assert new_current_func is not None
-    return SymbolTable(self, copy_new_current_func=new_current_func)
+    # Since we copy all symbols from parent to child when new_current_func is given, we need to make a child of the
+    # child to have a symbol tables without our symbols in its own dict
+    copy = SymbolTable(self, copy_new_current_func=new_current_func, new_variable_scope=self.new_scope)
+    return SymbolTable(copy, new_variable_scope=True)
 
   def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__
@@ -1635,11 +1649,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     free_symbol = self['free']
     assert isinstance(free_symbol, FunctionSymbol)
     return free_symbol
-
-  def add_to_current_scope(self, identifier: str, symbol: Symbol):
-    self.current_scope_identifiers.append(identifier)
-    self[identifier] = symbol
-
 
 class CodegenContext:
   """
