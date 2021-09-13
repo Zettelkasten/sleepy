@@ -1564,7 +1564,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     self.new_scope = new_variable_scope
     if parent is None:
       assert copy_new_current_func is None
-      self.symbols: Dict[str, Symbol] = {}
       self.current_func: Optional[ConcreteFunction] = None
       self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
       self.inbuilt_symbols: Dict[str, Symbol] = {}
@@ -1586,12 +1585,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   @property
   def current_scope_identifiers(self):
     return self.underlying_dict.keys() if self.new_scope else self.underlying_dict.keys() | self.parent.current_scope_identifiers
-
-  def identifier_in_scope(self, identifier: str) -> bool:
-    if self.new_scope:
-      return identifier in self.underlying_dict
-    else:
-      return identifier in self.underlying_dict or self.parent.underlying_dict.keys()
 
   def copy(self, new_variable_scope) -> SymbolTable:
     return SymbolTable(parent=self, new_variable_scope=new_variable_scope)
