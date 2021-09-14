@@ -1257,6 +1257,10 @@ class ConcreteFunction:
         }, is_distinct=True)
       self.ir_func.set_metadata('dbg', self.di_subprogram)
 
+  @abstractmethod
+  def build_ir(self):
+    raise NotImplementedError()
+
 
 class ConcreteFunctionFactory:
   """
@@ -1338,8 +1342,15 @@ class FunctionTemplate:
       signature=self, ir_func=None, make_inline_func_call_ir_callback=None,
       concrete_templ_types=list(concrete_templ_types), return_type=concrete_return_type, arg_types=concrete_arg_types,
       arg_type_narrowings=concrete_arg_types_narrowings)
-    self.initialized_templ_funcs[concrete_templ_types] = concrete_func
-    self.concrete_func_factory.build_concrete_func_ir(concrete_func=concrete_func)
+
+    if hasattr(self.concrete_func_factory, "make_concrete_func"):
+      concrete_func = self.concrete_func_factory.make_concrete_func(concrete_func)
+      self.initialized_templ_funcs[concrete_templ_types] = concrete_func
+      concrete_func.build_ir()
+    else:
+      self.initialized_templ_funcs[concrete_templ_types] = concrete_func
+      self.concrete_func_factory.build_concrete_func_ir(concrete_func=concrete_func)
+
     return concrete_func
 
   @property
