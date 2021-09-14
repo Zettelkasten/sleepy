@@ -2205,14 +2205,12 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
 def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> FunctionSymbol:
   bitcast_func = FunctionSymbol(identifier='bitcast', returns_void=False)
   to_type, from_type = PlaceholderTemplateType('T'), PlaceholderTemplateType('U')
-  bitcast_signature = BuiltinOperationFunctionTemplate(
+  bitcast_signature = BitcastFunctionTemplate(
     placeholder_template_types=[to_type, from_type],
     return_type=to_type,
     arg_identifiers=['from'],
     arg_types=[from_type],
-    arg_type_narrowings=[to_type],
-    instruction=context.builder.bitcast,
-    emits_ir=context.emits_ir)
+    arg_type_narrowings=[to_type])
   bitcast_func.add_signature(bitcast_signature)
   return bitcast_func
 
