@@ -1323,7 +1323,7 @@ class MemberExpressionAst(ExpressionAst):
         self.member_identifier, struct_ir_val=parent_ir_val, context=context)
 
   def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
-    return True
+    return self.parent_val_expr.is_val_assignable(symbol_table=symbol_table)
 
   def make_ir_val_ptr(self, symbol_table, context):
     """
@@ -1337,6 +1337,7 @@ class MemberExpressionAst(ExpressionAst):
       assert isinstance(parent_type, StructType)
       member_num = parent_type.get_member_num(self.member_identifier)
       parent_ptr = self.parent_val_expr.make_ir_val_ptr(symbol_table=symbol_table, context=context)
+      assert parent_ptr is not None
       if parent_type.is_pass_by_ref():  # parent_ptr has type struct**
         # dereference to get struct*.
         parent_ptr = context.builder.load(parent_ptr, 'load_struct')
