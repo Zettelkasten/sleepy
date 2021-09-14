@@ -2121,6 +2121,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
                                     emits_ir=context.emits_ir)
   load_symbol.add_signature(signature=load_signature)
   symbol_table['load'] = load_symbol
+  symbol_table.inbuilt_symbols['load'] = load_symbol
 
   assert 'store' not in symbol_table
   store_symbol = FunctionSymbol(identifier='store', returns_void=True)
@@ -2222,9 +2223,6 @@ def make_di_location(pos: TreePosition, context: CodegenContext):
     'DILocation', {'line': line, 'column': col, 'scope': context.current_di_scope})
 
 
-SLEEPY_SIZE_FUNC = FunctionSymbol(identifier='size', returns_void=False)
-
-
 def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   if context.emits_debug:
     assert context.di_declare_func is None
@@ -2257,9 +2255,11 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
 
   assert 'get' not in symbol_table
   symbol_table['get'] = FunctionSymbol(identifier='get', returns_void=False)
+  symbol_table.inbuilt_symbols['get'] = symbol_table['get']
 
   assert 'size' not in symbol_table
-  symbol_table['size'] = SLEEPY_SIZE_FUNC
+  symbol_table['size'] = FunctionSymbol(identifier='size', returns_void=False)
+  symbol_table.inbuilt_symbols['size'] = symbol_table['size']
 
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     type_generator = TypeFactory(placeholder_templ_types=[], signature_type=inbuilt_type)
