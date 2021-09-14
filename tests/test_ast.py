@@ -525,6 +525,19 @@ def test_struct_with_struct_member():
     assert_equal(main(), 1.0 + 2.0 + 3.0 + 4.0)
 
 
+def test_struct_member_not_assignable():
+  with make_execution_engine() as engine:
+    program = """
+    struct Thing { val: Double; }
+    func main() {
+      Thing(2.0).val = 4.0;  # should not work, struct is passed by value and thus not assignable
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program, add_preamble=False)
+
+
+
 def test_if_missing_return_branch():
   with make_execution_engine() as engine:
     program = """
