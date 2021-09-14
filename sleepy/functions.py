@@ -1,11 +1,11 @@
-from typing import List, Optional, cast, Callable
+from typing import List, Optional, cast
 
 from llvmlite import ir
 
 from sleepy.ast import StatementAst, TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree
 from sleepy.grammar import TreePosition
 from sleepy.symbols import SymbolTable, Type, CodegenContext, SLEEPY_VOID, FunctionSymbol, SLEEPY_BOOL, \
-  ConcreteFunctionFactory, ConcreteFunction, FunctionTemplate, VariableSymbol
+  ConcreteFunction, FunctionTemplate, VariableSymbol, PlaceholderTemplateType
 
 
 class FunctionDeclarationAst(StatementAst):
@@ -109,100 +109,10 @@ class FunctionDeclarationAst(StatementAst):
     if self.is_inline and self.is_extern:
       self.raise_error('Extern function %r cannot be inlined' % self.identifier)
 
-    class DeclaredConcreteFunctionFactory(ConcreteFunctionFactory):
-      def make_concrete_func(self_, concrete_func: ConcreteFunction) -> ConcreteDeclaredFunction:
-        # this is just for testing ConcreteDeclaredFunction without changing too much other code, will be done properly
-        return ConcreteDeclaredFunction(ir_func=concrete_func.ir_func,
-                                        concrete_template_types=concrete_func.concrete_templ_types,
-                                        return_type=concrete_func.return_type,
-                                        arg_types=concrete_func.arg_types,
-                                        arg_type_narrowings=concrete_func.arg_type_narrowings,
-                                        ast=self,
-                                        captured_symbol_table=func_symbol_table,
-                                        captured_context=context,
-                                        make_inline_func_call_ir_callback=None,
-                                        signature=concrete_func.signature)
-
-      def build_concrete_func_ir(self_, concrete_func: ConcreteFunction):
-        with context.use_pos(self.pos):  # TODO: Better debug symbols for inlined functions
-          if self.is_extern:
-            if func_symbol_table.has_extern_func(self.identifier):
-              extern_concrete_func = func_symbol_table.get_extern_func(self.identifier)
-              if not extern_concrete_func.has_same_signature_as(concrete_func):
-                self.raise_error('Cannot redefine extern func %r previously declared as %s with new signature %s' % (
-                  self.identifier, extern_concrete_func.signature.to_signature_str(),
-                  concrete_func.signature.to_signature_str()))
-              # Sometimes the ir_func has not been set for a previously declared extern func,
-              # e.g. because it was declared in an inlined func.
-              should_declare_func = extern_concrete_func.ir_func is None
-            else:
-              func_symbol_table.add_extern_func(self.identifier, concrete_func)
-              should_declare_func = True
-          else:
-            assert not self.is_extern
-            should_declare_func = True
-          if context.emits_ir and not self.is_inline:
-            if should_declare_func:
-              concrete_func.make_ir_func(
-                identifier=self.identifier, extern=self.is_extern, symbol_table=func_symbol_table, context=context)
-            else:
-              assert not should_declare_func
-              assert self.is_extern and func_symbol_table.has_extern_func(self.identifier)
-              concrete_func.ir_func = func_symbol_table.get_extern_func(self.identifier).ir_func
-
-          if self.is_extern:
-            return concrete_func
-
-          if self.is_inline:
-            def make_inline_func_call_ir(ir_func_args: List[ir.values.Value],
-                                         caller_context: CodegenContext) -> Optional[ir.values.Value]:
-              assert len(ir_func_args) == len(self.arg_identifiers)
-              assert caller_context.emits_ir
-              assert not caller_context.is_terminated
-              if concrete_func.return_type == SLEEPY_VOID:
-                return_val_ir_alloca = None
-              else:
-                return_val_ir_alloca = caller_context.alloca_at_entry(
-                  concrete_func.return_type.ir_type, name='return_%s_alloca' % self.identifier)
-              collect_block = caller_context.builder.append_basic_block('collect_return_%s_block' % self.identifier)
-              inline_context = caller_context.copy_with_inline_func(
-                concrete_func, return_ir_alloca=return_val_ir_alloca, return_collect_block=collect_block)
-              self.build_body_ir(
-                parent_symbol_table=func_symbol_table, concrete_func=concrete_func, body_context=inline_context,
-                ir_func_args=ir_func_args)
-              assert inline_context.is_terminated
-              assert not collect_block.is_terminated
-              # use the caller_context instead of reusing the inline_context
-              # because the inline_context will be terminated
-              caller_context.builder = ir.IRBuilder(collect_block)
-              if concrete_func.return_type == SLEEPY_VOID:
-                return_val = None
-              else:
-                return_val = caller_context.builder.load(return_val_ir_alloca, name='return_%s' % self.identifier)
-              assert not caller_context.is_terminated
-              return return_val
-
-            concrete_func.make_inline_func_call_ir = make_inline_func_call_ir
-            # check symbol tables without emitting ir
-            self.build_body_ir(
-              parent_symbol_table=func_symbol_table, concrete_func=concrete_func,
-              body_context=context.copy_without_builder())
-          else:
-            assert not self.is_inline
-            if context.emits_ir:
-              body_block = concrete_func.ir_func.append_basic_block(name='entry')
-              body_context = context.copy_with_func(concrete_func, builder=ir.IRBuilder(body_block))
-            else:
-              body_context = context.copy_with_func(concrete_func, builder=None)  # proceed without emitting ir.
-            self.build_body_ir(
-              parent_symbol_table=func_symbol_table, concrete_func=concrete_func, body_context=body_context,
-              ir_func_args=concrete_func.ir_func.args)
-
-    concrete_func_factory = DeclaredConcreteFunctionFactory()
-    signature_ = FunctionTemplate(
-      concrete_func_factory=concrete_func_factory, placeholder_templ_types=placeholder_templ_types,
+    signature_ = DeclaredFunctionTemplate(
+      placeholder_template_types=placeholder_templ_types,
       return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types, arg_type_narrowings=arg_types,
-      is_inline=self.is_inline)
+      ast=self, captured_symbol_table=func_symbol_table, captured_context=context)
     func_symbol.add_signature(signature_)
 
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
@@ -265,12 +175,12 @@ class FunctionDeclarationAst(StatementAst):
 class ConcreteDeclaredFunction(ConcreteFunction):
   def __init__(self, signature: FunctionTemplate,
                ir_func: Optional[ir.Function],
-               make_inline_func_call_ir_callback: Optional[Callable[[List[ir.values.Value], CodegenContext, TreePosition], Optional[ir.values.Value]]],
-               concrete_template_types: List[Type], return_type: Type, arg_types: List[Type],
+               concrete_template_types: List[Type],
+               return_type: Type, arg_types: List[Type],
                arg_type_narrowings: List[Type],
                ast: FunctionDeclarationAst,
                captured_symbol_table: SymbolTable,
-               captured_context):
+               captured_context: CodegenContext):
     super().__init__(signature, ir_func, self.make_inline_func_call_ir, concrete_template_types, return_type,
                      arg_types, arg_type_narrowings)
     self.ast = ast
@@ -350,3 +260,38 @@ class ConcreteDeclaredFunction(ConcreteFunction):
         self.ast.build_body_ir(
           parent_symbol_table=self.captured_symbol_table, concrete_func=self, body_context=body_context,
           ir_func_args=self.ir_func.args)
+
+
+class DeclaredFunctionTemplate(FunctionTemplate):
+  def __init__(self, placeholder_template_types: List[PlaceholderTemplateType],
+               return_type: Type,
+               arg_identifiers: List[str],
+               arg_types: List[Type],
+               arg_type_narrowings: List[Type],
+               ast: FunctionDeclarationAst,
+               captured_symbol_table: SymbolTable,
+               captured_context: CodegenContext):
+    super().__init__(None, placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings, is_inline=ast.is_inline)
+    self.ast = ast
+    self.captured_symbol_table = captured_symbol_table
+    self.captured_context = captured_context
+    self.called_before = False
+
+  def _get_concrete_function(self, concrete_template_arguments: List[Type],
+                              concrete_parameter_types: List[Type],
+                              concrete_narrowed_parameter_types: List[Type],
+                              concrete_return_type: Type) -> ConcreteFunction:
+    self.called_before = True
+    concrete_function = ConcreteDeclaredFunction(
+      signature=self,
+      ir_func=None,
+      concrete_template_types=concrete_template_arguments,
+      return_type=concrete_return_type,
+      arg_types=concrete_parameter_types,
+      arg_type_narrowings=concrete_narrowed_parameter_types,
+      ast=self.ast,
+      captured_symbol_table=self.captured_symbol_table,
+      captured_context=self.captured_context)
+    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
+    concrete_function.build_ir()
+    return concrete_function

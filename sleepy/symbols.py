@@ -1275,7 +1275,7 @@ class FunctionTemplate:
   Given template arguments, this builds a concrete function implementation on demand.
   """
   def __init__(self,
-               concrete_func_factory: ConcreteFunctionFactory,
+               concrete_func_factory: Optional[ConcreteFunctionFactory],
                placeholder_templ_types: List[PlaceholderTemplateType],
                return_type: Type, arg_identifiers: List[str], arg_types: List[Type],
                arg_type_narrowings: List[Type],
@@ -1312,14 +1312,17 @@ class FunctionTemplate:
       type_replacements.get(templ_type, templ_type) for templ_type in self.placeholder_templ_types]
     new_placeholder_templ_types = [
       templ_type for templ_type in new_placeholder_templ_types if isinstance(templ_type, PlaceholderTemplateType)]
-    return FunctionTemplate(
-      concrete_func_factory=self.concrete_func_factory,
-      placeholder_templ_types=new_placeholder_templ_types,
-      return_type=self.return_type.replace_types(type_replacements),
-      arg_identifiers=self.arg_identifiers.copy(),
-      arg_types=[arg_type.replace_types(type_replacements) for arg_type in self.arg_types.copy()],
-      arg_type_narrowings=self.arg_type_narrowings.copy(), is_inline=self.is_inline,
-      base=self)
+
+    from copy import copy
+    new = copy(self)
+
+    new.placeholder_templ_types = new_placeholder_templ_types
+    new.return_type = new.return_type.replace_types(type_replacements)
+    new.arg_types = [arg_type.replace_types(type_replacements) for arg_type in self.arg_types.copy()]
+    new.base = self
+
+    return new
+
 
   def to_signature_str(self) -> str:
     templ_args = '' if len(self.placeholder_templ_types) == 0 else '[%s]' % (
@@ -1338,20 +1341,30 @@ class FunctionTemplate:
       arg_type.replace_types(replacements=concrete_type_replacements) for arg_type in self.arg_types]
     concrete_arg_types_narrowings = [
       arg_type.replace_types(replacements=concrete_type_replacements) for arg_type in self.arg_type_narrowings]
+
+    return self._get_concrete_function(concrete_template_arguments=list(concrete_templ_types),
+                                       concrete_parameter_types=concrete_arg_types,
+                                       concrete_narrowed_parameter_types=concrete_arg_types_narrowings,
+                                       concrete_return_type=concrete_return_type)
+
+  def _get_concrete_function(self, concrete_template_arguments: List[Type],
+                              concrete_parameter_types: List[Type],
+                              concrete_narrowed_parameter_types: List[Type],
+                              concrete_return_type: Type) -> ConcreteFunction:
     concrete_func = ConcreteFunction(
-      signature=self, ir_func=None, make_inline_func_call_ir_callback=None,
-      concrete_templ_types=list(concrete_templ_types), return_type=concrete_return_type, arg_types=concrete_arg_types,
-      arg_type_narrowings=concrete_arg_types_narrowings)
+      signature=self,
+      ir_func=None,
+      make_inline_func_call_ir_callback=None,
+      concrete_templ_types=concrete_template_arguments,
+      return_type=concrete_return_type,
+      arg_types=concrete_parameter_types,
+      arg_type_narrowings=concrete_narrowed_parameter_types)
 
-    if hasattr(self.concrete_func_factory, "make_concrete_func"):
-      concrete_func = self.concrete_func_factory.make_concrete_func(concrete_func)
-      self.initialized_templ_funcs[concrete_templ_types] = concrete_func
-      concrete_func.build_ir()
-    else:
-      self.initialized_templ_funcs[concrete_templ_types] = concrete_func
-      self.concrete_func_factory.build_concrete_func_ir(concrete_func=concrete_func)
-
+    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_func
+    self.concrete_func_factory.build_concrete_func_ir(concrete_func=concrete_func)
     return concrete_func
+
+
 
   @property
   def returns_void(self) -> bool:
@@ -1384,7 +1397,6 @@ class FunctionTemplate:
     inferred_templ_types = try_infer_templ_types(
       calling_types=expanded_arg_types, signature_types=own_arg_types, placeholder_templ_types=placeholder_templ_types)
     return inferred_templ_types is None
-
 
   def __repr__(self) -> str:
     return 'FunctionSignature(placeholder_templ_types=%r, return_type=%r, arg_identifiers=%r, arg_types=%r)' % (
