@@ -295,3 +295,4 @@ class DeclaredFunctionTemplate(FunctionTemplate):
     self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     concrete_function.build_ir()
     return concrete_function
+
