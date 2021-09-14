@@ -537,6 +537,22 @@ def test_struct_member_not_assignable():
       compile_program(engine, program, add_preamble=False)
 
 
+def test_struct_member_load_assign():
+  with make_execution_engine() as engine:
+    program = """
+    struct Thing { val: Double; }
+    func main(value: Double) -> Double {  # should again return value
+      ptr = allocate[Thing](1);
+      store(ptr, Thing(0.0));
+      load(ptr).val = value;  # this should now change the memory where ptr points to.
+      res = load(ptr).val;
+      deallocate(ptr);
+      return res;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    assert_equal(main(42.0), 42.0)
+
 
 def test_if_missing_return_branch():
   with make_execution_engine() as engine:
