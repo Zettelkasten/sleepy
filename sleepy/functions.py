@@ -124,7 +124,6 @@ class FunctionDeclarationAst(StatementAst):
   def build_body_ir(self, parent_symbol_table: SymbolTable, concrete_func: ConcreteFunction,
                     body_context: CodegenContext, ir_func_args: Optional[List[ir.values.Value]] = None):
     assert not self.is_extern
-    assert self.is_inline == concrete_func.signature.is_inline
     body_symbol_table = parent_symbol_table.copy_with_new_current_func(concrete_func)
 
     # add arguments as variables
@@ -181,11 +180,14 @@ class ConcreteDeclaredFunction(ConcreteFunction):
                ast: FunctionDeclarationAst,
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
-    super().__init__(signature, ir_func, self.make_inline_func_call_ir, concrete_template_types, return_type,
-                     arg_types, arg_type_narrowings)
+    super().__init__(signature, ir_func, concrete_template_types, return_type, arg_types, arg_type_narrowings)
     self.ast = ast
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
+
+  @property
+  def is_inline(self) -> bool:
+    return self.ast.is_inline
 
   def make_inline_func_call_ir(self, ir_func_args: List[ir.values.Value],
                                caller_context: CodegenContext) -> Optional[ir.values.Value]:
@@ -236,8 +238,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
       if self.captured_context.emits_ir and not self.ast.is_inline:
         if should_declare_func:
           self.make_ir_func(
-            identifier=self.ast.identifier, extern=self.ast.is_extern, symbol_table=self.captured_symbol_table,
-            context=self.captured_context)
+            identifier=self.ast.identifier, extern=self.ast.is_extern, context=self.captured_context)
         else:
           assert not should_declare_func
           assert self.ast.is_extern and self.captured_symbol_table.has_extern_func(self.ast.identifier)
@@ -271,7 +272,7 @@ class DeclaredFunctionTemplate(FunctionTemplate):
                ast: FunctionDeclarationAst,
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
-    super().__init__(None, placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings, is_inline=ast.is_inline)
+    super().__init__(placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings)
     self.ast = ast
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context

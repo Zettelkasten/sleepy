@@ -1104,35 +1104,20 @@ class ConcreteFunction:
   """
   An actual function implementation.
   """
-  def __init__(self,
-               signature: FunctionTemplate,
-               ir_func: Optional[ir.Function],
-               make_inline_func_call_ir_callback: Optional[Callable[[List[ir.values.Value], CodegenContext, TreePosition], Optional[ir.values.Value]]],  # noqa
-               concrete_template_types: List[Type], return_type: Type,
-               arg_types: List[Type], arg_type_narrowings: List[Type]):
-    """
-    :param signature:
-    :param ir_func:
-    :param make_inline_func_call_ir_callback: ir_func_args + caller_context -> return value
-    :param concrete_template_types:
-    :param return_type:
-    :param arg_types:
-    :param arg_type_narrowings:
-    """
+  def __init__(self, signature: FunctionTemplate, ir_func: Optional[ir.Function], template_arguments: List[Type],
+               return_type: Type, parameter_types: List[Type], narrowed_parameter_types: List[Type]):
     assert ir_func is None or isinstance(ir_func, ir.Function)
-    assert make_inline_func_call_ir_callback is None or callable(make_inline_func_call_ir_callback)
-    assert len(signature.arg_identifiers) == len(arg_types) == len(arg_type_narrowings)
-    assert all(not templ_type.has_templ_placeholder() for templ_type in concrete_template_types)
+    assert len(signature.arg_identifiers) == len(parameter_types) == len(narrowed_parameter_types)
+    assert all(not templ_type.has_templ_placeholder() for templ_type in template_arguments)
     assert not return_type.has_templ_placeholder()
-    assert all(not arg_type.has_templ_placeholder() for arg_type in arg_types)
-    assert all(not arg_type.has_templ_placeholder() for arg_type in arg_type_narrowings)
+    assert all(not arg_type.has_templ_placeholder() for arg_type in parameter_types)
+    assert all(not arg_type.has_templ_placeholder() for arg_type in narrowed_parameter_types)
     self.signature = signature
-    self.make_inline_func_call_ir = make_inline_func_call_ir_callback
     self.ir_func = ir_func
-    self.concrete_templ_types = concrete_template_types
+    self.concrete_templ_types = template_arguments
     self.return_type = return_type
-    self.arg_types = arg_types
-    self.arg_type_narrowings = arg_type_narrowings
+    self.arg_types = parameter_types
+    self.arg_type_narrowings = narrowed_parameter_types
     self.di_subprogram: Optional[ir.DIValue] = None
 
   def get_c_arg_types(self) -> Tuple[Callable]:
@@ -1156,7 +1141,7 @@ class ConcreteFunction:
 
   @property
   def is_inline(self) -> bool:
-    return self.signature.is_inline
+    return False
 
   def __repr__(self) -> str:
     return (
@@ -1169,7 +1154,7 @@ class ConcreteFunction:
       self.return_type == other.return_type and self.arg_types == other.arg_types and
       self.arg_type_narrowings == other.arg_type_narrowings)
 
-  def make_ir_func(self, identifier: str, extern: bool, symbol_table: SymbolTable, context: CodegenContext):
+  def make_ir_func(self, identifier: str, extern: bool, context: CodegenContext):
     assert context.emits_ir
     assert not self.is_inline
     assert self.ir_func is None
@@ -1190,44 +1175,61 @@ class ConcreteFunction:
         }, is_distinct=True)
       self.ir_func.set_metadata('dbg', self.di_subprogram)
 
-  @abstractmethod
-  def build_ir(self):
-    raise NotImplementedError()
+
+class ConcreteBuiltinOperationFunction(ConcreteFunction):
+  def __init__(self,
+               signature: FunctionTemplate,
+               ir_func: Optional[ir.Function],
+               template_arguments: List[Type],
+               return_type: Type,
+               parameter_types: List[Type],
+               narrowed_parameter_types: List[Type],
+               instruction: Callable[..., Optional[ir.Instruction]],
+               emits_ir: bool):
+    super().__init__(signature, ir_func, template_arguments, return_type, parameter_types, narrowed_parameter_types)
+    self.instruction = instruction
+    self.emits_ir = emits_ir
+
+  def make_inline_func_call_ir(self, ir_func_args: List[ir.Value],
+                                caller_context: CodegenContext) -> ir.instructions.Instruction:
+    return self.instruction(caller_context.builder, *ir_func_args)
+
+  @property
+  def is_inline(self) -> bool:
+    return True
+
+class ConcreteBitcastFunction(ConcreteFunction):
+  def __init__(self, signature: FunctionTemplate, ir_func: Optional[ir.Function], template_arguments: List[Type],
+               return_type: Type, parameter_types: List[Type], narrowed_parameter_types: List[Type]):
+    super().__init__(signature, ir_func, template_arguments, return_type, parameter_types, narrowed_parameter_types)
+
+  def make_inline_func_call_ir(self, ir_func_args: List[ir.Value],
+                                caller_context: CodegenContext) -> ir.instructions.Instruction:
+    assert len(ir_func_args) == 1
+    return caller_context.builder.bitcast(val=ir_func_args[0], typ=self.return_type.ir_type, name="bitcast")
+
+  @property
+  def is_inline(self) -> bool:
+    return True
 
 
-class ConcreteFunctionFactory:
-  """
-  Generates concrete function implementations.
-  """
-  def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
-    raise NotImplementedError()
-
-
-class FunctionTemplate:
+class FunctionTemplate(ABC):
   """
   Given template arguments, this builds a concrete function implementation on demand.
   """
-  def __init__(self,
-               concrete_func_factory: Optional[ConcreteFunctionFactory],
-               placeholder_template_types: List[PlaceholderTemplateType],
-               return_type: Type, arg_identifiers: List[str], arg_types: List[Type],
-               arg_type_narrowings: List[Type],
-               is_inline: bool = False,
+  def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
+               arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type],
                base: FunctionTemplate = None):
     assert isinstance(return_type, Type)
     assert len(arg_identifiers) == len(arg_types) == len(arg_type_narrowings)
     assert all(isinstance(templ_type, PlaceholderTemplateType) for templ_type in placeholder_template_types)
-    self.concrete_func_factory = concrete_func_factory
     self.placeholder_templ_types = placeholder_template_types
     self.return_type = return_type
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
     self.arg_type_narrowings = arg_type_narrowings
-    self.is_inline = is_inline
     if base is not None:
-      assert base.concrete_func_factory == self.concrete_func_factory
       assert base.arg_identifiers == self.arg_identifiers
-      assert base.is_inline == self.is_inline
       # we share the initialized_templ_funcs here, so that we do not create a ConcreteFunction multiple times
       self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = base.initialized_templ_funcs
     else:
@@ -1280,22 +1282,12 @@ class FunctionTemplate:
                                        concrete_narrowed_parameter_types=concrete_arg_types_narrowings,
                                        concrete_return_type=concrete_return_type)
 
+  @abstractmethod
   def _get_concrete_function(self, concrete_template_arguments: List[Type],
                               concrete_parameter_types: List[Type],
                               concrete_narrowed_parameter_types: List[Type],
                               concrete_return_type: Type) -> ConcreteFunction:
-    concrete_func = ConcreteFunction(
-      signature=self,
-      ir_func=None,
-      make_inline_func_call_ir_callback=None,
-      concrete_template_types=concrete_template_arguments,
-      return_type=concrete_return_type,
-      arg_types=concrete_parameter_types,
-      arg_type_narrowings=concrete_narrowed_parameter_types)
-
-    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_func
-    self.concrete_func_factory.build_concrete_func_ir(concrete_func=concrete_func)
-    return concrete_func
+    raise NotImplementedError()
 
 
 
@@ -1346,7 +1338,7 @@ class ConstructorFunctionTemplate(FunctionTemplate):
                struct: StructType,
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
-    super().__init__(None, placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings)
+    super().__init__(placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings)
     self.struct = struct
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
@@ -1355,15 +1347,9 @@ class ConstructorFunctionTemplate(FunctionTemplate):
                               concrete_parameter_types: List[Type],
                               concrete_narrowed_parameter_types: List[Type],
                               concrete_return_type: Type) -> ConcreteFunction:
-    concrete_function = ConcreteFunction(
-      signature=self,
-      ir_func=None,
-      concrete_template_types=concrete_template_arguments,
-      return_type=concrete_return_type,
-      arg_types=concrete_parameter_types,
-      arg_type_narrowings=concrete_narrowed_parameter_types,
-      make_inline_func_call_ir_callback=None
-    )
+    concrete_function = ConcreteFunction(signature=self, ir_func=None, template_arguments=concrete_template_arguments,
+                                         return_type=concrete_return_type, parameter_types=concrete_parameter_types,
+                                         narrowed_parameter_types=concrete_narrowed_parameter_types)
     self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     self.build_concrete_function_ir(concrete_function)
     return concrete_function
@@ -1375,7 +1361,7 @@ class ConstructorFunctionTemplate(FunctionTemplate):
 
       if self.captured_context.emits_ir:
         concrete_function.make_ir_func(
-          identifier=self.struct.struct_identifier, extern=False, symbol_table=self.captured_symbol_table, context=(
+          identifier=self.struct.struct_identifier, extern=False, context=(
             self.captured_context))
         constructor_block = concrete_function.ir_func.append_basic_block(name='entry')
         context = self.captured_context.copy_with_func(concrete_function, builder=ir.IRBuilder(constructor_block))
@@ -1400,7 +1386,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
                struct: StructType,
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
-    super().__init__(None, placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings)
+    super().__init__(placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings)
     self.struct = struct
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
@@ -1409,15 +1395,9 @@ class DestructorFunctionTemplate(FunctionTemplate):
                               concrete_parameter_types: List[Type],
                               concrete_narrowed_parameter_types: List[Type],
                               concrete_return_type: Type) -> ConcreteFunction:
-    concrete_function = ConcreteFunction(
-      signature=self,
-      ir_func=None,
-      concrete_template_types=concrete_template_arguments,
-      return_type=concrete_return_type,
-      arg_types=concrete_parameter_types,
-      arg_type_narrowings=concrete_narrowed_parameter_types,
-      make_inline_func_call_ir_callback=None
-    )
+    concrete_function = ConcreteFunction(signature=self, ir_func=None, template_arguments=concrete_template_arguments,
+                                         return_type=concrete_return_type, parameter_types=concrete_parameter_types,
+                                         narrowed_parameter_types=concrete_narrowed_parameter_types)
     self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     self.build_concrete_function_ir(concrete_function)
     return concrete_function
@@ -1429,7 +1409,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
       assert isinstance(concrete_struct_type, StructType)
       if self.captured_context.emits_ir:
         concrete_function.make_ir_func(
-          identifier='free', extern=False, symbol_table=self.captured_symbol_table, context=(self.captured_context))
+          identifier='free', extern=False, context=(self.captured_context))
         destructor_block = concrete_function.ir_func.append_basic_block(name='entry')
         context = self.captured_context.copy_with_func(concrete_function, builder=ir.IRBuilder(destructor_block))
 
@@ -1459,6 +1439,53 @@ class DestructorFunctionTemplate(FunctionTemplate):
           self_ir_alloca_raw = context.builder.bitcast(self_ir_alloca, LLVM_VOID_POINTER_TYPE, name='self_raw_ptr')
           context.builder.call(context.ir_func_free, args=[self_ir_alloca_raw], name='free_self')
         context.builder.ret_void()
+
+class BuiltinOperationFunctionTemplate(FunctionTemplate):
+  def __init__(self, placeholder_template_types: List[PlaceholderTemplateType],
+               return_type: Type,
+               arg_identifiers: List[str],
+               arg_types: List[Type],
+               arg_type_narrowings: List[Type],
+               instruction: Callable[..., Optional[ir.Instruction]],
+               emits_ir: bool):
+    super().__init__(placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings)
+    self.instruction = instruction
+    self.emits_ir = emits_ir
+
+  def _get_concrete_function(self, concrete_template_arguments: List[Type],
+                              concrete_parameter_types: List[Type],
+                              concrete_narrowed_parameter_types: List[Type],
+                              concrete_return_type: Type) -> ConcreteFunction:
+    concrete_function = ConcreteBuiltinOperationFunction(
+      signature=self,
+      ir_func=None,
+      template_arguments=concrete_template_arguments,
+      return_type=concrete_return_type,
+      parameter_types=concrete_parameter_types,
+      narrowed_parameter_types=concrete_narrowed_parameter_types,
+      instruction=self.instruction,
+      emits_ir=self.emits_ir)
+    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
+    return concrete_function
+
+class BitcastFunctionTemplate(FunctionTemplate):
+  def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
+               arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type]):
+    super().__init__(placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings)
+
+  def _get_concrete_function(self, concrete_template_arguments: List[Type], concrete_parameter_types: List[Type],
+                             concrete_narrowed_parameter_types: List[Type],
+                             concrete_return_type: Type) -> ConcreteFunction:
+    concrete_function = ConcreteBitcastFunction(
+      signature=self,
+      ir_func=None,
+      template_arguments=concrete_template_arguments,
+      return_type=concrete_return_type,
+      parameter_types=concrete_parameter_types,
+      narrowed_parameter_types=concrete_narrowed_parameter_types
+    )
+    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
+    return concrete_function
 
 
 
@@ -2070,18 +2097,6 @@ Simple_Comparison_Ops: List[BuiltinBinaryOps] = \
   BuiltinBinaryOps.GreaterOrEqual, BuiltinBinaryOps.LessOrEqual]
 
 
-class BitcastFunctionFactory(ConcreteFunctionFactory):
-  def __init__(self, emits_ir: bool):
-    self.emits_ir = emits_ir
-
-  def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
-    assert concrete_func.is_inline
-    if self.emits_ir:
-      to_type = concrete_func.return_type
-      concrete_func.make_inline_func_call_ir = lambda caller_context, ir_func_args: (
-        caller_context.builder.bitcast(ir_func_args[0], typ=to_type.ir_type, name='bitcast'))
-
-
 def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
   str_type = StructType(
     struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'], templ_types=[],
@@ -2101,33 +2116,29 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 
   assert 'load' not in symbol_table
   load_symbol = FunctionSymbol(identifier='load', returns_void=False)
-  load_factory = InbuiltOpConcreteFuncFactory(
-    instruction=lambda builder, ptr: builder.load(ptr, name='load'), emits_ir=context.emits_ir)
-  load_signature = FunctionTemplate(
-    concrete_func_factory=load_factory, placeholder_template_types=[pointee_type], return_type=pointee_type,
-    arg_identifiers=['ptr'], arg_types=[ptr_type], arg_type_narrowings=[ptr_type], is_inline=True)
+  load_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[pointee_type], return_type=pointee_type,
+                                    arg_identifiers=['ptr'], arg_types=[ptr_type], arg_type_narrowings=[ptr_type],
+                                    instruction=lambda builder, ptr: builder.load(ptr, name='load'),
+                                    emits_ir=context.emits_ir)
   load_symbol.add_signature(signature=load_signature)
   symbol_table['load'] = load_symbol
 
   assert 'store' not in symbol_table
   store_symbol = FunctionSymbol(identifier='store', returns_void=True)
-  store_factory = InbuiltOpConcreteFuncFactory(
-    instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr),
-    emits_ir=context.emits_ir)
-  store_signature = FunctionTemplate(
-    concrete_func_factory=store_factory, placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID,
-    arg_identifiers=['ptr', 'value'], arg_types=[ptr_type, pointee_type], arg_type_narrowings=[ptr_type, pointee_type],
-    is_inline=True)
+  store_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID,
+                                     arg_identifiers=['ptr', 'value'], arg_types=[ptr_type, pointee_type],
+                                     arg_type_narrowings=[ptr_type, pointee_type],
+                                     instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr),
+                                     emits_ir=context.emits_ir)
   store_symbol.add_signature(store_signature)
   symbol_table['store'] = store_symbol
   type_factory = TypeFactory(placeholder_templ_types=[pointee_type], signature_type=ptr_type)
 
   # cast from RawPtr -> Ptr[T]
   constructor_symbol = FunctionSymbol(identifier='Ptr', returns_void=False)
-  constructor_factory = BitcastFunctionFactory(emits_ir=context.emits_ir)
-  constructor_signature = FunctionTemplate(
-    concrete_func_factory=constructor_factory, placeholder_template_types=[pointee_type], return_type=ptr_type,
-    arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR], arg_type_narrowings=[ptr_type], is_inline=True)
+  constructor_signature = BitcastFunctionTemplate(placeholder_template_types=[pointee_type], return_type=ptr_type,
+                                                  arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR],
+                                                  arg_type_narrowings=[ptr_type])
   constructor_symbol.add_signature(signature=constructor_signature)
   ptr_type.constructor = constructor_symbol
 
@@ -2154,10 +2165,9 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
         emits_ir=context.emits_ir)
       function_symbol.add_signature(signature)
 
-  destructor_factory = get_dummy_destructor_function_factory(emits_ir=context.emits_ir)
-  free_signature = FunctionTemplate(
-    concrete_func_factory=destructor_factory, placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID,
-    arg_types=[ptr_type], arg_identifiers=['ptr'], arg_type_narrowings=[SLEEPY_NEVER], is_inline=True)
+  free_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID,
+                                    arg_identifiers=['ptr'], arg_types=[ptr_type], arg_type_narrowings=[SLEEPY_NEVER],
+                                    instruction=lambda builder, value: None, emits_ir=context.emits_ir)
   symbol_table.free_symbol.add_signature(free_signature)
 
   return TypeSymbol(type_factory=type_factory)
@@ -2165,31 +2175,26 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 
 def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
   # add destructor
-  destructor_factory = get_dummy_destructor_function_factory(emits_ir=context.emits_ir)
-  destructor_signature = FunctionTemplate(
-    concrete_func_factory=destructor_factory, placeholder_template_types=[], return_type=SLEEPY_VOID,
-    arg_types=[SLEEPY_RAW_PTR], arg_identifiers=['raw_ptr'], arg_type_narrowings=[SLEEPY_NEVER], is_inline=True)
+  destructor_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[], return_type=SLEEPY_VOID,
+                                          arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR],
+                                          arg_type_narrowings=[SLEEPY_NEVER],
+                                          instruction=lambda builder, value: None, emits_ir=context.emits_ir)
   symbol_table.free_symbol.add_signature(destructor_signature)
 
   pointee_type = PlaceholderTemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
   constructor_symbol = FunctionSymbol(identifier='RawPtr', returns_void=False)
   # RawPtr[T](Ptr[T]) -> RawPtr
-  from_specific_factory = InbuiltOpConcreteFuncFactory(
-    instruction=lambda builder, typed_ptr: builder.bitcast(typed_ptr, typ=SLEEPY_RAW_PTR.ir_type, name='ptr_cast'),
-    emits_ir=context.emits_ir)
-  from_specific_signature = FunctionTemplate(
-    concrete_func_factory=from_specific_factory, placeholder_template_types=[pointee_type], return_type=SLEEPY_RAW_PTR,
-    arg_identifiers=['ptr'], arg_types=[ptr_type], arg_type_narrowings=[ptr_type], is_inline=True)
+  from_specific_signature = BitcastFunctionTemplate(placeholder_template_types=[pointee_type], return_type=SLEEPY_RAW_PTR,
+                                             arg_identifiers=['ptr'], arg_types=[ptr_type],
+                                             arg_type_narrowings=[ptr_type])
   constructor_symbol.add_signature(signature=from_specific_signature)
   # RawPtr(Int) -> RawPtr
   for int_type in INT_TYPES:
-    from_int_factory = InbuiltOpConcreteFuncFactory(
-      instruction=lambda builder, int: builder.inttoptr(int, typ=SLEEPY_RAW_PTR.ir_type, name='int_to_ptr'),
-      emits_ir=context.emits_ir)
-    from_int_signature = FunctionTemplate(
-      concrete_func_factory=from_int_factory, placeholder_template_types=[], return_type=SLEEPY_RAW_PTR,
-      arg_identifiers=['int'], arg_types=[int_type], arg_type_narrowings=[int_type], is_inline=True)
+    from_int_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[], return_type=SLEEPY_RAW_PTR,
+                                                          arg_identifiers=['int'], arg_types=[int_type], arg_type_narrowings=[int_type],
+                                                          instruction=lambda builder, integer: builder.inttoptr(integer, typ=SLEEPY_RAW_PTR.ir_type, name='int_to_ptr'),
+                                                          emits_ir=context.emits_ir)
     constructor_symbol.add_signature(from_int_signature)
   SLEEPY_RAW_PTR.constructor = constructor_symbol
 
@@ -2197,14 +2202,17 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   raw_ptr_symbol = TypeSymbol(type_generator)
   return raw_ptr_symbol
 
-
 def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> FunctionSymbol:
   bitcast_func = FunctionSymbol(identifier='bitcast', returns_void=False)
-  func_factory = BitcastFunctionFactory(emits_ir=context.emits_ir)
   to_type, from_type = PlaceholderTemplateType('T'), PlaceholderTemplateType('U')
-  bitcast_signature = FunctionTemplate(
-    concrete_func_factory=func_factory, placeholder_template_types=[to_type, from_type], return_type=to_type,
-    arg_identifiers=['from'], arg_types=[from_type], arg_type_narrowings=[to_type], is_inline=True)
+  bitcast_signature = BuiltinOperationFunctionTemplate(
+    placeholder_template_types=[to_type, from_type],
+    return_type=to_type,
+    arg_identifiers=['from'],
+    arg_types=[from_type],
+    arg_type_narrowings=[to_type],
+    instruction=context.builder.bitcast,
+    emits_ir=context.emits_ir)
   bitcast_func.add_signature(bitcast_signature)
   return bitcast_func
 
@@ -2215,26 +2223,6 @@ def make_di_location(pos: TreePosition, context: CodegenContext):
   line, col = pos.get_from_line_col()
   return context.module.add_debug_info(
     'DILocation', {'line': line, 'column': col, 'scope': context.current_di_scope})
-
-
-class InbuiltOpConcreteFuncFactory(ConcreteFunctionFactory):
-  def __init__(self, instruction: Callable[..., Optional[ir.Instruction]], emits_ir: bool):
-    self.instruction = instruction
-    self.emits_ir = emits_ir
-
-  def _make_inline_func_call_ir(self, ir_func_args: List[ir.Instruction],
-                                caller_context: CodegenContext) -> ir.instructions.Instruction:
-    return self.instruction(caller_context.builder, *ir_func_args)
-
-  def build_concrete_func_ir(self, concrete_func: ConcreteFunction):
-    assert concrete_func.is_inline
-    if self.emits_ir:
-      concrete_func.make_inline_func_call_ir = self._make_inline_func_call_ir
-    return concrete_func
-
-
-def get_dummy_destructor_function_factory(emits_ir: bool) -> ConcreteFunctionFactory:
-  return InbuiltOpConcreteFuncFactory(instruction=lambda builder, value: None, emits_ir=emits_ir)
 
 
 SLEEPY_SIZE_FUNC = FunctionSymbol(identifier='size', returns_void=False)
@@ -2284,10 +2272,10 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
       continue
 
     # add destructor
-    destructor_factory = get_dummy_destructor_function_factory(emits_ir=context.emits_ir)
-    destructor_signature = FunctionTemplate(
-      concrete_func_factory=destructor_factory, placeholder_template_types=[], return_type=SLEEPY_VOID,
-      arg_types=[inbuilt_type], arg_identifiers=['var'], arg_type_narrowings=[SLEEPY_NEVER], is_inline=True)
+    destructor_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[], return_type=SLEEPY_VOID,
+                                            arg_identifiers=['var'], arg_types=[inbuilt_type],
+                                            arg_type_narrowings=[SLEEPY_NEVER],
+                                            instruction=lambda builder, value: None, emits_ir=context.emits_ir)
     symbol_table.free_symbol.add_signature(destructor_signature)
 
   for assert_identifier in ['assert', 'unchecked_assert']:
@@ -2377,7 +2365,7 @@ def make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
       function_symbol.add_signature(signature)
 
 
-def make_function_signature(instruction: Callable[..., Value],
+def make_function_signature(instruction: Callable[..., ir.Instruction],
                             op_placeholder_templ_types: Union[Tuple[PlaceholderTemplateType], List[PlaceholderTemplateType]],
                             op_arg_types: List[Type], op_return_type: Type, emits_ir: bool) -> FunctionTemplate:
   assert len(op_arg_types) in {1, 2}
@@ -2385,11 +2373,11 @@ def make_function_signature(instruction: Callable[..., Value],
   op_arg_identifiers = ['arg'] if unary else ['lhs', 'rhs']
   assert len(op_arg_types) == len(op_arg_identifiers)
   # ir_func will be set in build_initial_module_ir
-  factory = InbuiltOpConcreteFuncFactory(instruction, emits_ir=emits_ir)
+  #factory = InbuiltOpConcreteFuncFactory(instruction, emits_ir=emits_ir)
 
-  signature = FunctionTemplate(
-    factory, placeholder_template_types=list(op_placeholder_templ_types), return_type=op_return_type,
-    arg_identifiers=op_arg_identifiers, arg_types=op_arg_types, arg_type_narrowings=op_arg_types, is_inline=True)
+  signature = BuiltinOperationFunctionTemplate(placeholder_template_types=list(op_placeholder_templ_types), return_type=op_return_type,
+                               arg_identifiers=op_arg_identifiers, arg_types=op_arg_types,
+                               arg_type_narrowings=op_arg_types, instruction=instruction, emits_ir=emits_ir)
 
   return signature
 
