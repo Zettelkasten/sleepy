@@ -13,7 +13,7 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SL
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
   SLEEPY_CHAR_PTR, PlaceholderTemplateType, TypeFactory, \
   try_infer_templ_types, Symbol, \
-  FunctionSymbolCaller
+  FunctionSymbolCaller, PointerType
 
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
 from abc import ABC, abstractmethod
@@ -1171,12 +1171,30 @@ class CallExpressionAst(ExpressionAst):
       func_caller=func_caller, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
-  def _is_size_call(self, symbol_table: SymbolTable):
-    # TODO: make this a normal compile time function operating on types
+  def _is_special_call(self, inbuilt_func_identifier: str, symbol_table: SymbolTable):
     if not isinstance(self.func_expr, IdentifierExpressionAst):
       return False
-    from sleepy.symbols import SLEEPY_SIZE_FUNC
-    if self.func_expr.make_as_func_caller(symbol_table=symbol_table).func.base != SLEEPY_SIZE_FUNC.base:
+    inbuilt_func = symbol_table.inbuilt_symbols[inbuilt_func_identifier]
+    assert isinstance(inbuilt_func, FunctionSymbol)
+    if self.func_expr.make_as_func_caller(symbol_table=symbol_table).func.base != inbuilt_func.base:
+      return False
+    return True
+
+  def _is_size_call(self, symbol_table: SymbolTable):
+    # TODO: make this a normal compile time function operating on types
+    return self._is_special_call('size', symbol_table=symbol_table)
+
+  def _is_load_call(self, symbol_table: SymbolTable):
+    # TODO: make this a normal function returning a reference, and make references assignable.
+    from sleepy.symbols import PointerType
+    if not self._is_special_call('load', symbol_table=symbol_table):
+      return False
+    if len(self.func_arg_exprs) != 1:
+      return False
+    arg_expr = self.func_arg_exprs[0]
+    if arg_expr.make_symbol_kind(symbol_table=symbol_table) != Symbol.Kind.VARIABLE:
+      return False
+    if not isinstance(arg_expr.make_val_type(symbol_table=symbol_table), PointerType):
       return False
     return True
 
@@ -1194,6 +1212,18 @@ class CallExpressionAst(ExpressionAst):
       return self._build_func_call(
         func_caller=self._make_func_expr_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
         symbol_table=symbol_table, context=context)
+
+  def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
+    if self._is_load_call(symbol_table=symbol_table):
+      return True
+    return False
+
+  def make_ir_val_ptr(self, symbol_table: SymbolTable,
+                      context: CodegenContext) -> Optional[ir.instructions.Instruction]:
+    assert self._is_load_call(symbol_table=symbol_table)
+    assert len(self.func_arg_exprs) == 1
+    arg_expr = self.func_arg_exprs[0]
+    return arg_expr.make_ir_val(symbol_table=symbol_table, context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.FUNCTION
