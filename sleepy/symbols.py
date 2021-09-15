@@ -1254,7 +1254,6 @@ class FunctionTemplate(ABC):
     new.placeholder_templ_types = new_placeholder_templ_types
     new.return_type = new.return_type.replace_types(type_replacements)
     new.arg_types = [arg_type.replace_types(type_replacements) for arg_type in self.arg_types.copy()]
-    new.base = self
 
     return new
 
