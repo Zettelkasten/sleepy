@@ -43,6 +43,9 @@ int double_to_int(double d) {
 double int_to_double(int i) {
     return i;
 }
+double long_to_double(long i) {
+    return i;
+}
 int long_to_int(long l) {
     return l;
 }

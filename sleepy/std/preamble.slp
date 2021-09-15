@@ -35,6 +35,7 @@ func ToLong[T](ptr: Ptr[T]) -> Long {
   return char_ptr_to_long(RawPtr(ptr));
 }
 func ToDouble(i: Int) -> Double { extern_func int_to_double(i: Int) -> Double; return int_to_double(i); }
+func ToDouble(i: Long) -> Double { extern_func long_to_double(i: Long) -> Double; return long_to_double(i); }
 func ToBool(i: Int) -> Bool { if i == 0 { return False(); } else { if i != 1 { assert(False()); } return True(); }}
 
 ## Allocation
