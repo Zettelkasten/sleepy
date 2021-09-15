@@ -49,9 +49,9 @@ func deallocate[T](ptr: Ptr[T]) {
   extern_func deallocate(ptr: RawPtr);  # TODO: cannot override free.
   deallocate(RawPtr(ptr));
 }
-func memcpy[T](to: Ptr[T], from: Ptr[T], size: Long) {
-  extern_func memcpy(to: RawPtr, from: RawPtr, size: Long);
-  memcpy(RawPtr(to), RawPtr(from), size);
+func memcpy[T](to: Ptr[T], from: Ptr[T], amount: Long) {
+  extern_func memcpy(to: RawPtr, from: RawPtr, amount: Long);
+  memcpy(RawPtr(to), RawPtr(from), amount * size(T));
 }
 func memcpy[T](to: Ptr[T], from: Ptr[T], size: Int) { memcpy[T](to, from, ToLong(size)); }
 
