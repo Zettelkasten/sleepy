@@ -276,13 +276,11 @@ class DeclaredFunctionTemplate(FunctionTemplate):
     self.ast = ast
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
-    self.called_before = False
 
   def _get_concrete_function(self, concrete_template_arguments: List[Type],
                               concrete_parameter_types: List[Type],
                               concrete_narrowed_parameter_types: List[Type],
                               concrete_return_type: Type) -> ConcreteFunction:
-    self.called_before = True
     concrete_function = ConcreteDeclaredFunction(
       signature=self,
       ir_func=None,
