@@ -1,6 +1,7 @@
 from typing import List, Tuple
 
-from sleepy.ast import AbstractSyntaxTree, FunctionDeclarationAst, AnnotationAst
+from sleepy.ast import AbstractSyntaxTree, AnnotationAst
+from sleepy.functions import FunctionDeclarationAst
 from sleepy.program_conversions.string_functions import replace, trim_whitespace
 from sleepy.sleepy_parser import make_program_ast
 
