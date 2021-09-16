@@ -20,7 +20,7 @@ func insert(l: DoubleList, val: Double)  {
     # no space left, resize
     new_alloc_length = 2 * l.alloc_length;
     new_pointer = allocate[Double](new_alloc_length);
-    memcpy(new_pointer, l.pointer, l.alloc_length * 8);
+    memcpy(new_pointer, l.pointer, l.alloc_length);
     deallocate(l.pointer);
     l.alloc_length = new_alloc_length;
     l.pointer = new_pointer;
