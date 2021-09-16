@@ -50,7 +50,8 @@ class Type(ABC):
   """
   A type of a declared variable.
   """
-  def __init__(self, ir_type: Optional[ir.types.Type], pass_by_ref: bool, c_type, constructor: Optional[FunctionSymbol]):
+  def __init__(self, ir_type: Optional[ir.types.Type], pass_by_ref: bool, c_type,
+               constructor: Optional[FunctionSymbol]):
     """
     :param ctypes._CData|None c_type: may be None if this is non-realizable (e.g. template types / void)
     """
@@ -72,9 +73,6 @@ class Type(ABC):
     :rtype: bool
     """
     return self.pass_by_ref
-
-  def make_ir_size(self, size: int) -> ir.values.Value:
-    return ir.Constant(LLVM_SIZE_TYPE, size)
 
   def is_realizable(self) -> bool:
     return True
@@ -448,7 +446,8 @@ class UnionType(Type):
     self.tag_c_type = ctypes.c_uint8
     self.tag_ir_type = ir.types.IntType(8)
     self.tag_size = 8
-    self.untagged_union_c_type = ctypes.c_ubyte * max((ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
+    self.untagged_union_c_type = ctypes.c_ubyte * max(
+      (ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
     self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), val_size)
     c_type = type(
       '%s_CType' % self.identifier, (ctypes.Structure,),
@@ -538,17 +537,20 @@ class UnionType(Type):
     assert variant_type in self.possible_types
     return self.possible_type_nums[self.possible_types.index(variant_type)]
 
-  def make_tag_ptr(self, union_ir_alloca, context, name):
+  @staticmethod
+  def make_tag_ptr(union_ir_alloca, context, name):
     """
     :param ir.instructions.AllocaInstr union_ir_alloca:
     :param CodegenContext context:
+    :param str name:
     :rtype: ir.instructions.Instruction
     """
     assert context.emits_ir
     tag_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
     return context.builder.gep(union_ir_alloca, tag_gep_indices, name=name)
 
-  def make_untagged_union_void_ptr(self, union_ir_alloca, context, name):
+  @staticmethod
+  def make_untagged_union_void_ptr(union_ir_alloca, context, name):
     """
     :param ir.instructions.AllocaInstr union_ir_alloca:
     :param CodegenContext context:
@@ -574,7 +576,8 @@ class UnionType(Type):
       untagged_union_ptr, ir.types.PointerType(variant_type.ir_type),
       name=name)
 
-  def make_extract_tag(self, union_ir_val, context, name):
+  @staticmethod
+  def make_extract_tag(union_ir_val, context, name):
     """
     :param ir.values.Value union_ir_val:
     :param CodegenContext context:
@@ -583,7 +586,8 @@ class UnionType(Type):
     """
     return context.builder.extract_value(union_ir_val, 0, name=name)
 
-  def make_extract_void_val(self, union_ir_val, context, name):
+  @staticmethod
+  def make_extract_void_val(union_ir_val, context, name):
     """
     :param ir.values.Value union_ir_val:
     :param CodegenContext context:
@@ -622,7 +626,8 @@ class UnionType(Type):
       if possible_type in narrow_to_types]
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=self.val_size)
 
-  def copy_with_extended_types(self, extended_types: List[Type], extended_type_nums: Union[List[Union[int, None]], None]=None) -> UnionType:
+  def copy_with_extended_types(self, extended_types: List[Type],
+                               extended_type_nums: Union[List[Union[int, None]], None] = None) -> UnionType:
     assert all(not isinstance(extended_type, UnionType) for extended_type in extended_types)
     if extended_type_nums is None:
       extended_type_nums = [None] * len(extended_types)
@@ -635,7 +640,7 @@ class UnionType(Type):
       new_possible_types.append(extended_type)
       if extended_type_num is not None and extended_type_num not in new_possible_type_nums:
         # noinspection PyTypeChecker
-        new_possible_type_nums.append(extended_type_num) # inspection is wrong here
+        new_possible_type_nums.append(extended_type_num)
       else:
         next_type_num = max(new_possible_type_nums) + 1 if len(new_possible_type_nums) > 0 else 0
         new_possible_type_nums.append(next_type_num)
@@ -727,7 +732,7 @@ class StructType(Type):
     if self.is_pass_by_ref():  # use malloc
       assert context.ir_func_malloc is not None
       self_ir_alloca_raw = context.builder.call(
-        context.ir_func_malloc, [self.make_ir_size(ctypes.sizeof(self.c_val_type))], name='self_raw_ptr')
+        context.ir_func_malloc, [make_ir_size(ctypes.sizeof(self.c_val_type))], name='self_raw_ptr')
       return context.builder.bitcast(self_ir_alloca_raw, self.ir_type, name='self')
     else:  # pass by value, use alloca
       return context.alloca_at_entry(self.ir_type, name='self')
@@ -756,7 +761,8 @@ class StructType(Type):
       self.pass_by_ref == other.pass_by_ref)
 
   def __hash__(self) -> int:
-    return hash((self.__class__, self.struct_identifier, tuple(self.templ_types), tuple(self.member_identifiers),
+    return hash((
+      self.__class__, self.struct_identifier, tuple(self.templ_types), tuple(self.member_identifiers),
       tuple(self.member_types), self.pass_by_ref))
 
   def __repr__(self):
@@ -795,26 +801,28 @@ class StructType(Type):
 
   def build_constructor(self, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> FunctionSymbol:
     assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
-    pos = parent_context.current_pos
 
     constructor_symbol = FunctionSymbol(identifier=self.struct_identifier, returns_void=False)
-    placeholder_templ_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
-    signature_ = ConstructorFunctionTemplate(
+    placeholder_templ_types = [
+      templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
+    signature = ConstructorFunctionTemplate(
       placeholder_template_types=placeholder_templ_types, return_type=self, arg_identifiers=self.member_identifiers,
-      arg_types=self.member_types, arg_type_narrowings=self.member_types, struct=self, captured_symbol_table=parent_symbol_table, captured_context=parent_context)
-    constructor_symbol.add_signature(signature_)
+      arg_types=self.member_types, arg_type_narrowings=self.member_types, struct=self,
+      captured_symbol_table=parent_symbol_table, captured_context=parent_context)
+    constructor_symbol.add_signature(signature)
     return constructor_symbol
 
   def build_destructor(self, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> FunctionSymbol:
     assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
-    placeholder_template_types = [templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
+    placeholder_template_types = [
+      templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
     # TODO: Narrow type to something more meaningful then SLEEPY_NEVER
     # E.g. make a copy of the never union type and give that a name ("Freed" or sth)
     signature_ = DestructorFunctionTemplate(
       placeholder_template_types=placeholder_template_types, return_type=SLEEPY_VOID, arg_types=[self],
-      arg_identifiers=['var'], arg_type_narrowings=[SLEEPY_NEVER], struct=self, captured_symbol_table=parent_symbol_table,
-    captured_context=parent_context)
+      arg_identifiers=['var'], arg_type_narrowings=[SLEEPY_NEVER], struct=self,
+      captured_symbol_table=parent_symbol_table, captured_context=parent_context)
     parent_symbol_table.free_symbol.add_signature(signature_)
     return parent_symbol_table.free_symbol
 
@@ -1059,7 +1067,8 @@ class VariableSymbol(Symbol):
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
 
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> VariableSymbol:
+  def copy_replace_unbound_templ_types(self,
+                                       templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> VariableSymbol:
     assert not self.declared_var_type.has_templ_placeholder()
     assert not self.narrowed_var_type.has_templ_placeholder()
     return self
@@ -1191,12 +1200,13 @@ class ConcreteBuiltinOperationFunction(ConcreteFunction):
     self.emits_ir = emits_ir
 
   def make_inline_func_call_ir(self, ir_func_args: List[ir.Value],
-                                caller_context: CodegenContext) -> ir.instructions.Instruction:
+                               caller_context: CodegenContext) -> ir.instructions.Instruction:
     return self.instruction(caller_context.builder, *ir_func_args)
 
   @property
   def is_inline(self) -> bool:
     return True
+
 
 class ConcreteBitcastFunction(ConcreteFunction):
   def __init__(self, signature: FunctionTemplate, ir_func: Optional[ir.Function], template_arguments: List[Type],
@@ -1204,7 +1214,7 @@ class ConcreteBitcastFunction(ConcreteFunction):
     super().__init__(signature, ir_func, template_arguments, return_type, parameter_types, narrowed_parameter_types)
 
   def make_inline_func_call_ir(self, ir_func_args: List[ir.Value],
-                                caller_context: CodegenContext) -> ir.instructions.Instruction:
+                               caller_context: CodegenContext) -> ir.instructions.Instruction:
     assert len(ir_func_args) == 1
     return caller_context.builder.bitcast(val=ir_func_args[0], typ=self.return_type.ir_type, name="bitcast")
 
@@ -1235,7 +1245,8 @@ class FunctionTemplate(ABC):
     else:
       self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
 
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionTemplate:
+  def copy_replace_unbound_templ_types(self,
+                                       templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionTemplate:  # noqa
     assert all(isinstance(key, PlaceholderTemplateType) for key in templ_type_replacements)
     unbound_templ_type_replacements = {
       templ_type: replacement for templ_type, replacement in templ_type_replacements.items()
@@ -1257,7 +1268,6 @@ class FunctionTemplate(ABC):
 
     return new
 
-
   def to_signature_str(self) -> str:
     templ_args = '' if len(self.placeholder_templ_types) == 0 else '[%s]' % (
       ', '.join([templ_type.identifier for templ_type in self.placeholder_templ_types]))
@@ -1276,19 +1286,16 @@ class FunctionTemplate(ABC):
     concrete_arg_types_narrowings = [
       arg_type.replace_types(replacements=concrete_type_replacements) for arg_type in self.arg_type_narrowings]
 
-    return self._get_concrete_function(concrete_template_arguments=list(concrete_templ_types),
-                                       concrete_parameter_types=concrete_arg_types,
-                                       concrete_narrowed_parameter_types=concrete_arg_types_narrowings,
-                                       concrete_return_type=concrete_return_type)
+    return self._get_concrete_function(
+      concrete_template_arguments=list(concrete_templ_types), concrete_parameter_types=concrete_arg_types,
+      concrete_narrowed_parameter_types=concrete_arg_types_narrowings, concrete_return_type=concrete_return_type)
 
   @abstractmethod
   def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                              concrete_parameter_types: List[Type],
-                              concrete_narrowed_parameter_types: List[Type],
-                              concrete_return_type: Type) -> ConcreteFunction:
+                             concrete_parameter_types: List[Type],
+                             concrete_narrowed_parameter_types: List[Type],
+                             concrete_return_type: Type) -> ConcreteFunction:
     raise NotImplementedError()
-
-
 
   @property
   def returns_void(self) -> bool:
@@ -1326,8 +1333,8 @@ class FunctionTemplate(ABC):
     return 'FunctionSignature(placeholder_templ_types=%r, return_type=%r, arg_identifiers=%r, arg_types=%r)' % (
       self.placeholder_templ_types, self.return_type, self.arg_identifiers, self.arg_types)
 
-class ConstructorFunctionTemplate(FunctionTemplate):
 
+class ConstructorFunctionTemplate(FunctionTemplate):
   def __init__(self,
                placeholder_template_types: List[PlaceholderTemplateType],
                return_type: Type,
@@ -1343,9 +1350,9 @@ class ConstructorFunctionTemplate(FunctionTemplate):
     self.captured_context = captured_context
 
   def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                              concrete_parameter_types: List[Type],
-                              concrete_narrowed_parameter_types: List[Type],
-                              concrete_return_type: Type) -> ConcreteFunction:
+                             concrete_parameter_types: List[Type],
+                             concrete_narrowed_parameter_types: List[Type],
+                             concrete_return_type: Type) -> ConcreteFunction:
     concrete_function = ConcreteFunction(signature=self, ir_func=None, template_arguments=concrete_template_arguments,
                                          return_type=concrete_return_type, parameter_types=concrete_parameter_types,
                                          narrowed_parameter_types=concrete_narrowed_parameter_types)
@@ -1376,6 +1383,7 @@ class ConstructorFunctionTemplate(FunctionTemplate):
         else:  # pass by value
           context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
 
+
 class DestructorFunctionTemplate(FunctionTemplate):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType],
                return_type: Type,
@@ -1391,12 +1399,12 @@ class DestructorFunctionTemplate(FunctionTemplate):
     self.captured_context = captured_context
 
   def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                              concrete_parameter_types: List[Type],
-                              concrete_narrowed_parameter_types: List[Type],
-                              concrete_return_type: Type) -> ConcreteFunction:
-    concrete_function = ConcreteFunction(signature=self, ir_func=None, template_arguments=concrete_template_arguments,
-                                         return_type=concrete_return_type, parameter_types=concrete_parameter_types,
-                                         narrowed_parameter_types=concrete_narrowed_parameter_types)
+                             concrete_parameter_types: List[Type],
+                             concrete_narrowed_parameter_types: List[Type],
+                             concrete_return_type: Type) -> ConcreteFunction:
+    concrete_function = ConcreteFunction(
+      signature=self, ir_func=None, template_arguments=concrete_template_arguments, return_type=concrete_return_type,
+      parameter_types=concrete_parameter_types, narrowed_parameter_types=concrete_narrowed_parameter_types)
     self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     self.build_concrete_function_ir(concrete_function)
     return concrete_function
@@ -1407,8 +1415,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
       concrete_struct_type = concrete_function.arg_types[0]
       assert isinstance(concrete_struct_type, StructType)
       if self.captured_context.emits_ir:
-        concrete_function.make_ir_func(
-          identifier='free', extern=False, context=(self.captured_context))
+        concrete_function.make_ir_func(identifier='free', extern=False, context=self.captured_context)
         destructor_block = concrete_function.ir_func.append_basic_block(name='entry')
         context = self.captured_context.copy_with_func(concrete_function, builder=ir.IRBuilder(destructor_block))
 
@@ -1439,33 +1446,30 @@ class DestructorFunctionTemplate(FunctionTemplate):
           context.builder.call(context.ir_func_free, args=[self_ir_alloca_raw], name='free_self')
         context.builder.ret_void()
 
+
 class BuiltinOperationFunctionTemplate(FunctionTemplate):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType],
                return_type: Type,
                arg_identifiers: List[str],
                arg_types: List[Type],
                arg_type_narrowings: List[Type],
-               instruction: Callable[..., Optional[ir.Instruction]],
+               instruction: Callable[..., Optional[ir.values.Value]],
                emits_ir: bool):
     super().__init__(placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings)
     self.instruction = instruction
     self.emits_ir = emits_ir
 
   def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                              concrete_parameter_types: List[Type],
-                              concrete_narrowed_parameter_types: List[Type],
-                              concrete_return_type: Type) -> ConcreteFunction:
+                             concrete_parameter_types: List[Type],
+                             concrete_narrowed_parameter_types: List[Type],
+                             concrete_return_type: Type) -> ConcreteFunction:
     concrete_function = ConcreteBuiltinOperationFunction(
-      signature=self,
-      ir_func=None,
-      template_arguments=concrete_template_arguments,
-      return_type=concrete_return_type,
-      parameter_types=concrete_parameter_types,
-      narrowed_parameter_types=concrete_narrowed_parameter_types,
-      instruction=self.instruction,
-      emits_ir=self.emits_ir)
+      signature=self, ir_func=None, template_arguments=concrete_template_arguments, return_type=concrete_return_type,
+      parameter_types=concrete_parameter_types, narrowed_parameter_types=concrete_narrowed_parameter_types,
+      instruction=self.instruction, emits_ir=self.emits_ir)
     self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     return concrete_function
+
 
 class BitcastFunctionTemplate(FunctionTemplate):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
@@ -1485,7 +1489,6 @@ class BitcastFunctionTemplate(FunctionTemplate):
     )
     self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     return concrete_function
-
 
 
 class FunctionSymbol(Symbol):
@@ -1508,9 +1511,8 @@ class FunctionSymbol(Symbol):
       base = base.base
     self.base = base
 
-
-
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionSymbol:
+  def copy_replace_unbound_templ_types(self,
+                                       templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionSymbol:
     """
     e.g. if replacements is T => Int:
      - from foo(T val) -> T make foo(Int val)
@@ -1557,8 +1559,7 @@ class FunctionSymbol(Symbol):
     possible_concrete_funcs = []
     for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types):
       for signature in signatures:
-        if signature.can_call_with_expanded_arg_types(
-            concrete_templ_types=templ_types, expanded_arg_types=expanded_arg_types):
+        if signature.can_call_with_expanded_arg_types(concrete_templ_types=templ_types, expanded_arg_types=expanded_arg_types):  # noqa
           concrete_func = signature.get_concrete_func(concrete_templ_types=templ_types)
           if concrete_func not in possible_concrete_funcs:
             possible_concrete_funcs.append(concrete_func)
@@ -1618,7 +1619,7 @@ class TypeFactory:
     self.placeholder_templ_types = placeholder_templ_types
     self.signature_type = signature_type
 
-  def make_concrete_type(self, concrete_templ_types: List[Type]) -> Type:
+  def make_concrete_type(self, concrete_templ_types: List[Type] | Tuple[Type]) -> Type:
     replacements = dict(zip(self.placeholder_templ_types, concrete_templ_types))
     return self.signature_type.replace_types(replacements)
 
@@ -1637,7 +1638,7 @@ class TypeSymbol(Symbol):
     self.type_factory = type_factory
     self.initialized_templ_types: Dict[Tuple[Type], Type] = {}
 
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> TypeSymbol:
+  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> TypeSymbol:  # noqa
     """
     e.g. if replacements is T -> Int:
      - from T make Int
@@ -1665,10 +1666,13 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
-  def __init__(self, parent: Optional[SymbolTable]=None, copy_new_current_func: Optional[ConcreteFunction]=None, *, new_variable_scope=None):
+  def __init__(self, parent: Optional[SymbolTable] = None, copy_new_current_func: Optional[ConcreteFunction] = None,
+               new_variable_scope: bool = None):
     super().__init__(parent)
-    if parent is None: new_variable_scope = True
-    else: assert(new_variable_scope is not None)
+    if parent is None:
+      new_variable_scope = True
+    else:
+      assert new_variable_scope is not None
     self.new_scope = new_variable_scope
     if parent is None:
       assert copy_new_current_func is None
@@ -1691,8 +1695,11 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
       self.inbuilt_symbols: Dict[str, Symbol] = parent.inbuilt_symbols
 
   @property
-  def current_scope_identifiers(self):
-    return self.underlying_dict.keys() if self.new_scope else self.underlying_dict.keys() | self.parent.current_scope_identifiers
+  def current_scope_identifiers(self) -> Set[str]:
+    if self.new_scope:
+      return set(self.underlying_dict.keys())
+    else:
+      return self.underlying_dict.keys() | self.parent.current_scope_identifiers
 
   def copy(self, new_variable_scope) -> SymbolTable:
     return SymbolTable(parent=self, new_variable_scope=new_variable_scope)
@@ -1751,6 +1758,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     assert isinstance(free_symbol, FunctionSymbol)
     return free_symbol
 
+
 class CodegenContext:
   """
   Used to keep track where code is currently generated.
@@ -1787,8 +1795,8 @@ class CodegenContext:
 
       self.current_pos: Optional[TreePosition] = copy_from.current_pos
       self.current_func: Optional[ConcreteFunction] = copy_from.current_func
-      self.current_func_inline_return_collect_block: Optional[ir.Block] = copy_from.current_func_inline_return_collect_block
-      self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = copy_from.current_func_inline_return_ir_alloca
+      self.current_func_inline_return_collect_block: Optional[ir.Block] = copy_from.current_func_inline_return_collect_block  # noqa
+      self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = copy_from.current_func_inline_return_ir_alloca  # noqa
       self.inline_func_call_stack: List[ConcreteFunction] = copy_from.inline_func_call_stack.copy()
       self.ir_func_malloc: Optional[ir.Function] = copy_from.ir_func_malloc
       self.ir_func_free: Optional[ir.Function] = copy_from.ir_func_free
@@ -1909,14 +1917,14 @@ class CodegenContext:
 
   def make_ir_function_name(self, identifier: str, concrete_function: ConcreteFunction, extern: bool):
     if extern:
-      if any(f.name == identifier for f in  self.module.functions): return None
+      if any(f.name == identifier for f in self.module.functions):
+        return None
       return identifier
     else:
       ir_func_name = '_'.join(
         [identifier]
         + [str(arg_type) for arg_type in concrete_function.concrete_templ_types + concrete_function.arg_types])
       return self.module.get_unique_name(ir_func_name)
-
 
 
 class UsePosRuntimeContext:
@@ -1939,6 +1947,10 @@ class UsePosRuntimeContext:
     self.context.current_pos = self.prev_pos
     if self.context.emits_debug:
       self.context.builder.debug_metadata = self.prev_debug_metadata
+
+
+def make_ir_size(size: int) -> ir.values.Value:
+  return ir.Constant(LLVM_SIZE_TYPE, size)
 
 
 def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
@@ -1979,7 +1991,8 @@ def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
     return make_call_func(
       concrete_func=possible_concrete_funcs[0], concrete_calling_arg_types_=calling_arg_types, caller_context=context)
   else:
-    import numpy as np, itertools
+    import numpy as np
+    import itertools
     # The arguments which we need to look at to determine which concrete function to call
     # TODO: This could use a better heuristic, only because something is a union type does not mean that it
     # distinguishes different concrete funcs.
@@ -2006,7 +2019,8 @@ def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
       concrete_func_block_address = ir.values.BlockAddress(context.builder.function, concrete_func_block)
       concrete_func_distinguishing_args = [concrete_func.arg_types[arg_num] for arg_num in distinguishing_arg_nums]
       concrete_func_possible_types_per_arg = [
-        [possible_type
+        [
+          possible_type
           for possible_type in (arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type])
           if possible_type in calling_arg_type.possible_types]
         for arg_type, calling_arg_type in zip(concrete_func_distinguishing_args, distinguishing_calling_arg_types)]
@@ -2017,7 +2031,7 @@ def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
         assert len(expanded_func_types) == len(distinguishing_calling_arg_types)
         distinguishing_variant_nums = tuple(
           calling_arg_type.get_variant_num(concrete_arg_type)
-            for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_func_types))
+          for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_func_types))
         assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
         block_addresses_distinguished_mapping[distinguishing_variant_nums] = concrete_func_block_address
 
@@ -2066,8 +2080,7 @@ def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
       common_return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
       collect_return_ir_phi = context.builder.phi(
         common_return_type.ir_type, name="collect_%s_overload_return" % func.identifier)
-      for concrete_return_ir_val, concrete_caller_context in zip(
-          concrete_func_return_ir_vals, concrete_func_caller_contexts):
+      for concrete_return_ir_val, concrete_caller_context in zip(concrete_func_return_ir_vals, concrete_func_caller_contexts):  # noqa
         collect_return_ir_phi.add_incoming(concrete_return_ir_val, concrete_caller_context.block)
       return collect_return_ir_phi
 
@@ -2115,21 +2128,20 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 
   assert 'load' not in symbol_table
   load_symbol = FunctionSymbol(identifier='load', returns_void=False)
-  load_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[pointee_type], return_type=pointee_type,
-                                    arg_identifiers=['ptr'], arg_types=[ptr_type], arg_type_narrowings=[ptr_type],
-                                    instruction=lambda builder, ptr: builder.load(ptr, name='load'),
-                                    emits_ir=context.emits_ir)
+  load_signature = BuiltinOperationFunctionTemplate(
+    placeholder_template_types=[pointee_type], return_type=pointee_type, arg_identifiers=['ptr'], arg_types=[ptr_type],
+    arg_type_narrowings=[ptr_type], instruction=lambda builder, ptr: builder.load(ptr, name='load'),
+    emits_ir=context.emits_ir)
   load_symbol.add_signature(signature=load_signature)
   symbol_table['load'] = load_symbol
   symbol_table.inbuilt_symbols['load'] = load_symbol
 
   assert 'store' not in symbol_table
   store_symbol = FunctionSymbol(identifier='store', returns_void=True)
-  store_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID,
-                                     arg_identifiers=['ptr', 'value'], arg_types=[ptr_type, pointee_type],
-                                     arg_type_narrowings=[ptr_type, pointee_type],
-                                     instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr),
-                                     emits_ir=context.emits_ir)
+  store_signature = BuiltinOperationFunctionTemplate(
+    placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID, arg_identifiers=['ptr', 'value'],
+    arg_types=[ptr_type, pointee_type], arg_type_narrowings=[ptr_type, pointee_type],
+    instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr), emits_ir=context.emits_ir)
   store_symbol.add_signature(store_signature)
   symbol_table['store'] = store_symbol
   type_factory = TypeFactory(placeholder_templ_types=[pointee_type], signature_type=ptr_type)
@@ -2142,18 +2154,18 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   constructor_symbol.add_signature(signature=constructor_signature)
   ptr_type.constructor = constructor_symbol
 
-  PTR_OP_DECL = [(
+  ptr_op_decls = [(
     BuiltinBinaryOps.Addition,
     [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_type, i], ptr_type) for i in INT_TYPES] +
     [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [i, ptr_type], ptr_type) for i in INT_TYPES]),
     (BuiltinBinaryOps.Subtraction,
     [(lambda builder, lhs, rhs: builder.gep(lhs, (builder.mul(ir.Constant(i.ir_type, -1), rhs),)), [ptr_type, i], ptr_type) for i in INT_TYPES])]  # noqa
-  PTR_OP_DECL += [
+  ptr_op_decls += [
     (
       op,
       [(lambda builder, lhs, rhs, op=op: builder.icmp_unsigned(op.value, lhs, rhs), [ptr_type, ptr_type], SLEEPY_BOOL)])
     for op in Simple_Comparison_Ops]
-  for operator, overloads in PTR_OP_DECL:
+  for operator, overloads in ptr_op_decls:
     if operator.value not in symbol_table:
       symbol_table[operator.value] = FunctionSymbol(identifier=operator.value, returns_void=False)
     function_symbol = symbol_table[operator.value]
@@ -2165,9 +2177,9 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
         emits_ir=context.emits_ir)
       function_symbol.add_signature(signature)
 
-  free_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID,
-                                    arg_identifiers=['ptr'], arg_types=[ptr_type], arg_type_narrowings=[SLEEPY_NEVER],
-                                    instruction=lambda builder, value: None, emits_ir=context.emits_ir)
+  free_signature = BuiltinOperationFunctionTemplate(
+    placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID, arg_identifiers=['ptr'], arg_types=[ptr_type],
+    arg_type_narrowings=[SLEEPY_NEVER], instruction=lambda builder, value: None, emits_ir=context.emits_ir)
   symbol_table.free_symbol.add_signature(free_signature)
 
   return TypeSymbol(type_factory=type_factory)
@@ -2175,26 +2187,26 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 
 def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
   # add destructor
-  destructor_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[], return_type=SLEEPY_VOID,
-                                          arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR],
-                                          arg_type_narrowings=[SLEEPY_NEVER],
-                                          instruction=lambda builder, value: None, emits_ir=context.emits_ir)
+  destructor_signature = BuiltinOperationFunctionTemplate(
+    placeholder_template_types=[], return_type=SLEEPY_VOID, arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR],
+    arg_type_narrowings=[SLEEPY_NEVER], instruction=lambda builder, value: None, emits_ir=context.emits_ir)
   symbol_table.free_symbol.add_signature(destructor_signature)
 
   pointee_type = PlaceholderTemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
   constructor_symbol = FunctionSymbol(identifier='RawPtr', returns_void=False)
   # RawPtr[T](Ptr[T]) -> RawPtr
-  from_specific_signature = BitcastFunctionTemplate(placeholder_template_types=[pointee_type], return_type=SLEEPY_RAW_PTR,
-                                             arg_identifiers=['ptr'], arg_types=[ptr_type],
-                                             arg_type_narrowings=[ptr_type])
+  from_specific_signature = BitcastFunctionTemplate(
+    placeholder_template_types=[pointee_type], return_type=SLEEPY_RAW_PTR, arg_identifiers=['ptr'],
+    arg_types=[ptr_type], arg_type_narrowings=[ptr_type])
   constructor_symbol.add_signature(signature=from_specific_signature)
   # RawPtr(Int) -> RawPtr
   for int_type in INT_TYPES:
-    from_int_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[], return_type=SLEEPY_RAW_PTR,
-                                                          arg_identifiers=['int'], arg_types=[int_type], arg_type_narrowings=[int_type],
-                                                          instruction=lambda builder, integer: builder.inttoptr(integer, typ=SLEEPY_RAW_PTR.ir_type, name='int_to_ptr'),
-                                                          emits_ir=context.emits_ir)
+    from_int_signature = BuiltinOperationFunctionTemplate(
+      placeholder_template_types=[], return_type=SLEEPY_RAW_PTR, arg_identifiers=['int'], arg_types=[int_type],
+      arg_type_narrowings=[int_type],
+      instruction=lambda builder, integer: builder.inttoptr(integer, typ=SLEEPY_RAW_PTR.ir_type, name='int_to_ptr'),
+      emits_ir=context.emits_ir)
     constructor_symbol.add_signature(from_int_signature)
   SLEEPY_RAW_PTR.constructor = constructor_symbol
 
@@ -2202,15 +2214,15 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   raw_ptr_symbol = TypeSymbol(type_generator)
   return raw_ptr_symbol
 
+
 def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> FunctionSymbol:
+  del symbol_table  # only to keep API consistent
+  del context
   bitcast_func = FunctionSymbol(identifier='bitcast', returns_void=False)
   to_type, from_type = PlaceholderTemplateType('T'), PlaceholderTemplateType('U')
   bitcast_signature = BitcastFunctionTemplate(
-    placeholder_template_types=[to_type, from_type],
-    return_type=to_type,
-    arg_identifiers=['from'],
-    arg_types=[from_type],
-    arg_type_narrowings=[to_type])
+    placeholder_template_types=[to_type, from_type], return_type=to_type,
+    arg_identifiers=['from'], arg_types=[from_type], arg_type_narrowings=[to_type])
   bitcast_func.add_signature(bitcast_signature)
   return bitcast_func
 
@@ -2269,10 +2281,9 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
       continue
 
     # add destructor
-    destructor_signature = BuiltinOperationFunctionTemplate(placeholder_template_types=[], return_type=SLEEPY_VOID,
-                                            arg_identifiers=['var'], arg_types=[inbuilt_type],
-                                            arg_type_narrowings=[SLEEPY_NEVER],
-                                            instruction=lambda builder, value: None, emits_ir=context.emits_ir)
+    destructor_signature = BuiltinOperationFunctionTemplate(
+      placeholder_template_types=[], return_type=SLEEPY_VOID, arg_identifiers=['var'], arg_types=[inbuilt_type],
+      arg_type_narrowings=[SLEEPY_NEVER], instruction=lambda builder, value: None, emits_ir=context.emits_ir)
     symbol_table.free_symbol.add_signature(destructor_signature)
 
   for assert_identifier in ['assert', 'unchecked_assert']:
@@ -2293,7 +2304,7 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   inbuilt_pos = TreePosition('', 0, 0)
 
   inbuilt_symbols = {
-    'Str': _make_str_symbol, 'Ptr':_make_ptr_symbol, 'RawPtr': _make_raw_ptr_symbol, 'bitcast': _make_bitcast_symbol}
+    'Str': _make_str_symbol, 'Ptr': _make_ptr_symbol, 'RawPtr': _make_raw_ptr_symbol, 'bitcast': _make_bitcast_symbol}
   with context.use_pos(inbuilt_pos):
     for symbol_identifier, setup_func in inbuilt_symbols.items():
       assert symbol_identifier not in symbol_table
@@ -2315,37 +2326,63 @@ Instructions: Dict[Tuple[BuiltinBinaryOps, Type], Callable[[CodegenContext, Valu
   {(BuiltinBinaryOps.Multiplication, T): IRBuilder.fmul for T in FLOAT_TYPES},
   {(BuiltinBinaryOps.Division, T): IRBuilder.fdiv for T in FLOAT_TYPES},
 
-  {(op, T): lambda builder, lhs, rhs, op=op: builder.icmp_signed(op.value, lhs, rhs) for op in Simple_Comparison_Ops for T in INT_TYPES},
-  {(op, T): lambda builder, lhs, rhs, op=op: builder.icmp_unsigned(op.value, lhs, rhs) for op in Simple_Comparison_Ops for T in {SLEEPY_CHAR, SLEEPY_BOOL}},
-  {(op, T):
-     lambda builder, lhs, rhs, op=op: builder.fcmp_ordered(op.value, lhs, rhs)
-   for op in Simple_Comparison_Ops for T in FLOAT_TYPES}
+  {
+    (op, T): lambda builder, lhs, rhs, op=op: builder.icmp_signed(op.value, lhs, rhs) for op in Simple_Comparison_Ops
+    for T in INT_TYPES},
+  {
+    (op, T): lambda builder, lhs, rhs, op=op: builder.icmp_unsigned(op.value, lhs, rhs) for op in Simple_Comparison_Ops
+    for T in {SLEEPY_CHAR, SLEEPY_BOOL}},
+  {
+    (op, T): lambda builder, lhs, rhs, op=op: builder.fcmp_ordered(op.value, lhs, rhs)
+    for op in Simple_Comparison_Ops for T in FLOAT_TYPES}
   ])
 
 
-BINARY_OP_DECL = (
-        [(operator, [(Instructions[(operator, arith_t)], [arith_t, arith_t], arith_t) for arith_t in SLEEPY_NUMERICAL_TYPES])
-   for operator in Simple_Arithmetic_Ops] +  # simple arithmetic on all arithmetic types
-        [
-    (BuiltinBinaryOps.Addition,
+BINARY_OP_DECL: List[Tuple[BuiltinBinaryOps, List[Tuple[Callable[..., ir.values.Value], List[Type], Type]]]] = (
+  # simple arithmetic on all arithmetic types
+  [
+    (operator, [(Instructions[(operator, arith_t)], [arith_t, arith_t], arith_t) for arith_t in SLEEPY_NUMERICAL_TYPES])
+    for operator in Simple_Arithmetic_Ops] +
+  # unary plus and minus on all arithmetic types
+  [
+    (
+      BuiltinBinaryOps.Addition,
       [(lambda builder, arg: arg, [arith_t], arith_t) for arith_t in SLEEPY_NUMERICAL_TYPES] +
       [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [SLEEPY_RAW_PTR, i], SLEEPY_RAW_PTR) for i in INT_TYPES] +
       [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [i, SLEEPY_RAW_PTR], SLEEPY_RAW_PTR) for i in INT_TYPES]
     ),
-    (BuiltinBinaryOps.Subtraction, [(lambda builder, arg, arith_t=arith_t: builder.mul(ir.Constant(arith_t.ir_type, -1), arg), [arith_t], arith_t)
-                                    for arith_t in INT_TYPES]),
-    (BuiltinBinaryOps.Subtraction, [(lambda builder, arg, arith_t=arith_t: builder.fmul(ir.Constant(arith_t.ir_type, -1), arg), [arith_t], arith_t)
-                                    for arith_t in FLOAT_TYPES]),
-    (BuiltinBinaryOps.Subtraction, [(lambda builder, lhs, rhs: builder.gep(lhs, (builder.mul(ir.Constant(arith_t.ir_type, -1), rhs),)), [SLEEPY_RAW_PTR, arith_t], SLEEPY_RAW_PTR)  # noqa
-      for arith_t in INT_TYPES])]  # noqa
-     +  # unary plus and minus on all arithmetic types
-        [(operator, [(Instructions[(operator, comp_t)], [comp_t, comp_t], SLEEPY_BOOL) for comp_t in COMPARABLE_TYPES])
-   for operator in Simple_Comparison_Ops] +  # comparisons on all types except void and char
-        [(operator, [(lambda builder, lhs, rhs, op=operator: builder.icmp_unsigned(op.value, lhs, rhs), [SLEEPY_CHAR, SLEEPY_CHAR], SLEEPY_BOOL)])
-   for operator in [BuiltinBinaryOps.Equality, BuiltinBinaryOps.Inequality]] +
-        [(BuiltinBinaryOps.BitwiseOr, [(IRBuilder.or_, [int_t, int_t], int_t) for int_t in INT_TYPES])] +  # bitwise_or on integer types
-        [(BuiltinBinaryOps.Mod, [(IRBuilder.srem, [int_t, int_t], int_t) for int_t in INT_TYPES])]  # modulo on integer types
-  )
+    (
+      BuiltinBinaryOps.Subtraction,
+      [
+        (lambda builder, arg, arith_t=arith_t: builder.mul(ir.Constant(arith_t.ir_type, -1), arg), [arith_t], arith_t)
+        for arith_t in INT_TYPES]),
+    (
+      BuiltinBinaryOps.Subtraction,
+      [
+        (lambda builder, arg, arith_t=arith_t: builder.fmul(ir.Constant(arith_t.ir_type, -1), arg), [arith_t], arith_t)
+        for arith_t in FLOAT_TYPES]),
+    (
+      BuiltinBinaryOps.Subtraction,
+      [
+        (
+          lambda builder, lhs, rhs: builder.gep(lhs, (builder.mul(ir.Constant(arith_t.ir_type, -1), rhs),)),
+          [SLEEPY_RAW_PTR, arith_t], SLEEPY_RAW_PTR)
+        for arith_t in INT_TYPES])] +
+  # comparisons on all types except void and char
+  [
+    (operator, [(Instructions[(operator, comp_t)], [comp_t, comp_t], SLEEPY_BOOL) for comp_t in COMPARABLE_TYPES])
+    for operator in Simple_Comparison_Ops] +
+  # equality / inequality
+  [
+    (
+      operator, [(
+        lambda builder, lhs, rhs, op=operator: builder.icmp_unsigned(op.value, lhs, rhs),
+        [SLEEPY_CHAR, SLEEPY_CHAR], SLEEPY_BOOL)])
+    for operator in [BuiltinBinaryOps.Equality, BuiltinBinaryOps.Inequality]] +
+  # bitwise_or on integer types
+  [(BuiltinBinaryOps.BitwiseOr, [(IRBuilder.or_, [int_t, int_t], int_t) for int_t in INT_TYPES])] +
+  # modulo on integer types
+  [(BuiltinBinaryOps.Mod, [(IRBuilder.srem, [int_t, int_t], int_t) for int_t in INT_TYPES])])
 
 
 def make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
@@ -2362,19 +2399,17 @@ def make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
       function_symbol.add_signature(signature)
 
 
-def make_function_signature(instruction: Callable[..., ir.Instruction],
-                            op_placeholder_templ_types: Union[Tuple[PlaceholderTemplateType], List[PlaceholderTemplateType]],
+def make_function_signature(instruction: Callable[..., ir.values.Value],
+                            op_placeholder_templ_types: Union[Tuple[PlaceholderTemplateType], List[PlaceholderTemplateType]],  # noqa
                             op_arg_types: List[Type], op_return_type: Type, emits_ir: bool) -> FunctionTemplate:
   assert len(op_arg_types) in {1, 2}
   unary: bool = len(op_arg_types) == 1
   op_arg_identifiers = ['arg'] if unary else ['lhs', 'rhs']
   assert len(op_arg_types) == len(op_arg_identifiers)
-  # ir_func will be set in build_initial_module_ir
-  #factory = InbuiltOpConcreteFuncFactory(instruction, emits_ir=emits_ir)
-
-  signature = BuiltinOperationFunctionTemplate(placeholder_template_types=list(op_placeholder_templ_types), return_type=op_return_type,
-                               arg_identifiers=op_arg_identifiers, arg_types=op_arg_types,
-                               arg_type_narrowings=op_arg_types, instruction=instruction, emits_ir=emits_ir)
+  signature = BuiltinOperationFunctionTemplate(
+    placeholder_template_types=list(op_placeholder_templ_types), return_type=op_return_type,
+    arg_identifiers=op_arg_identifiers, arg_types=op_arg_types, arg_type_narrowings=op_arg_types,
+    instruction=instruction, emits_ir=emits_ir)
 
   return signature
 

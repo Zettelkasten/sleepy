@@ -12,12 +12,15 @@ def covert_program(input_program: str):
   result = replace(input_program, replacements)
   print(result)
 
+
 def walk_ast(ast: AbstractSyntaxTree, input_program: str) -> List[Tuple[slice, str]]:
   if isinstance(ast, FunctionDeclarationAst):
 
     arg_list_str = ''
     for identifier, arg_type, annotations in zip(ast.arg_identifiers, ast.arg_types, ast.arg_annotations):
-      arg_list_str += f'{annotations_to_string(annotations)}{identifier}: {input_program[arg_type.pos.from_pos:arg_type.pos.to_pos-1]}, '
+      arg_list_str += (
+        f'{annotations_to_string(annotations)}{identifier}: '
+        f'{input_program[arg_type.pos.from_pos:arg_type.pos.to_pos-1]}, ')
 
     arg_list_str = arg_list_str[:-2] if len(ast.arg_identifiers) > 0 else arg_list_str
 
@@ -25,11 +28,12 @@ def walk_ast(ast: AbstractSyntaxTree, input_program: str) -> List[Tuple[slice, s
     keyword = 'extern_func' if ast.is_extern else 'func'
     signature: str = f'{keyword} {ast.identifier}({arg_list_str}) '
     if ast.return_type is not None:
-      return_decl = f'-> {annotations_to_string(ast.return_annotation_list)} {input_program[ast.return_type.pos.from_pos:ast.return_type.pos.to_pos]}'
+      return_decl = (
+        f'-> {annotations_to_string(ast.return_annotation_list)} '
+        f'{input_program[ast.return_type.pos.from_pos:ast.return_type.pos.to_pos]}')
     else:
       return_decl = ''
     signature_end = ';' if ast.is_extern else ''
-
 
     at = trim_whitespace(input_program, slice(ast.pos.from_pos, ast.pos.to_pos))
 
@@ -40,6 +44,7 @@ def walk_ast(ast: AbstractSyntaxTree, input_program: str) -> List[Tuple[slice, s
 
 def annotations_to_string(annotations: List[AnnotationAst]) -> str:
   return ' '.join([f'@{a.identifier}' for a in annotations]) + ' ' if len(annotations) > 0 else ''
+
 
 if __name__ == "__main__":
   with open("../../usage_examples/opengl.slp") as program_file:

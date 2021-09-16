@@ -1,23 +1,18 @@
 from __future__ import annotations
-
-# Operator precedence: * / stronger than + - stronger than == != < <= > >=
 from typing import List, Optional
+from abc import ABC, abstractmethod
 
 from llvmlite import ir
 
 from sleepy.errors import SemanticError
 from sleepy.grammar import TreePosition
 from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, \
-  TypeSymbol, \
-  StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
+  TypeSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, PlaceholderTemplateType, TypeFactory, \
-  try_infer_templ_types, Symbol, \
-  FunctionSymbolCaller, PointerType
+  SLEEPY_CHAR_PTR, PlaceholderTemplateType, TypeFactory, try_infer_templ_types, Symbol, FunctionSymbolCaller
 
+# Operator precedence: * / stronger than + - stronger than == != < <= > >=
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
-from abc import ABC, abstractmethod
-
 
 
 class AbstractSyntaxTree(ABC):
@@ -175,6 +170,7 @@ class AbstractSyntaxTree(ABC):
     :param SymbolTable symbol_table:
     :rtype: Type
     """
+    del symbol_table  # not needed, just to keep API consistent
     if not isinstance(parent_type, StructType):
       self.raise_error(
         'Cannot access a member variable %r of the non-struct type %r' % (member_identifier, parent_type))
@@ -725,6 +721,7 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
   def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
     return False
 
+  # noinspection PyTypeChecker
   def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> Optional[ir.values.Value]:
     """
     :param SymbolTable symbol_table:

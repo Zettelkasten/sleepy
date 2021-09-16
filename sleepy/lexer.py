@@ -7,6 +7,7 @@ from sleepy.regex import make_regex_dfa
 State = Union[int, ERROR_STATE]
 Comp_State = Tuple[State]
 
+
 class LexerGenerator:
   """
   Implements a backtracking DFA.
@@ -31,7 +32,7 @@ class LexerGenerator:
     assert all(dfa.initial_state not in dfa.final_states for dfa in self._automatons), (
       'all regex must not recognize the empty word')
     self._initial_state = tuple(dfa.initial_state for dfa in self._automatons)
-    self._final_states: Dict[Comp_State,str] = {}
+    self._final_states: Dict[Comp_State, str] = {}
     self._make_final_states()
 
   @classmethod
@@ -56,7 +57,9 @@ class LexerGenerator:
       return ERROR_STATE
     next_state = self.transition_table.get((state, char))
     if next_state is None:
-      next_state = tuple(dfa.get_next_state(state[i], char) for i, dfa in enumerate(self._automatons))
+      # noinspection PyTypeChecker
+      next_state = tuple(
+        dfa.get_next_state(state[i], char) for i, dfa in enumerate(self._automatons))  # type: Tuple[Optional[str]]
       self.transition_table[(state, char)] = next_state
 
     if all(dfa_state == ERROR_STATE for dfa_state in next_state):
@@ -79,8 +82,8 @@ class LexerGenerator:
     Compute and set `_final_states`.
     """
     self._final_states.clear()
-    states_to_check: Set[Tuple[Union[int,ERROR_STATE]]] = {self._initial_state}
-    visited_states: Set[Tuple[Union[int,ERROR_STATE]]] = set()
+    states_to_check: Set[Tuple[Union[int, ERROR_STATE]]] = {self._initial_state}
+    visited_states: Set[Tuple[Union[int, ERROR_STATE]]] = set()
     while len(states_to_check) >= 1:
       state = states_to_check.pop()
       if state in visited_states:

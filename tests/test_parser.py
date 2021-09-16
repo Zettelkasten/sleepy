@@ -2,7 +2,7 @@ import _setup_test_env  # noqa
 import sys
 import unittest
 import better_exchook
-from nose.tools import assert_equal, assert_raises, assert_equals
+from nose.tools import assert_equal, assert_raises
 
 from sleepy.errors import ParseError
 from sleepy.lexer import LexerGenerator
@@ -32,21 +32,21 @@ def test_AttributeGrammar_syn():
   )
   attr_g = AttributeGrammar(
     g,
-    syn_attrs = {'res'},
-    prod_attr_rules = [
+    syn_attrs={'res'},
+    prod_attr_rules=[
       {'res.0': lambda res: res(1) + res(3)},
       {'res.0': lambda: 0},
       {'res.0': lambda res: res(1)}
     ],
-    terminal_attr_rules = {
+    terminal_attr_rules={
       'digit': {'res.0': lambda word: int(word)}
     }
   )
   assert_equal(attr_g.attrs, {'res'})
   assert_equal(attr_g.syn_attrs, {'res'})
   assert_equal(attr_g.inh_attrs, set())
-  assert_equal(attr_g.get_terminal_syn_attr_eval('digit', 6), {'res': 6})
-  assert_equal(attr_g.get_terminal_syn_attr_eval('zero', 0), {})
+  assert_equal(attr_g.get_terminal_syn_attr_eval('digit', '6'), {'res': 6})
+  assert_equal(attr_g.get_terminal_syn_attr_eval('zero', '0'), {})
   assert_equal(attr_g.eval_prod_syn_attr(g.prods[0], {}, [{'res': 4}, {}, {'res': 7}]), {'res': 4 + 7})
   assert_equal(attr_g.eval_prod_syn_attr(g.prods[2], {}, [{'res': 8}]), {'res': 8})
   assert_equal(attr_g.eval_prod_syn_attr(g.prods[1], {}, [{}]), {'res': 0})
@@ -64,12 +64,12 @@ def test_get_line_col_from_pos():
   print(error)
   assert_equal((line, col, context_lines), (2, 5, {1: 'fine', 2: 'bad X bad', 3: 'fine2'}))
 
-  word, pos = '\n'.join(['line%s' % l for l in range(1, 13)]), 6 * 3 + 2
+  word, pos = '\n'.join(['line%s' % line for line in range(1, 13)]), 6 * 3 + 2
   line, col, context_lines = get_line_col_from_pos(
     word, error_pos=pos, num_before_context_lines=1, num_after_context_lines=1)
   error = ParseError(word, pos, 'Another sample error message')
   print(error)
-  assert_equal((line, col, context_lines), (4, 3, {l: 'line%s' % l for l in range(3, 6)}))
+  assert_equal((line, col, context_lines), (4, 3, {line: 'line%s' % line for line in range(3, 6)}))
 
 
 def test_make_first1_sets():
@@ -548,7 +548,6 @@ def test_ParserGenerator_simple_ast():
   assert isinstance(ast1, ConstantAst)
   assert ast1.pos == TreePosition(word, 0, 1)
   assert ast1.num == 1
-
 
 
 if __name__ == "__main__":

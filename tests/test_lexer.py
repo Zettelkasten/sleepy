@@ -70,23 +70,29 @@ def test_LexerGenerator_comments():
       'name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, 'name', IGNORED_TOKEN, '=', IGNORED_TOKEN,
       'const', ';'),
     (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)))
-  assert_equal(lexer.tokenize('a = 5; /* set a to 5 */\na = 6;'),
-    (('name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, 'name',
-      IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';'),
-    (0, 1, 2, 3, 4, 5, 6, 7, 23, 24, 25, 26, 27, 28, 29)))
-  assert_equal(lexer.tokenize('a = 5; /* set a to 5 */\na = 6; /* and an extra comment */'),
-    (('name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, 'name',
-      IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN),
-    (0, 1, 2, 3, 4, 5, 6, 7, 23, 24, 25, 26, 27, 28, 29, 30, 31)))
+  assert_equal(
+    lexer.tokenize('a = 5; /* set a to 5 */\na = 6;'),
+    (
+      (
+        'name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, 'name',
+        IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';'),
+      (0, 1, 2, 3, 4, 5, 6, 7, 23, 24, 25, 26, 27, 28, 29)))
+  assert_equal(
+    lexer.tokenize('a = 5; /* set a to 5 */\na = 6; /* and an extra comment */'),
+    (
+      (
+        'name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, 'name',
+        IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN),
+      (0, 1, 2, 3, 4, 5, 6, 7, 23, 24, 25, 26, 27, 28, 29, 30, 31)))
   print(lexer.tokenize('a = 5; /* set a to 5 */\na = 6; // now set it to 6\n/* more\nand more */ b = 3;'))
   assert_equal(
     lexer.tokenize('a = 5; /* set a to 5 */\na = 6; // now set it to 6\n/* more\nand more */ b = 3;'),
-    ((
-      'name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, 'name',
-      IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN,
-      'name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';'),
-    (0, 1, 2, 3, 4, 5, 6, 7, 23, 24, 25, 26, 27, 28, 29, 30, 31, 50, 69, 70, 71, 72, 73, 74, 75))
-  )
+    (
+      (
+        'name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, 'name',
+        IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN,
+        'name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';'),
+      (0, 1, 2, 3, 4, 5, 6, 7, 23, 24, 25, 26, 27, 28, 29, 30, 31, 50, 69, 70, 71, 72, 73, 74, 75)))
 
 
 if __name__ == "__main__":

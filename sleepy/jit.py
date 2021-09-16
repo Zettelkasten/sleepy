@@ -32,11 +32,10 @@ def make_execution_engine():
   del engine
 
 
-def compile_ir(engine, llvm_ir, optimize=True):
+def compile_ir(engine, llvm_ir):
   """
   :param ExecutionEngine engine:
   :param str|Any llvm_ir:
-  :param bool optimize:
   :rtype: llvm.ModuleRef
   """
   if not isinstance(llvm_ir, str):

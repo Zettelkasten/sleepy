@@ -1,4 +1,5 @@
-from sleepy.ast import TopLevelAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
+from sleepy.ast import TopLevelAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
+  ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   BinaryOperatorExpressionAst, IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
   StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
@@ -22,13 +23,13 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
     Production('Stmt', 'Expr', ';'): {
       'ast': lambda _pos, ast: ExpressionStatementAst(_pos, expr=ast(1))},
-    Production('Stmt', 'func', 'identifier', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {
+    Production('Stmt', 'func', 'identifier', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {  # noqa
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=identifier(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
           arg_types=type_list(5), arg_annotations=annotation_list(5), return_type=ast(7),
           return_annotation_list=annotation_list(7), body_scope=ast(8)))},
-    Production('Stmt', 'func', 'Op', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {
+    Production('Stmt', 'func', 'Op', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {  # noqa
       'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=op(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
@@ -58,7 +59,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('Stmt', 'struct', 'identifier', 'TemplateIdentifierList', '{', 'MemberList', '}'): {
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list: StructDeclarationAst(
         _pos, struct_identifier=identifier(2), templ_identifiers=identifier_list(3),
-        member_identifiers=identifier_list(5), member_types=type_list(5), member_annotations=annotation_list(5)) },
+        member_identifiers=identifier_list(5), member_types=type_list(5), member_annotations=annotation_list(5))},
     Production('Stmt', 'return', 'ExprList', ';'): {
       'ast': lambda _pos, val_list: ReturnStatementAst(_pos, return_exprs=val_list(2))},
     Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr', ';'): {
@@ -151,7 +152,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'identifier_list': lambda identifier: [identifier(2)],
       'type_list': lambda ast: [ast(4)],
       'annotation_list': lambda annotation_list: [annotation_list(1)]},
-    Production('TypedIdentifierList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', ',', 'TypedIdentifierList+'): {
+    Production('TypedIdentifierList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', ',', 'TypedIdentifierList+'): {  # noqa
       'identifier_list': lambda identifier, identifier_list: [identifier(2)] + identifier_list(7),
       'type_list': lambda ast, type_list: [ast(4)] + type_list(7),
       'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(7)},
@@ -238,6 +239,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     'hex_int': {'number': lambda value: parse_hex_int(value)}
   }
 )
+
 
 def make_program_ast(program, add_preamble=True):
   """

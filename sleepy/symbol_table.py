@@ -6,6 +6,7 @@ from typing import TypeVar, Dict, Mapping, Iterator
 K = TypeVar("K")
 V = TypeVar("V")
 
+
 class Stub(Mapping[K, V]):
   def __len__(self) -> int:
     return 0
@@ -16,7 +17,9 @@ class Stub(Mapping[K, V]):
   def __getitem__(self, key: K) -> V:
     raise KeyError()
 
+
 STUB = Stub()
+
 
 class HierarchicalDict(Mapping[K, V]):
   def __init__(self, parent: Mapping[K, V] = None, init_with: Dict[K, V] = None):

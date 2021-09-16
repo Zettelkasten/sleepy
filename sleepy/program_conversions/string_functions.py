@@ -11,11 +11,14 @@ def replace(original: str, replacements: List[Tuple[slice, str]]) -> str:
   result += original[prev:]
   return result
 
-def trim_whitespace(string: str, segment: slice):
+
+def trim_whitespace(string: str, segment: slice) -> slice:
   start = segment.start
   stop = segment.stop
   step = segment.step if segment.step is not None else 1
-  while string[start].isspace() and start < stop: start += step
-  while string[stop - 1].isspace() and stop > start: stop -= step
+  while string[start].isspace() and start < stop:
+    start += step
+  while string[stop - 1].isspace() and stop > start:
+    stop -= step
   return slice(start, stop, step)
 

@@ -7,9 +7,13 @@ import argparse
 import better_exchook
 
 import _setup_sleepy_env  # noqa
+# noinspection PyUnresolvedReferences
 from sleepy.sleepy_parser import make_program_ast
+# noinspection PyUnresolvedReferences
 from sleepy.errors import CompilerError
+# noinspection PyUnresolvedReferences
 from sleepy.jit import make_execution_engine, compile_ir, LIB_PATH
+# noinspection PyUnresolvedReferences
 from sleepy.symbols import FunctionSymbol
 import llvmlite.binding as llvm
 

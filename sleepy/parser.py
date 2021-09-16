@@ -143,7 +143,7 @@ class ParserGenerator:
     add_item_queue = initial_items.copy()
 
     state = set()
-    actions: Dict[str,_Action] = {}
+    actions: Dict[str, _Action] = {}
     next_symbols = set()
 
     while len(add_item_queue) >= 1:

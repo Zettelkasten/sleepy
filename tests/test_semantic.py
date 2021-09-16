@@ -2,11 +2,11 @@ import _setup_test_env  # noqa
 import sys
 import unittest
 import better_exchook
-from nose.tools import assert_equal, assert_raises, assert_equals, assert_almost_equal
+from nose.tools import assert_equal, assert_almost_equal
 
 from sleepy.lexer import LexerGenerator
-from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
-from sleepy.grammar import EPSILON, Production, Grammar, AttributeGrammar, SyntaxTree, IGNORED_TOKEN
+from sleepy.parser import ParserGenerator
+from sleepy.grammar import Production, Grammar, AttributeGrammar, IGNORED_TOKEN
 from sleepy.semantic import AttributeEvalGenerator
 
 
@@ -64,7 +64,8 @@ def test_AttributeEvalGenerator_check_declaredness():
 
 
 def test_AttributeEvalGenerator_typed_arithmetic():
-  import math, numpy as np
+  import math
+  import numpy as np
   lexer = LexerGenerator(
     token_names=['(', ')', '+', '-', '*', '**', '/', '[', ']', ',', 'const', 'name', IGNORED_TOKEN],
     token_regex_table=[
@@ -297,26 +298,26 @@ def test_AttributeEvalGenerator_typed_arithmetic():
   evaluate('2**2**3', 256, 'num')
   evaluate('(2**2)**3', 64, 'num')
   evaluate('(3**2+4**2)**0.5', 5, 'num')
-  evaluate('ones(4)', [1,1,1,1], 'vec')
-  evaluate('ones(4) * 5', [5,5,5,5], 'vec')
-  evaluate('ones(2) - ones(2) * 0', [1,1], 'vec')
+  evaluate('ones(4)', [1, 1, 1, 1], 'vec')
+  evaluate('ones(4) * 5', [5, 5, 5, 5], 'vec')
+  evaluate('ones(2) - ones(2) * 0', [1, 1], 'vec')
   evaluate('2 ** ones(2)', ERROR)
-  evaluate('[1 , 2 , 3]', [1,2,3], 'vec')
-  evaluate('[1, 2] + 2 * [3, 2]', [7,6], 'vec')
-  evaluate('[[1,2],[3,4]]', [[1,2],[3,4]], 'mat')
-  evaluate('[ones(2)]', [[1,1]], 'mat')
+  evaluate('[1 , 2 , 3]', [1, 2, 3], 'vec')
+  evaluate('[1, 2] + 2 * [3, 2]', [7, 6], 'vec')
+  evaluate('[[1,2],[3,4]]', [[1, 2], [3, 4]], 'mat')
+  evaluate('[ones(2)]', [[1, 1]], 'mat')
   evaluate('[ones(3), ones(4)]', ERROR)
   evaluate('zeros(0+2-2)', ERROR)
-  evaluate('[[1,0,0],[0,1,0],[0,0,1]]', [[1,0,0],[0,1,0],[0,0,1]], 'mat')
+  evaluate('[[1,0,0],[0,1,0],[0,0,1]]', [[1, 0, 0], [0, 1, 0], [0, 0, 1]], 'mat')
   evaluate('[[1,0,0],[0,1,0],[0,0,1]]+[[0,1]]', ERROR)
-  evaluate('[[1,0,0],[0,1,0],[0,0,1]]+[[1,0,0],[0,1,0],[0,0,1]]', [[2,0,0],[0,2,0],[0,0,2]], 'mat')
-  evaluate('[[1,0,0],[0,1,0],[0,0,1]]+0*[[1,0,0],[0,1,0],[0,0,1]]', [[1,0,0],[0,1,0],[0,0,1]], 'mat')
-  evaluate('[[1,0],[0,1]] ** 5', [[1,0],[0,1]], 'mat')
-  evaluate('[[0,2],[1,1]] + 3 * [[3,0],[1,1]]', [[9,2],[4,4]], 'mat')
+  evaluate('[[1,0,0],[0,1,0],[0,0,1]]+[[1,0,0],[0,1,0],[0,0,1]]', [[2, 0, 0], [0, 2, 0], [0, 0, 2]], 'mat')
+  evaluate('[[1,0,0],[0,1,0],[0,0,1]]+0*[[1,0,0],[0,1,0],[0,0,1]]', [[1, 0, 0], [0, 1, 0], [0, 0, 1]], 'mat')
+  evaluate('[[1,0],[0,1]] ** 5', [[1, 0], [0, 1]], 'mat')
+  evaluate('[[0,2],[1,1]] + 3 * [[3,0],[1,1]]', [[9, 2], [4, 4]], 'mat')
   evaluate('[[1,0,3,-2],[3,2,1,0]] * [[2,1,0],[0,1,0],[-1,4,1],[3,2,-1]]', [[-7, 9, 5], [5, 9, 1]], 'mat')
   evaluate('2**-3', 2 ** -3, 'num')
   evaluate('2--3', 5, 'num')
-  evaluate('-[1,0]*4', [-4,0], 'vec')
+  evaluate('-[1,0]*4', [-4, 0], 'vec')
   evaluate('[1,2,3]*[1,2]', ERROR)
   evaluate('len([3,4])', 5, 'num')
   evaluate('len(4)', ERROR)

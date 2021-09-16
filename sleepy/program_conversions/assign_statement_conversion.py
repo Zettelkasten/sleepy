@@ -8,7 +8,8 @@ from sleepy.sleepy_parser import make_program_ast
 # Note: Annotation are not included in the AssignStatementAst pos, so we do not need to handle them
 def walk_ast(ast: AbstractSyntaxTree, input_program: str) -> List[Tuple[slice, str]]:
   if isinstance(ast, AssignStatementAst):
-    if ast.declared_var_type is None: return []
+    if ast.declared_var_type is None:
+      return []
 
     rhs = input_program[ast.var_val.pos.from_pos:ast.var_val.pos.to_pos]
     lhs = input_program[ast.var_target.pos.from_pos:ast.var_target.pos.to_pos-1]
@@ -27,6 +28,7 @@ def covert_program(input_program: str):
   replacements = walk_ast(ast, input_program)
   result = replace(input_program, replacements)
   print(result)
+
 
 if __name__ == "__main__":
   with open("../../usage_examples/heat_simulation.slp") as program_file:

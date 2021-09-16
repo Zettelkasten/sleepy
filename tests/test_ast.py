@@ -145,7 +145,8 @@ def test_simple_mutable_assign():
 
 
 def test_nested_func_call():
-  import numpy, warnings
+  import numpy
+  import warnings
   with make_execution_engine() as engine:
     program = """
     func ball_volume(radius: Double) ->  Double  {
@@ -1135,7 +1136,7 @@ def test_union_is_operator_simple():
       return test is Double;  # should be True().
     }
     """
-    main = compile_program(engine, program, add_preamble=False, optimize=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), True)
 
 
@@ -1257,7 +1258,7 @@ def test_call_multiple_concrete_funcs_with_union_arg():
       return is_int(alpha);
     }
     """
-    main = compile_program(engine, program, optimize=False)
+    main = compile_program(engine, program)
     assert_equal(main(), False)
 
 
@@ -1570,7 +1571,7 @@ def test_templ_ternary():
       return b;
     }
     """
-    main = compile_program(engine, program, add_preamble=True, optimize=False)
+    main = compile_program(engine, program, add_preamble=True)
     assert_almost_equal(main(), 1.2)
 
 
@@ -1646,7 +1647,7 @@ def test_templ_local_var():
       return foo(i);
     }
     """
-    main = compile_program(engine, program, add_preamble=False, optimize=False)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(2), 2)
     assert_equal(main(5), 5)
 
@@ -1840,7 +1841,7 @@ def test_ptr_arithmetic():
       return magic_;
     }
     """
-    main = compile_program(engine, program, optimize=False)
+    main = compile_program(engine, program)
     assert_equal(main(1234), 1234)
 
 
@@ -1860,7 +1861,7 @@ def test_ptr_casts():
       return val1;
     }
     """
-    main = compile_program(engine, program, optimize=False)
+    main = compile_program(engine, program)
     assert_equal(main(1234), 1234)
 
 
@@ -1897,6 +1898,7 @@ def test_size_templ():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 1)
+
 
 def test_scoped_function_redefinition():
   with make_execution_engine() as engine:

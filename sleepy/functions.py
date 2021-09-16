@@ -96,8 +96,7 @@ class FunctionDeclarationAst(StatementAst):
     if func_symbol in {symbol_table.inbuilt_symbols.get(name) for name in {'assert', 'unchecked_assert'}}:
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
         self.raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier)
-    if not func_symbol.is_undefined_for_arg_types(
-        placeholder_templ_types=placeholder_templ_types, arg_types=arg_types):
+    if not func_symbol.is_undefined_for_arg_types(placeholder_templ_types=placeholder_templ_types, arg_types=arg_types):
       self.raise_error(
         'Cannot override definition of function %r with template types %r and parameter types %r, already declared:\n%s' % (  # noqa
         self.identifier, ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
@@ -167,8 +166,9 @@ class FunctionDeclarationAst(StatementAst):
     """
     return (
       'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
-      'return_type=%r, %s)' % (self.identifier, self.arg_identifiers, self.arg_types,
-      self.return_type, 'extern' if self.is_extern else self.body_scope))
+      'return_type=%r, %s)' % (
+        self.identifier, self.arg_identifiers, self.arg_types, self.return_type,
+        'extern' if self.is_extern else self.body_scope))
 
 
 class ConcreteDeclaredFunction(ConcreteFunction):
@@ -244,7 +244,8 @@ class ConcreteDeclaredFunction(ConcreteFunction):
           assert self.ast.is_extern and self.captured_symbol_table.has_extern_func(self.ast.identifier)
           self.ir_func = self.captured_symbol_table.get_extern_func(self.ast.identifier).ir_func
 
-      if self.ast.is_extern: return
+      if self.ast.is_extern:
+        return
 
       if self.ast.is_inline:
         # check symbol tables without emitting ir
@@ -278,19 +279,14 @@ class DeclaredFunctionTemplate(FunctionTemplate):
     self.captured_context = captured_context
 
   def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                              concrete_parameter_types: List[Type],
-                              concrete_narrowed_parameter_types: List[Type],
-                              concrete_return_type: Type) -> ConcreteFunction:
+                             concrete_parameter_types: List[Type],
+                             concrete_narrowed_parameter_types: List[Type],
+                             concrete_return_type: Type) -> ConcreteFunction:
     concrete_function = ConcreteDeclaredFunction(
-      signature=self,
-      ir_func=None,
-      concrete_template_types=concrete_template_arguments,
-      return_type=concrete_return_type,
-      arg_types=concrete_parameter_types,
-      arg_type_narrowings=concrete_narrowed_parameter_types,
-      ast=self.ast,
-      captured_symbol_table=self.captured_symbol_table,
-      captured_context=self.captured_context)
+      signature=self, ir_func=None, concrete_template_types=concrete_template_arguments,
+      return_type=concrete_return_type, arg_types=concrete_parameter_types,
+      arg_type_narrowings=concrete_narrowed_parameter_types, ast=self.ast,
+      captured_symbol_table=self.captured_symbol_table, captured_context=self.captured_context)
     self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     concrete_function.build_ir()
     return concrete_function

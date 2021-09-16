@@ -75,8 +75,10 @@ def parse_string(value: str) -> str:
   while pos < len(value):
     char = value[pos]
     if char == '\\':
-      if not pos + 1 < len(value): raise InvalidLiteralError("\"%s\"" % value, "Escape sequence at end of string.")
-      if not value[pos + 1] in ESCAPE_CHARACTERS: raise InvalidLiteralError("\"%s\"" % value, 'Unknown escape character.')
+      if pos + 1 >= len(value):
+        raise InvalidLiteralError("\"%s\"" % value, "Escape sequence at end of string.")
+      if value[pos + 1] not in ESCAPE_CHARACTERS:
+        raise InvalidLiteralError("\"%s\"" % value, 'Unknown escape character.')
       res.append(ESCAPE_CHARACTERS[value[pos + 1]])
       pos += 2
     else:

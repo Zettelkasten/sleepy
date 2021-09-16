@@ -136,7 +136,6 @@ class AttributeGrammar:
       Same format as `prod_attr_rules`, but with terminal name instead of productions.
     :param set[str]|None inh_attrs: names of inherited (top-down) attributes
     :param set[str]|None syn_attrs: names of synthesized (bottom-up) attributes
-    :param None|str start: start non-terminal, by default left of first production
     """
     self.grammar = grammar
     if inh_attrs is None:
