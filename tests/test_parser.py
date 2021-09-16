@@ -18,10 +18,10 @@ def test_Grammar():
     Production('S', 'A', 'b'),
     Production('A', 'a', 'a')
   )
-  assert_equal(set(g.symbols), set(['S2', 'S', 'A', 'a', 'b']))
-  assert_equal(set(g.terminals), set(['a', 'b']))
-  assert_equal(set(g.non_terminals), set(['S2', 'S', 'A']))
-  assert_equal(set(g.get_prods_for('S')), set([g.prods[1]]))
+  assert_equal(set(g.symbols), {'S2', 'S', 'A', 'a', 'b'})
+  assert_equal(set(g.terminals), {'a', 'b'})
+  assert_equal(set(g.non_terminals), {'S2', 'S', 'A'})
+  assert_equal(set(g.get_prods_for('S')), {g.prods[1]})
 
 
 def test_AttributeGrammar_syn():
@@ -81,13 +81,13 @@ def test_make_first1_sets():
     Production('O', '+'),
     Production('O', '*'),
   )
-  assert_equal(set(g.terminals), set(['0', '1', '(', ')', '+', '*']))
-  assert_equal(set(g.non_terminals), set(['S', 'O']))
+  assert_equal(set(g.terminals), {'0', '1', '(', ')', '+', '*'})
+  assert_equal(set(g.non_terminals), {'S', 'O'})
   first1 = make_first1_sets(g)
   print('first1 sets:', first1)
-  assert_equal(first1['S'], set(['0', '1', '(']))
-  assert_equal(first1['O'], set(['+', '*']))
-  assert_equal(get_first1_set_for_word(first1, ('(', 'S')), set(['(']))
+  assert_equal(first1['S'], {'0', '1', '('})
+  assert_equal(first1['O'], {'+', '*'})
+  assert_equal(get_first1_set_for_word(first1, ('(', 'S')), {'('})
 
 
 def test_make_first1_sets_epsilon():
@@ -100,10 +100,10 @@ def test_make_first1_sets_epsilon():
   )
   first1 = make_first1_sets(g)
   print('first1 sets:', first1)
-  assert_equal(first1['A'], set([EPSILON, 'a']))
-  assert_equal(first1['B'], set([EPSILON, 'a', 'b']))
-  assert_equal(first1['S'], set([EPSILON, 'a', 'b']))
-  assert_equal(get_first1_set_for_word(first1, ('B', 'c')), set(['a', 'b', 'c']))
+  assert_equal(first1['A'], {EPSILON, 'a'})
+  assert_equal(first1['B'], {EPSILON, 'a', 'b'})
+  assert_equal(first1['S'], {EPSILON, 'a', 'b'})
+  assert_equal(get_first1_set_for_word(first1, ('B', 'c')), {'a', 'b', 'c'})
 
 
 def test_ParserGenerator_simple():
