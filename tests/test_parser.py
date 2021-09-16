@@ -9,6 +9,7 @@ from sleepy.grammar import EPSILON, Production, Grammar, AttributeGrammar, Synta
 from sleepy.semantic import AttributeEvalGenerator
 
 
+# noinspection PyPep8Naming
 def test_Grammar():
   g = Grammar(
     Production('S2', 'S'),
@@ -21,6 +22,7 @@ def test_Grammar():
   assert_equal(set(g.get_prods_for('S')), {g.prods[1]})
 
 
+# noinspection PyPep8Naming
 def test_AttributeGrammar_syn():
   g = Grammar(
     Production('S', 'S', '+', 'S'),
@@ -103,6 +105,7 @@ def test_make_first1_sets_epsilon():
   assert_equal(get_first1_set_for_word(first1, ('B', 'c')), {'a', 'b', 'c'})
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_simple():
   g = Grammar(
     Production('S2', 'S'),
@@ -119,6 +122,7 @@ def test_ParserGenerator_simple():
     parser.parse_analysis('aa', ['a', 'a'], [0, 1])
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_simple_left_recursive():
   g = Grammar(
     Production('S2', 'S'),
@@ -134,6 +138,7 @@ def test_ParserGenerator_simple_left_recursive():
     parser.parse_analysis('', [], [])
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_simple_left_recursive_epsilon():
   g = Grammar(
     Production('S2', 'S'),
@@ -147,6 +152,7 @@ def test_ParserGenerator_simple_left_recursive_epsilon():
         'a' * count, ['a'] * count, list(range(count))), (g.prods[0],) + count * (g.prods[1],) + (g.prods[2],))
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_simple_lookahead():
   g = Grammar(
     Production('S2', 'S'),
@@ -160,6 +166,7 @@ def test_ParserGenerator_simple_lookahead():
     parser.parse_analysis('ba', ['b', 'a'], [0, 1])
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_cfg():
   g = Grammar(
     Production('Grammar', 'Decl'),
@@ -185,6 +192,7 @@ def test_ParserGenerator_cfg():
   print('right-most analysis:', analysis)
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_cfg_with_lexer():
   g = Grammar(
     Production('Grammar', 'Decl'),
@@ -206,6 +214,7 @@ def test_ParserGenerator_cfg_with_lexer():
   print('right-most analysis:', analysis)
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_arithmetic():
   # left associative, with operator precedence
   op_plus = Production('Sum', 'Sum', '+', 'Prod')
@@ -267,6 +276,7 @@ def test_ParserGenerator_arithmetic():
   evaluate('4/2-1')
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_arithmetic_syn():
   import math
   lexer = LexerGenerator(
@@ -330,6 +340,7 @@ def test_ParserGenerator_arithmetic_syn():
     evaluate(word)
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_regex():
   from sleepy.regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_LIT_ANY_OP, REGEX_CHOICE_OP, \
     REGEX_LITS_SINGLE_OP, REGEX_LITS_MULTIPLE_OP, REGEX_CONCAT_OP, REGEX_OPTIONAL_OP, REGEX_RANGE_OP, \
@@ -398,6 +409,7 @@ def test_ParserGenerator_regex():
   evaluate('[4-2]', set())
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_attr_syn():
   g = Grammar(
       Production('A', 'S'),
@@ -446,6 +458,7 @@ def test_ParserGenerator_attr_syn():
   assert_equal(tree_attr_eval, {'res': 5 + 7})
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_parse_tree_epsilon():
   g = Grammar(
     Production('S', 'A'),
@@ -466,6 +479,7 @@ def test_ParserGenerator_parse_tree_epsilon():
       g.prods[3], None))))))
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_parse_tree_epsilon2():
   g = Grammar(
     Production('TopLevelExpr', 'ExprList'),
@@ -482,6 +496,7 @@ def test_ParserGenerator_parse_tree_epsilon2():
   print(parser.parse_tree(word, tokens, tokens_pos))
 
 
+# noinspection PyPep8Naming
 def test_ParserGenerator_simple_ast():
   class Ast:
     def __init__(self, pos):

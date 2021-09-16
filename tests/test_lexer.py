@@ -6,6 +6,7 @@ from sleepy.grammar import IGNORED_TOKEN
 from sleepy.lexer import LexerGenerator
 
 
+# noinspection PyPep8Naming
 def test_LexerGenerator_simple():
   lexer = LexerGenerator(['1', '2', '3'], ['a+', 'a+b', 'b'])
   assert_equal(lexer.tokenize('aabab'), (('2', '2'), (0, 3)))
@@ -16,6 +17,7 @@ def test_LexerGenerator_simple():
     lexer.tokenize('abc')
 
 
+# noinspection PyPep8Naming
 def test_LexerGenerator_arithmetic():
   lexer = LexerGenerator(
     ['Func', 'Lit', 'Name', 'Op'], ['sin|cos|tan|exp', '[0-9]+', '([a-z]|[a-Z])([a-z]|[a-Z]|[0-9])*', '[\\+\\-\\*/]'])
@@ -25,6 +27,7 @@ def test_LexerGenerator_arithmetic():
   assert_equal(lexer.tokenize('index4/2'), (('Name', 'Op', 'Lit'), (0, 6, 7)))
 
 
+# noinspection PyPep8Naming
 def test_LexerGenerator_deleted_tokens():
   lexer = LexerGenerator(
     ['keyword', '=', 'op', ';', '(', ')', '{', '}', 'name', 'const', IGNORED_TOKEN], [
@@ -47,6 +50,7 @@ def test_LexerGenerator_deleted_tokens():
       (0, 3, 4, 10, 11, 12, 13, 14)))
 
 
+# noinspection PyPep8Naming
 def test_LexerGenerator_comments():
   lexer = LexerGenerator(
     [IGNORED_TOKEN, 'keyword', '=', ';', 'name', 'const', IGNORED_TOKEN], [

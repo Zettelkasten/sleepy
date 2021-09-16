@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Dict, Optional, List, Tuple, Set, Union, Callable
 
+import typing
 from llvmlite import ir
 from llvmlite.binding import ExecutionEngine
 from llvmlite.ir import IRBuilder, Value
@@ -684,7 +685,7 @@ class StructType(Type):
     self._constructor: Optional[FunctionSymbol] = None
     if self.has_templ_placeholder():
       self.ir_val_type = None
-      self.c_val_type = None
+      self.c_val_type: Optional[typing.Type] = None
       super().__init__(None, pass_by_ref=pass_by_ref, c_type=None, constructor=constructor)
     else:  # default case
       assert not self.has_templ_placeholder()
@@ -693,10 +694,11 @@ class StructType(Type):
       member_c_types = [
         (member_identifier, member_type.c_type)
         for member_identifier, member_type in zip(member_identifiers, member_types)]
-      self.c_val_type = type('%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
+      self.c_val_type: Optional[typing.Type] = type(
+        '%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
       if pass_by_ref:
         super().__init__(
-          ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type),
+          ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type),  # noqa
           constructor=constructor)
       else:
         super().__init__(self.ir_val_type, pass_by_ref=False, c_type=self.c_val_type, constructor=constructor)
@@ -731,8 +733,9 @@ class StructType(Type):
     assert context.emits_ir
     if self.is_pass_by_ref():  # use malloc
       assert context.ir_func_malloc is not None
+      assert self.c_val_type is not None
       self_ir_alloca_raw = context.builder.call(
-        context.ir_func_malloc, [make_ir_size(ctypes.sizeof(self.c_val_type))], name='self_raw_ptr')
+        context.ir_func_malloc, [make_ir_size(ctypes.sizeof(self.c_val_type))], name='self_raw_ptr')  # noqa
       return context.builder.bitcast(self_ir_alloca_raw, self.ir_type, name='self')
     else:  # pass by value, use alloca
       return context.alloca_at_entry(self.ir_type, name='self')
@@ -2430,10 +2433,10 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
     return None
   templ_type_replacements: Dict[PlaceholderTemplateType, Type] = {}
 
-  def check_deep_type_contains(type: Type, contains: Type) -> bool:
+  def check_deep_type_contains(in_type: Type, contains: Type) -> bool:
     return any(
       can_implicit_cast_to(child, contains) or check_deep_type_contains(child, contains=contains)
-      for child in type.templ_types)
+      for child in in_type.templ_types)
 
   def infer_type(calling_type: Type, signature_type: Type) -> bool:
     calling_type = calling_type.replace_types(templ_type_replacements)

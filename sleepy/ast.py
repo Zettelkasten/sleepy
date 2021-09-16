@@ -1055,10 +1055,10 @@ class IdentifierExpressionAst(ExpressionAst):
   def get_func_symbol(self, symbol_table: SymbolTable) -> FunctionSymbol:
     symbol = self.get_symbol(symbol_table=symbol_table)
     if isinstance(symbol, TypeSymbol):
-      type = self.make_as_type(symbol_table=symbol_table)
-      if type.constructor is None:
-        self.raise_error('Cannot call non-existing constructor of type %r' % type)
-      symbol = type.constructor
+      symbol_type = self.make_as_type(symbol_table=symbol_table)
+      if symbol_type.constructor is None:
+        self.raise_error('Cannot call non-existing constructor of type %r' % symbol_type)
+      symbol = symbol_type.constructor
     if not isinstance(symbol, FunctionSymbol):
       self.raise_error('Cannot reference a non-function %r, got a %s' % (self.identifier, symbol.kind))
     return symbol

@@ -7,6 +7,7 @@ from sleepy.grammar import Production, Grammar, AttributeGrammar, IGNORED_TOKEN
 from sleepy.semantic import AttributeEvalGenerator
 
 
+# noinspection PyPep8Naming
 def test_AttributeEvalGenerator_check_declaredness():
   lexer = LexerGenerator(
     [';', '=', 'const', 'name'],
@@ -60,6 +61,7 @@ def test_AttributeEvalGenerator_check_declaredness():
     {'decl_s': {'alpha', 'beta', 'gamma', 'delta'}, 'ok': True})
 
 
+# noinspection PyPep8Naming
 def test_AttributeEvalGenerator_typed_arithmetic():
   import math
   import numpy as np

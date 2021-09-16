@@ -7,8 +7,8 @@ def parse_ast(program: str, add_preamble=True) -> TopLevelAst:
   print('---- input program:')
   print(program)
   tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
-  analysis, eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
-  ast = eval['ast']
+  analysis, program_eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
+  ast = program_eval['ast']
   assert isinstance(ast, TopLevelAst)
   if add_preamble:
     ast = add_preamble_to_ast(ast)
