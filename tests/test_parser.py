@@ -418,7 +418,7 @@ def test_ParserGenerator_attr_syn():
       {'res.0': lambda res: res(1)}
     ],
     terminal_attr_rules={
-      'digit': {'res.0': int}
+      'digit': {'res.0': lambda value_: int(value_)}
     }
   )
   assert_equal(attr_g.attrs, {'res'})
