@@ -1184,6 +1184,12 @@ class ConcreteFunction:
         }, is_distinct=True)
       self.ir_func.set_metadata('dbg', self.di_subprogram)
 
+  # noinspection PyTypeChecker
+  def make_inline_func_call_ir(self, ir_func_args: List[ir.Value],
+                               caller_context: CodegenContext) -> ir.instructions.Instruction:
+    assert self.is_inline
+    assert False, 'not implemented!'
+
 
 class ConcreteBuiltinOperationFunction(ConcreteFunction):
   def __init__(self,
@@ -1971,14 +1977,13 @@ def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
     assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
     assert len(concrete_func.arg_types) == len(calling_arg_types)
     casted_ir_args = [make_implicit_cast_to_ir_val(
-      from_type=called_arg_type, to_type=declared_arg_type, from_ir_val=ir_func_arg, context=caller_context,
+      from_type=called_arg_type, to_type=declared_arg_type, from_ir_val=ir_func_arg_, context=caller_context,
       name='call_arg_%s_cast' % arg_identifier)
-      for arg_identifier, ir_func_arg, called_arg_type, declared_arg_type in zip(
+      for arg_identifier, ir_func_arg_, called_arg_type, declared_arg_type in zip(
         concrete_func.arg_identifiers, calling_ir_args, concrete_calling_arg_types_, concrete_func.arg_types)]
     assert len(calling_ir_args) == len(casted_ir_args)
     if concrete_func.is_inline:
       assert concrete_func not in caller_context.inline_func_call_stack
-      assert callable(concrete_func.make_inline_func_call_ir)
       return concrete_func.make_inline_func_call_ir(ir_func_args=casted_ir_args, caller_context=caller_context)
     else:
       ir_func = concrete_func.ir_func
@@ -2215,6 +2220,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   return raw_ptr_symbol
 
 
+# noinspection PyUnusedLocal
 def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> FunctionSymbol:
   del symbol_table  # only to keep API consistent
   del context

@@ -163,6 +163,7 @@ class AbstractSyntaxTree(ABC):
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
     return return_ir_val
 
+  # noinspection PyUnusedLocal
   def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
     """
     :param Type parent_type:

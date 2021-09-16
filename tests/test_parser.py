@@ -1,7 +1,4 @@
 import _setup_test_env  # noqa
-import sys
-import unittest
-import better_exchook
 from nose.tools import assert_equal, assert_raises
 
 from sleepy.errors import ParseError
@@ -316,16 +313,16 @@ def test_ParserGenerator_arithmetic_syn():
   )
   parser = ParserGenerator(g)
 
-  def evaluate(word):
+  def evaluate(word_):
     print('----')
-    print('input word:', word)
-    tokens, tokens_pos = lexer.tokenize(word)
+    print('input word:', word_)
+    tokens, tokens_pos = lexer.tokenize(word_)
     print('tokens:', tokens, 'with decomposition', tokens_pos)
-    analysis, result = parser.parse_syn_attr_analysis(attr_g, word, tokens, tokens_pos)
+    analysis, result = parser.parse_syn_attr_analysis(attr_g, word_, tokens, tokens_pos)
     print('result:', result['res'])
     # import common operator names for python eval()
     sin, cos, tan, exp, sqrt = math.sin, math.cos, math.tan, math.exp, math.sqrt  # noqa
-    assert_equal(result['res'], eval(word))
+    assert_equal(result['res'], eval(word_))
 
   for word in [
     '1*2+3', '5-3', '(1+2)*3', '1+2+3', '1+2-3', '1-2+3', '3-2-1', '1*2+3*4', '4/2-1', 'sin(3.1415)', '2**2**3',
@@ -421,7 +418,7 @@ def test_ParserGenerator_attr_syn():
       {'res.0': lambda res: res(1)}
     ],
     terminal_attr_rules={
-      'digit': {'res.0': lambda word: int(word)}
+      'digit': {'res.0': int}
     }
   )
   assert_equal(attr_g.attrs, {'res'})

@@ -1,7 +1,4 @@
 import _setup_test_env  # noqa
-import sys
-import unittest
-import better_exchook
 from nose.tools import assert_equal, assert_raises
 
 from sleepy.errors import LexError
@@ -58,7 +55,7 @@ def test_make_regex_nfa_and_dfa():
   nfa3 = make_regex_nfa('(file|https?)://(www\\.)?github\\.(com|de)?')
   dfa3 = make_dfa_from_nfa(nfa3)
   test_nfa_dfa_equal(nfa3, dfa3, 'file://www.github.com', True)
-  test_nfa_dfa_equal(nfa3, dfa3, 'http://www.github.com', True)
+  test_nfa_dfa_equal(nfa3, dfa3, 'http://www.github.com', True)  # noqa  # PyCharm complains about http here xD
   test_nfa_dfa_equal(nfa3, dfa3, 'https://github.de', True)
   test_nfa_dfa_equal(nfa3, dfa3, 'https://github', False)
   test_nfa_dfa_equal(nfa3, dfa3, 'files://github.com', False)

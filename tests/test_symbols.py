@@ -1,7 +1,4 @@
 import _setup_test_env  # noqa
-import better_exchook
-import sys
-import unittest
 
 from nose.tools import assert_equal
 

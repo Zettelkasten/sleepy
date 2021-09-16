@@ -1,7 +1,4 @@
 import _setup_test_env  # noqa
-import better_exchook
-import sys
-import unittest
 
 from tests.run_examples_dir import make_example_cases
 

@@ -1,9 +1,6 @@
 import os
 
 import _setup_test_env  # noqa
-import better_exchook
-import sys
-import unittest
 
 
 def _test_compile_example(code_file_name):
