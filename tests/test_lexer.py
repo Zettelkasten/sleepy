@@ -93,29 +93,3 @@ def test_LexerGenerator_comments():
         IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN,
         'name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';'),
       (0, 1, 2, 3, 4, 5, 6, 7, 23, 24, 25, 26, 27, 28, 29, 30, 31, 50, 69, 70, 71, 72, 73, 74, 75)))
-
-
-if __name__ == "__main__":
-  try:
-    better_exchook.install()
-    if len(sys.argv) <= 1:
-      for k, v in sorted(globals().items()):
-        if k.startswith("test_"):
-          print("-" * 40)
-          print("Executing: %s" % k)
-          try:
-            v()
-          except unittest.SkipTest as exc:
-            print("SkipTest:", exc)
-          print("-" * 40)
-      print("Finished all tests.")
-    else:
-      assert len(sys.argv) >= 2
-      for arg in sys.argv[1:]:
-        print("Executing: %s" % arg)
-        if arg in globals():
-          globals()[arg]()  # assume function and execute
-        else:
-          eval(arg)  # assume Python code and execute
-  finally:
-    pass

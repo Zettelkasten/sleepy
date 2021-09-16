@@ -96,29 +96,3 @@ def test_make_regex_nfa_and_dfa():
   dfa9 = make_dfa_from_nfa(nfa9)
   test_nfa_dfa_equal(nfa9, dfa9, '1*2', False)
   test_nfa_dfa_equal(nfa9, dfa9, '0', True)
-
-
-if __name__ == "__main__":
-  try:
-    better_exchook.install()
-    if len(sys.argv) <= 1:
-      for k, v in sorted(globals().items()):
-        if k.startswith("test_"):
-          print("-" * 40)
-          print("Executing: %s" % k)
-          try:
-            v()
-          except unittest.SkipTest as exc:
-            print("SkipTest:", exc)
-          print("-" * 40)
-      print("Finished all tests.")
-    else:
-      assert len(sys.argv) >= 2
-      for arg in sys.argv[1:]:
-        print("Executing: %s" % arg)
-        if arg in globals():
-          globals()[arg]()  # assume function and execute
-        else:
-          eval(arg)  # assume Python code and execute
-  finally:
-    pass

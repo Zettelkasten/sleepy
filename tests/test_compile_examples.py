@@ -20,29 +20,3 @@ def test_compile_examples():
   code_file_root, code_file_names = find_all_example_files('examples')
   for code_file_name in code_file_names:
     yield _test_compile_example, os.path.join(code_file_root, code_file_name)
-
-
-if __name__ == "__main__":
-  try:
-    better_exchook.install()
-    if len(sys.argv) <= 1:
-      for k, v in sorted(globals().items()):
-        if k.startswith("test_"):
-          print("-" * 40)
-          print("Executing: %s" % k)
-          try:
-            v()
-          except unittest.SkipTest as exc:
-            print("SkipTest:", exc)
-          print("-" * 40)
-      print("Finished all tests.")
-    else:
-      assert len(sys.argv) >= 2
-      for arg in sys.argv[1:]:
-        print("Executing: %s" % arg)
-        if arg in globals():
-          globals()[arg]()  # assume function and execute
-        else:
-          eval(arg)  # assume Python code and execute
-  finally:
-    pass

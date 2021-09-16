@@ -211,29 +211,3 @@ def test_context_use_pos():
     assert context.current_pos == outer_pos
     assert context.builder.debug_metadata == make_di_location(outer_pos, context=context)
   assert context.current_pos is None
-
-
-if __name__ == "__main__":
-  try:
-    better_exchook.install()
-    if len(sys.argv) <= 1:
-      for k, v in sorted(globals().items()):
-        if k.startswith("test_"):
-          print("-" * 40)
-          print("Executing: %s" % k)
-          try:
-            v()
-          except unittest.SkipTest as exc:
-            print("SkipTest:", exc)
-          print("-" * 40)
-      print("Finished all tests.")
-    else:
-      assert len(sys.argv) >= 2
-      for arg in sys.argv[1:]:
-        print("Executing: %s" % arg)
-        if arg in globals():
-          globals()[arg]()  # assume function and execute
-        else:
-          eval(arg)  # assume Python code and execute
-  finally:
-    pass
