@@ -1709,7 +1709,11 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     if type_substitutions is None: type_substitutions = []
 
     new_table = SymbolTable(parent=self, inherit_outer_variables=inherit_outer_variables, new_function=new_function)
+    # shadow placeholder types with their concrete substitutions
     for name, t in type_substitutions:
+      existing_symbol = new_table[name]
+      assert isinstance(existing_symbol, TypeSymbol) and isinstance(existing_symbol.type_factory.signature_type, PlaceholderTemplateType)
+
       new_table[name] = TypeSymbol.make_concrete_type_symbol(t)
 
     return new_table
