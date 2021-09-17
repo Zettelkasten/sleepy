@@ -4,11 +4,11 @@ Implements a symbol table.
 from __future__ import annotations
 
 import ctypes
+import typing
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable
 
-import typing
 from llvmlite import ir
 from llvmlite.binding import ExecutionEngine
 from llvmlite.ir import IRBuilder, Value
@@ -1644,6 +1644,10 @@ class TypeSymbol(Symbol):
     self.type_factory = type_factory
     self.initialized_templ_types: Dict[Tuple[Type], Type] = {}
 
+  @staticmethod
+  def make_concrete_type_symbol(concrete_type: Type) -> TypeSymbol:
+    return TypeSymbol(TypeFactory([], concrete_type))
+
   def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> TypeSymbol:  # noqa
     """
     e.g. if replacements is T -> Int:
@@ -1672,50 +1676,51 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
-  def __init__(self, parent: Optional[SymbolTable] = None, copy_new_current_func: Optional[ConcreteFunction] = None,
-               new_variable_scope: bool = None):
+  def __init__(self, parent: Optional[SymbolTable] = None,
+               new_function: Optional[ConcreteFunction] = None,
+               inherit_outer_variables: bool = None):
     super().__init__(parent)
+
     if parent is None:
-      new_variable_scope = True
-    else:
-      assert new_variable_scope is not None
-    self.new_scope = new_variable_scope
-    if parent is None:
-      assert copy_new_current_func is None
+      # default construction
+      self.inherit_outer_variables = False # When there's no parent we can't look
       self.current_func: Optional[ConcreteFunction] = None
       self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
       self.inbuilt_symbols: Dict[str, Symbol] = {}
     else:
-      if copy_new_current_func is None:
-        self.current_func: Optional[ConcreteFunction] = parent.current_func
-      else:
-        templ_type_replacements = dict(zip(
-          copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types))
-        self.underlying_dict: Dict[str, Symbol] = {
-          identifier: symbol.copy_replace_unbound_templ_types(templ_type_replacements)
-          for identifier, symbol in parent.items()}
-        self.current_func: Optional[ConcreteFunction] = copy_new_current_func
+      assert inherit_outer_variables is not None
 
-      # do not copy known_extern_funcs, but reference back as we want those to be shared globally
-      self.known_extern_funcs: Dict[str, ConcreteFunction] = parent.known_extern_funcs
-      self.inbuilt_symbols: Dict[str, Symbol] = parent.inbuilt_symbols
+      self.inherit_outer_variables = inherit_outer_variables
+      self.current_func = parent.current_func if new_function is None else new_function
+      self.known_extern_funcs = parent.known_extern_funcs
+      self.inbuilt_symbols = parent.inbuilt_symbols
 
   @property
   def current_scope_identifiers(self) -> Set[str]:
-    if self.new_scope:
-      return set(self.underlying_dict.keys())
-    else:
+    if self.inherit_outer_variables:
       return self.underlying_dict.keys() | self.parent.current_scope_identifiers
+    else:
+      return set(self.underlying_dict.keys())
 
-  def copy(self, new_variable_scope) -> SymbolTable:
-    return SymbolTable(parent=self, new_variable_scope=new_variable_scope)
+  def make_child_scope(self, *,
+                       inherit_outer_variables: bool,
+                       type_substitutions: Optional[Iterable[Tuple[str, Type]]] = None,
+                       new_function: Optional[ConcreteFunction] = None) -> SymbolTable:
+    if type_substitutions is None: type_substitutions = []
+
+    new_table = SymbolTable(parent=self, inherit_outer_variables=inherit_outer_variables, new_function=new_function)
+    for name, t in type_substitutions:
+      new_table[name] = TypeSymbol.make_concrete_type_symbol(t)
+
+    return new_table
 
   def copy_with_new_current_func(self, new_current_func: ConcreteFunction) -> SymbolTable:
     assert new_current_func is not None
     # Since we copy all symbols from parent to child when new_current_func is given, we need to make a child of the
     # child to have a symbol tables without our symbols in its own dict
-    copy = SymbolTable(self, copy_new_current_func=new_current_func, new_variable_scope=self.new_scope)
-    return SymbolTable(copy, new_variable_scope=True)
+    copy = SymbolTable(self, new_function=new_current_func, inherit_outer_variables=self.inherit_outer_variables)
+
+    return SymbolTable(copy, inherit_outer_variables=True)
 
   def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__

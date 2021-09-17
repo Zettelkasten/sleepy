@@ -67,7 +67,7 @@ class FunctionDeclarationAst(StatementAst):
     return arg_types
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
-    func_symbol_table = symbol_table.copy(new_variable_scope=True)
+    func_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=False)
 
     placeholder_templ_types = self._collect_placeholder_templ_types(
       self.templ_identifiers, symbol_table=func_symbol_table)
@@ -117,7 +117,14 @@ class FunctionDeclarationAst(StatementAst):
   def build_body_ir(self, parent_symbol_table: SymbolTable, concrete_func: ConcreteFunction,
                     body_context: CodegenContext, ir_func_args: Optional[List[ir.values.Value]] = None):
     assert not self.is_extern
-    body_symbol_table = parent_symbol_table.copy_with_new_current_func(concrete_func)
+
+    template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_templ_types]
+    template_arguments = concrete_func.concrete_templ_types
+
+    body_symbol_table = parent_symbol_table.make_child_scope(inherit_outer_variables=False,
+                                                             new_function=concrete_func,
+                                                             type_substitutions=zip(template_parameter_names,
+                                                                                    template_arguments))
 
     # add arguments as variables
     for arg_identifier, arg_type in zip(concrete_func.arg_identifiers, concrete_func.arg_types):
