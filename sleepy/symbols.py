@@ -34,10 +34,6 @@ class Symbol(ABC):
     self.base: Symbol = self
     assert self.kind is not None
 
-  @abstractmethod
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> Symbol:
-    raise NotImplementedError()
-
   class Kind(Enum):
     """
     Possible symbol types.
@@ -1067,12 +1063,6 @@ class VariableSymbol(Symbol):
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
 
-  def copy_replace_unbound_templ_types(self,
-                                       templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> VariableSymbol:
-    assert not self.declared_var_type.has_templ_placeholder()
-    assert not self.narrowed_var_type.has_templ_placeholder()
-    return self
-
   def copy_with_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)
     new_var_symbol.base = self if self.base is None else self.base
@@ -1250,29 +1240,6 @@ class FunctionTemplate(ABC):
       self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = base.initialized_templ_funcs
     else:
       self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
-
-  def copy_replace_unbound_templ_types(self,
-                                       templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionTemplate:  # noqa
-    assert all(isinstance(key, PlaceholderTemplateType) for key in templ_type_replacements)
-    unbound_templ_type_replacements = {
-      templ_type: replacement for templ_type, replacement in templ_type_replacements.items()
-      if templ_type not in self.placeholder_templ_types}
-    return self.copy_replace_types(unbound_templ_type_replacements)
-
-  def copy_replace_types(self, type_replacements: Dict[Type, Type]) -> FunctionTemplate:
-    new_placeholder_templ_types = [
-      type_replacements.get(templ_type, templ_type) for templ_type in self.placeholder_templ_types]
-    new_placeholder_templ_types = [
-      templ_type for templ_type in new_placeholder_templ_types if isinstance(templ_type, PlaceholderTemplateType)]
-
-    from copy import copy
-    new = copy(self)
-
-    new.placeholder_templ_types = new_placeholder_templ_types
-    new.return_type = new.return_type.replace_types(type_replacements)
-    new.arg_types = [arg_type.replace_types(type_replacements) for arg_type in self.arg_types.copy()]
-
-    return new
 
   def to_signature_str(self) -> str:
     templ_args = '' if len(self.placeholder_templ_types) == 0 else '[%s]' % (
@@ -1517,19 +1484,6 @@ class FunctionSymbol(Symbol):
       base = base.base
     self.base = base
 
-  def copy_replace_unbound_templ_types(self,
-                                       templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionSymbol:
-    """
-    e.g. if replacements is T => Int:
-     - from foo(T val) -> T make foo(Int val)
-     - do not change bound variables: foo[T](T val) -> T stays the same
-    """
-    new_func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=self.returns_void, base=self)
-    new_func_symbol.signatures_by_number_of_templ_args = {
-      num_templ_args: [signature.copy_replace_unbound_templ_types(templ_type_replacements) for signature in signatures]
-      for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
-    return new_func_symbol
-
   @property
   def signatures(self) -> List[FunctionTemplate]:
     return [signature for signatures in self.signatures_by_number_of_templ_args.values() for signature in signatures]
@@ -1647,20 +1601,6 @@ class TypeSymbol(Symbol):
   @staticmethod
   def make_concrete_type_symbol(concrete_type: Type) -> TypeSymbol:
     return TypeSymbol(TypeFactory([], concrete_type))
-
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> TypeSymbol:  # noqa
-    """
-    e.g. if replacements is T -> Int:
-     - from T make Int
-     - from List[T] make List[Int]
-     - from U make U
-    """
-    new_signature_type = self.type_factory.signature_type.replace_types(replacements=templ_type_replacements)
-    new_type_factory = TypeFactory(
-      placeholder_templ_types=[
-        templ for templ in self.type_factory.placeholder_templ_types if templ not in templ_type_replacements],
-      signature_type=new_signature_type)
-    return TypeSymbol(type_factory=new_type_factory)
 
   def get_type(self, concrete_templ_types: List[Type]) -> Type:
     concrete_templ_types = tuple(concrete_templ_types)
