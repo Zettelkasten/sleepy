@@ -1921,3 +1921,20 @@ def test_scoped_function_redefinition():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 1)
+
+def test_repeated_inline_calls():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func f() {
+      func g() {}
+      g();
+    }
+    
+    
+    func main() {
+      f();
+      f();
+      f();
+    }
+    """
+    compile_program(engine, program, add_preamble=False)

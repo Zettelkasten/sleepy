@@ -259,7 +259,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
           body_context = self.captured_context.copy_with_func(self, builder=None)  # proceed without emitting ir.
         self.ast.build_body_ir(
           parent_symbol_table=self.captured_symbol_table, concrete_func=self, body_context=body_context,
-          ir_func_args=self.ir_func.args)
+          ir_func_args=self.ir_func.args if body_context.emits_ir else None)
 
 
 class DeclaredFunctionTemplate(FunctionTemplate):
