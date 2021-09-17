@@ -29,10 +29,7 @@ class AbstractSyntaxTree(ABC):
     self.pos = pos
     self.annotations: List[AnnotationAst] = []
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'AbstractSyntaxTree'
 
   def raise_error(self, message):
@@ -164,13 +161,7 @@ class AbstractSyntaxTree(ABC):
     return return_ir_val
 
   # noinspection PyUnusedLocal
-  def _make_member_val_type(self, parent_type, member_identifier, symbol_table):
-    """
-    :param Type parent_type:
-    :param str member_identifier:
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def _make_member_val_type(self, parent_type: Type, member_identifier: str, symbol_table: SymbolTable) -> Type:
     del symbol_table  # not needed, just to keep API consistent
     if not isinstance(parent_type, StructType):
       self.raise_error(
@@ -216,10 +207,7 @@ class StatementAst(AbstractSyntaxTree, ABC):
     """
     raise NotImplementedError()
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'StatementAst'
 
 
@@ -246,10 +234,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
           stmt.raise_error('Code is unreachable')
         stmt.build_ir(symbol_table=scope_symbol_table, context=scope_context)
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'AbstractScopeAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
 
   def children(self):
@@ -290,10 +275,7 @@ class TopLevelAst(AbstractSyntaxTree):
   def children(self) -> List[AbstractSyntaxTree]:
     return self.stmt_list
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'TopLevelAst(%s)' % self.stmt_list
 
 
@@ -324,10 +306,7 @@ class ExpressionStatementAst(StatementAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.expr]
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'ExpressionStatementAst(expr=%r)' % self.expr
 
 
@@ -396,10 +375,7 @@ class ReturnStatementAst(StatementAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return self.return_exprs
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'ReturnStatementAst(return_exprs=%r)' % self.return_exprs
 
 
@@ -555,10 +531,7 @@ class AssignStatementAst(StatementAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.var_target, self.var_val, self.declared_var_type]
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'AssignStatementAst(var_target=%r, var_val=%r, var_type=%r)' % (
       self.var_target, self.var_val, self.declared_var_type)
 
@@ -634,10 +607,7 @@ class IfStatementAst(StatementAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.condition_val, self.true_scope, self.false_scope]
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'IfStatementAst(condition_val=%r, true_scope=%r, false_scope=%r)' % (
       self.condition_val, self.true_scope, self.false_scope)
 
@@ -692,10 +662,7 @@ class WhileStatementAst(StatementAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.condition_val, self.body_scope]
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'WhileStatementAst(condition_val=%r, body_scope=%r)' % (self.condition_val, self.body_scope)
 
 
@@ -832,10 +799,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.left_expr, self.right_expr]
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'BinaryOperatorExpressionAst(op=%r, left_expr=%r, right_expr=%r)' % (
       self.op, self.left_expr, self.right_expr)
 
@@ -891,10 +855,7 @@ class UnaryOperatorExpressionAst(ExpressionAst):
   def make_as_type(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use result of operator %r as type' % self.op)
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'UnaryOperatorExpressionAst(op=%r, expr=%r)' % (self.op, self.expr)
 
 
@@ -941,10 +902,7 @@ class ConstantExpressionAst(ExpressionAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return []
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'ConstantExpressionAst(constant_val=%r, constant_type=%r)' % (self.constant_val, self.constant_type)
 
 
@@ -1015,10 +973,7 @@ class StringLiteralExpressionAst(ExpressionAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return []
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'StringLiteralExpressionAst(constant_str=%r)' % self.constant_str
 
 
@@ -1253,10 +1208,7 @@ class CallExpressionAst(ExpressionAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return self.func_arg_exprs
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'CallExpressionAst(func_expr=%r, func_arg_exprs=%r)' % (self.func_expr, self.func_arg_exprs)
 
 
@@ -1297,10 +1249,7 @@ class ReferenceExpressionAst(ExpressionAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.arg_expr]
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'ReferenceExpressionAst(arg_expr=%r)' % self.arg_expr
 
 
@@ -1381,10 +1330,7 @@ class MemberExpressionAst(ExpressionAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.parent_val_expr]
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'MemberExpressionAst(parent_val_expr=%r, member_identifier=%r)' % (
       self.parent_val_expr, self.member_identifier)
 
@@ -1411,7 +1357,7 @@ class TypeAst(AbstractSyntaxTree, ABC):
     """
     raise NotImplementedError()
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return 'TypeAst()'
 
 
@@ -1445,10 +1391,7 @@ class IdentifierTypeAst(TypeAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return self.templ_types
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'IdentifierType(type_identifier=%r, template_types=%r)' % (self.type_identifier, self.templ_types)
 
 
@@ -1475,10 +1418,7 @@ class UnionTypeAst(TypeAst):
   def children(self) -> List[AbstractSyntaxTree]:
     return self.variant_types
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'UnionTypeAst(variant_types=%r)' % self.variant_types
 
 
@@ -1498,10 +1438,7 @@ class AnnotationAst(AbstractSyntaxTree):
   def children(self) -> List[AbstractSyntaxTree]:
     return []
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'AnnotationAst(identifier=%r)' % self.identifier
 
 

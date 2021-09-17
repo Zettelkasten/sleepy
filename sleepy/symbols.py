@@ -62,7 +62,7 @@ class Type(ABC):
     self.c_type = c_type
     self._constructor: Optional[FunctionSymbol] = constructor
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return self.__class__.__name__
 
   @property
@@ -456,7 +456,7 @@ class UnionType(Type):
     ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
     super().__init__(ir_type, pass_by_ref=False, c_type=c_type, constructor=constructor)
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     if len(self.possible_types) == 0:
       return 'NeverType'
     return '|'.join(
@@ -768,10 +768,7 @@ class StructType(Type):
       self.__class__, self.struct_identifier, tuple(self.templ_types), tuple(self.member_identifiers),
       tuple(self.member_types), self.pass_by_ref))
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return self.struct_identifier + ('' if len(self.templ_types) == 0 else str(self.templ_types))
 
   def make_extract_member_val_ir(self, member_identifier, struct_ir_val, context):
@@ -852,7 +849,7 @@ class PlaceholderTemplateType(Type):
   def make_di_type(self, context: CodegenContext):
     assert False, self
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return self.identifier
 
   def has_templ_placeholder(self) -> bool:
@@ -1835,10 +1832,7 @@ class CodegenContext:
     assert self.builder is not None
     return self.builder.block
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'CodegenContext(builder=%r, emits_ir=%r, is_terminated=%r)' % (
       self.builder, self.emits_ir, self.is_terminated)
 

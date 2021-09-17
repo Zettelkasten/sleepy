@@ -43,7 +43,7 @@ class Production:
     assert '' not in right
     self.right: Tuple[str] = right
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return 'Production[%r -> %s]' % (self.left, ' '.join([repr(symbol) for symbol in self.right]))
 
   def __hash__(self):
@@ -468,7 +468,7 @@ class SyntaxTree:
     """
     return self.prod.left
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return 'SyntaxTree[%r -> %s]' % (
       self.left, ' '.join([
         repr(symbol if subtree is None else subtree) for symbol, subtree in zip(self.prod.right, self.right)]))
@@ -512,10 +512,7 @@ class TreePosition:
     self.from_pos = from_pos
     self.to_pos = to_pos
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return 'TreePosition(from=%r, to=%r)' % (self.from_pos, self.to_pos)
 
   def __eq__(self, other):

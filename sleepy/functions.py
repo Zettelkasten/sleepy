@@ -160,10 +160,7 @@ class FunctionDeclarationAst(StatementAst):
     return cast(List[AbstractSyntaxTree], [el for lst in self.arg_annotations for el in lst])\
            + self.arg_types + ([self.return_type] if self.return_type else [])
 
-  def __repr__(self):
-    """
-    :rtype: str
-    """
+  def __repr__(self) -> str:
     return (
       'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
       'return_type=%r, %s)' % (

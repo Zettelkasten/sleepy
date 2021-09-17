@@ -65,7 +65,7 @@ class _Item:
       return False
     return self.prod == other.prod and self.pointer == other.pointer and self.la == other.la
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return '_Item[%s -> %s, %r]' % (
       self.prod.left, ' '.join(self.prod.right[:self.pointer] + ('.',) + self.prod.right[self.pointer:]), self.la)
 
@@ -80,7 +80,7 @@ class _Action:
 
 
 class _AcceptAction(_Action):
-  def __repr__(self):
+  def __repr__(self) -> str:
     return '_AcceptAction'
 
 
@@ -91,7 +91,7 @@ class _ReduceAction(_Action):
     """
     self.prod = prod
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return '_ReduceAction[%r]' % self.prod
 
 
@@ -103,7 +103,7 @@ class _ShiftAction(_Action):
     assert symbol is not EPSILON
     self.symbol = symbol
 
-  def __repr__(self):
+  def __repr__(self) -> str:
     return '_ShiftAction[%r]' % self.symbol
 
 
