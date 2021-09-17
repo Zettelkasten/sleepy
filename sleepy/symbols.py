@@ -1658,14 +1658,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
 
     return new_table
 
-  def copy_with_new_current_func(self, new_current_func: ConcreteFunction) -> SymbolTable:
-    assert new_current_func is not None
-    # Since we copy all symbols from parent to child when new_current_func is given, we need to make a child of the
-    # child to have a symbol tables without our symbols in its own dict
-    copy = SymbolTable(self, new_function=new_current_func, inherit_outer_variables=self.inherit_outer_variables)
-
-    return SymbolTable(copy, inherit_outer_variables=True)
-
   def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__
 
