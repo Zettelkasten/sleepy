@@ -405,7 +405,8 @@ class StructDeclarationAst(StatementAst):
       if self.struct_identifier in symbol_table.current_scope_identifiers:
         self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
 
-      struct_symbol_table = symbol_table.copy(new_variable_scope=True)  # symbol table including placeholder types
+      struct_symbol_table = symbol_table.make_child_scope(
+        inherit_outer_variables=False)  # symbol table including placeholder types
       placeholder_templ_types = self._collect_placeholder_templ_types(
         self.templ_identifiers, symbol_table=struct_symbol_table)
 
@@ -560,8 +561,8 @@ class IfStatementAst(StatementAst):
       if not cond_type == SLEEPY_BOOL:
         self.raise_error('Cannot use expression of type %r as if-condition' % cond_type)
 
-      true_symbol_table, false_symbol_table = symbol_table.copy(new_variable_scope=False), symbol_table.copy(
-        new_variable_scope=False)
+      true_symbol_table, false_symbol_table = symbol_table.make_child_scope(
+        inherit_outer_variables=True), symbol_table.make_child_scope(inherit_outer_variables=True)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=true_symbol_table)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=false_symbol_table)
   
@@ -632,7 +633,7 @@ class WhileStatementAst(StatementAst):
       if not cond_type == SLEEPY_BOOL:
         self.raise_error('Cannot use expression of type %r as while-condition' % cond_type)
 
-      body_symbol_table = symbol_table.copy(new_variable_scope=False)
+      body_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=True)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=body_symbol_table)
 
       if context.emits_ir:

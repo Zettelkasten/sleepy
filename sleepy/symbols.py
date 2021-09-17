@@ -4,11 +4,11 @@ Implements a symbol table.
 from __future__ import annotations
 
 import ctypes
+import typing
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable
 
-import typing
 from llvmlite import ir
 from llvmlite.binding import ExecutionEngine
 from llvmlite.ir import IRBuilder, Value
@@ -33,10 +33,6 @@ class Symbol(ABC):
     """
     self.base: Symbol = self
     assert self.kind is not None
-
-  @abstractmethod
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> Symbol:
-    raise NotImplementedError()
 
   class Kind(Enum):
     """
@@ -1067,12 +1063,6 @@ class VariableSymbol(Symbol):
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
 
-  def copy_replace_unbound_templ_types(self,
-                                       templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> VariableSymbol:
-    assert not self.declared_var_type.has_templ_placeholder()
-    assert not self.narrowed_var_type.has_templ_placeholder()
-    return self
-
   def copy_with_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)
     new_var_symbol.base = self if self.base is None else self.base
@@ -1250,29 +1240,6 @@ class FunctionTemplate(ABC):
       self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = base.initialized_templ_funcs
     else:
       self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
-
-  def copy_replace_unbound_templ_types(self,
-                                       templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionTemplate:  # noqa
-    assert all(isinstance(key, PlaceholderTemplateType) for key in templ_type_replacements)
-    unbound_templ_type_replacements = {
-      templ_type: replacement for templ_type, replacement in templ_type_replacements.items()
-      if templ_type not in self.placeholder_templ_types}
-    return self.copy_replace_types(unbound_templ_type_replacements)
-
-  def copy_replace_types(self, type_replacements: Dict[Type, Type]) -> FunctionTemplate:
-    new_placeholder_templ_types = [
-      type_replacements.get(templ_type, templ_type) for templ_type in self.placeholder_templ_types]
-    new_placeholder_templ_types = [
-      templ_type for templ_type in new_placeholder_templ_types if isinstance(templ_type, PlaceholderTemplateType)]
-
-    from copy import copy
-    new = copy(self)
-
-    new.placeholder_templ_types = new_placeholder_templ_types
-    new.return_type = new.return_type.replace_types(type_replacements)
-    new.arg_types = [arg_type.replace_types(type_replacements) for arg_type in self.arg_types.copy()]
-
-    return new
 
   def to_signature_str(self) -> str:
     templ_args = '' if len(self.placeholder_templ_types) == 0 else '[%s]' % (
@@ -1517,19 +1484,6 @@ class FunctionSymbol(Symbol):
       base = base.base
     self.base = base
 
-  def copy_replace_unbound_templ_types(self,
-                                       templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> FunctionSymbol:
-    """
-    e.g. if replacements is T => Int:
-     - from foo(T val) -> T make foo(Int val)
-     - do not change bound variables: foo[T](T val) -> T stays the same
-    """
-    new_func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=self.returns_void, base=self)
-    new_func_symbol.signatures_by_number_of_templ_args = {
-      num_templ_args: [signature.copy_replace_unbound_templ_types(templ_type_replacements) for signature in signatures]
-      for num_templ_args, signatures in self.signatures_by_number_of_templ_args.items()}
-    return new_func_symbol
-
   @property
   def signatures(self) -> List[FunctionTemplate]:
     return [signature for signatures in self.signatures_by_number_of_templ_args.values() for signature in signatures]
@@ -1644,19 +1598,9 @@ class TypeSymbol(Symbol):
     self.type_factory = type_factory
     self.initialized_templ_types: Dict[Tuple[Type], Type] = {}
 
-  def copy_replace_unbound_templ_types(self, templ_type_replacements: Dict[PlaceholderTemplateType, Type]) -> TypeSymbol:  # noqa
-    """
-    e.g. if replacements is T -> Int:
-     - from T make Int
-     - from List[T] make List[Int]
-     - from U make U
-    """
-    new_signature_type = self.type_factory.signature_type.replace_types(replacements=templ_type_replacements)
-    new_type_factory = TypeFactory(
-      placeholder_templ_types=[
-        templ for templ in self.type_factory.placeholder_templ_types if templ not in templ_type_replacements],
-      signature_type=new_signature_type)
-    return TypeSymbol(type_factory=new_type_factory)
+  @staticmethod
+  def make_concrete_type_symbol(concrete_type: Type) -> TypeSymbol:
+    return TypeSymbol(TypeFactory([], concrete_type))
 
   def get_type(self, concrete_templ_types: List[Type]) -> Type:
     concrete_templ_types = tuple(concrete_templ_types)
@@ -1672,50 +1616,47 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
-  def __init__(self, parent: Optional[SymbolTable] = None, copy_new_current_func: Optional[ConcreteFunction] = None,
-               new_variable_scope: bool = None):
+  def __init__(self, parent: Optional[SymbolTable] = None,
+               new_function: Optional[ConcreteFunction] = None,
+               inherit_outer_variables: bool = None):
     super().__init__(parent)
+
     if parent is None:
-      new_variable_scope = True
-    else:
-      assert new_variable_scope is not None
-    self.new_scope = new_variable_scope
-    if parent is None:
-      assert copy_new_current_func is None
+      # default construction
+      self.inherit_outer_variables = False # When there's no parent we can't look
       self.current_func: Optional[ConcreteFunction] = None
       self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
       self.inbuilt_symbols: Dict[str, Symbol] = {}
     else:
-      if copy_new_current_func is None:
-        self.current_func: Optional[ConcreteFunction] = parent.current_func
-      else:
-        templ_type_replacements = dict(zip(
-          copy_new_current_func.signature.placeholder_templ_types, copy_new_current_func.concrete_templ_types))
-        self.underlying_dict: Dict[str, Symbol] = {
-          identifier: symbol.copy_replace_unbound_templ_types(templ_type_replacements)
-          for identifier, symbol in parent.items()}
-        self.current_func: Optional[ConcreteFunction] = copy_new_current_func
+      assert inherit_outer_variables is not None
 
-      # do not copy known_extern_funcs, but reference back as we want those to be shared globally
-      self.known_extern_funcs: Dict[str, ConcreteFunction] = parent.known_extern_funcs
-      self.inbuilt_symbols: Dict[str, Symbol] = parent.inbuilt_symbols
+      self.inherit_outer_variables = inherit_outer_variables
+      self.current_func = parent.current_func if new_function is None else new_function
+      self.known_extern_funcs = parent.known_extern_funcs
+      self.inbuilt_symbols = parent.inbuilt_symbols
 
   @property
   def current_scope_identifiers(self) -> Set[str]:
-    if self.new_scope:
-      return set(self.underlying_dict.keys())
-    else:
+    if self.inherit_outer_variables:
       return self.underlying_dict.keys() | self.parent.current_scope_identifiers
+    else:
+      return set(self.underlying_dict.keys())
 
-  def copy(self, new_variable_scope) -> SymbolTable:
-    return SymbolTable(parent=self, new_variable_scope=new_variable_scope)
+  def make_child_scope(self, *,
+                       inherit_outer_variables: bool,
+                       type_substitutions: Optional[Iterable[Tuple[str, Type]]] = None,
+                       new_function: Optional[ConcreteFunction] = None) -> SymbolTable:
+    if type_substitutions is None: type_substitutions = []
 
-  def copy_with_new_current_func(self, new_current_func: ConcreteFunction) -> SymbolTable:
-    assert new_current_func is not None
-    # Since we copy all symbols from parent to child when new_current_func is given, we need to make a child of the
-    # child to have a symbol tables without our symbols in its own dict
-    copy = SymbolTable(self, copy_new_current_func=new_current_func, new_variable_scope=self.new_scope)
-    return SymbolTable(copy, new_variable_scope=True)
+    new_table = SymbolTable(parent=self, inherit_outer_variables=inherit_outer_variables, new_function=new_function)
+    # shadow placeholder types with their concrete substitutions
+    for name, t in type_substitutions:
+      existing_symbol = new_table[name]
+      assert isinstance(existing_symbol, TypeSymbol) and isinstance(existing_symbol.type_factory.signature_type, PlaceholderTemplateType)
+
+      new_table[name] = TypeSymbol.make_concrete_type_symbol(t)
+
+    return new_table
 
   def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__

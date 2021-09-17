@@ -38,21 +38,35 @@ func ToDouble(i: Int) -> Double { extern_func int_to_double(i: Int) -> Double; r
 func ToDouble(i: Long) -> Double { extern_func long_to_double(i: Long) -> Double; return long_to_double(i); }
 func ToBool(i: Int) -> Bool { if i == 0 { return False(); } else { if i != 1 { assert(False()); } return True(); }}
 
+func raw_allocate(size: Long) -> RawPtr {
+  extern_func allocate(size: Long) -> RawPtr;  # TODO: cannot override malloc.
+  return allocate(size);
+}
+
 ## Allocation
 func allocate[T](amount: Long) -> Ptr[T] {
-  extern_func allocate(size: Long) -> RawPtr;  # TODO: cannot override malloc.
-  return Ptr[T](allocate(amount * size(T)));
+  return Ptr[T](raw_allocate(amount * size(T)));
 }
 func allocate[T](amount: Int) -> Ptr[T] { return allocate[T](ToLong(amount)); }
 func NullRawPtr() -> RawPtr { return RawPtr(0l); }
 func NullPtr[T]() -> Ptr[T] { return Ptr[T](NullRawPtr()); }
-func deallocate[T](ptr: Ptr[T]) {
-  extern_func deallocate(ptr: RawPtr);  # TODO: cannot override free.
-  deallocate(RawPtr(ptr));
+
+func raw_deallocate(ptr: RawPtr) {
+    extern_func deallocate(ptr: RawPtr);  # TODO: cannot override free.
+    deallocate(ptr);
 }
+
+func deallocate[T](ptr: Ptr[T]) {
+  raw_deallocate(RawPtr(ptr));
+}
+
+func raw_memcpy(to: RawPtr, from: RawPtr, amount: Long) {
+   extern_func memcpy(to: RawPtr, from: RawPtr, amount: Long);
+   memcpy(to, from, amount);
+}
+
 func memcpy[T](to: Ptr[T], from: Ptr[T], amount: Long) {
-  extern_func memcpy(to: RawPtr, from: RawPtr, amount: Long);
-  memcpy(RawPtr(to), RawPtr(from), amount * size(T));
+  raw_memcpy(RawPtr(to), RawPtr(from), amount * size(T));
 }
 func memcpy[T](to: Ptr[T], from: Ptr[T], size: Int) { memcpy[T](to, from, ToLong(size)); }
 
