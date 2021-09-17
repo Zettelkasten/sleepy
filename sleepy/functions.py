@@ -44,17 +44,11 @@ class FunctionDeclarationAst(StatementAst):
     self.body_scope = body_scope
 
   @property
-  def is_extern(self):
-    """
-    :rtype: bool
-    """
+  def is_extern(self) -> bool:
     return self.body_scope is None
 
   @property
-  def is_inline(self):
-    """
-    :rtype: bool
-    """
+  def is_inline(self) -> bool:
     return any(annotation.identifier == 'Inline' for annotation in self.annotations)
 
   def make_arg_types(self, func_symbol_table: SymbolTable) -> List[Type]:

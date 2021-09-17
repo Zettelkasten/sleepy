@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sleepy.grammar import get_line_col_from_pos
 
 
@@ -6,15 +8,7 @@ class CompilerError(Exception):
     super(CompilerError, self).__init__(message)
 
 
-def make_error_message(word, from_pos, error_name, message, to_pos=None):
-  """
-  :param str word:
-  :param int from_pos:
-  :param str error_name:
-  :param str message:
-  :param int|None to_pos:
-  :rtype: str
-  """
+def make_error_message(word: str, from_pos: int, error_name: str, message: str, to_pos: Optional[int]=None) -> str:
   line_num_pad_size = 3
   line, from_col, context_lines = get_line_col_from_pos(
     word, from_pos, num_before_context_lines=3, num_after_context_lines=3)

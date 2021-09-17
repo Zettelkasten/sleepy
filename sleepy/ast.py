@@ -449,11 +449,7 @@ class AssignStatementAst(StatementAst):
     self.var_val = var_val
     self.declared_var_type = declared_var_type
 
-  def is_declaration(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: bool
-    """
+  def is_declaration(self, symbol_table: SymbolTable) -> bool:
     if not isinstance(self.var_target, IdentifierExpressionAst):
       return False
     var_identifier = self.var_target.identifier
@@ -692,9 +688,6 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
   # noinspection PyTypeChecker
   def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> Optional[ir.values.Value]:
     """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.values.Value
     :return: The value this expression is evaluated to
     """
     assert context.emits_ir
@@ -749,11 +742,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_val_type(self, symbol_table: SymbolTable) -> Type:
     if self.op == 'is':
       assert isinstance(self.right_expr, IdentifierExpressionAst)
       type_expr = IdentifierTypeAst(
@@ -765,12 +754,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
       func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
-  def make_ir_val(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.values.Value
-    """
+  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
     with context.use_pos(self.pos):
       assert context.emits_ir
       if self.op == 'is':
@@ -821,22 +805,13 @@ class UnaryOperatorExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_val_type(self, symbol_table: SymbolTable) -> Type:
     operand_exprs = [self.expr]
     possible_concrete_funcs = self.resolve_func_call_by_identifier(
       func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
     return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
-  def make_ir_val(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.values.Value
-    """
+  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
     with context.use_pos(self.pos):
       assert context.emits_ir
       func = symbol_table[self.op]
@@ -876,19 +851,10 @@ class ConstantExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_val_type(self, symbol_table: SymbolTable) -> Type:
     return self.constant_type
 
-  def make_ir_val(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.values.Value
-    """
+  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
     with context.use_pos(self.pos):
       assert context.emits_ir
       return ir.Constant(self.constant_type.ir_type, self.constant_val)
@@ -921,22 +887,13 @@ class StringLiteralExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_val_type(self, symbol_table: SymbolTable) -> Type:
     assert 'Str' in symbol_table.inbuilt_symbols is not None
     str_symbol = symbol_table.inbuilt_symbols['Str']
     assert isinstance(str_symbol, TypeSymbol)
     return str_symbol.get_type(concrete_templ_types=[])
 
   def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.values.Value
-    """
     with context.use_pos(self.pos):
       assert context.emits_ir
       assert 'Str' in symbol_table.inbuilt_symbols is not None
@@ -1270,27 +1227,14 @@ class MemberExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_val_type(self, symbol_table: SymbolTable) -> Type:
     parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
     return self._make_member_val_type(parent_type, self.member_identifier, symbol_table)
 
-  def make_declared_val_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_declared_val_type(self, symbol_table: SymbolTable) -> Type:
     return self.make_val_type(symbol_table=symbol_table)
 
-  def make_ir_val(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.values.Value
-    """
+  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
     with context.use_pos(self.pos):
       assert context.emits_ir
       parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
@@ -1302,12 +1246,7 @@ class MemberExpressionAst(ExpressionAst):
   def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
     return self.parent_val_expr.is_val_assignable(symbol_table=symbol_table)
 
-  def make_ir_val_ptr(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    :rtype: ir.instructions.Instruction
-    """
+  def make_ir_val_ptr(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.instructions.Instruction:
     with context.use_pos(self.pos):
       assert context.emits_ir
       parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
@@ -1350,11 +1289,7 @@ class TypeAst(AbstractSyntaxTree, ABC):
     """
     super().__init__(pos)
 
-  def make_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_type(self, symbol_table: SymbolTable) -> Type:
     raise NotImplementedError()
 
   def __repr__(self) -> str:
@@ -1407,11 +1342,7 @@ class UnionTypeAst(TypeAst):
     super().__init__(pos)
     self.variant_types = variant_types
 
-  def make_type(self, symbol_table):
-    """
-    :param SymbolTable symbol_table:
-    :rtype: Type
-    """
+  def make_type(self, symbol_table: SymbolTable) -> Type:
     concrete_variant_types = [variant_type.make_type(symbol_table=symbol_table) for variant_type in self.variant_types]
     return get_common_type(concrete_variant_types)
 
@@ -1442,12 +1373,7 @@ class AnnotationAst(AbstractSyntaxTree):
     return 'AnnotationAst(identifier=%r)' % self.identifier
 
 
-def annotate_ast(ast, annotation_list):
-  """
-  :param AbstractSyntaxTree ast:
-  :param list[AnnotationAst] annotation_list:
-  :rtype: AbstractSyntaxTree
-  """
+def annotate_ast(ast: AbstractSyntaxTree, annotation_list: List[AnnotationAst]) -> AbstractSyntaxTree:
   assert len(ast.annotations) == 0
   for annotation in annotation_list:
     if annotation.identifier not in ast.allowed_annotation_identifiers:
