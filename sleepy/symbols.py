@@ -1711,11 +1711,7 @@ class CodegenContext:
   Used to keep track where code is currently generated.
   This is essentially a pointer to an ir.IRBuilder.
   """
-  def __init__(self, builder, copy_from=None):
-    """
-    :param ir.IRBuilder|None builder:
-    :param CodegenContext copy_from:
-    """
+  def __init__(self, builder: Optional[ir.IRBuilder], copy_from: Optional[CodegenContext]=None, *, module: Optional[ir.Module]=None):
     self.builder = builder
 
     if copy_from is None:
@@ -1735,6 +1731,8 @@ class CodegenContext:
       self.current_di_compile_unit: Optional[ir.DIValue] = None
       self.current_di_scope: Optional[ir.DIValue] = None
       self.di_declare_func: Optional[ir.Function] = None
+
+      self._module = module
     else:
       self.emits_ir = copy_from.emits_ir
       self.emits_debug: bool = copy_from.emits_debug
@@ -1752,6 +1750,7 @@ class CodegenContext:
       self.current_di_compile_unit: Optional[ir.DIValue] = copy_from.current_di_compile_unit
       self.current_di_scope: Optional[ir.DIValue] = copy_from.current_di_scope
       self.di_declare_func: Optional[ir.Function] = copy_from.di_declare_func
+      self._module: ir.Module = copy_from._module
 
       if self.builder is not None:
         self.builder.debug_metadata = copy_from.builder.debug_metadata
@@ -1762,7 +1761,7 @@ class CodegenContext:
   def module(self) -> ir.Module:
     assert self.emits_ir
     assert self.builder is not None
-    return self.builder.module
+    return self._module
 
   @property
   def block(self):
@@ -2183,7 +2182,7 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   if context.emits_debug:
     assert context.di_declare_func is None
     di_declare_func_type = ir.FunctionType(ir.VoidType(), [ir.MetaDataType()] * 3)
-    context.di_declare_func = ir.Function(context.builder.module, di_declare_func_type, 'llvm.dbg.declare')
+    context.di_declare_func = ir.Function(context.module, di_declare_func_type, 'llvm.dbg.declare')
 
     # TODO: Proper filename / directory
     # TODO: Add compiler version

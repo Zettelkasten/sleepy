@@ -253,12 +253,9 @@ class TopLevelAst(AbstractSyntaxTree):
   def make_module_ir_and_symbol_table(self, module_name: str, emit_debug: bool) -> (ir.Module, SymbolTable):
     module = ir.Module(name=module_name)
 
-    io_func_type = ir.FunctionType(ir.VoidType(), ())
-    ir_io_func = ir.Function(module, io_func_type, name='io')
-    root_block = ir_io_func.append_basic_block(name='entry')
-    root_builder = ir.IRBuilder(root_block)
+    root_builder = ir.IRBuilder()
     symbol_table = SymbolTable()
-    context = CodegenContext(builder=root_builder)
+    context = CodegenContext(builder=root_builder, module=module)
     context.emits_debug = emit_debug
 
     build_initial_ir(symbol_table=symbol_table, context=context)
@@ -267,7 +264,6 @@ class TopLevelAst(AbstractSyntaxTree):
       assert not context.is_terminated
       stmt.build_ir(symbol_table=symbol_table, context=context)
     assert not context.is_terminated
-    root_builder.ret_void()
     context.is_terminated = True
 
     return module, symbol_table
