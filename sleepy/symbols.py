@@ -1712,7 +1712,8 @@ class CodegenContext:
   Used to keep track where code is currently generated.
   This is essentially a pointer to an ir.IRBuilder.
   """
-  def __init__(self, builder: Optional[ir.IRBuilder], copy_from: Optional[CodegenContext]=None, *, module: Optional[ir.Module]=None):
+  def __init__(self, builder: Optional[ir.IRBuilder], copy_from: Optional[CodegenContext] = None, *,
+               module: Optional[ir.Module] = None):
     self.builder = builder
 
     if copy_from is None:
@@ -1751,6 +1752,8 @@ class CodegenContext:
       self.current_di_compile_unit: Optional[ir.DIValue] = copy_from.current_di_compile_unit
       self.current_di_scope: Optional[ir.DIValue] = copy_from.current_di_scope
       self.di_declare_func: Optional[ir.Function] = copy_from.di_declare_func
+
+      assert module is None
       self._module: ir.Module = copy_from._module
 
       if self.builder is not None:
@@ -1762,13 +1765,12 @@ class CodegenContext:
   def module(self) -> ir.Module:
     assert self.emits_ir
     assert self.builder is not None
+    if self.block is not None:
+      assert self.block.module == self._module
     return self._module
 
   @property
-  def block(self):
-    """
-    :rtype: ir.Block
-    """
+  def block(self) -> ir.Block:
     assert self.emits_ir
     assert self.builder is not None
     return self.builder.block
