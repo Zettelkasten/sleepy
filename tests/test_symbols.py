@@ -194,7 +194,8 @@ def test_context_use_pos():
   io_func_type = ir.FunctionType(ir.VoidType(), ())
   ir_io_func = ir.Function(module, io_func_type, name='io')
   root_block = ir_io_func.append_basic_block(name='entry')
-  context = CodegenContext(builder=ir.IRBuilder(root_block))
+  context = CodegenContext(builder=ir.IRBuilder(root_block), module=module)
+  assert context.module == module
   context.current_di_scope = context.module.add_debug_info('DISubprogram', {'name': 'dummy'})
   program = '123456789'
   outer_pos = TreePosition(word=program, from_pos=0, to_pos=9)
