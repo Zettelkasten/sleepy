@@ -3,6 +3,7 @@ Implements a symbol table.
 """
 from __future__ import annotations
 
+import copy
 import ctypes
 import typing
 from abc import ABC, abstractmethod
@@ -1712,54 +1713,26 @@ class CodegenContext:
   Used to keep track where code is currently generated.
   This is essentially a pointer to an ir.IRBuilder.
   """
-  def __init__(self, builder: Optional[ir.IRBuilder], copy_from: Optional[CodegenContext] = None, *,
-               module: Optional[ir.Module] = None):
+  def __init__(self, builder: Optional[ir.IRBuilder], module: ir.Module):
     self.builder = builder
 
-    if copy_from is None:
-      self.emits_ir: bool = builder is not None
-      self.emits_debug: bool = self.emits_ir
-      self.is_terminated = False
+    self.emits_debug: bool = self.emits_ir
+    self.is_terminated: bool = False
 
-      self.current_pos: Optional[TreePosition] = None
-      self.current_func: Optional[ConcreteFunction] = None
-      self.current_func_inline_return_collect_block: Optional[ir.Block] = None
-      self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = None
-      self.inline_func_call_stack: List[ConcreteFunction] = []
-      self.ir_func_malloc: Optional[ir.Function] = None
-      self.ir_func_free: Optional[ir.Function] = None
+    self.current_pos: Optional[TreePosition] = None
+    self.current_func: Optional[ConcreteFunction] = None
+    self.current_func_inline_return_collect_block: Optional[ir.Block] = None
+    self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = None
+    self.inline_func_call_stack: List[ConcreteFunction] = []
+    self.ir_func_malloc: Optional[ir.Function] = None
+    self.ir_func_free: Optional[ir.Function] = None
 
-      self.current_di_file: Optional[ir.DIValue] = None
-      self.current_di_compile_unit: Optional[ir.DIValue] = None
-      self.current_di_scope: Optional[ir.DIValue] = None
-      self.di_declare_func: Optional[ir.Function] = None
+    self.current_di_file: Optional[ir.DIValue] = None
+    self.current_di_compile_unit: Optional[ir.DIValue] = None
+    self.current_di_scope: Optional[ir.DIValue] = None
+    self.di_declare_func: Optional[ir.Function] = None
 
-      self._module = module
-    else:
-      self.emits_ir = copy_from.emits_ir
-      self.emits_debug: bool = copy_from.emits_debug
-      self.is_terminated = copy_from.is_terminated
-
-      self.current_pos: Optional[TreePosition] = copy_from.current_pos
-      self.current_func: Optional[ConcreteFunction] = copy_from.current_func
-      self.current_func_inline_return_collect_block: Optional[ir.Block] = copy_from.current_func_inline_return_collect_block  # noqa
-      self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = copy_from.current_func_inline_return_ir_alloca  # noqa
-      self.inline_func_call_stack: List[ConcreteFunction] = copy_from.inline_func_call_stack.copy()
-      self.ir_func_malloc: Optional[ir.Function] = copy_from.ir_func_malloc
-      self.ir_func_free: Optional[ir.Function] = copy_from.ir_func_free
-
-      self.current_di_file: Optional[ir.DIValue] = copy_from.current_di_file
-      self.current_di_compile_unit: Optional[ir.DIValue] = copy_from.current_di_compile_unit
-      self.current_di_scope: Optional[ir.DIValue] = copy_from.current_di_scope
-      self.di_declare_func: Optional[ir.Function] = copy_from.di_declare_func
-
-      assert module is None
-      self._module: ir.Module = copy_from._module
-
-      if self.builder is not None:
-        self.builder.debug_metadata = copy_from.builder.debug_metadata
-
-    assert all(inline_func.is_inline for inline_func in self.inline_func_call_stack)
+    self._module = module
 
   @property
   def module(self) -> ir.Module:
@@ -1775,31 +1748,34 @@ class CodegenContext:
     assert self.builder is not None
     return self.builder.block
 
+  @property
+  def emits_ir(self) -> bool:
+    return self.builder is not None
+
   def __repr__(self) -> str:
     return 'CodegenContext(builder=%r, emits_ir=%r, is_terminated=%r)' % (
       self.builder, self.emits_ir, self.is_terminated)
 
-  def copy_with_builder(self, new_builder):
-    """
-    :param ir.IRBuilder|None new_builder:
-    :rtype: CodegenContext
-    """
-    return CodegenContext(builder=new_builder, copy_from=self)
+  def copy_with_new_callstack_frame(self) -> CodegenContext:
+    new = copy.copy(self)
+    new.inline_func_call_stack =  self.inline_func_call_stack.copy()
+    assert all(inline_func.is_inline for inline_func in self.inline_func_call_stack)
+    return new
 
-  def copy(self):
-    """
-    :rtype: CodegenContext
-    """
-    return self.copy_with_builder(self.builder)
+  def copy_with_builder(self, new_builder: Optional[ir.IRBuilder]) -> CodegenContext:
+    new = self.copy_with_new_callstack_frame()
+    new.builder = new_builder
 
-  def copy_without_builder(self):
-    """
-    :rtype: CodegenContext
-    """
-    new_context = self.copy_with_builder(None)
-    new_context.emits_ir = False
-    new_context.emits_debug = False
-    return new_context
+    if new_builder is None:
+      new.emits_debug = False
+    else:
+      new.builder.debug_metadata = self.builder.debug_metadata
+
+    return new
+
+  def copy_without_builder(self) -> CodegenContext:
+    return self.copy_with_builder(None)
+
 
   def copy_with_func(self, concrete_func: ConcreteFunction, builder: Optional[ir.IRBuilder]):
     assert not concrete_func.is_inline
@@ -1807,9 +1783,6 @@ class CodegenContext:
     new_context.current_func = concrete_func
     new_context.current_func_inline_return_ir_alloca = None
     new_context.current_func_inline_return_collect_block = None
-    if builder is None:
-      new_context.emits_ir = False
-      new_context.emits_debug = False
     if new_context.emits_debug:
       assert concrete_func.di_subprogram is not None
       new_context.current_di_scope = concrete_func.di_subprogram
@@ -1817,28 +1790,21 @@ class CodegenContext:
       new_context.builder.debug_metadata = make_di_location(pos=new_context.current_pos, context=new_context)
     return new_context
 
-  def copy_with_inline_func(self, concrete_func, return_ir_alloca, return_collect_block):
-    """
-    :param ConcreteFunction concrete_func:
-    :param ir.instructions.AllocaInstr return_ir_alloca:
-    :param ir.Block return_collect_block:
-    """
+  def copy_with_inline_func(self, concrete_func: ConcreteFunction,
+                            return_ir_alloca: ir.instructions.AllocaInstr,
+                            return_collect_block: ir.Block) -> CodegenContext:
     assert concrete_func.is_inline
     assert concrete_func not in self.inline_func_call_stack
-    new_context = self.copy()
+    new_context = self.copy_with_new_callstack_frame()
     new_context.current_func = concrete_func
     new_context.current_func_inline_return_ir_alloca = return_ir_alloca
     new_context.current_func_inline_return_collect_block = return_collect_block
     new_context.inline_func_call_stack.append(concrete_func)
     return new_context
 
-  def alloca_at_entry(self, ir_type, name):
+  def alloca_at_entry(self, ir_type: ir.types.Type, name: str) -> ir.instructions.AllocaInstr:
     """
     Add alloca instruction at entry block of the current function.
-
-    :param ir.types.Type ir_type:
-    :param str name:
-    :rtype: ir.instructions.AllocaInstr
     """
     assert self.emits_ir
     entry_block: ir.Block = self.block.function.entry_basic_block

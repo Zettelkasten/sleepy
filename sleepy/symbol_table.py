@@ -20,7 +20,6 @@ class Stub(Mapping[K, V]):
 
 STUB = Stub()
 
-
 class HierarchicalDict(Mapping[K, V]):
   def __init__(self, parent: Mapping[K, V] = None, init_with: Dict[K, V] = None):
     self.parent = parent if parent is not None else STUB
