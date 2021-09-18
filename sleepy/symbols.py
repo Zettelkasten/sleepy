@@ -1621,9 +1621,8 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
                inherit_outer_variables: bool = None):
     super().__init__(parent)
 
-    if parent is None:
-      # default construction
-      self.inherit_outer_variables = False # When there's no parent we can't look
+    if parent is None:  # default construction
+      self.inherit_outer_variables = False  # When there's no parent we can't look
       self.current_func: Optional[ConcreteFunction] = None
       self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
       self.inbuilt_symbols: Dict[str, Symbol] = {}
@@ -1646,13 +1645,15 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
                        inherit_outer_variables: bool,
                        type_substitutions: Optional[Iterable[Tuple[str, Type]]] = None,
                        new_function: Optional[ConcreteFunction] = None) -> SymbolTable:
-    if type_substitutions is None: type_substitutions = []
+    if type_substitutions is None:
+      type_substitutions = []
 
     new_table = SymbolTable(parent=self, inherit_outer_variables=inherit_outer_variables, new_function=new_function)
     # shadow placeholder types with their concrete substitutions
     for name, t in type_substitutions:
       existing_symbol = new_table[name]
-      assert isinstance(existing_symbol, TypeSymbol) and isinstance(existing_symbol.type_factory.signature_type, PlaceholderTemplateType)
+      assert isinstance(existing_symbol, TypeSymbol)
+      assert isinstance(existing_symbol.type_factory.signature_type, PlaceholderTemplateType)
 
       new_table[name] = TypeSymbol.make_concrete_type_symbol(t)
 
