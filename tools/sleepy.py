@@ -4,6 +4,8 @@
 Main entry point: Compile a sleepy program to object code.
 """
 import argparse
+from pathlib import Path
+
 import better_exchook
 
 import _setup_sleepy_env  # noqa
@@ -69,7 +71,8 @@ def main():
     program = program_file.read()
   try:
     ast = make_program_ast(program, add_preamble=not args.no_preamble)
-    module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='default_module', emit_debug=args.debug)
+    module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
+      module_name='default_module', emit_debug=args.debug, source_path=Path(source_file_name))
     if main_func_identifier not in symbol_table:
       raise CompilerError('Error: Entry point function %r not found' % main_func_identifier)
     main_func_symbol = symbol_table[main_func_identifier]
@@ -124,7 +127,7 @@ def main():
   exec_file_name = _make_file_name(source_file_name, '', allow_exist=True)
   import subprocess
   subprocess.run(
-    ['gcc', '-o', exec_file_name, object_file_name, LIB_PATH + '_static.a']
+    ['gcc'] + (['-g'] if args.debug else [])  + ['-o', exec_file_name, object_file_name, LIB_PATH + '_static.a']
     + ['-l%s' % lib_name for lib_name in args.compile_libs])
 
 

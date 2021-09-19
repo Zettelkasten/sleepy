@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from pathlib import Path
 from typing import List, Optional
 from abc import ABC, abstractmethod
 
@@ -250,13 +252,16 @@ class TopLevelAst(AbstractSyntaxTree):
     super().__init__(pos)
     self.stmt_list = stmt_list
 
-  def make_module_ir_and_symbol_table(self, module_name: str, emit_debug: bool) -> (ir.Module, SymbolTable):
+  def make_module_ir_and_symbol_table(self, module_name: str,
+                                      emit_debug: bool,
+                                      source_path: Optional[Path] = None) -> (ir.Module, SymbolTable):
     module = ir.Module(name=module_name)
 
     root_builder = ir.IRBuilder()
     symbol_table = SymbolTable()
-    context = CodegenContext(builder=root_builder, module=module)
-    context.emits_debug = emit_debug
+    context = CodegenContext(
+      builder=root_builder, module=module, emits_debug=emit_debug,
+      source_path=source_path)
 
     build_initial_ir(symbol_table=symbol_table, context=context)
     assert context.ir_func_malloc is not None and context.ir_func_free is not None

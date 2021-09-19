@@ -8,6 +8,7 @@ import ctypes
 import typing
 from abc import ABC, abstractmethod
 from enum import Enum
+from pathlib import Path
 from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable
 
 from llvmlite import ir
@@ -162,7 +163,7 @@ class DoubleType(Type):
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
-      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_float')})
+      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_float')})
 
   def __repr__(self) -> str:
     return 'Double'
@@ -195,7 +196,7 @@ class FloatType(Type):
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
-      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_float')})
+      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_float')})
 
   def __repr__(self) -> str:
     return 'Float'
@@ -228,7 +229,7 @@ class BoolType(Type):
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
-      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_boolean')})
+      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_boolean')})
 
   def __repr__(self) -> str:
     return 'Bool'
@@ -261,7 +262,7 @@ class IntType(Type):
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
-      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_signed')})
+      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_signed')})
 
   def __repr__(self) -> str:
     return 'Int'
@@ -294,7 +295,7 @@ class LongType(Type):
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
-      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_signed')})
+      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_signed')})
 
   def __repr__(self) -> str:
     return 'Long'
@@ -327,7 +328,7 @@ class CharType(Type):
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
-      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_unsigned_char')})
+      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_unsigned_char')})
 
   def __repr__(self) -> str:
     return 'Char'
@@ -363,7 +364,7 @@ class PointerType(Type):
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
-      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_address')})
+      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_address')})
 
   def __repr__(self) -> str:
     return 'Ptr[%r]' % self.pointee_type
@@ -401,7 +402,7 @@ class RawPointerType(Type):
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
-      {'name': repr(self), 'size': self.size, 'align': self.size, 'encoding': ir.DIToken('DW_ATE_address')})
+      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_address')})
 
   def __repr__(self) -> str:
     return 'RawPtr'
@@ -476,18 +477,18 @@ class UnionType(Type):
       context.module.add_debug_info(
         'DIDerivedType', {
           'tag': ir.DIToken('DW_TAG_inheritance'), 'baseType': member_type.make_di_type(context=context),
-          'size': member_type.size, 'align': member_type.size})
+          'size': member_type.size * 8})
       for member_type in self.possible_types]
     di_tag_type = context.module.add_debug_info(
       'DIBasicType',
-      {'name': 'tag', 'size': self.tag_size, 'align': self.tag_size, 'encoding': ir.DIToken('DW_ATE_unsigned')})
+      {'name': 'tag', 'size': self.tag_size * 8, 'encoding': ir.DIToken('DW_ATE_unsigned')})
     di_untagged_union_type = context.module.add_debug_info(
       'DICompositeType', {
-        'name': repr(self), 'size': self.val_size, 'align': self.val_size, 'tag': ir.DIToken('DW_TAG_union_type'),
+        'name': repr(self), 'size': self.val_size * 8, 'tag': ir.DIToken('DW_TAG_union_type'),
         'file': context.current_di_file, 'elements': [di_derived_types]})
     return context.module.add_debug_info(
       'DICompositeType', {
-        'name': repr(self), 'size': self.size, 'align': self.size, 'tag': ir.DIToken('DW_TAG_structure_type'),
+        'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
         'elements': [di_tag_type, di_untagged_union_type]})
 
   def is_realizable(self):
@@ -743,11 +744,11 @@ class StructType(Type):
       context.module.add_debug_info(
         'DIDerivedType', {
           'tag': ir.DIToken('DW_TAG_inheritance'), 'baseType': member_type.make_di_type(context=context),
-          'size': member_type.size, 'align': member_type.size})
+          'size': member_type.size * 8})
       for member_type in self.member_types]
     return context.module.add_debug_info(
       'DICompositeType', {
-        'name': repr(self), 'size': self.size, 'align': self.size, 'tag': ir.DIToken('DW_TAG_structure_type'),
+        'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
         'file': context.current_di_file, 'elements': di_derived_types})
 
   def __eq__(self, other) -> bool:
@@ -1713,10 +1714,14 @@ class CodegenContext:
   Used to keep track where code is currently generated.
   This is essentially a pointer to an ir.IRBuilder.
   """
-  def __init__(self, builder: Optional[ir.IRBuilder], module: ir.Module):
+  def __init__(self, builder: Optional[ir.IRBuilder],
+               module: ir.Module,
+               emits_debug: bool,
+               source_path: Optional[Path] = None):
     self.builder = builder
+    self._module = module
 
-    self.emits_debug: bool = self.emits_ir
+    self._emits_debug: bool = emits_debug
     self.is_terminated: bool = False
 
     self.current_pos: Optional[TreePosition] = None
@@ -1727,12 +1732,39 @@ class CodegenContext:
     self.ir_func_malloc: Optional[ir.Function] = None
     self.ir_func_free: Optional[ir.Function] = None
 
-    self.current_di_file: Optional[ir.DIValue] = None
-    self.current_di_compile_unit: Optional[ir.DIValue] = None
-    self.current_di_scope: Optional[ir.DIValue] = None
-    self.di_declare_func: Optional[ir.Function] = None
+    if not self.emits_debug:
+      self.current_di_file: Optional[ir.DIValue] = None
+      self.current_di_compile_unit: Optional[ir.DIValue] = None
+      self.current_di_scope: Optional[ir.DIValue] = None
+      self.di_declare_func: Optional[ir.Function] = None
+    else:
+      # TODO: Add compiler version
+      if source_path is None:
+        source_path = Path("./tmp.slp")
+      producer = 'sleepy compiler'
+      self.current_di_file: Optional[ir.DIValue] = module.add_debug_info(
+        'DIFile', {'filename': source_path.name, 'directory': str(source_path.parent)})
 
-    self._module = module
+      self.current_di_compile_unit: Optional[ir.DIValue] = module.add_debug_info(
+        'DICompileUnit', {
+          'language': ir.DIToken('DW_LANG_C'), 'file': self.current_di_file, 'producer': producer,
+          'isOptimized': False, 'runtimeVersion': 1, 'emissionKind': ir.DIToken('FullDebug')},
+        is_distinct=True)
+
+      self.module.add_named_metadata('llvm.dbg.cu', self.current_di_compile_unit)
+      di_dwarf_version = [ir.Constant(ir.IntType(32), 2), 'Dwarf Version', ir.Constant(ir.IntType(32), 2)]
+      di_debug_info_version = [ir.Constant(ir.IntType(32), 2), 'Debug Info Version', ir.Constant(ir.IntType(32), 3)]
+      self.module.add_named_metadata('llvm.module.flags', di_dwarf_version)
+      self.module.add_named_metadata('llvm.module.flags', di_debug_info_version)
+      self.module.add_named_metadata('llvm.ident', [producer])
+
+      self.current_di_scope: Optional[ir.DIValue] = self.current_di_file
+      di_declare_func_type = ir.FunctionType(ir.VoidType(), [ir.MetaDataType()] * 3)
+      self.di_declare_func = ir.Function(self.module, di_declare_func_type, 'llvm.dbg.declare')
+
+  @property
+  def emits_debug(self) -> bool:
+    return self._emits_debug and self.emits_ir
 
   @property
   def module(self) -> ir.Module:
@@ -1766,9 +1798,7 @@ class CodegenContext:
     new = self.copy_with_new_callstack_frame()
     new.builder = new_builder
 
-    if new_builder is None:
-      new.emits_debug = False
-    else:
+    if new_builder is not None:
       new.builder.debug_metadata = self.builder.debug_metadata
 
     return new
@@ -2148,31 +2178,6 @@ def make_di_location(pos: TreePosition, context: CodegenContext):
 
 
 def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
-  if context.emits_debug:
-    assert context.di_declare_func is None
-    di_declare_func_type = ir.FunctionType(ir.VoidType(), [ir.MetaDataType()] * 3)
-    context.di_declare_func = ir.Function(context.module, di_declare_func_type, 'llvm.dbg.declare')
-
-    # TODO: Proper filename / directory
-    # TODO: Add compiler version
-    producer = 'sleepy compiler'
-    assert context.current_di_file is None and context.current_di_compile_unit is None
-    context.current_di_file = context.module.add_debug_info(
-      'DIFile', {'filename': 'tmp.slp', 'directory': '.'})
-    context.current_di_compile_unit = context.module.add_debug_info(
-      'DICompileUnit', {
-        'language': ir.DIToken('DW_LANG_C'), 'file': context.current_di_file, 'producer': producer,
-        'isOptimized': False, 'runtimeVersion': 1},
-      is_distinct=True)
-    context.current_di_scope = context.current_di_file
-
-    context.module.add_named_metadata('llvm.dbg.cu', context.current_di_compile_unit)
-    di_dwarf_version = [ir.Constant(ir.IntType(32), 2), 'Dwarf Version', ir.Constant(ir.IntType(32), 2)]
-    di_debug_info_version = [ir.Constant(ir.IntType(32), 2), 'Debug Info Version', ir.Constant(ir.IntType(32), 3)]
-    context.module.add_named_metadata('llvm.module.flags', di_dwarf_version)
-    context.module.add_named_metadata('llvm.module.flags', di_debug_info_version)
-    context.module.add_named_metadata('llvm.ident', [producer])
-
   assert 'free' not in symbol_table
   free_symbol = FunctionSymbol(identifier='free', returns_void=True)
   symbol_table['free'] = free_symbol

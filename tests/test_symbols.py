@@ -191,8 +191,7 @@ def test_context_use_pos():
   from sleepy.grammar import TreePosition
   from llvmlite import ir
   module = ir.Module(name='module_name')
-  context = CodegenContext(builder=ir.IRBuilder(), module=module)
-  context.current_di_scope = context.module.add_debug_info('DISubprogram', {'name': 'dummy'})
+  context = CodegenContext(builder=ir.IRBuilder(), module=module, emits_debug=True)
   program = '123456789'
   outer_pos = TreePosition(word=program, from_pos=0, to_pos=9)
   with context.use_pos(outer_pos):

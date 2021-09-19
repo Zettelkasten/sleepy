@@ -1,19 +1,22 @@
+import os
+from typing import Callable
+
+from llvmlite.binding import ExecutionEngine
+
 from sleepy.jit import compile_ir
 from sleepy.symbols import FunctionSymbol
 from tests.parse import parse_ast
 
 
-def compile_program(engine, program, main_func_identifier='main', debug=True, add_preamble=True):
-  """
-  :param ExecutionEngine engine:
-  :param str program:
-  :param str main_func_identifier:
-  :param bool debug:
-  :param bool add_preamble:
-  :rtype: Callable[[], float]
-  """
+def compile_program(engine: ExecutionEngine,
+                    program: str,
+                    main_func_identifier: str = 'main',
+                    debug: bool = True,
+                    add_preamble: bool = True) -> Callable:
+
   ast = parse_ast(program, add_preamble=add_preamble)
-  module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast', emit_debug=debug)
+  module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
+    module_name='test_parse_ast', emit_debug=debug)
   print('---- module intermediate repr:')
   print(module_ir)
   optimized_module_ir = compile_ir(engine, module_ir)
