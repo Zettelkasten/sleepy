@@ -1788,6 +1788,35 @@ def test_templ_explicit_types_struct_needed():
     main()  # just check that it runs
 
 
+def test_templ_meta_programming():
+  with make_execution_engine() as engine:
+    program = """
+    struct Nil {}
+    struct Succ[T] {}
+    
+    func is_eq(x: Nil, y: Nil) -> Bool { return True(); }
+    func is_eq[A](x: Succ[A], y: Nil) -> Bool { return False(); }
+    func is_eq[A](x: Nil, y: Succ[A]) -> Bool { return False(); }
+    func is_eq[A, B](x: Succ[A], y: Succ[B]) -> Bool { return is_eq(A(), B()); }
+    
+    func three_eq_three() -> Bool {
+      return is_eq(Succ[Succ[Succ[Nil]]](), Succ[Succ[Succ[Nil]]]());
+    }
+    func three_eq_two() -> Bool {
+      return is_eq(Succ[Succ[Succ[Nil]]](), Succ[Succ[Nil]]());
+    }
+    func two_eq_three() -> Bool {
+      return is_eq(Succ[Succ[Nil]](), Succ[Succ[Succ[Nil]]]());
+    }
+    """
+    three_eq_three = compile_program(engine, program, main_func_identifier='three_eq_three')
+    assert_equal(three_eq_three(), True)
+    three_eq_two = compile_program(engine, program, main_func_identifier='three_eq_two')
+    assert_equal(three_eq_two(), False)
+    two_eq_three = compile_program(engine, program, main_func_identifier='two_eq_three')
+    assert_equal(two_eq_three(), False)
+
+
 def test_ptr_loop():
   with make_execution_engine() as engine:
     program = """
@@ -1921,6 +1950,7 @@ def test_scoped_function_redefinition():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 1)
+
 
 def test_repeated_inline_calls():
   with make_execution_engine() as engine:
