@@ -54,7 +54,7 @@ class Type(ABC):
     """
     :param ctypes._CData|None c_type: may be None if this is non-realizable (e.g. template types / void)
     """
-    assert not pass_by_ref or isinstance(ir_type, ir.types.PointerType)
+    assert not pass_by_ref or isinstance(ir_type, ir.types.PointerType) or ir_type is None
     self.ir_type = ir_type
     self.pass_by_ref = pass_by_ref
     self.c_type = c_type
