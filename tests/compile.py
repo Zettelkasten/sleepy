@@ -1,4 +1,3 @@
-import os
 from typing import Callable
 
 from llvmlite.binding import ExecutionEngine

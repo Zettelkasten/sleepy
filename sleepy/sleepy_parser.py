@@ -8,8 +8,7 @@ from sleepy.functions import FunctionDeclarationAst
 from sleepy.grammar import AttributeGrammar, Production
 from sleepy.parser import ParserGenerator
 from sleepy.sleepy_lexer import SLEEPY_LEXER
-from sleepy.symbols import SLEEPY_INT, SLEEPY_LONG, SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_CHAR
-
+from sleepy.builtin_symbols import SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG, SLEEPY_CHAR
 
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   prods_attr_rules={

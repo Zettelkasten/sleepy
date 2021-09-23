@@ -4,8 +4,9 @@ from llvmlite import ir
 
 from sleepy.ast import StatementAst, TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree
 from sleepy.grammar import TreePosition
-from sleepy.symbols import SymbolTable, Type, CodegenContext, SLEEPY_VOID, FunctionSymbol, SLEEPY_BOOL, \
-  ConcreteFunction, FunctionTemplate, VariableSymbol, PlaceholderTemplateType
+from sleepy.symbols import SymbolTable, Type, CodegenContext, FunctionSymbol, ConcreteFunction, FunctionTemplate, \
+  VariableSymbol, PlaceholderTemplateType, SLEEPY_VOID
+from sleepy.builtin_symbols import SLEEPY_BOOL
 
 
 class FunctionDeclarationAst(StatementAst):

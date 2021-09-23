@@ -2,11 +2,13 @@ import _setup_test_env  # noqa
 
 from nose.tools import assert_equal
 
-from sleepy.symbols import UnionType
+from sleepy.symbols import UnionType, SLEEPY_NEVER
 
 
 def test_narrow_type():
-  from sleepy.symbols import narrow_type, UnionType, SLEEPY_INT, SLEEPY_BOOL
+  from sleepy.symbols import narrow_type, UnionType
+  from sleepy.builtin_symbols import SLEEPY_INT
+  from sleepy.builtin_symbols import SLEEPY_BOOL
   assert_equal(narrow_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_INT)
   assert_equal(narrow_type(UnionType([SLEEPY_INT], [0], 4), SLEEPY_INT), UnionType([SLEEPY_INT], [0], 4))
   assert_equal(narrow_type(SLEEPY_INT, UnionType([SLEEPY_INT], [0], 4)), SLEEPY_INT)
@@ -21,7 +23,10 @@ def test_narrow_type():
 
 
 def test_exclude_type():
-  from sleepy.symbols import exclude_type, UnionType, SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE, SLEEPY_NEVER
+  from sleepy.symbols import exclude_type, UnionType
+  from sleepy.builtin_symbols import SLEEPY_INT
+  from sleepy.builtin_symbols import SLEEPY_BOOL
+  from sleepy.builtin_symbols import SLEEPY_DOUBLE
   assert_equal(exclude_type(SLEEPY_INT, SLEEPY_NEVER), SLEEPY_INT)
   assert_equal(exclude_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_NEVER)
   assert_equal(
@@ -34,7 +39,10 @@ def test_exclude_type():
 
 
 def test_get_common_type():
-  from sleepy.symbols import get_common_type, UnionType, SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE
+  from sleepy.symbols import get_common_type, UnionType
+  from sleepy.builtin_symbols import SLEEPY_INT
+  from sleepy.builtin_symbols import SLEEPY_BOOL
+  from sleepy.builtin_symbols import SLEEPY_DOUBLE
   assert_equal(get_common_type([SLEEPY_INT]), SLEEPY_INT)
   assert_equal(get_common_type([SLEEPY_INT, SLEEPY_INT]), SLEEPY_INT)
   int_bool_union = UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4)
@@ -48,7 +56,9 @@ def test_get_common_type():
 
 # noinspection PyPep8Naming
 def test_try_infer_templ_types_simple():
-  from sleepy.symbols import try_infer_templ_types, SLEEPY_INT, SLEEPY_DOUBLE, PlaceholderTemplateType
+  from sleepy.symbols import try_infer_templ_types, PlaceholderTemplateType
+  from sleepy.builtin_symbols import SLEEPY_INT
+  from sleepy.builtin_symbols import SLEEPY_DOUBLE
   T = PlaceholderTemplateType('T')
   U = PlaceholderTemplateType('U')
   assert_equal(try_infer_templ_types(calling_types=[], signature_types=[], placeholder_templ_types=[]), [])
@@ -87,7 +97,9 @@ def test_try_infer_templ_types_simple():
 
 # noinspection PyPep8Naming
 def test_try_infer_templ_types_ptr():
-  from sleepy.symbols import try_infer_templ_types, PlaceholderTemplateType, PointerType, SLEEPY_INT, SLEEPY_CHAR
+  from sleepy.symbols import try_infer_templ_types, PlaceholderTemplateType, PointerType
+  from sleepy.builtin_symbols import SLEEPY_CHAR
+  from sleepy.builtin_symbols import SLEEPY_INT
   T = PlaceholderTemplateType('T')
   assert_equal(
     try_infer_templ_types(
@@ -101,7 +113,9 @@ def test_try_infer_templ_types_ptr():
 
 
 def test_try_infer_templ_types_union():
-  from sleepy.symbols import try_infer_templ_types, SLEEPY_INT, SLEEPY_CHAR
+  from sleepy.symbols import try_infer_templ_types
+  from sleepy.builtin_symbols import SLEEPY_CHAR
+  from sleepy.builtin_symbols import SLEEPY_INT
   assert_equal(
     try_infer_templ_types(
       calling_types=[SLEEPY_INT],
@@ -126,7 +140,9 @@ def test_try_infer_templ_types_union():
 
 # noinspection PyPep8Naming
 def test_try_infer_templ_types_struct():
-  from sleepy.symbols import try_infer_templ_types, PlaceholderTemplateType, StructType, SLEEPY_INT, SLEEPY_CHAR
+  from sleepy.symbols import try_infer_templ_types, PlaceholderTemplateType, StructType
+  from sleepy.builtin_symbols import SLEEPY_CHAR
+  from sleepy.builtin_symbols import SLEEPY_INT
   T = PlaceholderTemplateType('T')
   U = PlaceholderTemplateType('U')
   WrapperT = StructType(

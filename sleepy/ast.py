@@ -8,10 +8,11 @@ from llvmlite import ir
 
 from sleepy.errors import SemanticError
 from sleepy.grammar import TreePosition
-from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SLEEPY_VOID, SLEEPY_BOOL, SLEEPY_CHAR, SymbolTable, \
+from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
-  make_implicit_cast_to_ir_val, make_ir_val_is_type, build_initial_ir, CodegenContext, get_common_type, \
-  SLEEPY_CHAR_PTR, PlaceholderTemplateType, TypeFactory, try_infer_templ_types, Symbol, FunctionSymbolCaller
+  make_implicit_cast_to_ir_val, make_ir_val_is_type, CodegenContext, get_common_type, \
+  PlaceholderTemplateType, TypeFactory, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID
+from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
 SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
@@ -1076,7 +1077,6 @@ class CallExpressionAst(ExpressionAst):
 
   def make_val_type(self, symbol_table: SymbolTable) -> Type:
     if self._is_size_call(symbol_table=symbol_table):
-      from sleepy.symbols import SLEEPY_LONG
       return SLEEPY_LONG
     func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
     possible_concrete_funcs = self.resolve_func_call(

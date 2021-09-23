@@ -127,7 +127,7 @@ def main():
   exec_file_name = _make_file_name(source_file_name, '', allow_exist=True)
   import subprocess
   subprocess.run(
-    ['gcc'] + (['-g'] if args.debug else [])  + ['-o', exec_file_name, object_file_name, LIB_PATH + '_static.a']
+    ['gcc'] + (['-g'] if args.debug else []) + ['-o', exec_file_name, object_file_name, LIB_PATH + '_static.a']
     + ['-l%s' % lib_name for lib_name in args.compile_libs])
 
 
