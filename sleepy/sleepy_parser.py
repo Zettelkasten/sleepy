@@ -24,28 +24,29 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('Stmt', 'Expr', ';'): {
       'ast': lambda _pos, ast: ExpressionStatementAst(_pos, expr=ast(1))},
     Production('Stmt', 'func', 'identifier', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {  # noqa
-      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=identifier(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
-          arg_types=type_list(5), arg_annotations=annotation_list(5), return_type=ast(7),
+          arg_types=type_list(5), arg_annotations=annotation_list(5), arg_mutates=mutates_list(5), return_type=ast(7),
           return_annotation_list=annotation_list(7), body_scope=ast(8)))},
     Production('Stmt', 'func', 'Op', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {  # noqa
-      'ast': lambda _pos, op, identifier_list, type_list, annotation_list, ast: (
+      'ast': lambda _pos, op, identifier_list, type_list, annotation_list, mutates_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=op(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
-          arg_types=type_list(5), arg_annotations=annotation_list(5), return_type=ast(7),
+          arg_types=type_list(5), arg_annotations=annotation_list(5), arg_mutates=mutates_list(5), return_type=ast(7),
           return_annotation_list=annotation_list(7), body_scope=ast(8)))},
-    Production('Stmt', 'func', '(', 'AnnotationList', 'identifier', ':', 'Type', ')', '[', 'TypedIdentifierList', ']', 'ReturnType', 'Scope'): {  # noqa
-      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+    Production('Stmt', 'func', '(', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', ')', '[', 'TypedIdentifierList', ']', 'ReturnType', 'Scope'): {  # noqa
+      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates, mutates_list, ast: (
         FunctionDeclarationAst(
-          _pos, identifier='index', arg_identifiers=[identifier(4)] + identifier_list(9), templ_identifiers=[],
-          arg_types=[ast(6)] + type_list(9), arg_annotations=[annotation_list(3)] + annotation_list(9),
-          return_type=ast(11), return_annotation_list=annotation_list(11), body_scope=ast(12)))},
+          _pos, identifier='index', arg_identifiers=[identifier(5)] + identifier_list(10), templ_identifiers=[],
+          arg_types=[ast(7)] + type_list(10), arg_annotations=[annotation_list(3)] + annotation_list(10),
+          arg_mutates=[mutates(4)] + mutates_list(10),
+          return_type=ast(12), return_annotation_list=annotation_list(12), body_scope=ast(13)))},
     Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'): {
-      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, ast: (
+      'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=identifier(2), templ_identifiers=[], arg_identifiers=identifier_list(4),
-          arg_types=type_list(4), arg_annotations=annotation_list(4), return_type=ast(6),
+          arg_types=type_list(4), arg_annotations=annotation_list(4), arg_mutates=mutates_list(4), return_type=ast(6),
           return_annotation_list=annotation_list(6), body_scope=None))},
     Production('Stmt', 'struct', 'identifier', 'TemplateIdentifierList', '{', 'MemberList', '}'): {
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list: StructDeclarationAst(
@@ -135,17 +136,22 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
 
     # for function decls
     Production('TypedIdentifierList'): {
-      'identifier_list': [], 'type_list': [], 'annotation_list': []},
+      'identifier_list': [], 'type_list': [], 'annotation_list': [], 'mutates_list': []},
     Production('TypedIdentifierList', 'TypedIdentifierList+'): {
-      'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
-    Production('TypedIdentifierList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit'): {
-      'identifier_list': lambda identifier: [identifier(2)],
-      'type_list': lambda ast: [ast(4)],
-      'annotation_list': lambda annotation_list: [annotation_list(1)]},
-    Production('TypedIdentifierList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', ',', 'TypedIdentifierList+'): {  # noqa
-      'identifier_list': lambda identifier, identifier_list: [identifier(2)] + identifier_list(7),
-      'type_list': lambda ast, type_list: [ast(4)] + type_list(7),
-      'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(7)},
+      'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1',
+      'mutates_list': 'mutates_list.1'},
+    Production('TypedIdentifierList+', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', 'OptDefaultInit'): {
+      'identifier_list': lambda identifier: [identifier(3)],
+      'type_list': lambda ast: [ast(5)],
+      'annotation_list': lambda annotation_list: [annotation_list(1)],
+      'mutates_list': lambda mutates: [mutates(2)]},
+    Production('TypedIdentifierList+', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', 'OptDefaultInit', ',', 'TypedIdentifierList+'): {  # noqa
+      'identifier_list': lambda identifier, identifier_list: [identifier(3)] + identifier_list(8),
+      'type_list': lambda ast, type_list: [ast(5)] + type_list(8),
+      'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(8),
+      'mutates_list': lambda mutates, mutates_list: [mutates(2)] + mutates_list(8)},
+    Production('Mutates?'): {'mutates': False},
+    Production('Mutates?', 'mutates'): {'mutates': True},
 
     # for structs
     Production('MemberList'): {
@@ -211,8 +217,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'op': 'op.1'},
   },
   syn_attrs={
-    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
-    'op', 'number', 'string'},
+    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list', 'mutates_list',
+    'mutates', 'op', 'number', 'string'},
   terminal_attr_rules={
     'cmp_op': {'op': lambda value: value},
     '=': {'op': lambda value: value},
