@@ -6,14 +6,9 @@
 func empty_list() ->  DoubleList  {
   return DoubleList(allocate[Double](8), 8, 0);
 }
-func get(l: DoubleList, idx: Int) ->  Double  {
+func index(l: DoubleList, idx: Int) -> Ptr[Double] {
   assert(and(idx >= 0, idx < l.length));
-  return load(l.pointer + idx);
-}
-func set(l: DoubleList, idx: Int, val: Double)  {
-  # compiler cannot enforce that the list has to be mutable, but we will anyway.
-  assert(and(idx >= 0, idx < l.length));
-  store(l.pointer + idx, val);
+  return l.pointer + idx;
 }
 func insert(l: DoubleList, val: Double)  {
   if l.length >= l.alloc_length {
@@ -27,7 +22,7 @@ func insert(l: DoubleList, val: Double)  {
   }
   new_idx = l.length;
   l.length = l.length + 1;
-  set(l, new_idx, val);
+  l[new_idx] = val;
 }
 func insert_all(l: DoubleList, other: DoubleList)  {
   # could be smarter: e.g. use memcpy
@@ -35,7 +30,7 @@ func insert_all(l: DoubleList, other: DoubleList)  {
   # To make this nicer: use a range(..) object and iterate over that
   idx = 0;
   while idx < other_length {
-    insert(l, get(other, idx));
+    insert(l, load(other[idx]));
     idx = idx + 1;
   }
   # Thoughts: This function is problematic, if l == other.
@@ -46,7 +41,7 @@ func remove(l: DoubleList, idx: Int)  {
   # move all elements after idx one to front
   move_idx = idx + 1;
   while move_idx < l.length {
-    set(l, move_idx - 1, get(l, move_idx));
+    l[move_idx - 1] = load(l[move_idx]);
     move_idx = move_idx + 1;
   }
   l.length = l.length - 1;
@@ -56,7 +51,7 @@ func print(l: DoubleList)  {
   print('[');
   idx = 0;
   while idx < l.length {
-    print(get(l, idx));
+    print(load(l[idx]));
     idx = idx + 1;
     if idx < l.length { print(','); }
   }

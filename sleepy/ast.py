@@ -1033,7 +1033,7 @@ class CallExpressionAst(ExpressionAst):
     in which case we assume that `foo` is a function or a template type,
     and we specify some template types with concrete types by setting the template parameters.
     """
-    if not isinstance(self.func_expr, IdentifierExpressionAst) or self.func_expr.identifier not in {'get', 'set'}:
+    if not isinstance(self.func_expr, IdentifierExpressionAst) or self.func_expr.identifier != 'index':
       return None
     if not len(self.func_arg_exprs) >= 1:
       return None

@@ -115,18 +115,9 @@ func copy(str: Str) ->  Str  {
   memcpy(new.start, str.start, str.length);
   return new;
 }
-func get(str: Str, pos: Int) -> Ptr[Char] {
+func (str: Str)[pos: Int] -> Ptr[Char] {
+  assert(and(0 <= pos, pos < str.length));
   return str.start + pos;
-}
-func set(str: Str, pos: Int, char: Char)  {
-  assert(and(0 <= pos, pos < str.length + 1));
-  if pos >= str.alloc_length {
-    resize(str, max(2 * str.alloc_length, 1));
-  }
-  store(str.start + pos, char);
-  if pos == str.length {
-    str.length += 1;
-  }
 }
 func =[T](ptr: Ptr[T], v: T) { store(ptr, v); }
 func +[T](ptr: Ptr[T]) -> T { return load(ptr); }
@@ -137,7 +128,8 @@ func insert(str: Str, char: Char, pos: Int)  {
     resize(str, max(2 * str.alloc_length, 1));
   }
   memcpy(str.start + pos + 1, str.start + pos, str.length - pos);
-  set(str, pos, char);
+  str.length += 1;
+  str[pos] = char;
 }
 func insert(str: Str, insert_char: Char)  { insert(str, insert_char, str.length); }
 func insert(str: Str, insert_str: Str, pos: Int)  {
