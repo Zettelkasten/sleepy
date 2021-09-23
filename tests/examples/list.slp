@@ -39,15 +39,14 @@ func maybe_resize[T](list: Ptr[List[T]], required_size: Long) {
 
 func add[T](list: Ptr[List[T]], value: T) {
   maybe_resize(list, load(list).size + 1l);
-  store(load(list).start.value + load(list).size, value);
+  load(list).start.value + load(list).size = value;
   load(list).size += 1l;
 }
-# TODO calling this "index" or so makes more sense. This is get + set.
-func get[T](list: Ptr[List[T]], index: Long) -> Ptr[T] {
-  assert(and(0l <= index, index < load(list).size));
-  return load(list).start.value + index;
+func index[T](list: Ptr[List[T]], i: Long) -> Ptr[T] {
+  assert(and(0l <= i, i < load(list).size));
+  return load(list).start.value + i;
 }
-func get[T](list: Ptr[List[T]], index: Int) -> Ptr[T] { return get(list, ToLong(index)); }
+func index[T](list: Ptr[List[T]], i: Int) -> Ptr[T] { return index(list, ToLong(i)); }
 func pop[T](list: Ptr[List[T]]) -> T {
   assert(load(list).size > 0l);
   value = load(list[load(list).size - 1l]);

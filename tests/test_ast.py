@@ -851,7 +851,7 @@ def test_overload_with_different_structs():
 def test_index_operator():
   with make_execution_engine() as engine:
     program = """
-    func get(ptr: Ptr[Double], pos: Int) -> Ptr[Double] {
+    func index(ptr: Ptr[Double], pos: Int) -> Ptr[Double] {
       return ptr + pos;
     }
     func main(val: Double) ->  Double  {
@@ -868,7 +868,7 @@ def test_index_operator():
 def test_index_operator_syntax():
   with make_execution_engine() as engine:
     program = """
-    func get(ptr: Ptr[Double], pos: Int) -> Ptr[Double] {
+    func (ptr: Ptr[Double])[pos: Int] -> Ptr[Double] {
       return ptr + pos;
     }
     func main(val: Double) ->  Double  {

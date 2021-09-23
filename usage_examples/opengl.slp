@@ -9,7 +9,7 @@
   size: Int;
   start: Ptr[T];
 }
-func get[T](vec: Vector[T], pos: Int) -> Ptr[T] {
+func index[T](vec: Vector[T], pos: Int) -> Ptr[T] {
   assert(and(0 <= pos, pos < vec.size));
   return vec.start + pos;
 }
@@ -45,7 +45,7 @@ func print[T](vec: Vector[T]) {
   dim_x: Int = 0; dim_y: Int = 0;
   start: Ptr[Float] = allocate[Float](0);
 }
-func get(mat: Matrix, x: Int, y: Int) -> Ptr[Float] {
+func index(mat: Matrix, x: Int, y: Int) -> Ptr[Float] {
   assert(and(0 <= x, x < mat.dim_x));
   assert(and(0 <= y, y < mat.dim_y));
   return mat.start + x * mat.dim_x + y;

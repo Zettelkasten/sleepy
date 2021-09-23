@@ -218,9 +218,9 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   free_symbol = FunctionSymbol(identifier='free', returns_void=True)
   symbol_table['free'] = free_symbol
 
-  assert 'get' not in symbol_table
-  symbol_table['get'] = FunctionSymbol(identifier='get', returns_void=False)
-  symbol_table.inbuilt_symbols['get'] = symbol_table['get']
+  assert 'index' not in symbol_table
+  symbol_table['index'] = FunctionSymbol(identifier='index', returns_void=False)
+  symbol_table.inbuilt_symbols['index'] = symbol_table['index']
 
   assert 'size' not in symbol_table
   symbol_table['size'] = FunctionSymbol(identifier='size', returns_void=False)
