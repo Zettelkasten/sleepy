@@ -17,22 +17,19 @@ class FunctionDeclarationAst(StatementAst):
   allowed_annotation_identifiers = {'Inline'}
   allowed_arg_annotation_identifiers = {}
 
-  def __init__(self, pos: TreePosition, identifier: str, templ_identifiers: List[str], arg_identifiers: List[str],
-               arg_types: List[TypeAst], arg_annotations: List[List[AnnotationAst]], return_type: Optional[TypeAst],
-               return_annotation_list: Optional[List[AnnotationAst]], body_scope: Optional[AbstractScopeAst]):
-    """
-    :param pos:
-    :param identifier:
-    :param templ_identifiers:
-    :param arg_identifiers:
-    :param arg_types:
-    :param arg_annotations:
-    :param return_type:
-    :param return_annotation_list:
-    :param body_scope: body, or None if extern function.
-    """
+  def __init__(self,
+               pos: TreePosition,
+               identifier: str,
+               templ_identifiers: List[str],
+               arg_identifiers: List[str],
+               arg_types: List[TypeAst],
+               arg_annotations: List[List[AnnotationAst]],
+               arg_mutates: List[bool],
+               return_type: Optional[TypeAst],
+               return_annotation_list: Optional[List[AnnotationAst]],
+               body_scope: Optional[AbstractScopeAst]):
     super().__init__(pos)
-    assert len(arg_identifiers) == len(arg_types) == len(arg_annotations)
+    assert len(arg_identifiers) == len(arg_types) == len(arg_annotations) == len(arg_mutates)
     assert (return_type is None) == (return_annotation_list is None)
     assert body_scope is None or isinstance(body_scope, AbstractScopeAst)
     self.identifier = identifier
