@@ -1983,3 +1983,19 @@ def test_narrowing_with_shadowing():
     }
     """
     compile_program(engine, program, add_preamble=True)
+
+
+def test_arg_mutates():
+  with make_execution_engine() as engine:
+    program = """
+    func increment(mutates x: Int) {
+      x = x + 1;
+    }
+    func main(a: Int) -> Int {
+      increment(a);
+      return a;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), 6)
+    assert_equal(main(10), 11)
