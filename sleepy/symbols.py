@@ -1825,20 +1825,18 @@ def make_ir_size(size: int) -> ir.values.Value:
   return ir.Constant(LLVM_SIZE_TYPE, size)
 
 
-def make_func_call_ir(func: FunctionSymbol, templ_types: List[Type],
-                      calling_arg_types: List[Type], calling_ir_args: List[ir.values.Value],
+def make_func_call_ir(func: FunctionSymbol,
+                      templ_types: List[Type],
+                      calling_arg_types: List[Type],
+                      calling_ir_args: List[ir.values.Value],
                       context: CodegenContext) -> Optional[ir.values.Value]:
   assert context.emits_ir
   assert not context.emits_debug or context.builder.debug_metadata is not None
   assert len(calling_arg_types) == len(calling_ir_args)
 
-  def make_call_func(concrete_func, concrete_calling_arg_types_, caller_context):
-    """
-    :param ConcreteFunction concrete_func:
-    :param list[Type] concrete_calling_arg_types_:
-    :param CodegenContext caller_context:
-    :rtype: ir.values.Value
-    """
+  def make_call_func(concrete_func: ConcreteFunction,
+                     concrete_calling_arg_types_: List[Type],
+                     caller_context: CodegenContext) -> ir.values.Value:
     assert caller_context.emits_ir
     assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
     assert len(concrete_func.arg_types) == len(calling_arg_types)
