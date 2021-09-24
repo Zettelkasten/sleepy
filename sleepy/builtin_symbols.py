@@ -8,7 +8,7 @@ from sleepy.grammar import TreePosition
 from sleepy.symbols import FunctionTemplate, PlaceholderTemplateType, Type, ConcreteFunction, \
   ConcreteBuiltinOperationFunction, ConcreteBitcastFunction, DoubleType, FloatType, BoolType, \
   IntType, LongType, CharType, RawPointerType, PointerType, SymbolTable, CodegenContext, FunctionSymbol, \
-  LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, TypeSymbol, StructType, TypeFactory, SLEEPY_VOID, SLEEPY_NEVER
+  LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, TypeTemplateSymbol, StructType, TypeFactory, SLEEPY_VOID, SLEEPY_NEVER
 from sleepy.util import concat_dicts
 
 
@@ -95,7 +95,7 @@ Simple_Comparison_Ops: List[BuiltinBinaryOps] = \
   BuiltinBinaryOps.GreaterOrEqual, BuiltinBinaryOps.LessOrEqual]
 
 
-def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
+def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeTemplateSymbol:
   str_type = StructType(
     struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'], templ_types=[],
     member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT],
@@ -103,12 +103,12 @@ def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   constructor_symbol = str_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
   str_type.constructor = constructor_symbol
   type_factory = TypeFactory(placeholder_templ_types=[], signature_type=str_type)
-  struct_symbol = TypeSymbol(type_factory=type_factory)
+  struct_symbol = TypeTemplateSymbol.make_concrete_type_symbol(str_type)
   str_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
   return struct_symbol
 
 
-def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
+def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeTemplateSymbol:
   pointee_type = PlaceholderTemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
 
@@ -130,7 +130,6 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr), emits_ir=context.emits_ir)
   store_symbol.add_signature(store_signature)
   symbol_table['store'] = store_symbol
-  type_factory = TypeFactory(placeholder_templ_types=[pointee_type], signature_type=ptr_type)
 
   # cast from RawPtr -> Ptr[T]
   constructor_symbol = FunctionSymbol(identifier='Ptr', returns_void=False)
@@ -168,10 +167,10 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     arg_type_narrowings=[SLEEPY_NEVER], instruction=lambda builder, value: None, emits_ir=context.emits_ir)
   symbol_table.free_symbol.add_signature(free_signature)
 
-  return TypeSymbol(type_factory=type_factory)
+  return TypeTemplateSymbol(template_parameters=[pointee_type], signature_type=ptr_type)
 
 
-def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeSymbol:
+def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeTemplateSymbol:
   # add destructor
   destructor_signature = BuiltinOperationFunctionTemplate(
     placeholder_template_types=[], return_type=SLEEPY_VOID, arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR],
@@ -196,8 +195,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
     constructor_symbol.add_signature(from_int_signature)
   SLEEPY_RAW_PTR.constructor = constructor_symbol
 
-  type_generator = TypeFactory(placeholder_templ_types=[], signature_type=SLEEPY_RAW_PTR)
-  raw_ptr_symbol = TypeSymbol(type_generator)
+  raw_ptr_symbol = TypeTemplateSymbol.make_concrete_type_symbol(SLEEPY_RAW_PTR)
   return raw_ptr_symbol
 
 
@@ -227,9 +225,8 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   symbol_table.inbuilt_symbols['size'] = symbol_table['size']
 
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
-    type_generator = TypeFactory(placeholder_templ_types=[], signature_type=inbuilt_type)
     assert type_identifier not in symbol_table
-    symbol_table[type_identifier] = TypeSymbol(type_generator)
+    symbol_table[type_identifier] = TypeTemplateSymbol.make_concrete_type_symbol(inbuilt_type)
     if inbuilt_type == SLEEPY_VOID:
       continue
 

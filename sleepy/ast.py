@@ -9,7 +9,7 @@ from llvmlite import ir
 from sleepy.errors import SemanticError
 from sleepy.grammar import TreePosition
 from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
-  TypeSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
+  TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, CodegenContext, get_common_type, \
   PlaceholderTemplateType, TypeFactory, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
@@ -148,11 +148,11 @@ class AbstractSyntaxTree(ABC):
         symbol_table[func_arg_expr.identifier] = var_symbol.copy_narrow_type(narrowed_arg_type)
 
     # special handling of 'assert' call
-    if func.base in {symbol_table.inbuilt_symbols.get(identifier) for identifier in {'assert', 'unchecked_assert'}}:
+    if func in {symbol_table.inbuilt_symbols.get(identifier) for identifier in {'assert', 'unchecked_assert'}}:
       assert len(func_arg_exprs) >= 1
       condition_expr = func_arg_exprs[0]
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
-    return TypedValue(type=return_type, referenceable=False, ir_val=return_ir_val)
+    return TypedValue(typ=return_type, referenceable=False, ir_val=return_ir_val)
 
   def build_func_call_by_identifier(self,
                                     func_identifier: str,
@@ -181,8 +181,7 @@ class AbstractSyntaxTree(ABC):
         self.raise_error('Cannot declare template variable %r multiple times' % templ_type_identifier)
       template_type = PlaceholderTemplateType(templ_type_identifier)
       templ_types.append(template_type)
-      template_type_factory = TypeFactory(placeholder_templ_types=[], signature_type=template_type)
-      template_type_symbol = TypeSymbol(type_factory=template_type_factory)
+      template_type_symbol = TypeTemplateSymbol(template_parameters=[], signature_type=template_type)
       symbol_table[templ_type_identifier] = template_type_symbol
     return templ_types
 
@@ -433,16 +432,13 @@ class StructDeclarationAst(StatementAst):
         struct_identifier=self.struct_identifier, templ_types=placeholder_templ_types,
         member_identifiers=self.member_identifiers, member_types=member_types, pass_by_ref=self.is_pass_by_ref())
 
-      struct_type_factory = TypeFactory(
-        placeholder_templ_types=placeholder_templ_types, signature_type=signature_struct_type)
-
       # make constructor / destructor
       constructor = signature_struct_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
       signature_struct_type.constructor = constructor
       signature_struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
 
       # assemble to complete type symbol
-      struct_type_symbol = TypeSymbol(type_factory=struct_type_factory)
+      struct_type_symbol = TypeTemplateSymbol(template_parameters=placeholder_templ_types, signature_type=signature_struct_type)
       symbol_table[self.struct_identifier] = struct_type_symbol
 
   def children(self) -> List[AbstractSyntaxTree]:
@@ -745,7 +741,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
           ir_val = make_ir_val_is_type(check_value.ir_val, check_value.narrowed_type, check_type, context=context)
         else:
           ir_val = None
-        return TypedValue(type=SLEEPY_BOOL, referenceable=False, ir_val=ir_val)
+        return TypedValue(typ=SLEEPY_BOOL, referenceable=False, ir_val=ir_val)
 
       operand_exprs = [self.left_expr, self.right_expr]
       return self.build_func_call_by_identifier(
@@ -818,7 +814,7 @@ class ConstantExpressionAst(ExpressionAst):
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
       ir_val = ir.Constant(self.constant_type.ir_type, self.constant_val) if context.emits_ir else None
-      return TypedValue(type=self.constant_type, referenceable=False, ir_val=ir_val)
+      return TypedValue(typ=self.constant_type, referenceable=False, ir_val=ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use constant expression as function')
@@ -852,8 +848,8 @@ class StringLiteralExpressionAst(ExpressionAst):
     with context.use_pos(self.pos):
       assert 'Str' in symbol_table.inbuilt_symbols is not None
       str_symbol = symbol_table.inbuilt_symbols['Str']
-      assert isinstance(str_symbol, TypeSymbol)
-      str_type = str_symbol.get_type(concrete_templ_types=[])
+      assert isinstance(str_symbol, TypeTemplateSymbol)
+      str_type = str_symbol.get_type(template_arguments=[])
       assert isinstance(str_type, StructType)
       assert str_type.member_identifiers == ['start', 'length', 'alloc_length']
 
@@ -876,7 +872,7 @@ class StringLiteralExpressionAst(ExpressionAst):
           member_ir_vals=[ir_start, ir_length, ir_length], struct_ir_alloca=str_ir_alloca, context=context)
       else:
         str_ir_alloca = None
-      return TypedValue(type=str_type, referenceable=False, ir_val=str_ir_alloca)
+      return TypedValue(typ=str_type, referenceable=False, ir_val=str_ir_alloca)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use string literal as function')
@@ -923,7 +919,7 @@ class IdentifierExpressionAst(ExpressionAst):
 
   def get_func_symbol(self, symbol_table: SymbolTable) -> FunctionSymbol:
     symbol = self.get_symbol(symbol_table=symbol_table)
-    if isinstance(symbol, TypeSymbol):
+    if isinstance(symbol, TypeTemplateSymbol):
       symbol_type = self.make_as_type(symbol_table=symbol_table)
       if symbol_type.constructor is None:
         self.raise_error('Cannot call non-existing constructor of type %r' % symbol_type)
@@ -942,7 +938,7 @@ class IdentifierExpressionAst(ExpressionAst):
       else:
         ir_val, ir_val_ptr = None, None
       return TypedValue(
-        type=symbol.declared_var_type, narrowed_type=symbol.narrowed_var_type, referenceable=True, ir_val=ir_val,
+        typ=symbol.declared_var_type, narrowed_type=symbol.narrowed_var_type, referenceable=True, ir_val=ir_val,
         ir_val_ptr=ir_val_ptr)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
@@ -950,9 +946,9 @@ class IdentifierExpressionAst(ExpressionAst):
 
   def make_as_type(self, symbol_table: SymbolTable) -> Type:
     type_symbol = self.get_symbol(symbol_table=symbol_table)
-    if not isinstance(type_symbol, TypeSymbol):
+    if not isinstance(type_symbol, TypeTemplateSymbol):
       self.raise_error('%r is not a type, but a %r' % (self.identifier, type_symbol.kind))
-    return type_symbol.type_factory.signature_type
+    return type_symbol.signature_type
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
@@ -1025,7 +1021,7 @@ class CallExpressionAst(ExpressionAst):
       return False
     inbuilt_func = symbol_table.inbuilt_symbols[inbuilt_func_identifier]
     assert isinstance(inbuilt_func, FunctionSymbol)
-    if self.func_expr.make_as_func_caller(symbol_table=symbol_table).func.base != inbuilt_func.base:
+    if self.func_expr.make_as_func_caller(symbol_table=symbol_table).func != inbuilt_func:
       return False
     return True
 
@@ -1053,7 +1049,7 @@ class CallExpressionAst(ExpressionAst):
         size_of_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
         from sleepy.symbols import LLVM_SIZE_TYPE
         ir_val = ir.Constant(LLVM_SIZE_TYPE, size_of_type.size) if context.emits_ir else None
-        return TypedValue(type=SLEEPY_LONG, referenceable=False, ir_val=ir_val)
+        return TypedValue(typ=SLEEPY_LONG, referenceable=False, ir_val=ir_val)
       if self._is_load_call(symbol_table=symbol_table):
         assert len(self.func_arg_exprs) == 1
         arg_expr = self.func_arg_exprs[0]
@@ -1065,7 +1061,7 @@ class CallExpressionAst(ExpressionAst):
           ir_val = context.builder.load(ir_val_ptr, name='load_ptr')
         else:
           ir_val_ptr, ir_val = None, None
-        return TypedValue(type=arg_val.type.pointee_type, referenceable=True, ir_val=ir_val, ir_val_ptr=ir_val_ptr)
+        return TypedValue(typ=arg_val.type.pointee_type, referenceable=True, ir_val=ir_val, ir_val_ptr=ir_val_ptr)
 
       # default case
       func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
@@ -1127,7 +1123,7 @@ class ReferenceExpressionAst(ExpressionAst):
         self.raise_error('Cannot take reference to non-assignable variable')
       ir_val = arg_val.ir_val_ptr if context.emits_ir else None
       from sleepy.symbols import PointerType
-      return TypedValue(type=PointerType(arg_val.narrowed_type), referenceable=False, ir_val=ir_val)
+      return TypedValue(typ=PointerType(arg_val.narrowed_type), referenceable=False, ir_val=ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use reference as function')
@@ -1184,7 +1180,7 @@ class MemberExpressionAst(ExpressionAst):
           ir_val_ptr = None
       else:
         ir_val, ir_val_ptr = None, None
-      return TypedValue(type=member_type, referenceable=parent_val.referenceable, ir_val=ir_val, ir_val_ptr=ir_val_ptr)
+      return TypedValue(typ=member_type, referenceable=parent_val.referenceable, ir_val=ir_val, ir_val_ptr=ir_val_ptr)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use member %r as function' % self.member_identifier)
@@ -1235,19 +1231,19 @@ class IdentifierTypeAst(TypeAst):
     if self.type_identifier not in symbol_table:
       self.raise_error('Unknown type identifier %r' % self.type_identifier)
     type_symbol = symbol_table[self.type_identifier]
-    if not isinstance(type_symbol, TypeSymbol):
+    if not isinstance(type_symbol, TypeTemplateSymbol):
       self.raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)))
     templ_type_symbols = [
       template_type.make_type(symbol_table=symbol_table) for template_type in self.templ_types]
-    if len(templ_type_symbols) != len(type_symbol.type_factory.placeholder_templ_types):
+    if len(templ_type_symbols) != len(type_symbol.template_parameters):
       if len(templ_type_symbols) == 0:
         self.raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
-          self.type_identifier, type_symbol.type_factory.placeholder_templ_types))
+          self.type_identifier, type_symbol.template_parameters))
       else:
         self.raise_error(
           'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
-            self.type_identifier, type_symbol.type_factory.placeholder_templ_types, templ_type_symbols))
-    return type_symbol.get_type(concrete_templ_types=templ_type_symbols)
+            self.type_identifier, type_symbol.template_parameters, templ_type_symbols))
+    return type_symbol.get_type(template_arguments=templ_type_symbols)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return self.templ_types

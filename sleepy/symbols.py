@@ -28,11 +28,9 @@ class Symbol(ABC):
   kind = None
 
   def __init__(self):
-    """
-    Initialize the symbol.
-    """
-    self.base: Symbol = self
     assert self.kind is not None
+
+
 
   class Kind(Enum):
     """
@@ -1042,7 +1040,6 @@ class VariableSymbol(Symbol):
 
   def copy_with_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)
-    new_var_symbol.base = self if self.base is None else self.base
     # explicitly apply narrowing from declared type here: always stay compatible to the base type
     new_var_symbol.narrowed_var_type = narrow_type(from_type=self.declared_var_type, narrow_to=new_narrow_type)
     return new_var_symbol
@@ -1411,11 +1408,6 @@ class FunctionSymbol(Symbol):
     self.identifier = identifier
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionTemplate]] = {}
     self.returns_void = returns_void
-    if base is None:
-      base = self
-    elif base.base is not None:
-      base = base.base
-    self.base = base
 
   @property
   def signatures(self) -> List[FunctionTemplate]:
@@ -1505,19 +1497,12 @@ class FunctionSymbolCaller:
 
 
 class TypeFactory:
-  """
-  Lazily generates concrete types with initialized template arguments.
-  """
   def __init__(self, placeholder_templ_types: List[PlaceholderTemplateType], signature_type: Type):
     self.placeholder_templ_types = placeholder_templ_types
     self.signature_type = signature_type
 
-  def make_concrete_type(self, concrete_templ_types: List[Type] | Tuple[Type]) -> Type:
-    replacements = dict(zip(self.placeholder_templ_types, concrete_templ_types))
-    return self.signature_type.replace_types(replacements)
 
-
-class TypeSymbol(Symbol):
+class TypeTemplateSymbol(Symbol):
   """
   A (statically) declared (possibly) template type.
   Can have one or multiple template initializations that yield different concrete types.
@@ -1525,23 +1510,28 @@ class TypeSymbol(Symbol):
   """
   kind = Symbol.Kind.TYPE
 
-  def __init__(self, type_factory: TypeFactory):
+  def __init__(self, template_parameters: List[PlaceholderTemplateType], signature_type: Type):
     super().__init__()
-    assert isinstance(type_factory, TypeFactory)
-    self.type_factory = type_factory
-    self.initialized_templ_types: Dict[Tuple[Type], Type] = {}
+    self.template_parameters: List[PlaceholderTemplateType] = template_parameters
+    self.signature_type = signature_type
+
+    self.generated_types_cache: Dict[Tuple[Type], Type] = {}
 
   @staticmethod
-  def make_concrete_type_symbol(concrete_type: Type) -> TypeSymbol:
-    return TypeSymbol(TypeFactory([], concrete_type))
+  def make_concrete_type_symbol(concrete_type: Type) -> TypeTemplateSymbol:
+    return TypeTemplateSymbol(template_parameters=[], signature_type=concrete_type)
 
-  def get_type(self, concrete_templ_types: List[Type]) -> Type:
-    concrete_templ_types = tuple(concrete_templ_types)
-    if concrete_templ_types in self.initialized_templ_types:
-      return self.initialized_templ_types[concrete_templ_types]
-    templ_type = self.type_factory.make_concrete_type(concrete_templ_types=concrete_templ_types)
-    self.initialized_templ_types[concrete_templ_types] = templ_type
-    return templ_type
+  def get_type(self, template_arguments: List[Type]) -> Type:
+    template_arguments = tuple(template_arguments)
+    if template_arguments in self.generated_types_cache:
+      return self.generated_types_cache[template_arguments]
+    concrete_type = self.make_concrete_type(template_arguments=template_arguments)
+    self.generated_types_cache[template_arguments] = concrete_type
+    return concrete_type
+
+  def make_concrete_type(self, template_arguments: List[Type] | Tuple[Type]) -> Type:
+    replacements = dict(zip(self.template_parameters, template_arguments))
+    return self.signature_type.replace_types(replacements)
 
 
 class SymbolTable(HierarchicalDict[str, Symbol]):
@@ -1585,10 +1575,10 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     # shadow placeholder types with their concrete substitutions
     for name, t in type_substitutions:
       existing_symbol = new_table[name]
-      assert isinstance(existing_symbol, TypeSymbol)
-      assert isinstance(existing_symbol.type_factory.signature_type, PlaceholderTemplateType)
+      assert isinstance(existing_symbol, TypeTemplateSymbol)
+      assert isinstance(existing_symbol.signature_type, PlaceholderTemplateType)
 
-      new_table[name] = TypeSymbol.make_concrete_type_symbol(t)
+      new_table[name] = TypeTemplateSymbol.make_concrete_type_symbol(t)
 
     return new_table
 
@@ -1605,7 +1595,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
       assert all(symbol_identifier in symbol_table for symbol_table in other_symbol_tables)
       other_symbols = [
         symbol_table[symbol_identifier] for symbol_table in other_symbol_tables]
-      other_symbols = [other_symbol for other_symbol in other_symbols if other_symbol.base == self_symbol.base]
       assert all(isinstance(other_symbol, VariableSymbol) for other_symbol in other_symbols)
       if len(other_symbols) == 0:
         continue
@@ -2027,16 +2016,15 @@ class TypedValue:
   If it is referenceable, also has a pointer to such IR value.
   """
   def __init__(self, *,
-               type: Type,
+               typ: Type,
                narrowed_type: Type = None,
                referenceable: bool,
                ir_val: Optional[ir.values.Value],
                ir_val_ptr: Optional[ir.values.Value] = None):
     if narrowed_type is None:
-      narrowed_type = type
-    emits_ir = ir_val is not None
-    assert (ir_val_ptr is not None) == (emits_ir and referenceable)
-    self.type = type
+      narrowed_type = typ
+    assert (ir_val_ptr is not None) == (ir_val is not None and referenceable)
+    self.type = typ
     self.narrowed_type = narrowed_type
     self.referenceable = referenceable
     self.ir_val = ir_val
