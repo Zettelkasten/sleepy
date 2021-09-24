@@ -37,6 +37,7 @@ class FunctionDeclarationAst(StatementAst):
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
     self.arg_annotations = arg_annotations
+    self.arg_mutates = arg_mutates
     self.return_type = return_type
     self.return_annotation_list = return_annotation_list
     self.body_scope = body_scope
@@ -100,17 +101,17 @@ class FunctionDeclarationAst(StatementAst):
     if self.is_inline and self.is_extern:
       self.raise_error('Extern function %r cannot be inlined' % self.identifier)
 
-    signature_ = DeclaredFunctionTemplate(
+    signature = DeclaredFunctionTemplate(
       placeholder_template_types=placeholder_templ_types,
       return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types, arg_type_narrowings=arg_types,
-      ast=self, captured_symbol_table=func_symbol_table, captured_context=context)
-    func_symbol.add_signature(signature_)
+      arg_mutates=self.arg_mutates, ast=self, captured_symbol_table=func_symbol_table, captured_context=context)
+    func_symbol.add_signature(signature)
 
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
 
     # Always generate IR for functions without template types
     if not self.is_inline and len(placeholder_templ_types) == 0:
-      signature_.get_concrete_func(concrete_templ_types=[])
+      signature.get_concrete_func(concrete_templ_types=[])
 
   def build_body_ir(self, parent_symbol_table: SymbolTable, concrete_func: ConcreteFunction,
                     body_context: CodegenContext, ir_func_args: Optional[List[ir.values.Value]] = None):
@@ -126,19 +127,23 @@ class FunctionDeclarationAst(StatementAst):
     # add arguments as variables
     for arg_identifier, arg_type in zip(concrete_func.arg_identifiers, concrete_func.arg_types):
       var_symbol = VariableSymbol(None, arg_type)
-      var_symbol.build_ir_alloca(context=body_context, identifier=arg_identifier)
       assert arg_identifier not in body_symbol_table.current_scope_identifiers
       body_symbol_table[arg_identifier] = var_symbol
     # set function argument values
     if body_context.emits_ir:
       assert ir_func_args is not None
       assert len(ir_func_args) == len(concrete_func.arg_identifiers)
-      for arg_identifier, ir_arg in zip(concrete_func.arg_identifiers, ir_func_args):
+      for arg_identifier, ir_arg, arg_mutates in zip(concrete_func.arg_identifiers, ir_func_args, concrete_func.arg_mutates):  # noqa
         arg_symbol = body_symbol_table[arg_identifier]
         assert isinstance(arg_symbol, VariableSymbol)
-        ir_arg.name = arg_identifier
-        assert arg_symbol.ir_alloca is not None
-        body_context.builder.store(ir_arg, arg_symbol.ir_alloca)
+        if arg_mutates:
+          ir_arg.name = arg_identifier + '_ref'
+          arg_symbol.ir_alloca = ir_arg
+        else:  # not arg_mutates, default case
+          ir_arg.name = arg_identifier
+          arg_symbol.build_ir_alloca(context=body_context, identifier=arg_identifier)
+          assert arg_symbol.ir_alloca is not None
+          body_context.builder.store(ir_arg, arg_symbol.ir_alloca)
     # build function body
     self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
     # maybe add implicit return
@@ -172,10 +177,13 @@ class ConcreteDeclaredFunction(ConcreteFunction):
                concrete_template_types: List[Type],
                return_type: Type, arg_types: List[Type],
                arg_type_narrowings: List[Type],
+               arg_mutates: List[bool],
                ast: FunctionDeclarationAst,
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
-    super().__init__(signature, ir_func, concrete_template_types, return_type, arg_types, arg_type_narrowings)
+    super().__init__(
+      signature, ir_func, concrete_template_types, return_type, arg_types, arg_type_narrowings,
+      parameter_mutates=arg_mutates)
     self.ast = ast
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
@@ -265,10 +273,13 @@ class DeclaredFunctionTemplate(FunctionTemplate):
                arg_identifiers: List[str],
                arg_types: List[Type],
                arg_type_narrowings: List[Type],
+               arg_mutates: List[bool],
                ast: FunctionDeclarationAst,
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
-    super().__init__(placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings)
+    super().__init__(
+      placeholder_template_types=placeholder_template_types, return_type=return_type, arg_identifiers=arg_identifiers,
+      arg_types=arg_types, arg_type_narrowings=arg_type_narrowings, arg_mutates=arg_mutates)
     self.ast = ast
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
@@ -280,7 +291,7 @@ class DeclaredFunctionTemplate(FunctionTemplate):
     concrete_function = ConcreteDeclaredFunction(
       signature=self, ir_func=None, concrete_template_types=concrete_template_arguments,
       return_type=concrete_return_type, arg_types=concrete_parameter_types,
-      arg_type_narrowings=concrete_narrowed_parameter_types, ast=self.ast,
+      arg_type_narrowings=concrete_narrowed_parameter_types, arg_mutates=self.arg_mutates, ast=self.ast,
       captured_symbol_table=self.captured_symbol_table, captured_context=self.captured_context)
     self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     concrete_function.build_ir()
