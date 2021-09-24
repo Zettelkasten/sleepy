@@ -28,41 +28,41 @@ func EmptyList[T]() -> List[T] {
   return List[T](OwnedPtr(ptr), initial_size, 0l);
 }
 
-func maybe_resize[T](list: Ptr[List[T]], required_size: Long) {
-  if load(list).allocated_size >= required_size { return; }
-  load(list).allocated_size = max(required_size, load(list).allocated_size * 2l);
-  old_start = load(list).start;
-  load(list).start = OwnedPtr(allocate[T](load(list).allocated_size));
-  memcpy(load(list).start.value, old_start.value, load(list).size);
+func maybe_resize[T](mutates list: List[T], required_size: Long) {
+  if list.allocated_size >= required_size { return; }
+  list.allocated_size = max(required_size, list.allocated_size * 2l);
+  old_start = list.start;
+  list.start = OwnedPtr(allocate[T](list.allocated_size));
+  memcpy(list.start.value, old_start.value, list.size);
   deallocate(old_start.value);
 }
 
-func add[T](list: Ptr[List[T]], value: T) {
-  maybe_resize(list, load(list).size + 1l);
-  load(list).start.value + load(list).size = value;
-  load(list).size += 1l;
+func add[T](mutates list: List[T], value: T) {
+  maybe_resize(list, list.size + 1l);
+  store(list.start.value + list.size, value);
+  list.size += 1l;
 }
-func index[T](list: Ptr[List[T]], i: Long) -> Ptr[T] {
-  assert(and(0l <= i, i < load(list).size));
-  return load(list).start.value + i;
+func index[T](list: List[T], i: Long) -> Ptr[T] {
+  assert(and(0l <= i, i < list.size));
+  return list.start.value + i;
 }
-func index[T](list: Ptr[List[T]], i: Int) -> Ptr[T] { return index(list, ToLong(i)); }
-func pop[T](list: Ptr[List[T]]) -> T {
-  assert(load(list).size > 0l);
-  value = load(list[load(list).size - 1l]);
-  load(list).size -= 1l;
+func index[T](list: List[T], i: Int) -> Ptr[T] { return index(list, ToLong(i)); }
+func pop[T](mutates list: List[T]) -> T {
+  assert(list.size > 0l);
+  value = load(list[list.size - 1l]);
+  list.size -= 1l;
   return value;
 }
-func remove_all[T](list: Ptr[List[T]]) {
+func remove_all[T](mutates list: List[T]) {
   pos = 0l;
-  while pos < load(list).size {
+  while pos < list.size {
     cleanup(list[pos]);
     pos += 1l;
   }
-  load(list).size = 0l;
+  list.size = 0l;
 }
-func cleanup[T](list: List[T]) {
-  remove_all(ref(list));
+func cleanup[T](mutates list: List[T]) {
+  remove_all(list);
   cleanup(list.start);
 }
 
@@ -70,7 +70,7 @@ func print[T](list: List[T]) {
   print('[');
   pos = 0l;
   while pos < list.size {
-    print(load(ref(list)[pos]));
+    print(load(list[pos]));
     pos += 1l;
     if pos < list.size { print(','); print(' '); }
   }
@@ -81,16 +81,16 @@ func main() {
   a = EmptyList[Double]();
   val = 0l;
   while val < 10l {
-    add(ref(a), ToDouble(val));
+    add(a, ToDouble(val));
     val += 1l;
   }
-  ref(a)[0] = -5.0;
+  a[0] = -5.0;
   print_line(a);
   assert(a.size == 10l);
-  print_line(pop(ref(a)));
+  print_line(pop(a));
   print_line(a);
   assert(a.size == 9l);
-  remove_all(ref(a));
+  remove_all(a);
   assert(a.size == 0l);
   cleanup(a);
 }
