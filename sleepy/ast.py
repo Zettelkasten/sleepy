@@ -42,7 +42,7 @@ class AbstractSyntaxTree(ABC):
                                        func_caller: FunctionSymbolCaller,
                                        func_args: List[TypedValue]) -> List[ConcreteFunction]:
     func, templ_types = func_caller.func, func_caller.templ_types
-    calling_types = [arg.type for arg in func_args]
+    calling_types = [arg.narrowed_type for arg in func_args]
     if templ_types is None:
       templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
     assert templ_types is not None
@@ -496,7 +496,8 @@ class AssignStatementAst(StatementAst):
         self.raise_error('Cannot assign void to variable')
       if stated_type is not None:
         if not can_implicit_cast_to(val.narrowed_type, stated_type):
-          self.raise_error('Cannot assign variable with stated type %r a value of type %r' % (stated_type, val.type))
+          self.raise_error(
+            'Cannot assign variable with stated type %r a value of type %r' % (stated_type, val.narrowed_type))
 
       if self.is_declaration(symbol_table=symbol_table):
         assert isinstance(self.var_target, IdentifierExpressionAst)
