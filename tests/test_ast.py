@@ -1968,3 +1968,18 @@ def test_repeated_inline_calls():
     }
     """
     compile_program(engine, program, add_preamble=False)
+
+
+def test_narrowing_with_shadowing():
+  with make_execution_engine() as engine:
+    program = """
+    func main() {
+      x: Int = 1;
+      func inner() {
+        x: Double|Float = 2.0;
+        if x is Double { }
+        else { assert(x is Double); }
+      }
+    }
+    """
+    compile_program(engine, program, add_preamble=True)
