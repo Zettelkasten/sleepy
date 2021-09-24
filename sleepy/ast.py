@@ -354,12 +354,13 @@ class ReturnStatementAst(StatementAst):
         return_val = return_expr.make_as_val(symbol_table=symbol_table, context=context)
         if return_val.type == SLEEPY_VOID:
           self.raise_error('Cannot use void return value')
-        if not can_implicit_cast_to(return_val.type, symbol_table.current_func.return_type):
+        if not can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type):
           if symbol_table.current_func.return_type == SLEEPY_VOID:
-            self.raise_error('Function declared to return void, but return value is of type %r' % return_val.type)
+            self.raise_error(
+              'Function declared to return void, but return value is of type %r' % return_val.narrowed_type)
           else:
             self.raise_error('Function declared to return type %r, but return value is of type %r' % (
-              symbol_table.current_func.return_type, return_val.type))
+              symbol_table.current_func.return_type, return_val.narrowed_type))
 
         if context.emits_ir:
           ir_val = make_implicit_cast_to_ir_val(
