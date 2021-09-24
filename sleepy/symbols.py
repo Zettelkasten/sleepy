@@ -2026,16 +2026,18 @@ class TypedValue:
   Has a type, and, if it emits_ir, also an IR value.
   If it is referenceable, also has a pointer to such IR value.
   """
-  def __init__(self,
+  def __init__(self, *,
                type: Type,
-               declared_type: Type,
+               narrowed_type: Type = None,
                referenceable: bool,
                ir_val: Optional[ir.values.Value],
-               ir_val_ptr: Optional[ir.values.Value]):
+               ir_val_ptr: Optional[ir.values.Value] = None):
+    if narrowed_type is None:
+      narrowed_type = type
     emits_ir = ir_val is not None
-    assert ir_val_ptr is None == (emits_ir and referenceable)
+    assert (ir_val_ptr is not None) == (emits_ir and referenceable)
     self.type = type
-    self.declared_type = declared_type
+    self.narrowed_type = narrowed_type
     self.referenceable = referenceable
     self.ir_val = ir_val
     self.ir_val_ptr = ir_val_ptr
