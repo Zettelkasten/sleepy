@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Any
 from abc import ABC, abstractmethod
 
 from llvmlite import ir
@@ -11,7 +11,7 @@ from sleepy.grammar import TreePosition
 from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, TypeFactory, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID
+  PlaceholderTemplateType, TypeFactory, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
@@ -38,23 +38,11 @@ class AbstractSyntaxTree(ABC):
   def raise_error(self, message: str):
     raise SemanticError(self.pos.word, self.pos.from_pos, self.pos.to_pos, message)
 
-  def resolve_func_call_by_identifier(self, func_identifier: str, templ_types: Optional[List[Type]],
-                                      func_arg_exprs: List[ExpressionAst],
-                                      symbol_table: SymbolTable) -> List[ConcreteFunction]:
-    if func_identifier not in symbol_table:
-      self.raise_error('Function %r called before declared' % func_identifier)
-    symbol = symbol_table[func_identifier]
-    if not isinstance(symbol, FunctionSymbol):
-      self.raise_error('Cannot call non-function %r' % func_identifier)
-    func_caller = FunctionSymbolCaller(func=symbol, templ_types=templ_types)
-    return self.resolve_func_call(
-      func_caller=func_caller, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
-
-  def resolve_func_call(self, func_caller: FunctionSymbolCaller, func_arg_exprs: List[ExpressionAst],
-                        symbol_table: SymbolTable) -> List[ConcreteFunction]:
+  def _resolve_possible_concrete_funcs(self,
+                                       func_caller: FunctionSymbolCaller,
+                                       func_args: List[TypedValue]) -> List[ConcreteFunction]:
     func, templ_types = func_caller.func, func_caller.templ_types
-    calling_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
-
+    calling_types = [arg.narrowed_type for arg in func_args]
     if templ_types is None:
       templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
     assert templ_types is not None
@@ -117,12 +105,18 @@ class AbstractSyntaxTree(ABC):
     assert signature_templ_types is not None
     return signature_templ_types
 
-  def _build_func_call(self, func_caller: FunctionSymbolCaller, func_arg_exprs: List[ExpressionAst],
-                       symbol_table: SymbolTable, context: CodegenContext):
+  def build_func_call(self,
+                      func_caller: FunctionSymbolCaller,
+                      func_arg_exprs: List[ExpressionAst],
+                      symbol_table: SymbolTable,
+                      context: CodegenContext) -> TypedValue:
+    # TODO: func_arg_exprs should be a List[TypedValue]. But then, type narrowing and assert(...) for types wouldn't
+    # work right now.
     func, templ_types = func_caller.func, func_caller.templ_types
-    possible_concrete_funcs = self.resolve_func_call(
-      func_caller=func_caller, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table)
-    calling_types = [arg_expr.make_val_type(symbol_table=symbol_table) for arg_expr in func_arg_exprs]
+    func_args = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in func_arg_exprs]
+    possible_concrete_funcs = self._resolve_possible_concrete_funcs(func_caller=func_caller, func_args=func_args)
+    return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
+    calling_types = [arg.narrowed_type for arg in func_args]
 
     if templ_types is None:
       templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
@@ -135,8 +129,8 @@ class AbstractSyntaxTree(ABC):
             ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func))
 
     if context.emits_ir:
-      ir_func_args = [
-        func_arg_expr.make_ir_val(symbol_table=symbol_table, context=context) for func_arg_expr in func_arg_exprs]
+      ir_func_args = [arg.ir_val for arg in func_args]
+      assert None not in ir_func_args
       from sleepy.symbols import make_func_call_ir
       return_ir_val = make_func_call_ir(
         func=func, templ_types=templ_types, calling_arg_types=calling_types, calling_ir_args=ir_func_args,
@@ -158,19 +152,22 @@ class AbstractSyntaxTree(ABC):
       assert len(func_arg_exprs) >= 1
       condition_expr = func_arg_exprs[0]
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
-    return return_ir_val
+    return TypedValue(type=return_type, referenceable=False, ir_val=return_ir_val)
 
-  # noinspection PyUnusedLocal
-  def _make_member_val_type(self, parent_type: Type, member_identifier: str, symbol_table: SymbolTable) -> Type:
-    del symbol_table  # not needed, just to keep API consistent
-    if not isinstance(parent_type, StructType):
-      self.raise_error(
-        'Cannot access a member variable %r of the non-struct type %r' % (member_identifier, parent_type))
-    if member_identifier not in parent_type.member_identifiers:
-      self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
-        parent_type, member_identifier, ', '.join(parent_type.member_identifiers)))
-    member_num = parent_type.get_member_num(member_identifier)
-    return parent_type.member_types[member_num]
+  def build_func_call_by_identifier(self,
+                                    func_identifier: str,
+                                    templ_types: Optional[List[Type]],
+                                    func_arg_exprs: List[ExpressionAst],
+                                    symbol_table: SymbolTable,
+                                    context: CodegenContext) -> TypedValue:
+    if func_identifier not in symbol_table:
+      self.raise_error('Function %r called before declared' % func_identifier)
+    symbol = symbol_table[func_identifier]
+    if not isinstance(symbol, FunctionSymbol):
+      self.raise_error('Cannot call non-function %r' % func_identifier)
+    func_caller = FunctionSymbolCaller(func=symbol, templ_types=templ_types)
+    return self.build_func_call(
+      func_caller=func_caller, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table, context=context)
 
   @abstractmethod
   def children(self) -> List[AbstractSyntaxTree]:
@@ -322,10 +319,7 @@ class ExpressionStatementAst(StatementAst):
     :param CodegenContext context:
     """
     with context.use_pos(self.pos):
-      self.expr.make_val_type(symbol_table=symbol_table)
-      if context.emits_ir:
-        # ignore return value.
-        _ = self.expr.make_ir_val(symbol_table=symbol_table, context=context)
+      self.expr.make_as_val(symbol_table=symbol_table, context=context)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.expr]
@@ -357,21 +351,21 @@ class ReturnStatementAst(StatementAst):
 
       if len(self.return_exprs) == 1:
         return_expr = self.return_exprs[0]
-        return_val_type = return_expr.make_val_type(symbol_table=symbol_table)
-        if return_val_type == SLEEPY_VOID:
+        return_val = return_expr.make_as_val(symbol_table=symbol_table, context=context)
+        if return_val.type == SLEEPY_VOID:
           self.raise_error('Cannot use void return value')
-        if not can_implicit_cast_to(return_val_type, symbol_table.current_func.return_type):
+        if not can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type):
           if symbol_table.current_func.return_type == SLEEPY_VOID:
-            self.raise_error('Function declared to return void, but return value is of type %r' % (
-              return_val_type))
+            self.raise_error(
+              'Function declared to return void, but return value is of type %r' % return_val.narrowed_type)
           else:
             self.raise_error('Function declared to return type %r, but return value is of type %r' % (
-              symbol_table.current_func.return_type, return_val_type))
+              symbol_table.current_func.return_type, return_val.narrowed_type))
 
         if context.emits_ir:
-          ir_val = return_expr.make_ir_val(symbol_table=symbol_table, context=context)
           ir_val = make_implicit_cast_to_ir_val(
-            return_val_type, symbol_table.current_func.return_type, ir_val, context=context, name='return_val_cast')
+            return_val.narrowed_type, symbol_table.current_func.return_type, return_val.ir_val, context=context,
+            name='return_val_cast')
           if symbol_table.current_func.is_inline:
             assert context.current_func_inline_return_ir_alloca is not None
             context.builder.store(ir_val, context.current_func_inline_return_ir_alloca)
@@ -484,10 +478,6 @@ class AssignStatementAst(StatementAst):
     symbol = symbol_table[var_identifier]
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign non-variable %r to a variable' % var_identifier)
-    ptr_type = self.var_target.make_val_type(symbol_table=symbol_table)
-    if symbol.narrowed_var_type != ptr_type:
-      self.raise_error('Cannot redefine variable %r of type %r with new type %r' % (
-        var_identifier, symbol.narrowed_var_type, ptr_type))
 
   def build_ir(self, symbol_table, context):
     """
@@ -501,12 +491,13 @@ class AssignStatementAst(StatementAst):
         stated_type: Optional[Type] = None
       if not self.var_val.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE:
         self.raise_error('Can only reassign variables')
-      val_type = self.var_val.make_val_type(symbol_table=symbol_table)
-      if val_type == SLEEPY_VOID:
+      val = self.var_val.make_as_val(symbol_table=symbol_table, context=context)
+      if val.type == SLEEPY_VOID:
         self.raise_error('Cannot assign void to variable')
       if stated_type is not None:
-        if not can_implicit_cast_to(val_type, stated_type):
-          self.raise_error('Cannot assign variable with stated type %r a value of type %r' % (stated_type, val_type))
+        if not can_implicit_cast_to(val.narrowed_type, stated_type):
+          self.raise_error(
+            'Cannot assign variable with stated type %r a value of type %r' % (stated_type, val.narrowed_type))
 
       if self.is_declaration(symbol_table=symbol_table):
         assert isinstance(self.var_target, IdentifierExpressionAst)
@@ -515,39 +506,38 @@ class AssignStatementAst(StatementAst):
         if stated_type is not None:
           declared_type = stated_type
         else:
-          declared_type = val_type
+          declared_type = val.type
         # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
         symbol = VariableSymbol(None, var_type=declared_type)
         symbol.build_ir_alloca(context=context, identifier=var_identifier)
         symbol_table[var_identifier] = symbol
-      else:
-        # variable name in this scope already declared. just check that types match, but do not change symbol_table.
-        declared_type = self.var_target.make_declared_val_type(symbol_table=symbol_table)
-        assert declared_type is not None
-        if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
-            self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
-        if not can_implicit_cast_to(val_type, declared_type):
-          self.raise_error('Cannot redefine variable of type %r with variable of type %r' % (declared_type, val_type))
-        if not self.var_target.is_val_assignable(symbol_table=symbol_table):
-          self.raise_error('Cannot reassign this variable')
+
+      # check that declared type matches assigned type
+      target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)
+      declared_type = target_val.type
       assert declared_type is not None
-      assert self.var_target.is_val_assignable(symbol_table=symbol_table)
+      if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
+          self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
+      if not can_implicit_cast_to(val.narrowed_type, declared_type):
+        self.raise_error(
+          'Cannot redefine variable of type %r with variable of type %r' % (declared_type, val.narrowed_type))
+      if not target_val.referenceable:
+        self.raise_error('Cannot reassign this variable')
 
       # if we assign to a variable, narrow type to val_type
       if isinstance(self.var_target, IdentifierExpressionAst):
         assert self.var_target.identifier in symbol_table
         symbol = symbol_table[self.var_target.identifier]
         assert isinstance(symbol, VariableSymbol)
-        narrowed_symbol = symbol.copy_with_narrowed_type(val_type)
+        narrowed_symbol = symbol.copy_with_narrowed_type(val.narrowed_type)
         assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
         symbol_table[self.var_target.identifier] = narrowed_symbol
 
       if context.emits_ir:
-        ir_val = self.var_val.make_ir_val(symbol_table=symbol_table, context=context)
-        ir_val = make_implicit_cast_to_ir_val(val_type, declared_type, ir_val, context=context, name='assign_cast')
-        ir_ptr = self.var_target.make_ir_val_ptr(symbol_table=symbol_table, context=context)
-        assert ir_ptr is not None
-        context.builder.store(ir_val, ir_ptr)
+        ir_val = make_implicit_cast_to_ir_val(
+          val.narrowed_type, declared_type, val.ir_val, context=context, name='assign_cast')
+        assert target_val.ir_val_ptr is not None
+        context.builder.store(value=ir_val, ptr=target_val.ir_val_ptr)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.var_target, self.var_val, self.declared_var_type]
@@ -581,9 +571,9 @@ class IfStatementAst(StatementAst):
     :param CodegenContext context:
     """
     with context.use_pos(self.pos):
-      cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
-      if not cond_type == SLEEPY_BOOL:
-        self.raise_error('Cannot use expression of type %r as if-condition' % cond_type)
+      cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
+      if not cond_val.narrowed_type == SLEEPY_BOOL:
+        self.raise_error('Cannot use expression of type %r as if-condition' % cond_val.type)
 
       true_symbol_table, false_symbol_table = symbol_table.make_child_scope(
         inherit_outer_variables=True), symbol_table.make_child_scope(inherit_outer_variables=True)
@@ -591,8 +581,7 @@ class IfStatementAst(StatementAst):
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=false_symbol_table)
 
       if context.emits_ir:
-        ir_cond = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
-        assert isinstance(ir_cond, ir.values.Value)
+        ir_cond = cond_val.ir_val
         true_block: ir.Block = context.builder.append_basic_block('true_branch')
         false_block: ir.Block = context.builder.append_basic_block('false_branch')
         context.builder.cbranch(ir_cond, true_block, false_block)
@@ -653,25 +642,25 @@ class WhileStatementAst(StatementAst):
     :param CodegenContext context:
     """
     with context.use_pos(self.pos):
-      cond_type = self.condition_val.make_val_type(symbol_table=symbol_table)
-      if not cond_type == SLEEPY_BOOL:
-        self.raise_error('Cannot use expression of type %r as while-condition' % cond_type)
+      cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
+      if not cond_val.narrowed_type == SLEEPY_BOOL:
+        self.raise_error('Cannot use expression of type %r as while-condition' % cond_val.type)
 
       body_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=True)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=body_symbol_table)
 
       if context.emits_ir:
-        cond_ir = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
-        body_block: ir.Block = context.builder.append_basic_block('while_body')
+        cond_ir = cond_val.ir_val
+        loop_block: ir.Block = context.builder.append_basic_block('while_body')
         continue_block: ir.Block = context.builder.append_basic_block('continue_branch')
-        context.builder.cbranch(cond_ir, body_block, continue_block)
+        context.builder.cbranch(cond_ir, loop_block, continue_block)
         context.builder = ir.IRBuilder(continue_block)
 
-        body_context = context.copy_with_builder(ir.IRBuilder(body_block))
+        body_context = context.copy_with_builder(ir.IRBuilder(loop_block))
         self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
         if not body_context.is_terminated:
-          body_cond_ir = self.condition_val.make_ir_val(symbol_table=symbol_table, context=body_context)
-          body_context.builder.cbranch(body_cond_ir, body_block, continue_block)
+          body_cond_ir = self.condition_val.make_as_val(symbol_table=symbol_table, context=body_context).ir_val
+          body_context.builder.cbranch(body_cond_ir, loop_block, continue_block)
       else:
         body_context = context.copy_without_builder()
         self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
@@ -699,31 +688,8 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
     raise NotImplementedError()
 
   @abstractmethod
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     raise NotImplementedError()
-
-  def make_declared_val_type(self, symbol_table: SymbolTable) -> Type:
-    if self.is_val_assignable(symbol_table=symbol_table):
-      raise NotImplementedError()
-    return self.make_val_type(symbol_table=symbol_table)
-
-  def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
-    return False
-
-  # noinspection PyTypeChecker
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> Optional[ir.values.Value]:
-    """
-    :return: The value this expression is evaluated to
-    """
-    assert context.emits_ir
-    raise NotImplementedError()
-
-  def make_ir_val_ptr(self, symbol_table: SymbolTable,
-                      context: CodegenContext) -> Optional[ir.instructions.Instruction]:
-    assert context.emits_ir
-    if self.is_val_assignable(symbol_table=symbol_table):
-      raise NotImplementedError()
-    return None
 
   @abstractmethod
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
@@ -767,37 +733,24 @@ class BinaryOperatorExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
-    if self.op == 'is':
-      assert isinstance(self.right_expr, IdentifierExpressionAst)
-      type_expr = IdentifierTypeAst(
-        self.right_expr.pos, type_identifier=self.right_expr.identifier, templ_types=[])
-      type_expr.make_type(symbol_table=symbol_table)  # just check that type exists
-      return SLEEPY_BOOL
-    operand_exprs = [self.left_expr, self.right_expr]
-    possible_concrete_funcs = self.resolve_func_call_by_identifier(
-      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
-    return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
-
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert context.emits_ir
       if self.op == 'is':
         assert isinstance(self.right_expr, IdentifierExpressionAst)
         check_type_expr = IdentifierTypeAst(
           self.right_expr.pos, type_identifier=self.right_expr.identifier, templ_types=[])
         check_type = check_type_expr.make_type(symbol_table=symbol_table)
-        val_type = self.left_expr.make_val_type(symbol_table=symbol_table)
-        ir_val = self.left_expr.make_ir_val(symbol_table=symbol_table, context=context)
-        return make_ir_val_is_type(ir_val, val_type, check_type, context=context)
-      func = symbol_table[self.op]
-      assert isinstance(func, FunctionSymbol)
+        check_value = self.left_expr.make_as_val(symbol_table=symbol_table, context=context)
+        if context.emits_ir:
+          ir_val = make_ir_val_is_type(check_value.ir_val, check_value.narrowed_type, check_type, context=context)
+        else:
+          ir_val = None
+        return TypedValue(type=SLEEPY_BOOL, referenceable=False, ir_val=ir_val)
+
       operand_exprs = [self.left_expr, self.right_expr]
-      return_val = self._build_func_call(
-        func_caller=FunctionSymbolCaller(func), func_arg_exprs=operand_exprs, symbol_table=symbol_table,
+      return self.build_func_call_by_identifier(
+        func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
         context=context)
-      assert return_val is not None
-      return return_val
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use result of operator %r as function' % self.op)
@@ -830,20 +783,11 @@ class UnaryOperatorExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
-    operand_exprs = [self.expr]
-    possible_concrete_funcs = self.resolve_func_call_by_identifier(
-      func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table)
-    return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
-
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert context.emits_ir
-      func = symbol_table[self.op]
-      assert isinstance(func, FunctionSymbol)
       operand_exprs = [self.expr]
-      return self._build_func_call(
-        func_caller=FunctionSymbolCaller(func), func_arg_exprs=operand_exprs, symbol_table=symbol_table,
+      return self.build_func_call_by_identifier(
+        func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
         context=context)
 
   def children(self) -> List[AbstractSyntaxTree]:
@@ -863,12 +807,7 @@ class ConstantExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> double | int | char
   """
-  def __init__(self, pos, constant_val, constant_type):
-    """
-    :param TreePosition pos:
-    :param Any constant_val:
-    :param Type constant_type:
-    """
+  def __init__(self, pos: TreePosition, constant_val: Any, constant_type: Type):
     super().__init__(pos)
     self.constant_val = constant_val
     self.constant_type = constant_type
@@ -876,13 +815,10 @@ class ConstantExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
-    return self.constant_type
-
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert context.emits_ir
-      return ir.Constant(self.constant_type.ir_type, self.constant_val)
+      ir_val = ir.Constant(self.constant_type.ir_type, self.constant_val) if context.emits_ir else None
+      return TypedValue(type=self.constant_type, referenceable=False, ir_val=ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use constant expression as function')
@@ -912,15 +848,8 @@ class StringLiteralExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
-    assert 'Str' in symbol_table.inbuilt_symbols is not None
-    str_symbol = symbol_table.inbuilt_symbols['Str']
-    assert isinstance(str_symbol, TypeSymbol)
-    return str_symbol.get_type(concrete_templ_types=[])
-
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert context.emits_ir
       assert 'Str' in symbol_table.inbuilt_symbols is not None
       str_symbol = symbol_table.inbuilt_symbols['Str']
       assert isinstance(str_symbol, TypeSymbol)
@@ -928,23 +857,26 @@ class StringLiteralExpressionAst(ExpressionAst):
       assert isinstance(str_type, StructType)
       assert str_type.member_identifiers == ['start', 'length', 'alloc_length']
 
-      str_val = tuple(self.constant_str.encode())
-      assert context.ir_func_malloc is not None
-      from sleepy.symbols import LLVM_SIZE_TYPE
-      ir_start_raw = context.builder.call(
-        context.ir_func_malloc, args=[ir.Constant(LLVM_SIZE_TYPE, len(str_val))], name='str_literal_start_raw')
-      str_ir_type = ir.ArrayType(SLEEPY_CHAR.ir_type, len(str_val))
-      ir_start_array = context.builder.bitcast(
-        ir_start_raw, ir.PointerType(str_ir_type), name='str_literal_start_array')
-      context.builder.store(ir.Constant(str_ir_type, str_val), ir_start_array)
-      ir_start = context.builder.bitcast(ir_start_array, SLEEPY_CHAR_PTR.ir_type, name='str_literal_start')
-      length_ir_type = str_type.member_types[1].ir_type
-      ir_length = ir.Constant(length_ir_type, len(str_val))
+      if context.emits_ir:
+        str_val = tuple(self.constant_str.encode())
+        assert context.ir_func_malloc is not None
+        from sleepy.symbols import LLVM_SIZE_TYPE
+        ir_start_raw = context.builder.call(
+          context.ir_func_malloc, args=[ir.Constant(LLVM_SIZE_TYPE, len(str_val))], name='str_literal_start_raw')
+        str_ir_type = ir.ArrayType(SLEEPY_CHAR.ir_type, len(str_val))
+        ir_start_array = context.builder.bitcast(
+          ir_start_raw, ir.PointerType(str_ir_type), name='str_literal_start_array')
+        context.builder.store(ir.Constant(str_ir_type, str_val), ir_start_array)
+        ir_start = context.builder.bitcast(ir_start_array, SLEEPY_CHAR_PTR.ir_type, name='str_literal_start')
+        length_ir_type = str_type.member_types[1].ir_type
+        ir_length = ir.Constant(length_ir_type, len(str_val))
 
-      str_ir_alloca = str_type.make_ir_alloca(context=context)
-      str_type.make_store_members_ir(
-        member_ir_vals=[ir_start, ir_length, ir_length], struct_ir_alloca=str_ir_alloca, context=context)
-      return str_ir_alloca
+        str_ir_alloca = str_type.make_ir_alloca(context=context)
+        str_type.make_store_members_ir(
+          member_ir_vals=[ir_start, ir_length, ir_length], struct_ir_alloca=str_ir_alloca, context=context)
+      else:
+        str_ir_alloca = None
+      return TypedValue(type=str_type, referenceable=False, ir_val=str_ir_alloca)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use string literal as function')
@@ -1000,27 +932,18 @@ class IdentifierExpressionAst(ExpressionAst):
       self.raise_error('Cannot reference a non-function %r, got a %s' % (self.identifier, symbol.kind))
     return symbol
 
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
-    return self.get_var_symbol(symbol_table=symbol_table).narrowed_var_type
-
-  def make_declared_val_type(self, symbol_table: SymbolTable) -> Type:
-    return self.get_var_symbol(symbol_table=symbol_table).declared_var_type
-
-  def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
-    return True
-
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert context.emits_ir
       symbol = self.get_var_symbol(symbol_table=symbol_table)
-      return context.builder.load(symbol.ir_alloca, name=self.identifier)
-
-  def make_ir_val_ptr(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.instructions.Instruction:
-    with context.use_pos(self.pos):
-      assert context.emits_ir
-      symbol = self.get_var_symbol(symbol_table=symbol_table)
-      assert symbol.ir_alloca is not None
-      return symbol.ir_alloca
+      if context.emits_ir:
+        assert symbol.ir_alloca is not None
+        ir_val = context.builder.load(symbol.ir_alloca, name=self.identifier)
+        ir_val_ptr = symbol.ir_alloca
+      else:
+        ir_val, ir_val_ptr = None, None
+      return TypedValue(
+        type=symbol.declared_var_type, narrowed_type=symbol.narrowed_var_type, referenceable=True, ir_val=ir_val,
+        ir_val_ptr=ir_val_ptr)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     return FunctionSymbolCaller(func=self.get_func_symbol(symbol_table=symbol_table))
@@ -1097,14 +1020,6 @@ class CallExpressionAst(ExpressionAst):
       self.raise_error('Cannot call an expression of kind %r' % (
         self.func_expr.make_symbol_kind(symbol_table=symbol_table)))
 
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
-    if self._is_size_call(symbol_table=symbol_table):
-      return SLEEPY_LONG
-    func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
-    possible_concrete_funcs = self.resolve_func_call(
-      func_caller=func_caller, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table)
-    return get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
-
   def _is_special_call(self, inbuilt_func_identifier: str, symbol_table: SymbolTable):
     if not isinstance(self.func_expr, IdentifierExpressionAst):
       return False
@@ -1120,7 +1035,6 @@ class CallExpressionAst(ExpressionAst):
 
   def _is_load_call(self, symbol_table: SymbolTable):
     # TODO: make this a normal function returning a reference, and make references assignable.
-    from sleepy.symbols import PointerType
     if not self._is_special_call('load', symbol_table=symbol_table):
       return False
     if len(self.func_arg_exprs) != 1:
@@ -1128,36 +1042,35 @@ class CallExpressionAst(ExpressionAst):
     arg_expr = self.func_arg_exprs[0]
     if arg_expr.make_symbol_kind(symbol_table=symbol_table) != Symbol.Kind.VARIABLE:
       return False
-    if not isinstance(arg_expr.make_val_type(symbol_table=symbol_table), PointerType):
-      return False
     return True
 
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     with context.use_pos(self.pos):
-      assert context.emits_ir
       if self._is_size_call(symbol_table=symbol_table):
         if len(self.func_arg_exprs) != 1:
           self.raise_error('Must call size(type: Type) with exactly one argument')
         size_of_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
         from sleepy.symbols import LLVM_SIZE_TYPE
-        return ir.Constant(LLVM_SIZE_TYPE, size_of_type.size)
+        ir_val = ir.Constant(LLVM_SIZE_TYPE, size_of_type.size) if context.emits_ir else None
+        return TypedValue(type=SLEEPY_LONG, referenceable=False, ir_val=ir_val)
+      if self._is_load_call(symbol_table=symbol_table):
+        assert len(self.func_arg_exprs) == 1
+        arg_expr = self.func_arg_exprs[0]
+        arg_val = arg_expr.make_as_val(symbol_table=symbol_table, context=context)
+        from sleepy.symbols import PointerType
+        assert isinstance(arg_val.type, PointerType)
+        if context.emits_ir:
+          ir_val_ptr = arg_val.ir_val
+          ir_val = context.builder.load(ir_val_ptr, name='load_ptr')
+        else:
+          ir_val_ptr, ir_val = None, None
+        return TypedValue(type=arg_val.type.pointee_type, referenceable=True, ir_val=ir_val, ir_val_ptr=ir_val_ptr)
 
-      return self._build_func_call(
-        func_caller=self._make_func_expr_as_func_caller(symbol_table=symbol_table), func_arg_exprs=self.func_arg_exprs,
-        symbol_table=symbol_table, context=context)
-
-  def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
-    if self._is_load_call(symbol_table=symbol_table):
-      return True
-    return False
-
-  def make_ir_val_ptr(self, symbol_table: SymbolTable,
-                      context: CodegenContext) -> Optional[ir.instructions.Instruction]:
-    assert self._is_load_call(symbol_table=symbol_table)
-    assert len(self.func_arg_exprs) == 1
-    arg_expr = self.func_arg_exprs[0]
-    return arg_expr.make_ir_val(symbol_table=symbol_table, context=context)
+      # default case
+      func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
+      return self.build_func_call(
+        func_caller=func_caller, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table, context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.FUNCTION
@@ -1205,21 +1118,16 @@ class ReferenceExpressionAst(ExpressionAst):
     arg_kind = self.arg_expr.make_symbol_kind(symbol_table=symbol_table)
     if arg_kind != Symbol.Kind.VARIABLE:
       self.raise_error('Cannot take reference to non-variable, got a %r' % arg_kind)
-    if not self.arg_expr.is_val_assignable(symbol_table=symbol_table):
-      self.raise_error('Cannot take reference to non-assignable variable')
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
-    assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
-    arg_type = self.arg_expr.make_val_type(symbol_table=symbol_table)
-    from sleepy.symbols import PointerType
-    return PointerType(arg_type)
-
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
-    assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert context.emits_ir
-      return self.arg_expr.make_ir_val_ptr(symbol_table=symbol_table, context=context)
+      arg_val = self.arg_expr.make_as_val(symbol_table=symbol_table, context=context)
+      if not arg_val.referenceable:
+        self.raise_error('Cannot take reference to non-assignable variable')
+      ir_val = arg_val.ir_val_ptr if context.emits_ir else None
+      from sleepy.symbols import PointerType
+      return TypedValue(type=PointerType(arg_val.narrowed_type), referenceable=False, ir_val=ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use reference as function')
@@ -1237,13 +1145,10 @@ class ReferenceExpressionAst(ExpressionAst):
 class MemberExpressionAst(ExpressionAst):
   """
   MemberExpr -> MemberExpr . identifier
+
+  TODO: In the future, make this a special function attr(a: Struct, member_identifier: str) or so
   """
-  def __init__(self, pos, parent_val_expr, member_identifier):
-    """
-    :param TreePosition pos:
-    :param ExpressionAst parent_val_expr:
-    :param str member_identifier:
-    """
+  def __init__(self, pos: TreePosition, parent_val_expr: ExpressionAst, member_identifier: str):
     super().__init__(pos)
     self.parent_val_expr = parent_val_expr
     self.member_identifier = member_identifier
@@ -1251,38 +1156,35 @@ class MemberExpressionAst(ExpressionAst):
   def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
     return Symbol.Kind.VARIABLE
 
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
-    parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
-    return self._make_member_val_type(parent_type, self.member_identifier, symbol_table)
-
-  def make_declared_val_type(self, symbol_table: SymbolTable) -> Type:
-    return self.make_val_type(symbol_table=symbol_table)
-
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.values.Value:
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert context.emits_ir
-      parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
-      assert isinstance(parent_type, StructType)
-      parent_ir_val = self.parent_val_expr.make_ir_val(symbol_table=symbol_table, context=context)
-      return parent_type.make_extract_member_val_ir(
-        self.member_identifier, struct_ir_val=parent_ir_val, context=context)
-
-  def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
-    return self.parent_val_expr.is_val_assignable(symbol_table=symbol_table)
-
-  def make_ir_val_ptr(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.instructions.Instruction:
-    with context.use_pos(self.pos):
-      assert context.emits_ir
-      parent_type = self.parent_val_expr.make_val_type(symbol_table=symbol_table)
-      assert isinstance(parent_type, StructType)
+      parent_val = self.parent_val_expr.make_as_val(symbol_table=symbol_table, context=context)
+      parent_type = parent_val.narrowed_type
+      if not isinstance(parent_type, StructType):
+        self.raise_error(
+          'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, parent_type))
+      if self.member_identifier not in parent_type.member_identifiers:
+        self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
+          parent_type, self.member_identifier, ', '.join(parent_type.member_identifiers)))
       member_num = parent_type.get_member_num(self.member_identifier)
-      parent_ptr = self.parent_val_expr.make_ir_val_ptr(symbol_table=symbol_table, context=context)
-      assert parent_ptr is not None
-      if parent_type.is_pass_by_ref():  # parent_ptr has type struct**
-        # dereference to get struct*.
-        parent_ptr = context.builder.load(parent_ptr, 'load_struct')
-      gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
-      return context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+      member_type = parent_type.member_types[member_num]
+
+      if context.emits_ir:
+        ir_val = parent_type.make_extract_member_val_ir(
+          self.member_identifier, struct_ir_val=parent_val.ir_val, context=context)
+        if parent_val.referenceable:
+          if parent_type.is_pass_by_ref():  # parent_val.ir_val_ptr has type struct**
+            # dereference to get struct*.
+            parent_ptr = context.builder.load(parent_val.ir_val_ptr, 'load_struct')
+          else:
+            parent_ptr = parent_val.ir_val_ptr
+          gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
+          ir_val_ptr = context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+        else:
+          ir_val_ptr = None
+      else:
+        ir_val, ir_val_ptr = None, None
+      return TypedValue(type=member_type, referenceable=parent_val.referenceable, ir_val=ir_val, ir_val_ptr=ir_val_ptr)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use member %r as function' % self.member_identifier)
