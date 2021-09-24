@@ -885,56 +885,6 @@ def can_implicit_cast_to(from_type, to_type):
   return all(possible_from_type in possible_to_types for possible_from_type in possible_from_types)
 
 
-def make_implicit_cast_to_ir_val(from_type, to_type, from_ir_val, context, name):
-  """
-  :param Type from_type:
-  :param Type to_type:
-  :param ir.values.Value from_ir_val:
-  :param CodegenContext context:
-  :param str name:
-  :rtype: ir.values.Value
-  """
-  assert context.emits_ir
-  assert can_implicit_cast_to(from_type, to_type)
-  if from_type == to_type:
-    return from_ir_val
-  if isinstance(to_type, UnionType):
-    to_ir_alloca = context.alloca_at_entry(to_type.ir_type, name='%s_ptr' % name)
-    if isinstance(from_type, UnionType):
-      tag_mapping_ir_type = ir.types.VectorType(to_type.tag_ir_type, max(from_type.possible_type_nums) + 1)
-      tag_mapping = [-1] * (max(from_type.possible_type_nums) + 1)
-      for from_variant_num, from_variant_type in zip(from_type.possible_type_nums, from_type.possible_types):
-        assert to_type.contains(from_variant_type)
-        tag_mapping[from_variant_num] = to_type.get_variant_num(from_variant_type)
-      ir_tag_mapping = ir.values.Constant(tag_mapping_ir_type, tag_mapping_ir_type.wrap_constant_value(tag_mapping))
-      ir_from_tag = from_type.make_extract_tag(from_ir_val, context=context, name='%s_from_tag' % name)
-      ir_to_tag = context.builder.extract_element(ir_tag_mapping, ir_from_tag, name='%s_to_tag' % name)
-      context.builder.store(
-        ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
-      assert to_type.val_size >= from_type.val_size
-      ir_from_untagged_union = from_type.make_extract_void_val(from_ir_val, context=context, name='%s_from_val' % name)
-      ir_to_untagged_union_ptr = to_type.make_untagged_union_void_ptr(
-        to_ir_alloca, context=context, name='%s_to_val_raw' % name)
-      ir_to_untagged_union_ptr_casted = context.builder.bitcast(
-        ir_to_untagged_union_ptr, ir.PointerType(to_type.untagged_union_ir_type), name='%s_to_val' % name)
-      context.builder.store(ir_from_untagged_union, ir_to_untagged_union_ptr_casted)
-    else:
-      assert not isinstance(from_type, UnionType)
-      ir_to_tag = ir.Constant(to_type.tag_ir_type, to_type.get_variant_num(from_type))
-      context.builder.store(
-        ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
-      context.builder.store(
-        from_ir_val,
-        to_type.make_untagged_union_ptr(to_ir_alloca, from_type, context=context, name='%s_val_ptr' % name))
-    return context.builder.load(to_ir_alloca, name=name)
-  else:
-    assert not isinstance(to_type, UnionType)
-    # this is only possible when from_type is a single-type union
-    assert isinstance(from_type, UnionType)
-    assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
-    return from_type.make_extract_val(from_ir_val, to_type, context=context, name=name)
-
-
 def narrow_type(from_type, narrow_to):
   """
   :param Type from_type:
@@ -1149,7 +1099,8 @@ class ConcreteFunction:
       self.ir_func.set_metadata('dbg', self.di_subprogram)
 
   # noinspection PyTypeChecker
-  def make_inline_func_call_ir(self, ir_func_args: List[ir.Value],
+  def make_inline_func_call_ir(self,
+                               func_args: List[TypedValue],
                                caller_context: CodegenContext) -> ir.instructions.Instruction:
     assert self.is_inline
     assert False, 'not implemented!'
@@ -1169,8 +1120,10 @@ class ConcreteBuiltinOperationFunction(ConcreteFunction):
     self.instruction = instruction
     self.emits_ir = emits_ir
 
-  def make_inline_func_call_ir(self, ir_func_args: List[ir.Value],
+  def make_inline_func_call_ir(self, func_args: List[TypedValue],
                                caller_context: CodegenContext) -> ir.instructions.Instruction:
+    ir_func_args = [arg.ir_val for arg in func_args]
+    assert None not in ir_func_args
     return self.instruction(caller_context.builder, *ir_func_args)
 
   @property
@@ -1183,10 +1136,11 @@ class ConcreteBitcastFunction(ConcreteFunction):
                return_type: Type, parameter_types: List[Type], narrowed_parameter_types: List[Type]):
     super().__init__(signature, ir_func, template_arguments, return_type, parameter_types, narrowed_parameter_types)
 
-  def make_inline_func_call_ir(self, ir_func_args: List[ir.Value],
+  def make_inline_func_call_ir(self, func_args: List[TypedValue],
                                caller_context: CodegenContext) -> ir.instructions.Instruction:
-    assert len(ir_func_args) == 1
-    return caller_context.builder.bitcast(val=ir_func_args[0], typ=self.return_type.ir_type, name="bitcast")
+    assert len(func_args) == 1
+    assert func_args[0].ir_val is not None
+    return caller_context.builder.bitcast(val=func_args[0].ir_val, typ=self.return_type.ir_type, name="bitcast")
 
   @property
   def is_inline(self) -> bool:
@@ -1385,8 +1339,8 @@ class DestructorFunctionTemplate(FunctionTemplate):
             templ_types = [concrete_member_type.pointee_type]
           make_func_call_ir(
             func=self.captured_symbol_table.free_symbol, templ_types=templ_types,
-            calling_arg_types=[signature_member_type],
-            calling_ir_args=[member_ir_val], context=context)
+            calling_args=[TypedValue(type=signature_member_type, referenceable=False, ir_val=member_ir_val)],
+              context=context)
         if self.struct.is_pass_by_ref():
           assert context.ir_func_free is not None
           self_ir_alloca_raw = context.builder.bitcast(self_ir_alloca, LLVM_VOID_POINTER_TYPE, name='self_raw_ptr')
@@ -1816,38 +1770,37 @@ def make_ir_size(size: int) -> ir.values.Value:
 
 def make_func_call_ir(func: FunctionSymbol,
                       templ_types: List[Type],
-                      calling_arg_types: List[Type],
-                      calling_ir_args: List[ir.values.Value],
+                      calling_args: List[TypedValue],
                       context: CodegenContext) -> Optional[ir.values.Value]:
   assert context.emits_ir
   assert not context.emits_debug or context.builder.debug_metadata is not None
-  assert len(calling_arg_types) == len(calling_ir_args)
 
   def make_call_func(concrete_func: ConcreteFunction,
-                     concrete_calling_arg_types_: List[Type],
                      caller_context: CodegenContext) -> ir.values.Value:
     assert caller_context.emits_ir
     assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
-    assert len(concrete_func.arg_types) == len(calling_arg_types)
-    casted_ir_args = [make_implicit_cast_to_ir_val(
-      from_type=called_arg_type, to_type=declared_arg_type, from_ir_val=ir_func_arg_, context=caller_context,
-      name='call_arg_%s_cast' % arg_identifier)
-      for arg_identifier, ir_func_arg_, called_arg_type, declared_arg_type in zip(
-        concrete_func.arg_identifiers, calling_ir_args, concrete_calling_arg_types_, concrete_func.arg_types)]
-    assert len(calling_ir_args) == len(casted_ir_args)
+    assert len(concrete_func.arg_types) == len(calling_args)
+    casted_calling_args = [
+      arg_val.copy_with_narrowed_type(param_type).copy_with_implicit_cast(
+        to_type=param_type, context=caller_context, name='call_arg_%s_cast' % arg_identifier)
+      for arg_identifier, arg_val, param_type in zip(
+        concrete_func.arg_identifiers, calling_args, concrete_func.arg_types)]
     if concrete_func.is_inline:
       assert concrete_func not in caller_context.inline_func_call_stack
-      return concrete_func.make_inline_func_call_ir(ir_func_args=casted_ir_args, caller_context=caller_context)
+      return concrete_func.make_inline_func_call_ir(func_args=casted_calling_args, caller_context=caller_context)
     else:
       ir_func = concrete_func.ir_func
-      assert ir_func is not None and len(ir_func.args) == len(calling_arg_types)
+      assert ir_func is not None and len(ir_func.args) == len(calling_args)
+      casted_ir_args = [arg.ir_val for arg in casted_calling_args]
+      assert None not in casted_ir_args
       return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
 
+  calling_arg_types = [arg.narrowed_type for arg in calling_args]
   assert func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
   possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
   if len(possible_concrete_funcs) == 1:
     return make_call_func(
-      concrete_func=possible_concrete_funcs[0], concrete_calling_arg_types_=calling_arg_types, caller_context=context)
+      concrete_func=possible_concrete_funcs[0], caller_context=context)
   else:
     import numpy as np
     import itertools
@@ -1897,7 +1850,8 @@ def make_func_call_ir(func: FunctionSymbol,
     tag_ir_type = ir.types.IntType(8)
     call_block_index_ir = ir.Constant(tag_ir_type, 0)
     for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
-      ir_func_arg = calling_ir_args[arg_num]
+      ir_func_arg = calling_args[arg_num].ir_val
+      assert ir_func_arg is not None
       base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
       base_ir = ir.Constant(tag_ir_type, base)
       tag_ir = calling_arg_type.make_extract_tag(
@@ -1921,11 +1875,7 @@ def make_func_call_ir(func: FunctionSymbol,
     context.builder = ir.IRBuilder(collect_block)
     concrete_func_return_ir_vals: List[ir.values.Value] = []
     for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
-      concrete_calling_arg_types = [
-        narrow_type(calling_arg_type, concrete_arg_type)
-        for calling_arg_type, concrete_arg_type in zip(calling_arg_types, concrete_func.arg_types)]
-      concrete_return_ir_val = make_call_func(
-        concrete_func, concrete_calling_arg_types_=concrete_calling_arg_types, caller_context=concrete_caller_context)
+      concrete_return_ir_val = make_call_func(concrete_func, caller_context=concrete_caller_context)
       concrete_func_return_ir_vals.append(concrete_return_ir_val)
       assert not concrete_caller_context.is_terminated
       concrete_caller_context.builder.branch(collect_block)
@@ -2029,3 +1979,73 @@ class TypedValue:
     self.referenceable = referenceable
     self.ir_val = ir_val
     self.ir_val_ptr = ir_val_ptr
+
+  def copy(self) -> TypedValue:
+    return copy.copy(self)
+
+  def copy_with_narrowed_type(self, narrow_to_type: Type) -> TypedValue:
+    new = self.copy()
+    new.narrowed_type = narrow_type(from_type=self.type, narrow_to=narrow_to_type)
+    return new
+
+  def copy_with_implicit_cast(self, to_type: Type, context: CodegenContext, name: str) -> TypedValue:
+    from_type = self.narrowed_type
+    assert can_implicit_cast_to(from_type, to_type)
+    if from_type == to_type:
+      return self
+    new = self.copy()
+    new.type, new.narrowed_type = to_type, to_type
+    new.ir_val, new.ir_val_ptr = None, None
+    new.referenceable = False  # TODO: Implement casts on references.
+    if not context.emits_ir or self.ir_val is None:
+      return new
+
+    if isinstance(to_type, UnionType):
+      to_ir_alloca = context.alloca_at_entry(to_type.ir_type, name='%s_ptr' % name)
+      if isinstance(from_type, UnionType):
+        tag_mapping_ir_type = ir.types.VectorType(to_type.tag_ir_type, max(from_type.possible_type_nums) + 1)
+        tag_mapping = [-1] * (max(from_type.possible_type_nums) + 1)
+        for from_variant_num, from_variant_type in zip(from_type.possible_type_nums, from_type.possible_types):
+          assert to_type.contains(from_variant_type)
+          tag_mapping[from_variant_num] = to_type.get_variant_num(from_variant_type)
+        ir_tag_mapping = ir.values.Constant(tag_mapping_ir_type, tag_mapping_ir_type.wrap_constant_value(tag_mapping))
+        ir_from_tag = from_type.make_extract_tag(self.ir_val, context=context, name='%s_from_tag' % name)
+        ir_to_tag = context.builder.extract_element(ir_tag_mapping, ir_from_tag, name='%s_to_tag' % name)
+        context.builder.store(
+          ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
+        assert to_type.val_size >= from_type.val_size
+        ir_from_untagged_union = from_type.make_extract_void_val(self.ir_val, context=context,
+                                                                 name='%s_from_val' % name)
+        ir_to_untagged_union_ptr = to_type.make_untagged_union_void_ptr(
+          to_ir_alloca, context=context, name='%s_to_val_raw' % name)
+        ir_to_untagged_union_ptr_casted = context.builder.bitcast(
+          ir_to_untagged_union_ptr, ir.PointerType(to_type.untagged_union_ir_type), name='%s_to_val' % name)
+        context.builder.store(ir_from_untagged_union, ir_to_untagged_union_ptr_casted)
+      else:
+        assert not isinstance(from_type, UnionType)
+        ir_to_tag = ir.Constant(to_type.tag_ir_type, to_type.get_variant_num(from_type))
+        context.builder.store(
+          ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
+        context.builder.store(
+          self.ir_val,
+          to_type.make_untagged_union_ptr(to_ir_alloca, from_type, context=context, name='%s_val_ptr' % name))
+      new.ir_val = context.builder.load(to_ir_alloca, name=name)
+    else:
+      assert not isinstance(to_type, UnionType)
+      # this is only possible when from_type is a single-type union
+      assert isinstance(from_type, UnionType)
+      assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
+      new.ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
+    return new
+
+  def __repr__(self):
+    attrs = ['type']
+    if self.narrowed_type != self.type:
+      attrs.append('narrowed_type')
+    if self.ir_val is not None:
+      attrs.append('ir_val')
+    if self.ir_val_ptr is not None:
+      attrs.append('ir_val_ptr')
+    elif self.referenceable:
+      attrs.append('referencable')
+    return 'TypedValue(%s)' % ', '.join(['%s=%r' % (attr, getattr(self, attr)) for attr in attrs])
