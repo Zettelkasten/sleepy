@@ -11,7 +11,7 @@ from sleepy.grammar import TreePosition
 from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_implicit_cast_to_ir_val, make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, TypeFactory, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID
+  PlaceholderTemplateType, TypeFactory, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
@@ -699,31 +699,8 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
     raise NotImplementedError()
 
   @abstractmethod
-  def make_val_type(self, symbol_table: SymbolTable) -> Type:
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     raise NotImplementedError()
-
-  def make_declared_val_type(self, symbol_table: SymbolTable) -> Type:
-    if self.is_val_assignable(symbol_table=symbol_table):
-      raise NotImplementedError()
-    return self.make_val_type(symbol_table=symbol_table)
-
-  def is_val_assignable(self, symbol_table: SymbolTable) -> bool:
-    return False
-
-  # noinspection PyTypeChecker
-  def make_ir_val(self, symbol_table: SymbolTable, context: CodegenContext) -> Optional[ir.values.Value]:
-    """
-    :return: The value this expression is evaluated to
-    """
-    assert context.emits_ir
-    raise NotImplementedError()
-
-  def make_ir_val_ptr(self, symbol_table: SymbolTable,
-                      context: CodegenContext) -> Optional[ir.instructions.Instruction]:
-    assert context.emits_ir
-    if self.is_val_assignable(symbol_table=symbol_table):
-      raise NotImplementedError()
-    return None
 
   @abstractmethod
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:

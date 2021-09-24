@@ -2018,3 +2018,24 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
 
 SLEEPY_VOID = VoidType()
 SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
+
+
+class TypedValue:
+  """
+  A value an expression returns.
+  Has a type, and, if it emits_ir, also an IR value.
+  If it is referenceable, also has a pointer to such IR value.
+  """
+  def __init__(self,
+               type: Type,
+               declared_type: Type,
+               referenceable: bool,
+               ir_val: Optional[ir.values.Value],
+               ir_val_ptr: Optional[ir.values.Value]):
+    emits_ir = ir_val is not None
+    assert ir_val_ptr is None == (emits_ir and referenceable)
+    self.type = type
+    self.declared_type = declared_type
+    self.referenceable = referenceable
+    self.ir_val = ir_val
+    self.ir_val_ptr = ir_val_ptr
