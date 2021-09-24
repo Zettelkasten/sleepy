@@ -10,8 +10,8 @@ from sleepy.errors import SemanticError
 from sleepy.grammar import TreePosition
 from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
-  make_implicit_cast_to_ir_val, make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, TypeFactory, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue
+  make_ir_val_is_type, CodegenContext, get_common_type, \
+  PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
@@ -129,12 +129,8 @@ class AbstractSyntaxTree(ABC):
             ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func))
 
     if context.emits_ir:
-      ir_func_args = [arg.ir_val for arg in func_args]
-      assert None not in ir_func_args
       from sleepy.symbols import make_func_call_ir
-      return_ir_val = make_func_call_ir(
-        func=func, templ_types=templ_types, calling_arg_types=calling_types, calling_ir_args=ir_func_args,
-        context=context)
+      return_ir_val = make_func_call_ir(func=func, templ_types=templ_types, calling_args=func_args, context=context)
     else:
       return_ir_val = None
 
@@ -362,9 +358,8 @@ class ReturnStatementAst(StatementAst):
               symbol_table.current_func.return_type, return_val.narrowed_type))
 
         if context.emits_ir:
-          ir_val = make_implicit_cast_to_ir_val(
-            return_val.narrowed_type, symbol_table.current_func.return_type, return_val.ir_val, context=context,
-            name='return_val_cast')
+          ir_val = return_val.copy_with_implicit_cast(
+            to_type=symbol_table.current_func.return_type, context=context, name='return_val_cast').ir_val
           if symbol_table.current_func.is_inline:
             assert context.current_func_inline_return_ir_alloca is not None
             context.builder.store(ir_val, context.current_func_inline_return_ir_alloca)
@@ -530,8 +525,7 @@ class AssignStatementAst(StatementAst):
         symbol_table[self.var_target.identifier] = narrowed_symbol
 
       if context.emits_ir:
-        ir_val = make_implicit_cast_to_ir_val(
-          val.narrowed_type, declared_type, val.ir_val, context=context, name='assign_cast')
+        ir_val = val.copy_with_implicit_cast(declared_type, context=context, name='assign_cast').ir_val
         assert target_val.ir_val_ptr is not None
         context.builder.store(value=ir_val, ptr=target_val.ir_val_ptr)
 

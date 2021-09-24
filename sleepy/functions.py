@@ -5,7 +5,7 @@ from llvmlite import ir
 from sleepy.ast import StatementAst, TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree
 from sleepy.grammar import TreePosition
 from sleepy.symbols import SymbolTable, Type, CodegenContext, FunctionSymbol, ConcreteFunction, FunctionTemplate, \
-  VariableSymbol, PlaceholderTemplateType, SLEEPY_VOID
+  VariableSymbol, PlaceholderTemplateType, SLEEPY_VOID, TypedValue
 from sleepy.builtin_symbols import SLEEPY_BOOL
 
 
@@ -119,10 +119,9 @@ class FunctionDeclarationAst(StatementAst):
     template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_templ_types]
     template_arguments = concrete_func.concrete_templ_types
 
-    body_symbol_table = parent_symbol_table.make_child_scope(inherit_outer_variables=False,
-                                                             new_function=concrete_func,
-                                                             type_substitutions=zip(template_parameter_names,
-                                                                                    template_arguments))
+    body_symbol_table = parent_symbol_table.make_child_scope(
+      inherit_outer_variables=False, new_function=concrete_func,
+      type_substitutions=zip(template_parameter_names, template_arguments))
 
     # add arguments as variables
     for arg_identifier, arg_type in zip(concrete_func.arg_identifiers, concrete_func.arg_types):
@@ -185,9 +184,9 @@ class ConcreteDeclaredFunction(ConcreteFunction):
   def is_inline(self) -> bool:
     return self.ast.is_inline
 
-  def make_inline_func_call_ir(self, ir_func_args: List[ir.values.Value],
+  def make_inline_func_call_ir(self, func_args: List[TypedValue],
                                caller_context: CodegenContext) -> Optional[ir.values.Value]:
-    assert len(ir_func_args) == len(self.arg_identifiers)
+    assert len(func_args) == len(self.arg_identifiers)
     assert caller_context.emits_ir
     assert not caller_context.is_terminated
     if self.return_type == SLEEPY_VOID:
@@ -200,7 +199,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
       self, return_ir_alloca=return_val_ir_alloca, return_collect_block=collect_block)
     self.ast.build_body_ir(
       parent_symbol_table=self.captured_symbol_table, concrete_func=self, body_context=inline_context,
-      ir_func_args=ir_func_args)
+      ir_func_args=[arg.ir_val for arg in func_args])
     assert inline_context.is_terminated
     assert not collect_block.is_terminated
     # use the caller_context instead of reusing the inline_context
