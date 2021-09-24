@@ -320,7 +320,7 @@ class CharType(Type):
   An 8-bit character.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=8), pass_by_ref=False, c_type=ctypes.c_char, constructor=None)
+    super().__init__(ir.IntType(bits=8), pass_by_ref=False, c_type=ctypes.c_uint8, constructor=None)
 
   def make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
