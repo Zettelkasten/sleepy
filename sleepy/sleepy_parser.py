@@ -1,11 +1,12 @@
 from sleepy.ast import TopLevelAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
   ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   BinaryOperatorExpressionAst, IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
-  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst
+  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst, \
+  TranslationUnitAst
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
   parse_hex_int
 from sleepy.functions import FunctionDeclarationAst
-from sleepy.grammar import AttributeGrammar, Production
+from sleepy.grammar import AttributeGrammar, Production, TreePosition
 from sleepy.parser import ParserGenerator
 from sleepy.sleepy_lexer import SLEEPY_LEXER
 from sleepy.builtin_symbols import SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG, SLEEPY_CHAR
@@ -256,14 +257,11 @@ def make_preamble_ast():
   return make_program_ast(preamble_program, add_preamble=False)
 
 
-def add_preamble_to_ast(program_ast):
-  """
-  :param TopLevelAst program_ast:
-  :rtype: TopLevelAst
-  """
+def add_preamble_to_ast(program_ast: TopLevelAst) -> TranslationUnitAst:
   preamble_ast = make_preamble_ast()
   assert isinstance(preamble_ast, TopLevelAst)
-  return TopLevelAst(program_ast.pos, preamble_ast.stmt_list + program_ast.stmt_list)
+  return TranslationUnitAst(TreePosition(preamble_ast.pos.word + program_ast.pos.word, preamble_ast.pos.from_pos,
+                                         preamble_ast.pos.to_pos + program_ast.pos.to_pos), [preamble_ast, program_ast])
 
 
 SLEEPY_GRAMMAR = SLEEPY_ATTR_GRAMMAR.grammar

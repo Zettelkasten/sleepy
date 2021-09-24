@@ -35,10 +35,7 @@ class AbstractSyntaxTree(ABC):
   def __repr__(self) -> str:
     return 'AbstractSyntaxTree'
 
-  def raise_error(self, message):
-    """
-    :param str message:
-    """
+  def raise_error(self, message: str):
     raise SemanticError(self.pos.word, self.pos.from_pos, self.pos.to_pos, message)
 
   def resolve_func_call_by_identifier(self, func_identifier: str, templ_types: Optional[List[Type]],
@@ -192,6 +189,19 @@ class AbstractSyntaxTree(ABC):
       symbol_table[templ_type_identifier] = template_type_symbol
     return templ_types
 
+  def check_pos_validity(self) -> bool:
+    children = self.children()
+    if len(children) == 0: return True
+    if children[0].pos.from_pos < self.pos.from_pos or \
+      children[-1].pos.to_pos > self.pos.to_pos:
+      return False
+
+    for pre, post in [(x, x + 1) for x in range(len(children) - 1)]:
+      if children[pre].pos.to_pos > children[post].pos.from_pos:
+        return False
+
+    return all(child.check_pos_validity() for child in children)
+
 
 class StatementAst(AbstractSyntaxTree, ABC):
   """
@@ -226,11 +236,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
     super().__init__(pos)
     self.stmt_list = stmt_list
 
-  def build_scope_ir(self, scope_symbol_table, scope_context):
-    """
-    :param SymbolTable scope_symbol_table:
-    :param CodegenContext scope_context:
-    """
+  def build_scope_ir(self, scope_symbol_table: SymbolTable, scope_context: CodegenContext):
     with scope_context.use_pos(self.pos):
       for stmt in self.stmt_list:
         if scope_context.is_terminated:
@@ -253,9 +259,24 @@ class TopLevelAst(AbstractSyntaxTree):
     super().__init__(pos)
     self.stmt_list = stmt_list
 
+  def children(self) -> List[AbstractSyntaxTree]:
+    return self.stmt_list
+
+  def __repr__(self) -> str:
+    return 'TopLevelAst(%s)' % self.stmt_list
+
+
+class TranslationUnitAst(AbstractSyntaxTree):
+
+  def __init__(self, pos: TreePosition, file_asts: List[TopLevelAst]):
+    self.file_asts = file_asts
+    super().__init__(pos)
+
   def make_module_ir_and_symbol_table(self, module_name: str,
                                       emit_debug: bool,
                                       source_path: Optional[Path] = None) -> (ir.Module, SymbolTable):
+    assert self.check_pos_validity()
+
     module = ir.Module(name=module_name)
 
     root_builder = ir.IRBuilder()
@@ -266,19 +287,20 @@ class TopLevelAst(AbstractSyntaxTree):
 
     build_initial_ir(symbol_table=symbol_table, context=context)
     assert context.ir_func_malloc is not None and context.ir_func_free is not None
-    for stmt in self.stmt_list:
-      assert not context.is_terminated
-      stmt.build_ir(symbol_table=symbol_table, context=context)
+    for ast in self.file_asts:
+      for statement in ast.stmt_list:
+        assert not context.is_terminated
+        statement.build_ir(symbol_table=symbol_table, context=context)
     assert not context.is_terminated
     context.is_terminated = True
 
     return module, symbol_table
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return self.stmt_list
+    return self.file_asts
 
-  def __repr__(self) -> str:
-    return 'TopLevelAst(%s)' % self.stmt_list
+  def check_pos_validity(self) -> bool:
+    return all(child.check_pos_validity() for child in self.children())
 
 
 class ExpressionStatementAst(StatementAst):
@@ -431,7 +453,7 @@ class StructDeclarationAst(StatementAst):
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
-    
+
   def __repr__(self) -> str:
     return (
       'StructDeclarationAst(struct_identifier=%r, templ_identifiers=%r, member_identifiers=%r, member_types=%r)' % (
@@ -567,7 +589,7 @@ class IfStatementAst(StatementAst):
         inherit_outer_variables=True), symbol_table.make_child_scope(inherit_outer_variables=True)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=true_symbol_table)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=false_symbol_table)
-  
+
       if context.emits_ir:
         ir_cond = self.condition_val.make_ir_val(symbol_table=symbol_table, context=context)
         assert isinstance(ir_cond, ir.values.Value)
@@ -578,10 +600,10 @@ class IfStatementAst(StatementAst):
         false_context = context.copy_with_builder(ir.IRBuilder(false_block))
       else:
         true_context, false_context = context.copy_without_builder(), context.copy_without_builder()
-  
+
       self.true_scope.build_scope_ir(scope_symbol_table=true_symbol_table, scope_context=true_context)
       self.false_scope.build_scope_ir(scope_symbol_table=false_symbol_table, scope_context=false_context)
-  
+
       if true_context.is_terminated and false_context.is_terminated:
         context.is_terminated = True
         if context.emits_ir:

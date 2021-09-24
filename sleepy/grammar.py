@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 """
 The empty symbol (!= the empty word).
 Use empty tuple as empty word.
 """
-from typing import Tuple, Any, Dict, Set, Callable, Union, Optional
+from typing import Tuple, Any, Dict, Set, Callable, Union, Optional, List
 
 EPSILON = None
 
@@ -501,12 +503,7 @@ class TreePosition:
   The boundaries a sub-tree of a parsed word have.
   """
 
-  def __init__(self, word, from_pos, to_pos):
-    """
-    :param str word:
-    :param int from_pos:
-    :param int to_pos:
-    """
+  def __init__(self, word: str, from_pos: int, to_pos: int) -> None:
     assert 0 <= from_pos <= to_pos <= len(word)
     self.word = word
     self.from_pos = from_pos
@@ -515,10 +512,7 @@ class TreePosition:
   def __repr__(self) -> str:
     return 'TreePosition(from=%r, to=%r)' % (self.from_pos, self.to_pos)
 
-  def __eq__(self, other):
-    """
-    :rtype: bool
-    """
+  def __eq__(self, other: Any) -> bool:
     if not isinstance(other, TreePosition):
       return False
     return self.word == other.word and self.from_pos == other.from_pos and self.to_pos == other.to_pos
@@ -535,29 +529,17 @@ class TreePosition:
     return self.get_from_line_col()[1]
 
   @classmethod
-  def from_token_pos(cls, word, tokens_pos, from_token_pos, to_token_pos):
-    """
-    :param str word:
-    :param list[int] tokens_pos:
-    :param int from_token_pos:
-    :param int to_token_pos:
-    :rtype: TreePosition
-    """
+  def from_token_pos(cls, word: str, tokens_pos: List[int], from_token_pos: int, to_token_pos: int) -> TreePosition:
     assert 0 <= from_token_pos <= to_token_pos <= len(tokens_pos)
     from_pos = tokens_pos[from_token_pos] if from_token_pos < len(tokens_pos) else len(word)
     to_pos = tokens_pos[to_token_pos] if to_token_pos < len(tokens_pos) else len(word)
     return TreePosition(word, from_pos, to_pos)
 
 
-def get_line_col_from_pos(word, error_pos, num_before_context_lines=1, num_after_context_lines=1):
-  """
-  :param str word:
-  :param int error_pos:
-  :param int num_before_context_lines:
-  :param int num_after_context_lines:
-  :return: line + column, both starting counting at 1, as well as dict with context lines
-  :rtype: tuple[int,int,dict[int,str]]
-  """
+def get_line_col_from_pos(word: str,
+                          error_pos: int,
+                          num_before_context_lines: int = 1,
+                          num_after_context_lines: int = 1) -> Tuple[int, int, Dict[int, str]]:
   assert 0 <= error_pos <= len(word)
   if len(word) == 0:
     return 0, 1, {0: '\n'}
