@@ -2025,3 +2025,19 @@ def test_arg_mutates_defined_with_mutates_and_non_mutates():
     """
     with assert_raises(SemanticError):
       compile_program(engine, program, add_preamble=False)
+
+
+def test_arg_mutates_and_non_mutates():
+  with make_execution_engine() as engine:
+    program = """
+    func foo(mutates x: Int, y: Int) {
+      x += 1;
+      y += 1;
+    }
+    func main(a: Int) -> Int {
+      foo(a, a);
+      return a + a;  # should be (a + 1) + a
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), (5 + 1) + 5)
