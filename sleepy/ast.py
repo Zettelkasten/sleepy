@@ -127,6 +127,10 @@ class AbstractSyntaxTree(ABC):
         self.raise_error(
           'An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
             ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func))
+      for arg_identifier, arg_mutates, arg in zip(concrete_func.arg_identifiers, concrete_func.arg_mutates, func_args):
+        if arg_mutates and not arg.referenceable:
+          self.raise_error('Cannot call function %s%s mutating parameter %r with non-referencable argument' % (
+            func.identifier, concrete_func.signature.to_signature_str(), arg_identifier))
 
     if context.emits_ir:
       from sleepy.symbols import make_func_call_ir
