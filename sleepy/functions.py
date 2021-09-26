@@ -91,9 +91,11 @@ class FunctionDeclarationAst(StatementAst):
         self.raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier)
     if not func_symbol.is_undefined_for_arg_types(placeholder_templ_types=placeholder_templ_types, arg_types=arg_types):
       self.raise_error(
-        'Cannot override definition of function %r with template types %r and parameter types %r, already declared:\n%s' % (  # noqa
-        self.identifier, ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
-        ', '.join([str(arg_type) for arg_type in arg_types]), func_symbol.make_signature_list_str()))
+        'Cannot override definition of function %r with signature [%s](%s), already declared:\n%s' % (  # noqa
+          self.identifier,
+          ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
+          ', '.join(['%s%s' % ('mutates 'if mutates else '', typ) for mutates, typ in zip(self.arg_mutates, arg_types)]),  # noqa
+          func_symbol.make_signature_list_str()))
     if func_symbol.returns_void != (return_type == SLEEPY_VOID):
       self.raise_error(
         'Function declared with name %r must consistently return a value or consistently return void' %

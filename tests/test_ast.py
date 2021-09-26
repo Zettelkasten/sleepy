@@ -2011,3 +2011,17 @@ def test_arg_mutates_called_with_non_referenable():
     """
     with assert_raises(SemanticError):
       compile_program(engine, program)
+
+
+def test_arg_mutates_defined_with_mutates_and_non_mutates():
+  with make_execution_engine() as engine:
+    program = """
+    func increment(x: Int) {
+      # do nothing?
+    }
+    func increment(mutates x: Int) {
+      x+= 1;
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program)
