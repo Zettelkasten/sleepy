@@ -1187,7 +1187,9 @@ class FunctionTemplate(ABC):
   def to_signature_str(self) -> str:
     templ_args = '' if len(self.placeholder_templ_types) == 0 else '[%s]' % (
       ', '.join([templ_type.identifier for templ_type in self.placeholder_templ_types]))
-    args = ', '.join(['%s: %s' % arg_tuple for arg_tuple in zip(self.arg_identifiers, self.arg_types)])
+    args = ', '.join([
+      '%s%s: %s' % ('mutates ' if mutates else '', identifier, typ)
+      for mutates, identifier, typ in zip(self.arg_mutates, self.arg_identifiers, self.arg_types)])
     return '%s(%s) -> %s' % (templ_args, args, self.return_type)
 
   def get_concrete_func(self, concrete_templ_types: List[Type]) -> ConcreteFunction:
