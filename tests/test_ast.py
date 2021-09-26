@@ -2010,7 +2010,7 @@ def test_arg_mutates_called_with_non_referenable():
     }
     """
     with assert_raises(SemanticError):
-      compile_program(engine, program)
+      compile_program(engine, program, add_preamble=False)
 
 
 def test_arg_mutates_defined_with_mutates_and_non_mutates():
@@ -2024,4 +2024,4 @@ def test_arg_mutates_defined_with_mutates_and_non_mutates():
     }
     """
     with assert_raises(SemanticError):
-      compile_program(engine, program)
+      compile_program(engine, program, add_preamble=False)
