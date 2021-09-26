@@ -1999,3 +1999,15 @@ def test_arg_mutates():
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(5), 6)
     assert_equal(main(10), 11)
+
+
+def test_arg_mutates_called_with_non_referenable():
+  with make_execution_engine() as engine:
+    program = """
+    func increment(mutates x: Int) { x += 1; }
+    func main() {
+      increment(5);  # doesn't work, 5 has no address.
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program)
