@@ -94,8 +94,13 @@ class Type(ABC):
     raise NotImplementedError()
 
   @abstractmethod
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     raise NotImplementedError()
+
+  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    if self not in context.known_di_types:
+      context.known_di_types[self] = self._make_di_type(context=context)
+    return context.known_di_types[self]
 
   @property
   def constructor(self) -> Optional[FunctionSymbol]:
@@ -144,7 +149,7 @@ class VoidType(Type):
   def has_same_symbol_as(self, other: Type) -> bool:
     return self == other
 
-  def make_di_type(self, context: CodegenContext):
+  def _make_di_type(self, context: CodegenContext):
     assert False, self
 
 
@@ -155,7 +160,7 @@ class DoubleType(Type):
   def __init__(self):
     super().__init__(ir.DoubleType(), pass_by_ref=False, c_type=ctypes.c_double, constructor=None)
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
@@ -188,7 +193,7 @@ class FloatType(Type):
   def __init__(self):
     super().__init__(ir.FloatType(), pass_by_ref=False, c_type=ctypes.c_float, constructor=None)
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
@@ -221,7 +226,7 @@ class BoolType(Type):
   def __init__(self):
     super().__init__(ir.IntType(bits=1), pass_by_ref=False, c_type=ctypes.c_bool, constructor=None)
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
@@ -254,7 +259,7 @@ class IntType(Type):
   def __init__(self):
     super().__init__(ir.IntType(bits=32), pass_by_ref=False, c_type=ctypes.c_int32, constructor=None)
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
@@ -287,7 +292,7 @@ class LongType(Type):
   def __init__(self):
     super().__init__(ir.IntType(bits=64), pass_by_ref=False, c_type=ctypes.c_int64, constructor=None)
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
@@ -320,7 +325,7 @@ class CharType(Type):
   def __init__(self):
     super().__init__(ir.IntType(bits=8), pass_by_ref=False, c_type=ctypes.c_uint8, constructor=None)
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
@@ -356,7 +361,7 @@ class PointerType(Type):
       constructor=constructor)
     self.pointee_type = pointee_type
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
@@ -394,7 +399,7 @@ class RawPointerType(Type):
   def __init__(self):
     super().__init__(LLVM_VOID_POINTER_TYPE, pass_by_ref=False, c_type=ctypes.c_void_p, constructor=None)
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
       'DIBasicType',
@@ -467,7 +472,7 @@ class UnionType(Type):
   def __hash__(self) -> int:
     return hash(tuple(sorted(zip(self.possible_type_nums, self.possible_types))) + (self.val_size,))
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     di_derived_types = [
       context.module.add_debug_info(
@@ -734,7 +739,7 @@ class StructType(Type):
     else:  # pass by value, use alloca
       return context.alloca_at_entry(self.ir_type, name='self')
 
-  def make_di_type(self, context: CodegenContext) -> ir.DIValue:
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     di_derived_types = [
       context.module.add_debug_info(
@@ -838,7 +843,7 @@ class PlaceholderTemplateType(Type):
     super().__init__(ir_type=None, pass_by_ref=False, c_type=None, constructor=None)
     self.identifier = identifier
 
-  def make_di_type(self, context: CodegenContext):
+  def _make_di_type(self, context: CodegenContext):
     assert False, self
 
   def __repr__(self) -> str:
@@ -1629,6 +1634,7 @@ class CodegenContext:
       self.current_di_compile_unit: Optional[ir.DIValue] = None
       self.current_di_scope: Optional[ir.DIValue] = None
       self.di_declare_func: Optional[ir.Function] = None
+      self.known_di_types: Optional[Dict[Type, ir.DIValue]] = None
     else:
       # TODO: Add compiler version
       if source_path is None:
@@ -1653,6 +1659,7 @@ class CodegenContext:
       self.current_di_scope: Optional[ir.DIValue] = self.current_di_file
       di_declare_func_type = ir.FunctionType(ir.VoidType(), [ir.MetaDataType()] * 3)
       self.di_declare_func = ir.Function(self.module, di_declare_func_type, 'llvm.dbg.declare')
+      self.known_di_types: Dict[Type, ir.DIValue] = {}
 
   @property
   def emits_debug(self) -> bool:
