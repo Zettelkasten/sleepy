@@ -3,8 +3,8 @@ from typing import Callable
 from llvmlite.binding import ExecutionEngine
 
 from sleepy.jit import compile_ir
+from sleepy.parse import make_ast
 from sleepy.symbols import FunctionSymbol
-from tests.parse import parse_ast
 
 
 def compile_program(engine: ExecutionEngine,
@@ -13,7 +13,7 @@ def compile_program(engine: ExecutionEngine,
                     debug: bool = True,
                     add_preamble: bool = True) -> Callable:
 
-  ast = parse_ast(program, add_preamble=add_preamble)
+  ast = make_ast(program, add_preamble=add_preamble)
   module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
     module_name='test_parse_ast', emit_debug=debug)
   print('---- module intermediate repr:')
