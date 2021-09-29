@@ -1104,7 +1104,7 @@ class ConcreteFunction:
       self.di_subprogram = context.module.add_debug_info(
         'DISubprogram', {
           'name': ir_func_name, 'file': context.current_di_file, 'scope': context.current_di_scope,
-          'line': context.current_pos.get_from_line(),
+          'line': context.current_pos.get_from_line(), 'scopeLine': context.current_pos.get_from_line(),
           'type': di_func_type,
           'isLocal': False, 'isDefinition': True,
           'unit': context.current_di_compile_unit
@@ -1650,7 +1650,7 @@ class CodegenContext:
         is_distinct=True)
 
       self.module.add_named_metadata('llvm.dbg.cu', self.current_di_compile_unit)
-      di_dwarf_version = [ir.Constant(ir.IntType(32), 2), 'Dwarf Version', ir.Constant(ir.IntType(32), 2)]
+      di_dwarf_version = [ir.Constant(ir.IntType(32), 2), 'Dwarf Version', ir.Constant(ir.IntType(32), 4)]
       di_debug_info_version = [ir.Constant(ir.IntType(32), 2), 'Debug Info Version', ir.Constant(ir.IntType(32), 3)]
       self.module.add_named_metadata('llvm.module.flags', di_dwarf_version)
       self.module.add_named_metadata('llvm.module.flags', di_debug_info_version)
