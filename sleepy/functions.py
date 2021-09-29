@@ -242,8 +242,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
         should_declare_func = True
       if self.captured_context.emits_ir and not self.ast.is_inline:
         if should_declare_func:
-          self.make_ir_func(
-            identifier=self.ast.identifier, extern=self.ast.is_extern, context=self.captured_context)
+          self.make_ir_func(identifier=self.ast.identifier, extern=self.ast.is_extern, context=self.captured_context)
         else:
           assert not should_declare_func
           assert self.ast.is_extern and self.captured_symbol_table.has_extern_func(self.ast.identifier)

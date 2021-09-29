@@ -1092,8 +1092,10 @@ class ConcreteFunction:
     self.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
     if context.emits_debug and not extern:
       assert self.di_subprogram is None
+      di_return_type = None if self.signature.returns_void else self.return_type.make_di_type(context=context)
+      di_arg_types = [arg_type.make_di_type(context=context) for arg_type in self.arg_types]
       di_func_type = context.module.add_debug_info(
-        'DISubroutineType', {'types': context.module.add_metadata([None])})
+        'DISubroutineType', {'types': context.module.add_metadata([di_return_type] + di_arg_types)})
       self.di_subprogram = context.module.add_debug_info(
         'DISubprogram', {
           'name': ir_func_name, 'file': context.current_di_file, 'scope': context.current_di_scope,
