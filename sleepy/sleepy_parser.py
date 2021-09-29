@@ -1,4 +1,4 @@
-from sleepy.ast import TopLevelAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
+from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
   ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   BinaryOperatorExpressionAst, IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
   StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst, \
@@ -14,7 +14,7 @@ from sleepy.builtin_symbols import SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEE
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   prods_attr_rules={
     Production('TopLevelStmt', 'StmtList'): {
-      'ast': lambda _pos, stmt_list: TopLevelAst(_pos, stmt_list=stmt_list(1))},
+      'ast': lambda _pos, stmt_list: FileAst(_pos, stmt_list=stmt_list(1))},
     Production('Scope', '{', 'StmtList', '}'): {
       'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list=stmt_list(2))},
     Production('StmtList'): {

@@ -246,7 +246,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
     return self.stmt_list
 
 
-class TopLevelAst(AbstractSyntaxTree):
+class FileAst(AbstractSyntaxTree):
   """
   TopLevelExpr.
   """
@@ -264,12 +264,12 @@ class TopLevelAst(AbstractSyntaxTree):
 
 class TranslationUnitAst(AbstractSyntaxTree):
 
-  def __init__(self, pos: TreePosition, file_asts: List[TopLevelAst]):
+  def __init__(self, pos: TreePosition, file_asts: List[FileAst]):
     self.file_asts = file_asts
     super().__init__(pos)
 
   @staticmethod
-  def from_file_asts(asts: List[TopLevelAst]) -> TranslationUnitAst:
+  def from_file_asts(asts: List[FileAst]) -> TranslationUnitAst:
     assert len(asts) > 0, "Must have at least one child ast"
     return TranslationUnitAst(
       TreePosition(

@@ -1,16 +1,16 @@
-from sleepy.ast import TopLevelAst, TranslationUnitAst
+from sleepy.ast import FileAst, TranslationUnitAst
 from sleepy.sleepy_lexer import SLEEPY_LEXER
 from sleepy.sleepy_parser import SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER
 
 
-def make_program_ast(program: str) -> TopLevelAst:
+def make_program_ast(program: str) -> FileAst:
   tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
   _, root_eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
   program_ast = root_eval['ast']
-  assert isinstance(program_ast, TopLevelAst)
+  assert isinstance(program_ast, FileAst)
   return program_ast
 
-def make_preamble_ast() -> TopLevelAst:
+def make_preamble_ast() -> FileAst:
   import os
   preamble_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'std/preamble.slp')
   with open(preamble_path) as preamble_file:
