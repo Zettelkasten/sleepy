@@ -741,12 +741,14 @@ class StructType(Type):
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
-    di_derived_types = [
-      context.module.add_debug_info(
+    derived_types_offset = 0
+    di_derived_types = []
+    for member_identifier, member_type in zip(self.member_identifiers, self.member_types):
+      di_derived_types.append(context.module.add_debug_info(
         'DIDerivedType', {
           'tag': ir.DIToken('DW_TAG_member'), 'baseType': member_type.make_di_type(context=context),
-          'name': member_identifier, 'size': member_type.size * 8})
-      for member_identifier, member_type in zip(self.member_identifiers, self.member_types)]
+          'name': member_identifier, 'size': member_type.size * 8, 'offset': derived_types_offset}))
+      derived_types_offset += member_type.size * 8
     return context.module.add_debug_info(
       'DICompositeType', {
         'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
