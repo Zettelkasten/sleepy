@@ -3,6 +3,7 @@
 ![CI Badge](https://github.com/Zettelkasten/sleepy/actions/workflows/main.yml/badge.svg)
 
 This is a compiler written in Python for our experimental programming language Sleepy.
+There is also a plugin for the intellij family of IDEs based on the compiler [here](https://github.com/leanderBehr/SleepyLangSupport) that currently only does lexing.
 
 To get started, clone the repository and run `nosetests` in the root directory.
 In particular, this will compile and execute all files in `tests/examples/`, where you can also add your own programs.
