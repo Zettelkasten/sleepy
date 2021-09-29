@@ -744,9 +744,9 @@ class StructType(Type):
     di_derived_types = [
       context.module.add_debug_info(
         'DIDerivedType', {
-          'tag': ir.DIToken('DW_TAG_inheritance'), 'baseType': member_type.make_di_type(context=context),
-          'size': member_type.size * 8})
-      for member_type in self.member_types]
+          'tag': ir.DIToken('DW_TAG_member'), 'baseType': member_type.make_di_type(context=context),
+          'name': member_identifier, 'size': member_type.size * 8})
+      for member_identifier, member_type in zip(self.member_identifiers, self.member_types)]
     return context.module.add_debug_info(
       'DICompositeType', {
         'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
