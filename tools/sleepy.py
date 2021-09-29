@@ -10,12 +10,11 @@ import better_exchook
 
 import _setup_sleepy_env  # noqa
 # noinspection PyUnresolvedReferences
-from sleepy.sleepy_parser import make_program_ast
-# noinspection PyUnresolvedReferences
 from sleepy.errors import CompilerError
 # noinspection PyUnresolvedReferences
 from sleepy.jit import make_execution_engine, compile_ir, LIB_PATH
 # noinspection PyUnresolvedReferences
+from sleepy.parse import make_program_ast, make_ast
 from sleepy.symbols import FunctionSymbol
 import llvmlite.binding as llvm
 
@@ -70,7 +69,7 @@ def main():
   with open(source_file_name) as program_file:
     program = program_file.read()
   try:
-    ast = make_program_ast(program, add_preamble=not args.no_preamble)
+    ast = make_ast(program, add_preamble=not args.no_preamble)
     module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
       module_name='default_module', emit_debug=args.debug, source_path=Path(source_file_name))
     if main_func_identifier not in symbol_table:

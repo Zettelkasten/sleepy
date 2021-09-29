@@ -1,8 +1,9 @@
 import os
 from typing import Tuple, List
 
-from sleepy.sleepy_parser import make_program_ast
+from sleepy.ast import TranslationUnitAst
 from sleepy.jit import make_execution_engine, compile_ir
+from sleepy.parse import make_program_ast, make_ast
 from sleepy.symbols import FunctionSymbol
 
 
@@ -14,7 +15,7 @@ def run_example(code_file_name=None):
   with make_execution_engine() as engine:
     with open(code_file_name, 'r') as file:
       program = file.read()
-    ast = make_program_ast(program)
+    ast = make_ast(program)
     module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast', emit_debug=True)
     compile_ir(engine, module_ir)
     assert 'main' in symbol_table, 'Need to declare a main function'

@@ -237,33 +237,13 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
 )
 
 
-def make_program_ast(program: str, add_preamble: bool=True) -> TranslationUnitAst:
-  tokens, tokens_pos = SLEEPY_LEXER.tokenize(program)
-  _, root_eval = SLEEPY_PARSER.parse_syn_attr_analysis(SLEEPY_ATTR_GRAMMAR, program, tokens, tokens_pos)
-  program_ast = root_eval['ast']
-  assert isinstance(program_ast, TopLevelAst)
-  if add_preamble:
-    return add_preamble_to_ast(program_ast)
-  else:
-    return TranslationUnitAst(program_ast.pos, [program_ast])
 
 
-def make_preamble_ast():
-  """
-  :rtype: TopLevelAst
-  """
-  import os
-  preamble_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'std/preamble.slp')
-  with open(preamble_path) as preamble_file:
-    preamble_program = preamble_file.read()
-  return make_program_ast(preamble_program, add_preamble=False)
 
 
-def add_preamble_to_ast(program_ast: TopLevelAst) -> TranslationUnitAst:
-  preamble_ast = make_preamble_ast()
-  assert isinstance(preamble_ast, TopLevelAst)
-  return TranslationUnitAst(TreePosition(preamble_ast.pos.word + program_ast.pos.word, preamble_ast.pos.from_pos,
-                                         preamble_ast.pos.to_pos + program_ast.pos.to_pos), [preamble_ast, program_ast])
+
+
+
 
 
 SLEEPY_GRAMMAR = SLEEPY_ATTR_GRAMMAR.grammar

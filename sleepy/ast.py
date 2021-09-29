@@ -268,6 +268,18 @@ class TranslationUnitAst(AbstractSyntaxTree):
     self.file_asts = file_asts
     super().__init__(pos)
 
+  @staticmethod
+  def from_file_asts(asts: List[TopLevelAst]) -> TranslationUnitAst:
+    assert len(asts) > 0, "Must have at least one child ast"
+    return TranslationUnitAst(
+      TreePosition(
+        "".join((ast.pos.word for ast in asts)),
+        asts[0].pos.from_pos,
+        sum(ast.pos.to_pos for ast in asts)
+      ),
+      asts
+    )
+
   def make_module_ir_and_symbol_table(self, module_name: str,
                                       emit_debug: bool,
                                       source_path: Optional[Path] = None) -> (ir.Module, SymbolTable):

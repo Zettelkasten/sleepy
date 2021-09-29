@@ -7,19 +7,19 @@ import _setup_test_env  # noqa
 from sleepy.errors import SemanticError
 from sleepy.jit import make_execution_engine
 from tests.compile import compile_program
-from tests.parse import parse_ast
+from sleepy.parse import make_ast
 
 
 def test_ast_parser():
   program1 = 'hello_world(123);'
-  parse_ast(program1)
+  make_ast(program1)
   program2 = """# This function will just return 4.
 func do_stuff(val: Double) ->  Int  {
   return 4;
 }
 do_stuff(7.5);
 """
-  parse_ast(program2)
+  make_ast(program2)
   program3 = """
   # Compute 0 + 1 + ... + n
   func sum_all(n: Int) ->  Int  {
@@ -29,7 +29,7 @@ do_stuff(7.5);
   
   sum_all(12);
   """
-  parse_ast(program3)
+  make_ast(program3)
 
 
 def test_simple_arithmetic():
