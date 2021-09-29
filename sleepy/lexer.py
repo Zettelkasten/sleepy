@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Set, Union, Optional, List
+from typing import Dict, Tuple, Set, Union, Optional, List, Iterator
 
 from sleepy.automaton import ERROR_STATE
 from sleepy.errors import LexError
@@ -15,11 +15,11 @@ class LexerGenerator:
 
   NORMAL_MODE = object()
 
-  def __init__(self, token_names, token_regex_table):
+  def __init__(self, token_names: List[Optional[str]], token_regex_table: List[str]):
     """
-    :param list[str|None] token_names: list of token names, sorted by priority.
+    :param token_names: list of token names, sorted by priority.
       Tokens with name `IGNORE_TOKEN` will be ignored later (e.g. for whitespace, comments, etc.).
-    :param list[str] token_regex_table: corresponding regex's, not recognizing the empty word.
+    :param token_regex_table: corresponding regex's, not recognizing the empty word.
     """
     self.transition_table: Dict[Tuple[Comp_State, str], Comp_State] = dict()
 
@@ -97,13 +97,11 @@ class LexerGenerator:
         for char in dfa.state_transition_table[state[i]]}
       states_to_check.update(self._get_next_state(state, char) for char in possible_next_chars)
 
-  def tokenize(self, word):
+  def tokenize(self, word: str) -> Tuple[Tuple[str], Tuple[int]]:
     """
     Find first longest matching analysis.
-    :param str word:
     :returns: token analysis + decomposition (i.e. positions where tokens start).
     :raises: LexError
-    :rtype: tuple[tuple[str],tuple[int]]
     """
     pos = 0
     state = self._initial_state
