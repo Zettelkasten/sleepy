@@ -17,7 +17,8 @@ from llvmlite.binding import ExecutionEngine
 from sleepy.grammar import TreePosition
 from sleepy.symbol_table import HierarchicalDict
 
-LLVM_SIZE_TYPE = ir.types.IntType(64)
+LLVM_POINTER_SIZE = 8
+LLVM_SIZE_TYPE = ir.types.IntType(LLVM_POINTER_SIZE * 8)
 LLVM_VOID_POINTER_TYPE = ir.PointerType(ir.types.IntType(8))
 
 
@@ -364,8 +365,9 @@ class PointerType(Type):
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
-      'DIBasicType',
-      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_address')})
+      'DIDerivedType', {
+        'tag': ir.DIToken('DW_TAG_pointer_type'), 'baseType': self.pointee_type.make_di_type(context=context),
+        'size': LLVM_POINTER_SIZE})
 
   def __repr__(self) -> str:
     return 'Ptr[%r]' % self.pointee_type
@@ -741,12 +743,14 @@ class StructType(Type):
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
-    di_derived_types = [
-      context.module.add_debug_info(
+    derived_types_offset = 0
+    di_derived_types = []
+    for member_identifier, member_type in zip(self.member_identifiers, self.member_types):
+      di_derived_types.append(context.module.add_debug_info(
         'DIDerivedType', {
-          'tag': ir.DIToken('DW_TAG_inheritance'), 'baseType': member_type.make_di_type(context=context),
-          'size': member_type.size * 8})
-      for member_type in self.member_types]
+          'tag': ir.DIToken('DW_TAG_member'), 'baseType': member_type.make_di_type(context=context),
+          'name': member_identifier, 'size': member_type.size * 8, 'offset': derived_types_offset}))
+      derived_types_offset += member_type.size * 8
     return context.module.add_debug_info(
       'DICompositeType', {
         'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
@@ -1006,11 +1010,16 @@ class VariableSymbol(Symbol):
   def copy_exclude_type(self, excluded: Type) -> VariableSymbol:
     return self.copy_with_narrowed_type(new_narrow_type=exclude_type(self.narrowed_var_type, excluded))
 
-  def build_ir_alloca(self, context: CodegenContext, identifier: str):
+  def build_ir_alloca(self, context: CodegenContext, identifier: str,
+                      initial_ir_alloca: Optional[ir.values.Value] = None):
     assert self.ir_alloca is None
     if not context.emits_ir:
       return
-    self.ir_alloca = context.alloca_at_entry(self.declared_var_type.ir_type, name='%s_ptr' % identifier)
+    if initial_ir_alloca is not None:
+      self.ir_alloca = initial_ir_alloca
+      initial_ir_alloca.name = '%s_ref' % identifier
+    else:  # default case
+      self.ir_alloca = context.alloca_at_entry(self.declared_var_type.ir_type, name='%s_ptr' % identifier)
     if context.emits_debug:
       assert context.di_declare_func is not None
       di_local_var = context.module.add_debug_info(
@@ -1099,12 +1108,17 @@ class ConcreteFunction:
       assert self.di_subprogram is None
       di_return_type = None if self.signature.returns_void else self.return_type.make_di_type(context=context)
       di_arg_types = [arg_type.make_di_type(context=context) for arg_type in self.arg_types]
+      di_arg_types = [
+        context.module.add_debug_info('DIDerivedType',
+          {'tag': ir.DIToken('DW_TAG_reference_type'), 'baseType': di_type, 'size': LLVM_POINTER_SIZE * 8})
+        if mutates else di_type
+        for di_type, mutates in zip(di_arg_types, self.arg_mutates)]
       di_func_type = context.module.add_debug_info(
         'DISubroutineType', {'types': context.module.add_metadata([di_return_type] + di_arg_types)})
       self.di_subprogram = context.module.add_debug_info(
         'DISubprogram', {
           'name': ir_func_name, 'file': context.current_di_file, 'scope': context.current_di_scope,
-          'line': context.current_pos.get_from_line(),
+          'line': context.current_pos.get_from_line(), 'scopeLine': context.current_pos.get_from_line(),
           'type': di_func_type,
           'isLocal': False, 'isDefinition': True,
           'unit': context.current_di_compile_unit
@@ -1650,7 +1664,7 @@ class CodegenContext:
         is_distinct=True)
 
       self.module.add_named_metadata('llvm.dbg.cu', self.current_di_compile_unit)
-      di_dwarf_version = [ir.Constant(ir.IntType(32), 2), 'Dwarf Version', ir.Constant(ir.IntType(32), 2)]
+      di_dwarf_version = [ir.Constant(ir.IntType(32), 2), 'Dwarf Version', ir.Constant(ir.IntType(32), 4)]
       di_debug_info_version = [ir.Constant(ir.IntType(32), 2), 'Debug Info Version', ir.Constant(ir.IntType(32), 3)]
       self.module.add_named_metadata('llvm.module.flags', di_dwarf_version)
       self.module.add_named_metadata('llvm.module.flags', di_debug_info_version)
