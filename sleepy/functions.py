@@ -139,8 +139,7 @@ class FunctionDeclarationAst(StatementAst):
         arg_symbol = body_symbol_table[arg_identifier]
         assert isinstance(arg_symbol, VariableSymbol)
         if arg_mutates:
-          ir_arg.name = arg_identifier + '_ref'
-          arg_symbol.ir_alloca = ir_arg
+          arg_symbol.build_ir_alloca(context=body_context, identifier=arg_identifier, initial_ir_alloca=ir_arg)
         else:  # not arg_mutates, default case
           ir_arg.name = arg_identifier
           arg_symbol.build_ir_alloca(context=body_context, identifier=arg_identifier)
