@@ -365,8 +365,9 @@ class PointerType(Type):
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
     return context.module.add_debug_info(
-      'DIBasicType',
-      {'name': repr(self), 'size': self.size * 8, 'encoding': ir.DIToken('DW_ATE_address')})
+      'DIDerivedType', {
+        'tag': ir.DIToken('DW_TAG_pointer_type'), 'baseType': self.pointee_type.make_di_type(context=context),
+        'size': LLVM_POINTER_SIZE})
 
   def __repr__(self) -> str:
     return 'Ptr[%r]' % self.pointee_type
