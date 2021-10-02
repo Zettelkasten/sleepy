@@ -21,7 +21,10 @@ class LexerGenerator:
       Tokens with name `IGNORE_TOKEN` will be ignored later (e.g. for whitespace, comments, etc.).
     :param token_regex_table: corresponding regex's, not recognizing the empty word.
     """
-    self.transition_table: Dict[Tuple[Comp_State, str], Comp_State] = dict()
+    self.cache_hits = 0
+    self.cache_misses = 0
+
+    self.transition_table: Dict[Tuple[Comp_State, str], Tuple[Comp_State, bool]] = dict()
 
     assert len(token_names) == len(token_regex_table)
     self.token_names = token_names
@@ -46,26 +49,22 @@ class LexerGenerator:
     token_regex_table = list(token_names_to_regex.values()) + ignore_token_regexes
     return LexerGenerator(token_names=token_names, token_regex_table=token_regex_table)
 
-  def _get_next_state(self, state: Optional[Comp_State], char):
+  def _get_next_state(self, state: Optional[Comp_State], char: str) -> Optional[Comp_State]:
     """
-    :param tuple[int|None]|None state:
-    :param str char:
     :returns: the next state, or `ERROR_STATE` if next state is not productive.
-    :rtype: tuple[int|None]|None
     """
     if state is ERROR_STATE:
       return ERROR_STATE
-    next_state = self.transition_table.get((state, char))
+    next_state, is_error = self.transition_table.get((state, char), (None, None))
     if next_state is None:
-      # noinspection PyTypeChecker
+      self.cache_misses += 1
       next_state = tuple(
         dfa.get_next_state(state[i], char) for i, dfa in enumerate(self._automatons))  # type: Tuple[Optional[str]]
-      self.transition_table[(state, char)] = next_state
+      is_error = all(dfa_state == ERROR_STATE for dfa_state in next_state)
+      self.transition_table[(state, char)] = (next_state, is_error)
+    else: self.cache_hits += 1
 
-    if all(dfa_state == ERROR_STATE for dfa_state in next_state):
-      return ERROR_STATE
-    else:
-      return next_state
+    return ERROR_STATE if is_error else next_state
 
   def _get_next_possible_chars(self, state):
     """
@@ -125,8 +124,9 @@ class LexerGenerator:
       backtrack_mode, backtrack_pos = self.NORMAL_MODE, None
       assert state not in self._final_states
 
-    while pos <= len(word):
-      if pos == len(word):  # reached end-of-word
+    word_length = len(word)
+    while pos <= word_length:
+      if pos == word_length:  # reached end-of-word
         if pos == token_begin_pos:
           break
         # unfinished word remaining
@@ -135,7 +135,7 @@ class LexerGenerator:
         else:  # backtracking mode
           do_backtrack()
         continue
-      assert pos < len(word)
+      assert pos < word_length
       char = word[pos]
       prev_state = state
       state = self._get_next_state(state, char)

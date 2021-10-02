@@ -1,6 +1,6 @@
 from typing import List, Dict, Set, Optional
 
-from sleepy.automaton import NonDeterministicAutomaton, make_dfa_from_nfa
+from sleepy.automaton import NonDeterministicAutomaton, make_dfa_from_nfa, DeterministicAutomaton
 from sleepy.errors import LexError
 from sleepy.grammar import Grammar, Production, EPSILON, IGNORED_TOKEN, get_token_word_from_tokens_pos
 from sleepy.parser import ParserGenerator
@@ -185,9 +185,5 @@ def make_regex_nfa(regex):
   return NonDeterministicAutomaton(initial_state, {final_state}, state_transition_table)
 
 
-def make_regex_dfa(regex):
-  """
-  :param str regex:
-  :rtype: DeterministicAutomaton
-  """
+def make_regex_dfa(regex: str) -> DeterministicAutomaton:
   return make_dfa_from_nfa(make_regex_nfa(regex))
