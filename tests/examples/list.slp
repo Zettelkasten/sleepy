@@ -6,6 +6,9 @@ struct OwnedPtr[T] {
 func cleanup[T](ptr: OwnedPtr[T]) {
   free(ptr.value);
 }
+func cleanup(str: Str) {
+  free(str);
+}
 func new[T](val: T) -> OwnedPtr[T] {
   ptr = allocate[T](1);
   store(ptr, val);
@@ -77,12 +80,50 @@ func print[T](list: List[T]) {
   print(']');
 }
 
+func swap[T](a: Ptr[T], b: Ptr[T]) {
+  tmp = load(a);
+  store(a, load(b));
+  store(b, tmp);
+}
+func quicksort[T](mutates list: List[T]) {
+  _quicksort(list, list[0], list[list.size - 1l]);
+}
+func _quicksort[T](mutates list: List[T], from: Ptr[T], to: Ptr[T]) {
+  if from >= to { return; }
+  pivot = from;
+  pivot_val = load(pivot);
+  i = from + 1;
+  j = to;
+  assert(and(list[0] <= i, i <= j, j <= list[list.size - 1l]));
+  # goal: [< pivot] pivot [>= pivot]
+  while i < j {
+    while and(i < to, load(i) < pivot_val) { i += 1l; }
+    while and(j > from, load(j) >= pivot_val) { j -= 1l; }
+    if i < j { swap(i, j); }
+  }
+
+  if load(j) < pivot_val { swap(j, pivot); }
+  pivot = j;
+
+  _quicksort(list, from, pivot - 1l);
+  _quicksort(list, pivot + 1l, to);
+}
+
+func is_sorted[T](list: List[T]) -> Bool {
+  i = 1l;
+  while i < list.size {
+    if load(list[i - 1l]) > load(list[i]) { return False(); }
+    i += 1l;
+  }
+  return True();
+}
+
 func main() {
   a = EmptyList[Double]();
-  val = 0l;
-  while val < 10l {
+  val = 10l;
+  while a.size < 10l {
     add(a, ToDouble(val));
-    val += 1l;
+    val -= 1l;
   }
   a[0] = -5.0;
   print_line(a);
@@ -90,6 +131,11 @@ func main() {
   print_line(pop(a));
   print_line(a);
   assert(a.size == 9l);
+  assert(not(is_sorted(a)));
+  quicksort(a);
+  print_line(a);
+  assert(a.size == 9l);
+  assert(is_sorted(a));
   remove_all(a);
   assert(a.size == 0l);
   cleanup(a);
