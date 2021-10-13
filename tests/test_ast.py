@@ -2041,3 +2041,35 @@ def test_arg_mutates_and_non_mutates():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(5), 5 + 1)
+
+
+def test_defer_after_return():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Int {
+      x = 2;
+      defer x = 0;
+      return x;  # should return 2, because return comes before deferred statement.
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 2)
+
+
+def test_defer_after_return2():
+  with make_execution_engine() as engine:
+    program = """
+    # essentially x++ operator in C++
+    func return_then_increment(mutates x: Int) {
+      defer x += 1;
+      return x;
+    }
+    func main() {
+      a = 5;
+      b = return_then_increment(a);
+      # a should now be 6, while b is still 5
+      return a + 2 * b;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 6 + 2 * 5)
