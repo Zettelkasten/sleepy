@@ -46,10 +46,15 @@ class Type(ABC):
   """
   A type of a declared variable.
   """
-  def __init__(self, ir_type: Optional[ir.types.Type], c_type, constructor: Optional[FunctionSymbol]):
+  def __init__(self, *,
+               templ_types: List[Type],
+               ir_type: Optional[ir.types.Type],
+               c_type,
+               constructor: Optional[FunctionSymbol]):
     """
     :param ctypes._CData|None c_type: may be None if this is non-realizable (e.g. template types / void)
     """
+    self.templ_types = templ_types
     self.ir_type = ir_type
     self.c_type = c_type
     self._constructor: Optional[FunctionSymbol] = constructor
@@ -74,11 +79,6 @@ class Type(ABC):
 
   @abstractmethod
   def children(self) -> List[Type]:
-    raise NotImplementedError()
-
-  @property
-  @abstractmethod
-  def templ_types(self) -> List[Type]:
     raise NotImplementedError()
 
   @abstractmethod
@@ -114,22 +114,21 @@ class Type(ABC):
     assert new_constructor is None or not new_constructor.returns_void
     self._constructor = new_constructor
 
+  def copy(self) -> Type:
+    return copy.copy(self)
+
 
 class VoidType(Type):
   """
   Type returned when nothing is returned.
   """
   def __init__(self):
-    super().__init__(ir.VoidType(), c_type=None, constructor=None)
+    super().__init__(templ_types=[], ir_type=ir.VoidType(), c_type=None, constructor=None)
 
   def __repr__(self) -> str:
     return 'Void'
 
   def children(self) -> List[Type]:
-    return []
-
-  @property
-  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -150,7 +149,7 @@ class DoubleType(Type):
   A double.
   """
   def __init__(self):
-    super().__init__(ir.DoubleType(), c_type=ctypes.c_double, constructor=None)
+    super().__init__(templ_types=[], ir_type=ir.DoubleType(), c_type=ctypes.c_double, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -162,10 +161,6 @@ class DoubleType(Type):
     return 'Double'
 
   def children(self) -> List[Type]:
-    return []
-
-  @property
-  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -183,7 +178,7 @@ class FloatType(Type):
   A double.
   """
   def __init__(self):
-    super().__init__(ir.FloatType(), c_type=ctypes.c_float, constructor=None)
+    super().__init__(templ_types=[], ir_type=ir.FloatType(), c_type=ctypes.c_float, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -195,10 +190,6 @@ class FloatType(Type):
     return 'Float'
 
   def children(self) -> List[Type]:
-    return []
-
-  @property
-  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -216,7 +207,7 @@ class BoolType(Type):
   A 1-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=1), c_type=ctypes.c_bool, constructor=None)
+    super().__init__(templ_types=[], ir_type=ir.IntType(bits=1), c_type=ctypes.c_bool, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -228,10 +219,6 @@ class BoolType(Type):
     return 'Bool'
 
   def children(self) -> List[Type]:
-    return []
-
-  @property
-  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -249,7 +236,7 @@ class IntType(Type):
   An 32-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=32), c_type=ctypes.c_int32, constructor=None)
+    super().__init__(templ_types=[], ir_type=ir.IntType(bits=32), c_type=ctypes.c_int32, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -261,10 +248,6 @@ class IntType(Type):
     return 'Int'
 
   def children(self) -> List[Type]:
-    return []
-
-  @property
-  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -282,7 +265,7 @@ class LongType(Type):
   A 64-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=64), c_type=ctypes.c_int64, constructor=None)
+    super().__init__(templ_types=[], ir_type=ir.IntType(bits=64), c_type=ctypes.c_int64, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -294,10 +277,6 @@ class LongType(Type):
     return 'Long'
 
   def children(self) -> List[Type]:
-    return []
-
-  @property
-  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -315,7 +294,7 @@ class CharType(Type):
   An 8-bit character.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=8), c_type=ctypes.c_uint8, constructor=None)
+    super().__init__(templ_types=[], ir_type=ir.IntType(bits=8), c_type=ctypes.c_uint8, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -327,10 +306,6 @@ class CharType(Type):
     return 'Char'
 
   def children(self) -> List[Type]:
-    return []
-
-  @property
-  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -349,8 +324,8 @@ class PointerType(Type):
   """
   def __init__(self, pointee_type: Type, constructor: Optional[FunctionSymbol] = None):
     super().__init__(
-      ir.PointerType(pointee_type.ir_type), c_type=ctypes.POINTER(pointee_type.c_type),
-      constructor=constructor)
+      templ_types=[pointee_type], ir_type=ir.PointerType(pointee_type.ir_type),
+      c_type=ctypes.POINTER(pointee_type.c_type), constructor=constructor)
     self.pointee_type = pointee_type
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
@@ -377,10 +352,6 @@ class PointerType(Type):
   def children(self) -> List[Type]:
     return []
 
-  @property
-  def templ_types(self) -> List[Type]:
-    return [self.pointee_type]
-
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, PointerType)
 
@@ -390,7 +361,7 @@ class RawPointerType(Type):
   A raw (void) pointer from which we do not know the underlying type.
   """
   def __init__(self):
-    super().__init__(LLVM_VOID_POINTER_TYPE, c_type=ctypes.c_void_p, constructor=None)
+    super().__init__(templ_types=[], ir_type=LLVM_VOID_POINTER_TYPE, c_type=ctypes.c_void_p, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -405,10 +376,6 @@ class RawPointerType(Type):
     return self
 
   def children(self) -> List[Type]:
-    return []
-
-  @property
-  def templ_types(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -471,7 +438,7 @@ class UnionType(Type):
       '%s_CType' % self.identifier, (ctypes.Structure,),
       {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
     ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
-    super().__init__(ir_type, c_type=c_type, constructor=constructor)
+    super().__init__(templ_types=[], ir_type=ir_type, c_type=c_type, constructor=constructor)
 
   def __repr__(self) -> str:
     if len(self.possible_types) == 0:
@@ -680,10 +647,6 @@ class UnionType(Type):
   def children(self) -> List[Type]:
     return self.possible_types
 
-  @property
-  def templ_types(self) -> List[Type]:
-    return []
-
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, UnionType)
 
@@ -695,16 +658,14 @@ class StructType(Type):
   def __init__(self, struct_identifier: str, templ_types: List[Type], member_identifiers: List[str],
                member_types: List[Type], constructor: Optional[FunctionSymbol] = None):
     self.struct_identifier = struct_identifier
-    self._templ_types = templ_types
     self.member_identifiers = member_identifiers
     self.member_types = member_types
     self._constructor: Optional[FunctionSymbol] = None
-    if self.has_templ_placeholder():
+    if any(templ_type.has_templ_placeholder() for templ_type in templ_types):
       self.ir_val_type = None
       self.c_val_type: Optional[typing.Type] = None
-      super().__init__(None, c_type=None, constructor=constructor)
+      super().__init__(templ_types=templ_types, ir_type=None, c_type=None, constructor=constructor)
     else:  # default case
-      assert not self.has_templ_placeholder()
       member_ir_types = [member_type.ir_type for member_type in member_types]
       self.ir_val_type = ir.types.LiteralStructType(member_ir_types)
       member_c_types = [
@@ -712,11 +673,8 @@ class StructType(Type):
         for member_identifier, member_type in zip(member_identifiers, member_types)]
       self.c_val_type: Optional[typing.Type] = type(
         '%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
-      super().__init__(self.ir_val_type, c_type=self.c_val_type, constructor=constructor)
-
-  @property
-  def templ_types(self) -> List[Type]:
-    return self._templ_types
+      super().__init__(
+        templ_types=templ_types, ir_type=self.ir_val_type, c_type=self.c_val_type, constructor=constructor)
 
   def get_member_num(self, member_identifier):
     """
@@ -833,7 +791,7 @@ class PlaceholderTemplateType(Type):
   """
 
   def __init__(self, identifier: str):
-    super().__init__(ir_type=None, c_type=None, constructor=None)
+    super().__init__(templ_types=[], ir_type=None, c_type=None, constructor=None)
     self.identifier = identifier
 
   def _make_di_type(self, context: CodegenContext):
@@ -846,10 +804,6 @@ class PlaceholderTemplateType(Type):
     return True
 
   def children(self) -> List[Type]:
-    return []
-
-  @property
-  def templ_types(self) -> List[Type]:
     return []
 
   def has_same_symbol_as(self, other: Type) -> bool:
@@ -890,6 +844,14 @@ def narrow_type(from_type, narrow_to):
   if from_type == narrow_to:
     return from_type
   assert isinstance(from_type, ReferenceType) == isinstance(narrow_to, ReferenceType)
+  if len(from_type.templ_types) > 0 or len(narrow_to.templ_types) > 0:  # template types
+    if len(from_type.templ_types) != len(narrow_to.templ_types):
+      return SLEEPY_NEVER
+    new_type = from_type.copy()
+    new_type.templ_types = [
+      narrow_type(from_templ_type, to_templ_type)
+      for from_templ_type, to_templ_type in zip(from_type.templ_types, narrow_to.templ_types)]
+    return new_type
   if isinstance(narrow_to, UnionType):
     narrow_to_types = narrow_to.possible_types
   else:
