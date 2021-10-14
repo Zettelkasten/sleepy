@@ -5,7 +5,7 @@ from llvmlite import ir
 from sleepy.ast import StatementAst, TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree
 from sleepy.grammar import TreePosition
 from sleepy.symbols import SymbolTable, Type, CodegenContext, FunctionSymbol, ConcreteFunction, FunctionTemplate, \
-  VariableSymbol, PlaceholderTemplateType, SLEEPY_VOID, TypedValue
+  VariableSymbol, PlaceholderTemplateType, SLEEPY_VOID, TypedValue, ReferenceType
 from sleepy.builtin_symbols import SLEEPY_BOOL
 
 
@@ -128,7 +128,8 @@ class FunctionDeclarationAst(StatementAst):
 
     # add arguments as variables
     for arg_identifier, arg_type in zip(concrete_func.arg_identifiers, concrete_func.arg_types):
-      var_symbol = VariableSymbol(None, arg_type)
+      # if arg is of type T, we create a local variable of type Ref[T]
+      var_symbol = VariableSymbol(None, ReferenceType(arg_type))
       assert arg_identifier not in body_symbol_table.current_scope_identifiers
       body_symbol_table[arg_identifier] = var_symbol
     # set function argument values
