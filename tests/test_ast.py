@@ -77,10 +77,20 @@ def test_simple_arithmetic():
 def test_empty_func():
   with make_execution_engine() as engine:
     program = """
-    func nothing()  {
+    func main()  {
     }
     """
-    nothing = compile_program(engine, program, main_func_identifier='nothing')
+    nothing = compile_program(engine, program, add_preamble=False)
+    assert_equal(nothing(), None)
+
+
+def test_empty_func_with_preamble():
+  with make_execution_engine() as engine:
+    program = """
+    func main()  {
+    }
+    """
+    nothing = compile_program(engine, program, add_preamble=True)
     assert_equal(nothing(), None)
 
 
