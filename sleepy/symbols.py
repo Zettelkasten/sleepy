@@ -1356,15 +1356,13 @@ class DestructorFunctionTemplate(FunctionTemplate):
             member_identifier, struct_ir_val=self_ir_alloca, context=context)
           # TODO: properly infer templ types, also for struct members
           assert not (isinstance(signature_member_type, StructType) and len(signature_member_type.templ_types) > 0), (
-            # noqa
             'not implemented yet')
           templ_types: List[Type] = []
           if isinstance(concrete_member_type, PointerType):
             templ_types = [concrete_member_type.pointee_type]
           make_func_call_ir(
             func=self.captured_symbol_table.free_symbol, templ_types=templ_types,
-            calling_args=[TypedValue(typ=signature_member_type, referenceable=False, ir_val=member_ir_val)],
-              context=context)
+            bound_func_args=[TypedValue(typ=signature_member_type, ir_val=member_ir_val)], context=context)
         context.builder.ret_void()
 
 
@@ -1792,7 +1790,7 @@ def make_ir_size(size: int) -> ir.values.Value:
 
 def make_func_call_ir(func: FunctionSymbol,
                       templ_types: List[Type],
-                      calling_args: List[TypedValue],
+                      bound_func_args: List[TypedValue],
                       context: CodegenContext) -> Optional[ir.values.Value]:
   assert context.emits_ir
   assert not context.emits_debug or context.builder.debug_metadata is not None
@@ -1801,27 +1799,25 @@ def make_func_call_ir(func: FunctionSymbol,
                      caller_context: CodegenContext) -> ir.values.Value:
     assert caller_context.emits_ir
     assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
-    assert len(concrete_func.arg_types) == len(calling_args)
+    assert len(concrete_func.arg_types) == len(bound_func_args)
     assert all(
-      not arg_mutates or arg.referenceable for arg, arg_mutates in zip(calling_args, concrete_func.arg_mutates))
+      not arg_mutates or arg.is_referenceable() for arg, arg_mutates in zip(bound_func_args, concrete_func.arg_mutates))
     casted_calling_args = [
       arg_val.copy_with_narrowed_type(param_type).copy_with_implicit_cast(
         to_type=param_type, context=caller_context, name='call_arg_%s_cast' % arg_identifier)
       for arg_identifier, arg_val, param_type in zip(
-        concrete_func.arg_identifiers, calling_args, concrete_func.arg_types)]
+        concrete_func.arg_identifiers, bound_func_args, concrete_func.arg_types)]
     if concrete_func.is_inline:
       assert concrete_func not in caller_context.inline_func_call_stack
       return concrete_func.make_inline_func_call_ir(func_args=casted_calling_args, caller_context=caller_context)
     else:
       ir_func = concrete_func.ir_func
-      assert ir_func is not None and len(ir_func.args) == len(calling_args)
-      casted_ir_args = [
-        arg.ir_val_ptr if arg_mutates else arg.ir_val
-        for arg, arg_mutates in zip(casted_calling_args, concrete_func.arg_mutates)]
+      assert ir_func is not None and len(ir_func.args) == len(bound_func_args)
+      casted_ir_args = [arg.ir_val for arg in casted_calling_args]
       assert None not in casted_ir_args
       return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
 
-  calling_arg_types = [arg.narrowed_type for arg in calling_args]
+  calling_arg_types = [arg.narrowed_type for arg in bound_func_args]
   assert func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
   possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
   if len(possible_concrete_funcs) == 1:
@@ -1876,7 +1872,7 @@ def make_func_call_ir(func: FunctionSymbol,
     tag_ir_type = ir.types.IntType(8)
     call_block_index_ir = ir.Constant(tag_ir_type, 0)
     for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
-      ir_func_arg = calling_args[arg_num].ir_val
+      ir_func_arg = bound_func_args[arg_num].ir_val
       assert ir_func_arg is not None
       base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
       base_ir = ir.Constant(tag_ir_type, base)
@@ -2002,10 +1998,14 @@ class TypedValue:
                ir_val: Optional[ir.values.Value]):
     if narrowed_type is None:
       narrowed_type = typ
+    assert isinstance(typ, ReferenceType) == isinstance(narrowed_type, ReferenceType)
     self.type = typ
     self.narrowed_type = narrowed_type
     self.num_unbindings = num_unbindings
     self.ir_val = ir_val
+
+  def is_referenceable(self) -> bool:
+    return isinstance(self.type, ReferenceType)
 
   def copy(self) -> TypedValue:
     return copy.copy(self)
@@ -2074,3 +2074,14 @@ class TypedValue:
     if self.num_unbindings:
       attrs.append('unbinds %s' % self.num_unbindings)
     return 'TypedValue(%s)' % ', '.join(['%s=%r' % (attr, getattr(self, attr)) for attr in attrs])
+
+  def copy_bind(self) -> TypedValue:
+    assert self.num_unbindings == 0, 'Not implemented yet'  # TODO implement this
+    new = self
+    while new.is_referenceable():
+      assert isinstance(new.type, ReferenceType)
+      assert isinstance(new.narrowed_type, ReferenceType)
+      new = new.copy()
+      new.type = new.type.pointee_type
+      new.narrowed_type = new.narrowed_type.pointee_type
+    return new
