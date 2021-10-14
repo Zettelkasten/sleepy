@@ -94,6 +94,16 @@ def test_empty_func_with_preamble():
     assert_equal(nothing(), None)
 
 
+def test_empty_func_with_arg():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int)  {
+    }
+    """
+    nothing = compile_program(engine, program, add_preamble=False)
+    assert_equal(nothing(2), None)
+
+
 def test_lerp():
   with make_execution_engine() as engine:
     program = """
