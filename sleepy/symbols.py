@@ -439,6 +439,9 @@ class ReferenceType(PointerType):
   def replace_types(self, replacements: Dict[Type, Type]) -> PointerType:
     return ReferenceType(pointee_type=self.pointee_type.replace_types(replacements), constructor=self.constructor)
 
+  def __hash__(self) -> int:
+    return hash((self.__class__, self.pointee_type))
+
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, ReferenceType)
 
@@ -999,19 +1002,21 @@ class VariableSymbol(Symbol):
   def build_ir_alloca(self, context: CodegenContext, identifier: str,
                       initial_ir_alloca: Optional[ir.values.Value] = None):
     assert self.ir_alloca is None
+    assert isinstance(self.declared_var_type, ReferenceType)
+    var_type = self.declared_var_type.pointee_type
     if not context.emits_ir:
       return
     if initial_ir_alloca is not None:
       self.ir_alloca = initial_ir_alloca
       initial_ir_alloca.name = '%s_ref' % identifier
     else:  # default case
-      self.ir_alloca = context.alloca_at_entry(self.declared_var_type.ir_type, name='%s_ptr' % identifier)
+      self.ir_alloca = context.alloca_at_entry(var_type.ir_type, name='%s_ptr' % identifier)
     if context.emits_debug:
       assert context.di_declare_func is not None
       di_local_var = context.module.add_debug_info(
         'DILocalVariable', {
           'name': identifier, 'scope': context.current_di_scope, 'file': context.current_di_file,
-          'line': context.current_pos.get_from_line(), 'type': self.declared_var_type.make_di_type(context=context)})
+          'line': context.current_pos.get_from_line(), 'type': var_type.make_di_type(context=context)})
       di_expression = context.module.add_debug_info('DIExpression', {})
       assert context.builder.debug_metadata is not None
       context.builder.call(context.di_declare_func, args=[self.ir_alloca, di_local_var, di_expression])
