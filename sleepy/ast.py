@@ -748,7 +748,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
           ir_val = make_ir_val_is_type(check_value.ir_val, check_value.narrowed_type, check_type, context=context)
         else:
           ir_val = None
-        return TypedValue(typ=SLEEPY_BOOL, referenceable=False, ir_val=ir_val)
+        return TypedValue(typ=SLEEPY_BOOL, ir_val=ir_val)
 
       operand_exprs = [self.left_expr, self.right_expr]
       return self.build_func_call_by_identifier(
@@ -879,7 +879,7 @@ class StringLiteralExpressionAst(ExpressionAst):
           member_ir_vals=[ir_start, ir_length, ir_length], struct_ir_alloca=str_ir_alloca, context=context)
       else:
         str_ir_alloca = None
-      return TypedValue(typ=str_type, referenceable=False, ir_val=str_ir_alloca)
+      return TypedValue(typ=str_type, ir_val=str_ir_alloca)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use string literal as function')
@@ -1051,7 +1051,7 @@ class CallExpressionAst(ExpressionAst):
         size_of_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
         from sleepy.symbols import LLVM_SIZE_TYPE
         ir_val = ir.Constant(LLVM_SIZE_TYPE, size_of_type.size) if context.emits_ir else None
-        return TypedValue(typ=SLEEPY_LONG, referenceable=False, ir_val=ir_val)
+        return TypedValue(typ=SLEEPY_LONG, ir_val=ir_val)
       if self._is_load_call(symbol_table=symbol_table):
         assert len(self.func_arg_exprs) == 1
         arg_expr = self.func_arg_exprs[0]
@@ -1059,11 +1059,8 @@ class CallExpressionAst(ExpressionAst):
         from sleepy.symbols import PointerType
         assert isinstance(arg_val.type, PointerType)
         if context.emits_ir:
-          ir_val_ptr = arg_val.ir_val
-          ir_val = context.builder.load(ir_val_ptr, name='load_ptr')
-        else:
-          ir_val_ptr, ir_val = None, None
-        return TypedValue(typ=arg_val.type.pointee_type, referenceable=True, ir_val=ir_val, ir_val_ptr=ir_val_ptr)
+          assert arg_val.ir_val is not None
+        return TypedValue(typ=arg_val.type.pointee_type, ir_val=arg_val.ir_val)
 
       # default case
       func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
@@ -1121,11 +1118,14 @@ class ReferenceExpressionAst(ExpressionAst):
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
       arg_val = self.arg_expr.make_as_val(symbol_table=symbol_table, context=context)
-      if not arg_val.referenceable:
+      if not arg_val.is_referenceable():
         self.raise_error('Cannot take reference to non-assignable variable')
-      ir_val = arg_val.ir_val_ptr if context.emits_ir else None
+      assert isinstance(arg_val.type, ReferenceType)
+      assert isinstance(arg_val.narrowed_type, ReferenceType)
       from sleepy.symbols import PointerType
-      return TypedValue(typ=PointerType(arg_val.narrowed_type), referenceable=False, ir_val=ir_val)
+      return TypedValue(
+        typ=PointerType(arg_val.type.pointee_type), narrowed_type=PointerType(arg_val.narrowed_type.pointee_type),
+        ir_val=arg_val.ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use reference as function')
