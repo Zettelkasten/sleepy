@@ -114,7 +114,7 @@ class AbstractSyntaxTree(ABC):
     # work right now.
     func, templ_types = func_caller.func, func_caller.templ_types
     func_args = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in func_arg_exprs]
-    bound_func_args = [arg.copy_bind() for arg in func_args]
+    bound_func_args = [arg.copy_bind(context=context, name='call_arg_%s' % num) for num, arg in enumerate(func_args)]
     calling_types = [arg.narrowed_type for arg in bound_func_args]
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
       func_caller=func_caller, bound_func_args=bound_func_args)
@@ -148,7 +148,7 @@ class AbstractSyntaxTree(ABC):
       if isinstance(func_arg_expr, IdentifierExpressionAst):
         var_symbol = symbol_table[func_arg_expr.identifier]
         assert isinstance(var_symbol, VariableSymbol)
-        symbol_table[func_arg_expr.identifier] = var_symbol.copy_narrow_type(narrowed_arg_type)
+        symbol_table[func_arg_expr.identifier] = var_symbol.copy_narrow_type(ReferenceType(narrowed_arg_type))
 
     # special handling of 'assert' call
     if func in {symbol_table.inbuilt_symbols.get(identifier) for identifier in {'assert', 'unchecked_assert'}}:
@@ -495,6 +495,7 @@ class AssignStatementAst(StatementAst):
       val = self.var_val.make_as_val(symbol_table=symbol_table, context=context)
       if val.type == SLEEPY_VOID:
         self.raise_error('Cannot assign void to variable')
+      val = val.copy_bind(context=context, name='store')
       if stated_type is not None:
         if not can_implicit_cast_to(val.narrowed_type, stated_type):
           self.raise_error(
@@ -513,29 +514,30 @@ class AssignStatementAst(StatementAst):
 
       # check that declared type matches assigned type
       target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)
-      declared_type = target_val.type
-      assert declared_type is not None
+      if not target_val.is_referenceable():
+        self.raise_error('Cannot reassign this variable')
+      assert isinstance(target_val.type, ReferenceType)
+      declared_type = target_val.type.pointee_type
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
           self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
       if not can_implicit_cast_to(val.narrowed_type, declared_type):
         self.raise_error(
           'Cannot redefine variable of type %r with variable of type %r' % (declared_type, val.narrowed_type))
-      if not target_val.referencable:
-        self.raise_error('Cannot reassign this variable')
 
       # if we assign to a variable, narrow type to val_type
       if isinstance(self.var_target, IdentifierExpressionAst):
         assert self.var_target.identifier in symbol_table
         symbol = symbol_table[self.var_target.identifier]
         assert isinstance(symbol, VariableSymbol)
-        narrowed_symbol = symbol.copy_with_narrowed_type(val.narrowed_type)
+        narrowed_symbol = symbol.copy_with_narrowed_type(ReferenceType(val.narrowed_type))
         assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
         symbol_table[self.var_target.identifier] = narrowed_symbol
 
       if context.emits_ir:
         ir_val = val.copy_with_implicit_cast(declared_type, context=context, name='assign_cast').ir_val
-        assert target_val.ir_val_ptr is not None
-        context.builder.store(value=ir_val, ptr=target_val.ir_val_ptr)
+        assert ir_val is not None
+        assert target_val.ir_val is not None
+        context.builder.store(value=ir_val, ptr=target_val.ir_val)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.var_target, self.var_val, self.declared_var_type]
