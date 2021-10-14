@@ -368,6 +368,7 @@ class ReturnStatementAst(StatementAst):
         return_val = return_expr.make_as_val(symbol_table=symbol_table, context=context)
         if return_val.type == SLEEPY_VOID:
           self.raise_error('Cannot use void return value')
+        return_val = return_val.copy_bind(context=context, name='return_val')
         if not can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type):
           if symbol_table.current_func.return_type == SLEEPY_VOID:
             self.raise_error(
