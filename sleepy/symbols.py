@@ -889,6 +889,7 @@ def narrow_type(from_type, narrow_to):
   """
   if from_type == narrow_to:
     return from_type
+  assert isinstance(from_type, ReferenceType) == isinstance(narrow_to, ReferenceType)
   if isinstance(narrow_to, UnionType):
     narrow_to_types = narrow_to.possible_types
   else:
@@ -2075,7 +2076,7 @@ class TypedValue:
       attrs.append('unbinds %s' % self.num_unbindings)
     return 'TypedValue(%s)' % ', '.join(['%s=%r' % (attr, getattr(self, attr)) for attr in attrs])
 
-  def copy_bind(self) -> TypedValue:
+  def copy_bind(self, context: CodegenContext, name: str) -> TypedValue:
     assert self.num_unbindings == 0, 'Not implemented yet'  # TODO implement this
     new = self
     while new.is_referenceable():
@@ -2084,4 +2085,7 @@ class TypedValue:
       new = new.copy()
       new.type = new.type.pointee_type
       new.narrowed_type = new.narrowed_type.pointee_type
+      if context.emits_ir:
+        assert new.ir_val is not None
+        new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
     return new
