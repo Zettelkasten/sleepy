@@ -430,6 +430,28 @@ class RawPointerType(Type):
     return self == other
 
 
+class ReferenceType(PointerType):
+  """
+  A reference to some other type.
+  """
+  def __init__(self, pointee_type: Type, constructor: Optional[FunctionSymbol] = None):
+    super().__init__(pointee_type=pointee_type, constructor=constructor)
+
+  def __repr__(self) -> str:
+    return 'Ref[%r]' % self.pointee_type
+
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, ReferenceType):
+      return False
+    return self.pointee_type == other.pointee_type
+
+  def replace_types(self, replacements: Dict[Type, Type]) -> PointerType:
+    return ReferenceType(pointee_type=self.pointee_type.replace_types(replacements), constructor=self.constructor)
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return isinstance(other, ReferenceType)
+
+
 class UnionType(Type):
   """
   A tagged union, i.e. a type that can be one of a set of different types.
