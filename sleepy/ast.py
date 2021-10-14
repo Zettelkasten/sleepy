@@ -11,7 +11,7 @@ from sleepy.grammar import TreePosition
 from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue
+  PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue, ReferenceType
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
@@ -40,9 +40,9 @@ class AbstractSyntaxTree(ABC):
 
   def _resolve_possible_concrete_funcs(self,
                                        func_caller: FunctionSymbolCaller,
-                                       func_args: List[TypedValue]) -> List[ConcreteFunction]:
+                                       bound_func_args: List[TypedValue]) -> List[ConcreteFunction]:
     func, templ_types = func_caller.func, func_caller.templ_types
-    calling_types = [arg.narrowed_type for arg in func_args]
+    calling_types = [arg.narrowed_type for arg in bound_func_args]
     if templ_types is None:
       templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
     assert templ_types is not None
@@ -114,9 +114,11 @@ class AbstractSyntaxTree(ABC):
     # work right now.
     func, templ_types = func_caller.func, func_caller.templ_types
     func_args = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in func_arg_exprs]
-    possible_concrete_funcs = self._resolve_possible_concrete_funcs(func_caller=func_caller, func_args=func_args)
+    bound_func_args = [arg.copy_bind() for arg in func_args]
+    calling_types = [arg.narrowed_type for arg in bound_func_args]
+    possible_concrete_funcs = self._resolve_possible_concrete_funcs(
+      func_caller=func_caller, bound_func_args=bound_func_args)
     return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
-    calling_types = [arg.narrowed_type for arg in func_args]
 
     if templ_types is None:
       templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
@@ -128,13 +130,14 @@ class AbstractSyntaxTree(ABC):
           'An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
             ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func))
       for arg_identifier, arg_mutates, arg in zip(concrete_func.arg_identifiers, concrete_func.arg_mutates, func_args):
-        if arg_mutates and not arg.referenceable:
+        if arg_mutates and not arg.is_referenceable():
           self.raise_error('Cannot call function %s%s mutating parameter %r with non-referencable argument' % (
             func.identifier, concrete_func.signature.to_signature_str(), arg_identifier))
 
     if context.emits_ir:
       from sleepy.symbols import make_func_call_ir
-      return_ir_val = make_func_call_ir(func=func, templ_types=templ_types, calling_args=func_args, context=context)
+      return_ir_val = make_func_call_ir(
+        func=func, templ_types=templ_types, bound_func_args=bound_func_args, context=context)
     else:
       return_ir_val = None
 
@@ -152,7 +155,7 @@ class AbstractSyntaxTree(ABC):
       assert len(func_arg_exprs) >= 1
       condition_expr = func_arg_exprs[0]
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
-    return TypedValue(typ=return_type, referenceable=False, ir_val=return_ir_val)
+    return TypedValue(typ=return_type, ir_val=return_ir_val)
 
   def build_func_call_by_identifier(self,
                                     func_identifier: str,
@@ -501,10 +504,8 @@ class AssignStatementAst(StatementAst):
         assert isinstance(self.var_target, IdentifierExpressionAst)
         var_identifier = self.var_target.identifier
         assert var_identifier not in symbol_table.current_scope_identifiers
-        if stated_type is not None:
-          declared_type = stated_type
-        else:
-          declared_type = val.type
+        # variables are always (implicitly) references
+        declared_type = ReferenceType(val.type if stated_type is None else stated_type)
         # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
         symbol = VariableSymbol(None, var_type=declared_type)
         symbol.build_ir_alloca(context=context, identifier=var_identifier)
@@ -519,7 +520,7 @@ class AssignStatementAst(StatementAst):
       if not can_implicit_cast_to(val.narrowed_type, declared_type):
         self.raise_error(
           'Cannot redefine variable of type %r with variable of type %r' % (declared_type, val.narrowed_type))
-      if not target_val.referenceable:
+      if not target_val.referencable:
         self.raise_error('Cannot reassign this variable')
 
       # if we assign to a variable, narrow type to val_type
