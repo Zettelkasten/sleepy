@@ -934,13 +934,8 @@ class IdentifierExpressionAst(ExpressionAst):
       symbol = self.get_var_symbol(symbol_table=symbol_table)
       if context.emits_ir:
         assert symbol.ir_alloca is not None
-        ir_val = context.builder.load(symbol.ir_alloca, name=self.identifier)
-        ir_val_ptr = symbol.ir_alloca
-      else:
-        ir_val, ir_val_ptr = None, None
       return TypedValue(
-        typ=symbol.declared_var_type, narrowed_type=symbol.narrowed_var_type, referenceable=True, ir_val=ir_val,
-        ir_val_ptr=ir_val_ptr)
+        typ=symbol.declared_var_type, narrowed_type=symbol.narrowed_var_type, ir_val=symbol.ir_alloca)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     return FunctionSymbolCaller(func=self.get_func_symbol(symbol_table=symbol_table))
