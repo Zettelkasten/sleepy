@@ -818,7 +818,7 @@ class ConstantExpressionAst(ExpressionAst):
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
       ir_val = ir.Constant(self.constant_type.ir_type, self.constant_val) if context.emits_ir else None
-      return TypedValue(typ=self.constant_type, referenceable=False, ir_val=ir_val)
+      return TypedValue(typ=self.constant_type, ir_val=ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use constant expression as function')
