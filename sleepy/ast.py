@@ -1145,6 +1145,8 @@ class MemberExpressionAst(ExpressionAst):
   MemberExpr -> MemberExpr . identifier
 
   TODO: In the future, make this a special function attr(a: Struct, member_identifier: str) or so
+  This is a little magic, because it behaves differently depending on whether a is actually a reference or not.
+  Not sure how to make this better.
   """
   def __init__(self, pos: TreePosition, parent_val_expr: ExpressionAst, member_identifier: str):
     super().__init__(pos)
@@ -1156,29 +1158,29 @@ class MemberExpressionAst(ExpressionAst):
 
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      parent_val = self.parent_val_expr.make_as_val(symbol_table=symbol_table, context=context)
-      parent_type = parent_val.narrowed_type
-      if not isinstance(parent_type, StructType):
+      arg_val = self.parent_val_expr.make_as_val(symbol_table=symbol_table, context=context)
+      struct_type = arg_val.copy_bind(context=context.copy_without_builder(), name='struct').narrowed_type
+      if not isinstance(struct_type, StructType):
         self.raise_error(
-          'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, parent_type))
-      if self.member_identifier not in parent_type.member_identifiers:
+          'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type))
+      if self.member_identifier not in struct_type.member_identifiers:
         self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
-          parent_type, self.member_identifier, ', '.join(parent_type.member_identifiers)))
-      member_num = parent_type.get_member_num(self.member_identifier)
-      member_type = parent_type.member_types[member_num]
+          struct_type, self.member_identifier, ', '.join(struct_type.member_identifiers)))
+      member_num = struct_type.get_member_num(self.member_identifier)
+      member_type = struct_type.member_types[member_num]
 
-      if context.emits_ir:
-        ir_val = parent_type.make_extract_member_val_ir(
-          self.member_identifier, struct_ir_val=parent_val.ir_val, context=context)
-        if parent_val.referenceable:
-          parent_ptr = parent_val.ir_val_ptr
+      if arg_val.is_referenceable():
+        if context.emits_ir:
+          parent_ptr = arg_val.ir_val
           gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
-          ir_val_ptr = context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+          self_ptr = context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
         else:
-          ir_val_ptr = None
+          self_ptr = None
+        return TypedValue(typ=ReferenceType(member_type), ir_val=self_ptr)
       else:
-        ir_val, ir_val_ptr = None, None
-      return TypedValue(typ=member_type, referenceable=parent_val.referenceable, ir_val=ir_val, ir_val_ptr=ir_val_ptr)
+        ir_val = struct_type.make_extract_member_val_ir(
+          self.member_identifier, struct_ir_val=arg_val.ir_val, context=context) if context.emits_ir else None
+        return TypedValue(typ=member_type, ir_val=ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use member %r as function' % self.member_identifier)
