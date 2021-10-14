@@ -2004,22 +2004,23 @@ class TypedValue:
   """
   A value an expression returns.
   Has a type, and, if it emits_ir, also an IR value.
-  If it is referenceable, also has a pointer to such IR value.
+
+  Reference-like types bind themselves to the value they represent.
+  E.g. Ref[T] behaves like it is a T.
+  This is also recursive, e.g. Ref[Ref[T]] also behaves like T.
+  If num_unbindings > 0, this prevents this behavior and gives access to the reference-like type itself.
   """
   def __init__(self, *,
                typ: Type,
                narrowed_type: Type = None,
-               referenceable: bool,
-               ir_val: Optional[ir.values.Value],
-               ir_val_ptr: Optional[ir.values.Value] = None):
+               num_unbindings: int = 0,
+               ir_val: Optional[ir.values.Value]):
     if narrowed_type is None:
       narrowed_type = typ
-    assert (ir_val_ptr is not None) == (ir_val is not None and referenceable)
     self.type = typ
     self.narrowed_type = narrowed_type
-    self.referenceable = referenceable
+    self.num_unbindings = num_unbindings
     self.ir_val = ir_val
-    self.ir_val_ptr = ir_val_ptr
 
   def copy(self) -> TypedValue:
     return copy.copy(self)
@@ -2085,8 +2086,6 @@ class TypedValue:
       attrs.append('narrowed_type')
     if self.ir_val is not None:
       attrs.append('ir_val')
-    if self.ir_val_ptr is not None:
-      attrs.append('ir_val_ptr')
-    elif self.referenceable:
-      attrs.append('referencable')
+    if self.num_unbindings:
+      attrs.append('unbinds %s' % self.num_unbindings)
     return 'TypedValue(%s)' % ', '.join(['%s=%r' % (attr, getattr(self, attr)) for attr in attrs])
