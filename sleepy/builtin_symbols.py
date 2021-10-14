@@ -101,8 +101,7 @@ Simple_Comparison_Ops: List[BuiltinBinaryOps] = \
 def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeTemplateSymbol:
   str_type = StructType(
     struct_identifier='Str', member_identifiers=['start', 'length', 'alloc_length'], templ_types=[],
-    member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT],
-    pass_by_ref=True)
+    member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT])
   constructor_symbol = str_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
   str_type.constructor = constructor_symbol
   type_factory = TypeFactory(placeholder_templ_types=[], signature_type=str_type)

@@ -408,8 +408,6 @@ class ReturnStatementAst(StatementAst):
 
 
 class StructDeclarationAst(StatementAst):
-  allowed_annotation_identifiers = frozenset({'ValType', 'RefType'})
-
   def __init__(self, pos: TreePosition, struct_identifier: str, templ_identifiers: List[str],
                member_types: List[TypeAst], member_identifiers: List[str],
                member_annotations: List[List[AnnotationAst]]):
@@ -420,13 +418,6 @@ class StructDeclarationAst(StatementAst):
     self.member_types = member_types
     self.member_identifiers = member_identifiers
     self.member_annotations = member_annotations
-
-  def is_pass_by_ref(self) -> bool:
-    val_type = any(annotation.identifier == 'ValType' for annotation in self.annotations)
-    ref_type = any(annotation.identifier == 'RefType' for annotation in self.annotations)
-    if val_type and ref_type:
-      self.raise_error('Cannot apply annotation %r and %r at the same time' % ('ValType', 'RefType'))
-    return ref_type  # fall back to pass by value.
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
@@ -441,7 +432,7 @@ class StructDeclarationAst(StatementAst):
       member_types = [type_ast.make_type(symbol_table=struct_symbol_table) for type_ast in self.member_types]
       signature_struct_type = StructType(
         struct_identifier=self.struct_identifier, templ_types=placeholder_templ_types,
-        member_identifiers=self.member_identifiers, member_types=member_types, pass_by_ref=self.is_pass_by_ref())
+        member_identifiers=self.member_identifiers, member_types=member_types)
 
       # make constructor / destructor
       constructor = signature_struct_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
@@ -1179,11 +1170,7 @@ class MemberExpressionAst(ExpressionAst):
         ir_val = parent_type.make_extract_member_val_ir(
           self.member_identifier, struct_ir_val=parent_val.ir_val, context=context)
         if parent_val.referenceable:
-          if parent_type.is_pass_by_ref():  # parent_val.ir_val_ptr has type struct**
-            # dereference to get struct*.
-            parent_ptr = context.builder.load(parent_val.ir_val_ptr, 'load_struct')
-          else:
-            parent_ptr = parent_val.ir_val_ptr
+          parent_ptr = parent_val.ir_val_ptr
           gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
           ir_val_ptr = context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
         else:
