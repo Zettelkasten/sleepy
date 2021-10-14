@@ -573,6 +573,7 @@ class IfStatementAst(StatementAst):
     """
     with context.use_pos(self.pos):
       cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
+      cond_val = cond_val.copy_bind(context=context, name='if_cond')
       if not cond_val.narrowed_type == SLEEPY_BOOL:
         self.raise_error('Cannot use expression of type %r as if-condition' % cond_val.type)
 
@@ -644,6 +645,7 @@ class WhileStatementAst(StatementAst):
     """
     with context.use_pos(self.pos):
       cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
+      cond_val = cond_val.copy_bind(context=context, name='while_cond')
       if not cond_val.narrowed_type == SLEEPY_BOOL:
         self.raise_error('Cannot use expression of type %r as while-condition' % cond_val.type)
 
