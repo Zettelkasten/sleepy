@@ -46,14 +46,11 @@ class Type(ABC):
   """
   A type of a declared variable.
   """
-  def __init__(self, ir_type: Optional[ir.types.Type], pass_by_ref: bool, c_type,
-               constructor: Optional[FunctionSymbol]):
+  def __init__(self, ir_type: Optional[ir.types.Type], c_type, constructor: Optional[FunctionSymbol]):
     """
     :param ctypes._CData|None c_type: may be None if this is non-realizable (e.g. template types / void)
     """
-    assert not pass_by_ref or isinstance(ir_type, ir.types.PointerType) or ir_type is None
     self.ir_type = ir_type
-    self.pass_by_ref = pass_by_ref
     self.c_type = c_type
     self._constructor: Optional[FunctionSymbol] = constructor
 
@@ -63,12 +60,6 @@ class Type(ABC):
   @property
   def size(self) -> int:
     return ctypes.sizeof(self.c_type)
-
-  def is_pass_by_ref(self):
-    """
-    :rtype: bool
-    """
-    return self.pass_by_ref
 
   def is_realizable(self) -> bool:
     return True
@@ -129,7 +120,7 @@ class VoidType(Type):
   Type returned when nothing is returned.
   """
   def __init__(self):
-    super().__init__(ir.VoidType(), pass_by_ref=False, c_type=None, constructor=None)
+    super().__init__(ir.VoidType(), c_type=None, constructor=None)
 
   def __repr__(self) -> str:
     return 'Void'
@@ -159,7 +150,7 @@ class DoubleType(Type):
   A double.
   """
   def __init__(self):
-    super().__init__(ir.DoubleType(), pass_by_ref=False, c_type=ctypes.c_double, constructor=None)
+    super().__init__(ir.DoubleType(), c_type=ctypes.c_double, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -192,7 +183,7 @@ class FloatType(Type):
   A double.
   """
   def __init__(self):
-    super().__init__(ir.FloatType(), pass_by_ref=False, c_type=ctypes.c_float, constructor=None)
+    super().__init__(ir.FloatType(), c_type=ctypes.c_float, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -225,7 +216,7 @@ class BoolType(Type):
   A 1-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=1), pass_by_ref=False, c_type=ctypes.c_bool, constructor=None)
+    super().__init__(ir.IntType(bits=1), c_type=ctypes.c_bool, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -258,7 +249,7 @@ class IntType(Type):
   An 32-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=32), pass_by_ref=False, c_type=ctypes.c_int32, constructor=None)
+    super().__init__(ir.IntType(bits=32), c_type=ctypes.c_int32, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -291,7 +282,7 @@ class LongType(Type):
   A 64-bit integer.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=64), pass_by_ref=False, c_type=ctypes.c_int64, constructor=None)
+    super().__init__(ir.IntType(bits=64), c_type=ctypes.c_int64, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -324,7 +315,7 @@ class CharType(Type):
   An 8-bit character.
   """
   def __init__(self):
-    super().__init__(ir.IntType(bits=8), pass_by_ref=False, c_type=ctypes.c_uint8, constructor=None)
+    super().__init__(ir.IntType(bits=8), c_type=ctypes.c_uint8, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -358,7 +349,7 @@ class PointerType(Type):
   """
   def __init__(self, pointee_type: Type, constructor: Optional[FunctionSymbol] = None):
     super().__init__(
-      ir.PointerType(pointee_type.ir_type), pass_by_ref=False, c_type=ctypes.POINTER(pointee_type.c_type),
+      ir.PointerType(pointee_type.ir_type), c_type=ctypes.POINTER(pointee_type.c_type),
       constructor=constructor)
     self.pointee_type = pointee_type
 
@@ -399,7 +390,7 @@ class RawPointerType(Type):
   A raw (void) pointer from which we do not know the underlying type.
   """
   def __init__(self):
-    super().__init__(LLVM_VOID_POINTER_TYPE, pass_by_ref=False, c_type=ctypes.c_void_p, constructor=None)
+    super().__init__(LLVM_VOID_POINTER_TYPE, c_type=ctypes.c_void_p, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -477,7 +468,7 @@ class UnionType(Type):
       '%s_CType' % self.identifier, (ctypes.Structure,),
       {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
     ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
-    super().__init__(ir_type, pass_by_ref=False, c_type=c_type, constructor=constructor)
+    super().__init__(ir_type, c_type=c_type, constructor=constructor)
 
   def __repr__(self) -> str:
     if len(self.possible_types) == 0:
@@ -699,8 +690,7 @@ class StructType(Type):
   A struct.
   """
   def __init__(self, struct_identifier: str, templ_types: List[Type], member_identifiers: List[str],
-               member_types: List[Type], pass_by_ref: bool,
-               constructor: Optional[FunctionSymbol] = None):
+               member_types: List[Type], constructor: Optional[FunctionSymbol] = None):
     self.struct_identifier = struct_identifier
     self._templ_types = templ_types
     self.member_identifiers = member_identifiers
@@ -709,7 +699,7 @@ class StructType(Type):
     if self.has_templ_placeholder():
       self.ir_val_type = None
       self.c_val_type: Optional[typing.Type] = None
-      super().__init__(None, pass_by_ref=pass_by_ref, c_type=None, constructor=constructor)
+      super().__init__(None, c_type=None, constructor=constructor)
     else:  # default case
       assert not self.has_templ_placeholder()
       member_ir_types = [member_type.ir_type for member_type in member_types]
@@ -719,12 +709,7 @@ class StructType(Type):
         for member_identifier, member_type in zip(member_identifiers, member_types)]
       self.c_val_type: Optional[typing.Type] = type(
         '%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
-      if pass_by_ref:
-        super().__init__(
-          ir.types.PointerType(self.ir_val_type), pass_by_ref=True, c_type=ctypes.POINTER(self.c_val_type),  # noqa
-          constructor=constructor)
-      else:
-        super().__init__(self.ir_val_type, pass_by_ref=False, c_type=self.c_val_type, constructor=constructor)
+      super().__init__(self.ir_val_type, c_type=self.c_val_type, constructor=constructor)
 
   @property
   def templ_types(self) -> List[Type]:
@@ -745,8 +730,7 @@ class StructType(Type):
     new_member_types = [member_type.replace_types(replacements) for member_type in self.member_types]
     new_struct = StructType(
       struct_identifier=self.struct_identifier, templ_types=new_templ_types, member_identifiers=self.member_identifiers,
-      member_types=new_member_types, pass_by_ref=self.pass_by_ref,
-      constructor=self.constructor)
+      member_types=new_member_types, constructor=self.constructor)
     return new_struct
 
   def has_templ_placeholder(self) -> bool:
@@ -754,14 +738,7 @@ class StructType(Type):
 
   def make_ir_alloca(self, context: CodegenContext) -> ir.instructions.Instruction:
     assert context.emits_ir
-    if self.is_pass_by_ref():  # use malloc
-      assert context.ir_func_malloc is not None
-      assert self.c_val_type is not None
-      self_ir_alloca_raw = context.builder.call(
-        context.ir_func_malloc, [make_ir_size(ctypes.sizeof(self.c_val_type))], name='self_raw_ptr')  # noqa
-      return context.builder.bitcast(self_ir_alloca_raw, self.ir_type, name='self')
-    else:  # pass by value, use alloca
-      return context.alloca_at_entry(self.ir_type, name='self')
+    return context.alloca_at_entry(self.ir_type, name='self')
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -783,31 +760,20 @@ class StructType(Type):
     # instead of comparing the identifiers.
     return (
       self.struct_identifier == other.struct_identifier and self.templ_types == other.templ_types and
-      self.member_identifiers == other.member_identifiers and self.member_types == other.member_types and
-      self.pass_by_ref == other.pass_by_ref)
+      self.member_identifiers == other.member_identifiers and self.member_types == other.member_types)
 
   def __hash__(self) -> int:
     return hash((
-      self.__class__, self.struct_identifier, tuple(self.templ_types), tuple(self.member_identifiers),
-      tuple(self.member_types), self.pass_by_ref))
+      self.__class__, self.struct_identifier) + tuple(self.templ_types) + tuple(self.member_identifiers) +
+      tuple(self.member_types))
 
   def __repr__(self) -> str:
     return self.struct_identifier + ('' if len(self.templ_types) == 0 else str(self.templ_types))
 
-  def make_extract_member_val_ir(self, member_identifier, struct_ir_val, context):
-    """
-    :param str member_identifier:
-    :param ir.values.Value struct_ir_val:
-    :param CodegenContext context:
-    """
-    if self.is_pass_by_ref():
-      member_num = self.get_member_num(member_identifier)
-      gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num))
-      member_ptr = context.builder.gep(struct_ir_val, gep_indices, name='member_ptr_%s' % member_identifier)
-      return context.builder.load(member_ptr, name='member_%s' % member_identifier)
-    else:  # pass by value
-      return context.builder.extract_value(
-        struct_ir_val, self.get_member_num(member_identifier), name='member_%s' % member_identifier)
+  def make_extract_member_val_ir(self, member_identifier: str, struct_ir_val: ir.values.Value,
+                                 context: CodegenContext) -> ir.instructions.Instruction:
+    return context.builder.extract_value(
+      struct_ir_val, self.get_member_num(member_identifier), name='member_%s' % member_identifier)
 
   def make_store_members_ir(self, member_ir_vals, struct_ir_alloca, context):
     """
@@ -864,7 +830,7 @@ class PlaceholderTemplateType(Type):
   """
 
   def __init__(self, identifier: str):
-    super().__init__(ir_type=None, pass_by_ref=False, c_type=None, constructor=None)
+    super().__init__(ir_type=None, c_type=None, constructor=None)
     self.identifier = identifier
 
   def _make_di_type(self, context: CodegenContext):
@@ -1336,11 +1302,7 @@ class ConstructorFunctionTemplate(FunctionTemplate):
           ir_func_arg.identifier = member_identifier
         concrete_struct_type.make_store_members_ir(
           member_ir_vals=concrete_function.ir_func.args, struct_ir_alloca=self_ir_alloca, context=context)
-
-        if concrete_struct_type.is_pass_by_ref():
-          context.builder.ret(self_ir_alloca)
-        else:  # pass by value
-          context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
+        context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
 
 
 class DestructorFunctionTemplate(FunctionTemplate):
@@ -1398,10 +1360,6 @@ class DestructorFunctionTemplate(FunctionTemplate):
             func=self.captured_symbol_table.free_symbol, templ_types=templ_types,
             calling_args=[TypedValue(typ=signature_member_type, referenceable=False, ir_val=member_ir_val)],
               context=context)
-        if self.struct.is_pass_by_ref():
-          assert context.ir_func_free is not None
-          self_ir_alloca_raw = context.builder.bitcast(self_ir_alloca, LLVM_VOID_POINTER_TYPE, name='self_raw_ptr')
-          context.builder.call(context.ir_func_free, args=[self_ir_alloca_raw], name='free_self')
         context.builder.ret_void()
 
 
