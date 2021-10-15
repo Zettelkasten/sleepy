@@ -195,7 +195,7 @@ func *(c: Char, repetitions: Int) ->  Str  {
 func print(str: Str)  {
   pos = 0
   while pos < str.length {
-    print(+str[pos])
+    print(load(str[pos]))
     pos += 1
   }
 }
