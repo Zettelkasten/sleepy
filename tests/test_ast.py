@@ -586,27 +586,6 @@ def test_if_missing_return_branch():
       compile_program(engine, program)
 
 
-def test_pass_by_reference():
-  with make_execution_engine() as engine:
-    program = """
-    @RefType
-    struct Foo {
-      value: Int = 0;
-    }
-    func inc_val(of: Foo)  {
-      of.value = of.value + 1;
-    }
-    func main() ->  Int  {
-      my_foo = Foo(0);
-      my_foo.value = 4;
-      inc_val(my_foo);  # now my_foo.value should be 5.
-      return my_foo.value;
-    }
-    """
-    main = compile_program(engine, program, add_preamble=False)
-    assert_equal(main(), 5)
-
-
 def test_mutable_val_type_local_var():
   with make_execution_engine() as engine:
     program = """
@@ -2061,3 +2040,24 @@ def test_arg_mutates_and_non_mutates():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(5), 5 + 1)
+
+
+def test_mutates_struct_member():
+  with make_execution_engine() as engine:
+    program = """
+    struct Foo {
+      value: Int = 0;
+    }
+    func inc_val(mutates of: Foo)  {
+      of.value += 1;
+    }
+    func main() ->  Int  {
+      my_foo = Foo(0);
+      my_foo.value = 4;
+      inc_val(my_foo);  # now my_foo.value should be 5.
+      return my_foo.value;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 5)
+
