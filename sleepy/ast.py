@@ -874,12 +874,13 @@ class StringLiteralExpressionAst(ExpressionAst):
         length_ir_type = str_type.member_types[1].ir_type
         ir_length = ir.Constant(length_ir_type, len(str_val))
 
-        str_ir_alloca = str_type.make_ir_alloca(context=context)
-        str_type.make_store_members_ir(
-          member_ir_vals=[ir_start, ir_length, ir_length], struct_ir_alloca=str_ir_alloca, context=context)
+        ir_val = ir.Constant(str_type.ir_type, (
+          ir.FormattedConstant(context.ir_func_malloc.function_type.return_type, constant='undef'),
+          ir_length, ir_length))
+        context.builder.insert_value(agg=ir_val, value=ir_start, idx=0, name='str_literal_store_start')
       else:
-        str_ir_alloca = None
-      return TypedValue(typ=str_type, ir_val=str_ir_alloca)
+        ir_val = None
+      return TypedValue(typ=str_type, ir_val=ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use string literal as function')
