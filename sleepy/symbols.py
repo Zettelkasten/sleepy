@@ -346,7 +346,7 @@ class PointerType(Type):
   def __hash__(self) -> int:
     return hash((self.__class__, self.pointee_type))
 
-  def replace_types(self, replacements: Dict[Type, Type]) -> PointerType:
+  def replace_types(self, replacements: Dict[Type, Type]) -> Type:
     if self in replacements:
       return replacements[self]
     return PointerType(pointee_type=self.pointee_type.replace_types(replacements), constructor=self.constructor)
@@ -374,7 +374,7 @@ class RawPointerType(Type):
   def __repr__(self) -> str:
     return 'RawPtr'
 
-  def replace_types(self, replacements: Dict[Type, Type]) -> RawPointerType:
+  def replace_types(self, replacements: Dict[Type, Type]) -> Type:
     if self in replacements:
       return replacements[self]
     return self
@@ -407,7 +407,7 @@ class ReferenceType(PointerType):
       return False
     return self.pointee_type == other.pointee_type
 
-  def replace_types(self, replacements: Dict[Type, Type]) -> PointerType:
+  def replace_types(self, replacements: Dict[Type, Type]) -> Type:
     if self in replacements:
       return replacements[self]
     return ReferenceType(pointee_type=self.pointee_type.replace_types(replacements), constructor=self.constructor)
@@ -489,7 +489,7 @@ class UnionType(Type):
     """
     return len(self.possible_types) > 0
 
-  def replace_types(self, replacements: Dict[Type, Type]) -> UnionType:
+  def replace_types(self, replacements: Dict[Type, Type]) -> Type:
     if self in replacements:
       return replacements[self]
     if len(self.possible_types) == 0:
@@ -692,7 +692,7 @@ class StructType(Type):
     assert member_identifier in self.member_identifiers
     return self.member_identifiers.index(member_identifier)
 
-  def replace_types(self, replacements: Dict[Type, Type]) -> StructType:
+  def replace_types(self, replacements: Dict[Type, Type]) -> Type:
     if self in replacements:
       return replacements[self]
     if len(replacements) == 0:
