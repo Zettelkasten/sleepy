@@ -8,7 +8,8 @@ from sleepy.grammar import TreePosition
 from sleepy.symbols import FunctionTemplate, PlaceholderTemplateType, Type, ConcreteFunction, \
   ConcreteBuiltinOperationFunction, ConcreteBitcastFunction, DoubleType, FloatType, BoolType, \
   IntType, LongType, CharType, RawPointerType, PointerType, SymbolTable, CodegenContext, FunctionSymbol, \
-  LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, TypeTemplateSymbol, StructType, TypeFactory, SLEEPY_VOID, SLEEPY_NEVER
+  LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, TypeTemplateSymbol, StructType, TypeFactory, SLEEPY_VOID, SLEEPY_NEVER, \
+  ReferenceType
 from sleepy.util import concat_dicts
 
 
@@ -117,9 +118,9 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   assert 'load' not in symbol_table
   load_symbol = FunctionSymbol(identifier='load', returns_void=False)
   load_signature = BuiltinOperationFunctionTemplate(
-    placeholder_template_types=[pointee_type], return_type=pointee_type, arg_identifiers=['ptr'], arg_types=[ptr_type],
-    arg_type_narrowings=[ptr_type], arg_mutates=[False],
-    instruction=lambda builder, ptr: builder.load(ptr, name='load'), emits_ir=context.emits_ir)
+    placeholder_template_types=[pointee_type], return_type=ReferenceType(pointee_type), arg_identifiers=['ptr'],
+    arg_types=[ptr_type], arg_type_narrowings=[ptr_type], arg_mutates=[False],
+    instruction=lambda builder, ptr: ptr, emits_ir=context.emits_ir)
   load_symbol.add_signature(signature=load_signature)
   symbol_table['load'] = load_symbol
   symbol_table.inbuilt_symbols['load'] = load_symbol

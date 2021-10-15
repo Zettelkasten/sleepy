@@ -1031,17 +1031,6 @@ class CallExpressionAst(ExpressionAst):
     # TODO: make this a normal compile time function operating on types
     return self._is_special_call('size', symbol_table=symbol_table)
 
-  def _is_load_call(self, symbol_table: SymbolTable):
-    # TODO: make this a normal function returning a reference, and make references assignable.
-    if not self._is_special_call('load', symbol_table=symbol_table):
-      return False
-    if len(self.func_arg_exprs) != 1:
-      return False
-    arg_expr = self.func_arg_exprs[0]
-    if arg_expr.make_symbol_kind(symbol_table=symbol_table) != Symbol.Kind.VARIABLE:
-      return False
-    return True
-
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     with context.use_pos(self.pos):
@@ -1052,15 +1041,6 @@ class CallExpressionAst(ExpressionAst):
         from sleepy.symbols import LLVM_SIZE_TYPE
         ir_val = ir.Constant(LLVM_SIZE_TYPE, size_of_type.size) if context.emits_ir else None
         return TypedValue(typ=SLEEPY_LONG, ir_val=ir_val)
-      if self._is_load_call(symbol_table=symbol_table):
-        assert len(self.func_arg_exprs) == 1
-        arg_expr = self.func_arg_exprs[0]
-        arg_val = arg_expr.make_as_val(symbol_table=symbol_table, context=context)
-        from sleepy.symbols import PointerType
-        assert isinstance(arg_val.type, PointerType)
-        if context.emits_ir:
-          assert arg_val.ir_val is not None
-        return TypedValue(typ=arg_val.type.pointee_type, ir_val=arg_val.ir_val)
 
       # default case
       func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
