@@ -369,7 +369,7 @@ def test_types_simple():
       my_double: Double = 4.0;
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     main()
 
 
@@ -381,7 +381,7 @@ def test_wrong_return_type_should_be_void():
     }
     """
     with assert_raises(SemanticError):
-      compile_program(engine, program)
+      compile_program(engine, program, add_preamble=False)
 
 
 def test_wrong_return_type_should_not_be_void():
@@ -392,7 +392,7 @@ def test_wrong_return_type_should_not_be_void():
     }
     """
     with assert_raises(SemanticError):
-      compile_program(engine, program)
+      compile_program(engine, program, add_preamble=False)
 
 
 def test_wrong_return_type_not_matching():
@@ -426,7 +426,7 @@ def test_define_variable_with_wrong_type():
     }
     """
     with assert_raises(SemanticError):
-      compile_program(engine, program)
+      compile_program(engine, program, add_preamble=False)
 
 
 def test_redefine_variable_with_function():
@@ -439,7 +439,7 @@ def test_redefine_variable_with_function():
     }
     """
     with assert_raises(SemanticError):
-      compile_program(engine, program)
+      compile_program(engine, program, add_preamble=False)
 
 
 def test_shadow_func_name_with_var():
@@ -450,7 +450,7 @@ def test_shadow_func_name_with_var():
       return main;
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 4)
 
 
@@ -484,7 +484,7 @@ def test_operator_assign():
       return x;  # 2 * -(x + 2)
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(5), 2 * -(5 + 2))
 
 
@@ -499,7 +499,7 @@ def test_struct_default_constructor():
       return Vec2(0, 0);
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(type(main()).__name__, 'Vec2_CType')
 
 
@@ -513,7 +513,7 @@ def test_struct_member_access():
       return middle;
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 2.0)
 
 
@@ -603,7 +603,7 @@ def test_pass_by_reference():
       return my_foo.value;
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 5)
 
 
