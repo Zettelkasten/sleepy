@@ -855,13 +855,13 @@ def narrow_type(from_type, narrow_to):
     return from_type
   assert isinstance(from_type, ReferenceType) == isinstance(narrow_to, ReferenceType)
   if len(from_type.templ_types) > 0 or len(narrow_to.templ_types) > 0:  # template types
+    # TODO: This does not work well for unions of templated types
     if len(from_type.templ_types) != len(narrow_to.templ_types):
       return SLEEPY_NEVER
-    new_type = from_type.copy()
-    new_type.templ_types = [
+    new_templ_types = [
       narrow_type(from_templ_type, to_templ_type)
       for from_templ_type, to_templ_type in zip(from_type.templ_types, narrow_to.templ_types)]
-    return new_type
+    return from_type.replace_types(dict(zip(from_type.templ_types, new_templ_types)))
   if isinstance(narrow_to, UnionType):
     narrow_to_types = narrow_to.possible_types
   else:
