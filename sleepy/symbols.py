@@ -69,7 +69,7 @@ class Type(ABC):
   def is_realizable(self) -> bool:
     return True
 
-  def replace_types(self, replacements: Dict[Type, Type]):
+  def replace_types(self, replacements: Dict[Type, Type]) -> Type:
     if self in replacements:
       return replacements[self]
     return self
@@ -347,6 +347,8 @@ class PointerType(Type):
     return hash((self.__class__, self.pointee_type))
 
   def replace_types(self, replacements: Dict[Type, Type]) -> PointerType:
+    if self in replacements:
+      return replacements[self]
     return PointerType(pointee_type=self.pointee_type.replace_types(replacements), constructor=self.constructor)
 
   def children(self) -> List[Type]:
@@ -373,6 +375,8 @@ class RawPointerType(Type):
     return 'RawPtr'
 
   def replace_types(self, replacements: Dict[Type, Type]) -> RawPointerType:
+    if self in replacements:
+      return replacements[self]
     return self
 
   def children(self) -> List[Type]:
@@ -404,6 +408,8 @@ class ReferenceType(PointerType):
     return self.pointee_type == other.pointee_type
 
   def replace_types(self, replacements: Dict[Type, Type]) -> PointerType:
+    if self in replacements:
+      return replacements[self]
     return ReferenceType(pointee_type=self.pointee_type.replace_types(replacements), constructor=self.constructor)
 
   def __hash__(self) -> int:
@@ -484,6 +490,8 @@ class UnionType(Type):
     return len(self.possible_types) > 0
 
   def replace_types(self, replacements: Dict[Type, Type]) -> UnionType:
+    if self in replacements:
+      return replacements[self]
     if len(self.possible_types) == 0:
       return self
     new_possible_types = [
@@ -685,6 +693,8 @@ class StructType(Type):
     return self.member_identifiers.index(member_identifier)
 
   def replace_types(self, replacements: Dict[Type, Type]) -> StructType:
+    if self in replacements:
+      return replacements[self]
     if len(replacements) == 0:
       return self
     new_templ_types = [templ_type.replace_types(replacements) for templ_type in self.templ_types]
