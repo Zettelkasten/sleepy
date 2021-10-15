@@ -1078,7 +1078,7 @@ class CallExpressionAst(ExpressionAst):
         self.raise_error('Cannot specify template types multiple times')
       return func_caller.copy_with_templ_types(concrete_templ_types)
 
-  def make_as_type(self, symbol_table: SymbolTable):
+  def make_as_type(self, symbol_table: SymbolTable) -> Type:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.TYPE
     concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
     assert concrete_templ_types is not None
