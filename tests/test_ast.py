@@ -603,7 +603,7 @@ def test_mutable_val_type_local_var():
 def test_unbind_operator():
   with make_execution_engine() as engine:
     program = """
-    func main(x: Int) {
+    func main(x: Int) -> Int {
       y: Int = x;
       ref_y: Ref[Int] = !y;
       return y;
