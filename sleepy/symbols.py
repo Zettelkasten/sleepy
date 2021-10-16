@@ -117,6 +117,9 @@ class Type(ABC):
   def copy(self) -> Type:
     return copy.copy(self)
 
+  def is_referenceable(self) -> bool:
+    return isinstance(self, ReferenceType)
+
 
 class VoidType(Type):
   """
@@ -1974,11 +1977,12 @@ class TypedValue:
     assert isinstance(typ, ReferenceType) == isinstance(narrowed_type, ReferenceType)
     self.type = typ
     self.narrowed_type = narrowed_type
+    assert num_unbindings <= self.num_possible_binds()
     self.num_unbindings = num_unbindings
     self.ir_val = ir_val
 
   def is_referenceable(self) -> bool:
-    return isinstance(self.type, ReferenceType)
+    return self.type.is_referenceable()
 
   def copy(self) -> TypedValue:
     return copy.copy(self)
@@ -2048,19 +2052,30 @@ class TypedValue:
       attrs.append('num_unbindings')
     return 'TypedValue(%s)' % ', '.join(['%s=%r' % (attr, getattr(self, attr)) for attr in attrs])
 
-  def copy_bind(self, context: CodegenContext, name: str) -> TypedValue:
-    assert self.num_unbindings == 0, 'Not implemented yet'  # TODO implement this
-    new = self
-    while new.is_referenceable():
-      assert isinstance(new.type, ReferenceType)
-      assert isinstance(new.narrowed_type, ReferenceType)
-      new = new.copy()
-      new.type = new.type.pointee_type
-      new.narrowed_type = new.narrowed_type.pointee_type
-      if context.emits_ir:
-        assert new.ir_val is not None
-        new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
-    return new
+  def num_possible_binds(self) -> int:
+    num_binds = 0
+    typ = self.type
+    while typ.is_referenceable():
+      assert isinstance(typ, ReferenceType)
+      num_binds += 1
+      typ = typ.pointee_type
+    return num_binds
+
+  def copy_bind_all(self, context: CodegenContext, name: str) -> TypedValue:
+    binds_left = self.num_possible_binds() - self.num_unbindings
+    assert binds_left >= 0
+    if binds_left == 0:
+      return self
+    assert self.is_referenceable()
+    assert isinstance(self.type, ReferenceType)
+    assert isinstance(self.narrowed_type, ReferenceType)
+    new = self.copy()
+    new.type = new.type.pointee_type
+    new.narrowed_type = new.narrowed_type.pointee_type
+    if context.emits_ir:
+      assert new.ir_val is not None
+      new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
+    return new.copy_bind_all(context=context, name=name)
 
   def copy_unbind(self) -> TypedValue:
     new = self.copy()
