@@ -2061,3 +2061,8 @@ class TypedValue:
         assert new.ir_val is not None
         new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
     return new
+
+  def copy_unbind(self) -> TypedValue:
+    new = self.copy()
+    new.num_unbindings += 1
+    return new

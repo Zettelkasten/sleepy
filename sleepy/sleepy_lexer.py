@@ -26,6 +26,7 @@ TOKEN_INFO = [
   ('prod_op', '\\*|/', "OPERATOR"),
   ('=', '=', "OPERATOR"),
   ('assign_op', '===|!==|<==|>==|\\+=|\\-=|\\*=|/=', "OPERATOR"),
+  ('unbind_op', '!', "OPERATOR"),
   ('[', '\\[', "BRACKETS"),
   (']', '\\]', "BRACKETS"),
   ('identifier', '([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*', "IDENTIFIER"),
