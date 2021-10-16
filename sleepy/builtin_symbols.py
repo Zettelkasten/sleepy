@@ -134,12 +134,17 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   store_symbol.add_signature(store_signature)
   symbol_table['store'] = store_symbol
 
-  # cast from RawPtr -> Ptr[T]
+  # cast from RawPtr -> Ptr[T] and Ref[T] -> Ptr[T]
   constructor_symbol = FunctionSymbol(identifier='Ptr', returns_void=False)
-  constructor_signature = BitcastFunctionTemplate(placeholder_template_types=[pointee_type], return_type=ptr_type,
-                                                  arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR],
-                                                  arg_type_narrowings=[ptr_type])
+  constructor_signature = BitcastFunctionTemplate(
+    placeholder_template_types=[pointee_type], return_type=ptr_type, arg_identifiers=['raw_ptr'],
+    arg_types=[SLEEPY_RAW_PTR], arg_type_narrowings=[ptr_type])
   constructor_symbol.add_signature(signature=constructor_signature)
+  ref_cast_signature = BuiltinOperationFunctionTemplate(
+    placeholder_template_types=[pointee_type], return_type=ptr_type, arg_identifiers=['reference'],
+    arg_types=[ReferenceType(pointee_type)], arg_type_narrowings=[ReferenceType(pointee_type)], arg_mutates=[False],
+    instruction=lambda builder, ptr: ptr, emits_ir=context.emits_ir)
+  constructor_symbol.add_signature(signature=ref_cast_signature)
   ptr_type.constructor = constructor_symbol
 
   ptr_op_decls = [(
