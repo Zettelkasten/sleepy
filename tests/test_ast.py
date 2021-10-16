@@ -600,19 +600,34 @@ def test_mutable_val_type_local_var():
     assert_equal(main(), 17)
 
 
+def test_new_and_delete():
+  with make_execution_engine() as engine:
+    program = """
+    func main(initial: Int) {
+      x: Ref[Int] = !new(initial);
+      x += 1;
+      res: Int = x;
+      delete(!x);
+      return res;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    assert_equal(main(6), 6 + 1)
+
+
 def test_struct_free():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Vec3 {
-      x: Double= 0.0;
-      y: Double= 0.0;
-      z: Double= 0.0;
+    struct Vec3 {
+      x: Double = 0.0;
+      y: Double = 0.0;
+      z: Double = 0.0;
     }
     func main(x: Double, y: Double, z: Double)  {
       left = 10000;
       while left > 0 {
-        v = Vec3(x, y, z);
-        free(v);
+        v = !new(Vec3(x, y, z));
+        delete(!v);
         left -= 1;
       }
     }
