@@ -1177,6 +1177,35 @@ class MemberExpressionAst(ExpressionAst):
       self.parent_val_expr, self.member_identifier)
 
 
+class UnbindExpressionAst(ExpressionAst):
+  """
+  NegExpr -> ! NegExpr
+  """
+  def __init__(self, pos: TreePosition, arg_expr: ExpressionAst):
+    super().__init__(pos)
+    self.arg_expr = arg_expr
+
+  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
+    return Symbol.Kind.VARIABLE
+
+  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
+    with context.use_pos(self.pos):
+      arg_val = self.arg_expr.make_as_val(symbol_table=symbol_table, context=context)
+      return arg_val.copy_unbind()
+
+  def make_as_func_caller(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use unbind expression as function')
+
+  def make_as_type(self, symbol_table: SymbolTable):
+    self.raise_error('Cannot use unbind expression as type')
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return [self.arg_expr]
+
+  def __repr__(self) -> str:
+    return 'UnbindExpressionAst(arg_expr=%r)' % self.arg_expr
+
+
 class TypeAst(AbstractSyntaxTree, ABC):
   """
   Type.

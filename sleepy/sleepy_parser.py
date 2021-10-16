@@ -1,8 +1,8 @@
 from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
   ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   BinaryOperatorExpressionAst, IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
-  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst
-
+  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, \
+  ReferenceExpressionAst, UnbindExpressionAst
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
   parse_hex_int
 from sleepy.functions import FunctionDeclarationAst
@@ -118,6 +118,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': 'ast.1'},
     Production('NegExpr', 'sum_op', 'PrimaryExpr'): {
       'ast': lambda _pos, ast, op: UnaryOperatorExpressionAst(_pos, op(1), ast(2))},
+    Production('NegExpr', 'unbind_op', 'PrimaryExpr'): {
+      'ast': lambda _pos, ast: UnbindExpressionAst(_pos, ast(2))},
     Production('NegExpr', 'PrimaryExpr'): {
       'ast': 'ast.1'},
     Production('PrimaryExpr', 'int'): {
@@ -244,8 +246,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'op': 'op.1'},
   },
   syn_attrs={
-    'ast', 'asts', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list', 'mutates_list',
-    'mutates', 'op', 'number', 'string'},
+    'ast', 'asts', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
+    'mutates_list', 'mutates', 'op', 'number', 'string'},
   terminal_attr_rules={
     'cmp_op': {'op': lambda value: value},
     '=': {'op': lambda value: value},
