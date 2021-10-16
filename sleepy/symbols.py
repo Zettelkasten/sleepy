@@ -2045,7 +2045,7 @@ class TypedValue:
     if self.ir_val is not None:
       attrs.append('ir_val')
     if self.num_unbindings:
-      attrs.append('unbinds %s' % self.num_unbindings)
+      attrs.append('num_unbindings')
     return 'TypedValue(%s)' % ', '.join(['%s=%r' % (attr, getattr(self, attr)) for attr in attrs])
 
   def copy_bind(self, context: CodegenContext, name: str) -> TypedValue:
