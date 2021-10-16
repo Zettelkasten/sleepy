@@ -624,7 +624,21 @@ def test_unbind_operator_func_call():
       return foo(!y);
     }
     """
-    main = compile_program(engine, program, add_preamble=True)
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
+def test_unbind_operator_assign_variable():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      y: Ref[Int] = !x;
+      y = !x;
+      x = !x;
+      return y;  # binds automatically
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(6), 6)
 
 
