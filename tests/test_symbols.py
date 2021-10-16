@@ -224,3 +224,27 @@ def test_context_use_pos():
     assert context.current_pos == outer_pos
     assert context.builder.debug_metadata == make_di_location(outer_pos, context=context)
   assert context.current_pos is None
+
+
+def test_bind_and_unbind():
+  from sleepy.symbols import TypedValue, ReferenceType, CodegenContext
+  from sleepy.builtin_symbols import SLEEPY_INT
+  from llvmlite import ir
+  module = ir.Module(name='module_name')
+  context = CodegenContext(builder=None, module=module, emits_debug=False)
+
+  ref_int = TypedValue(typ=ReferenceType(SLEEPY_INT), ir_val=None, num_unbindings=0)
+  assert ref_int.num_possible_binds() == 1
+  int = ref_int.copy_bind_all(context=context, name='bind')
+  assert int.type == SLEEPY_INT
+  assert int.num_possible_binds() == 0
+  assert int.num_unbindings == 0
+
+  unbound_ref_int = ref_int.copy_unbind()
+  assert unbound_ref_int.num_unbindings == 1
+  assert unbound_ref_int.num_possible_binds() == 1
+
+  ref_int_ = unbound_ref_int.copy_bind_all(context=context, name='bind')
+  assert ref_int_.type == ReferenceType(SLEEPY_INT)
+  assert ref_int_.num_unbindings == 1
+  assert ref_int_.num_possible_binds() == 1
