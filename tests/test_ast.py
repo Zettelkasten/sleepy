@@ -600,6 +600,19 @@ def test_mutable_val_type_local_var():
     assert_equal(main(), 17)
 
 
+def test_unbind_operator():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) {
+      y: Int = x;
+      ref_y: Ref[Int] = !y;
+      return y;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
 def test_new_and_delete():
   with make_execution_engine() as engine:
     program = """
