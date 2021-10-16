@@ -613,6 +613,21 @@ def test_unbind_operator():
     assert_equal(main(6), 6)
 
 
+def test_unbind_operator_func_call():
+  with make_execution_engine() as engine:
+    program = """
+    func foo(x: Ref[Int]) -> Int {
+      return x;  # binds.
+    }
+    func main(x: Int) -> Int {
+      y: Int = x;
+      return foo(!y);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    assert_equal(main(6), 6)
+
+
 def test_new_and_delete():
   with make_execution_engine() as engine:
     program = """
