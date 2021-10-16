@@ -204,6 +204,14 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   return raw_ptr_symbol
 
 
+def _make_ref_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeTemplateSymbol:
+  del symbol_table  # only to keep API consistent
+  del context
+  pointee_type = PlaceholderTemplateType(identifier='T')
+  ref_type = ReferenceType(pointee_type=pointee_type)
+  return TypeTemplateSymbol(template_parameters=[pointee_type], signature_type=ref_type)
+
+
 def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> FunctionSymbol:
   del symbol_table  # only to keep API consistent
   del context
@@ -260,7 +268,8 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   inbuilt_pos = TreePosition('', 0, 0)
 
   inbuilt_symbols = {
-    'Str': _make_str_symbol, 'Ptr': _make_ptr_symbol, 'RawPtr': _make_raw_ptr_symbol, 'bitcast': _make_bitcast_symbol}
+    'Str': _make_str_symbol, 'Ptr': _make_ptr_symbol, 'RawPtr': _make_raw_ptr_symbol, 'Ref': _make_ref_symbol,
+    'bitcast': _make_bitcast_symbol}
   with context.use_pos(inbuilt_pos):
     for symbol_identifier, setup_func in inbuilt_symbols.items():
       assert symbol_identifier not in symbol_table
