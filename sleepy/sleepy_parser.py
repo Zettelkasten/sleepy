@@ -1,27 +1,58 @@
 from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
   ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   BinaryOperatorExpressionAst, IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
-  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst, \
-  TranslationUnitAst
+  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst
+
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
   parse_hex_int
 from sleepy.functions import FunctionDeclarationAst
-from sleepy.grammar import AttributeGrammar, Production, TreePosition
+from sleepy.grammar import AttributeGrammar, Production
 from sleepy.parser import ParserGenerator
-from sleepy.sleepy_lexer import SLEEPY_LEXER
 from sleepy.builtin_symbols import SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG, SLEEPY_CHAR
 
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   prods_attr_rules={
     Production('TopLevelStmt', 'StmtList'): {
-      'ast': lambda _pos, stmt_list: FileAst(_pos, stmt_list=stmt_list(1))},
+      'ast': lambda _pos, stmt_list: FileAst(_pos, stmt_list=stmt_list(1))
+    },
+
+    Production(';?') : {},
+    Production(';?', ';') : {},
+
+    Production('separator', ';'): {},
+    Production('separator', 'new_line'): {},
+    Production('separator?'): {},
+    Production('separator?', 'separator'): {},
     Production('Scope', '{', 'StmtList', '}'): {
       'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list=stmt_list(2))},
-    Production('StmtList'): {
-      'stmt_list': []},
-    Production('StmtList', 'AnnotationList', 'Stmt', 'StmtList'): {
-      'stmt_list': lambda ast, annotation_list, stmt_list: [annotate_ast(ast(2), annotation_list(1))] + stmt_list(3)},
-    Production('Stmt', 'Expr', ';'): {
+
+    Production('SeparatedStmt', 'Stmt', 'separator') : { 'ast': 'ast.1' },
+    Production('SeparatedStmt', 'If1Stmt') : { 'ast': 'ast.1' },
+    Production('SeparatedStmt', 'If2Stmt') : { 'ast': 'ast.1' },
+
+    Production('AnnotatedStmt', 'AnnotationList', 'Stmt'): {
+      'ast': lambda annotation_list, ast: annotate_ast(ast(2), annotation_list(1))
+    },
+    Production('AnnotatedSeparatedStmt', 'AnnotationList', 'SeparatedStmt'): {
+      'ast': lambda annotation_list, ast: annotate_ast(ast(2), annotation_list(1))
+    },
+
+    Production('StmtList'): { 'stmt_list': [] },
+    Production('StmtList', 'AnnotatedStmt'): {
+      'stmt_list': lambda ast: [ast(1)]
+    },
+    Production('StmtList', 'AnnotatedSeparatedStmt', 'StmtList'): {
+      'stmt_list': lambda ast, stmt_list: [ast(1)] + stmt_list(2)
+    },
+
+
+    Production('If1Stmt', 'if', 'Expr', 'Scope'): {
+      'ast': lambda _pos, ast: IfStatementAst(_pos, condition_val=ast(2), true_scope=ast(3), false_scope=None)
+    },
+    Production('If2Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'): {
+      'ast': lambda _pos, ast: IfStatementAst(_pos, condition_val=ast(2), true_scope=ast(3), false_scope=ast(5))
+    },
+    Production('Stmt', 'Expr'): {
       'ast': lambda _pos, ast: ExpressionStatementAst(_pos, expr=ast(1))},
     Production('Stmt', 'func', 'identifier', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {  # noqa
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates_list, ast: (
@@ -42,7 +73,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           arg_types=[ast(7)] + type_list(10), arg_annotations=[annotation_list(3)] + annotation_list(10),
           arg_mutates=[mutates(4)] + mutates_list(10),
           return_type=ast(12), return_annotation_list=annotation_list(12), body_scope=ast(13)))},
-    Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType', ';'): {
+    Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType'): {
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=identifier(2), templ_identifiers=[], arg_identifiers=identifier_list(4),
@@ -52,25 +83,21 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list: StructDeclarationAst(
         _pos, struct_identifier=identifier(2), templ_identifiers=identifier_list(3),
         member_identifiers=identifier_list(5), member_types=type_list(5), member_annotations=annotation_list(5))},
-    Production('Stmt', 'return', 'ExprList', ';'): {
+    Production('Stmt', 'return', 'ExprList'): {
       'ast': lambda _pos, val_list: ReturnStatementAst(_pos, return_exprs=val_list(2))},
-    Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr', ';'): {
+    Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr'): {
       'ast': lambda _pos, ast: AssignStatementAst(_pos, var_target=ast(1), var_val=ast(5), declared_var_type=ast(3))},
     # TODO: Handle equality operator in a saner way
-    Production('Stmt', 'Expr', '=', 'Expr', ';'): {
+    Production('Stmt', 'Expr', '=', 'Expr'): {
       'ast': lambda _pos, ast: (
         AssignStatementAst(_pos, var_target=ast(1), var_val=ast(3), declared_var_type=None)
         if isinstance(ast(1), IdentifierExpressionAst) or isinstance(ast(1), MemberExpressionAst)
         else ExpressionStatementAst(_pos, BinaryOperatorExpressionAst(
           _pos, op='=', left_expr=ast(1), right_expr=ast(3))))},
-    Production('Stmt', 'Expr', 'assign_op', 'Expr', ';'): {
+    Production('Stmt', 'Expr', 'assign_op', 'Expr'): {
       'ast': lambda _pos, ast, op: AssignStatementAst(
         _pos, var_target=ast(1), var_val=BinaryOperatorExpressionAst(
           _pos, op=op(2), left_expr=ast(1), right_expr=ast(3)), declared_var_type=None)},
-    Production('Stmt', 'if', 'Expr', 'Scope'): {
-      'ast': lambda _pos, ast: IfStatementAst(_pos, condition_val=ast(2), true_scope=ast(3), false_scope=None)},
-    Production('Stmt', 'if', 'Expr', 'Scope', 'else', 'Scope'): {
-      'ast': lambda _pos, ast: IfStatementAst(_pos, condition_val=ast(2), true_scope=ast(3), false_scope=ast(5))},
     Production('Stmt', 'while', 'Expr', 'Scope'): {
       'ast': lambda _pos, ast: WhileStatementAst(_pos, condition_val=ast(2), body_scope=ast(3))},
     Production('Expr', 'Expr', 'cmp_op', 'SumExpr'): {
@@ -158,11 +185,11 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'identifier_list': [], 'type_list': [], 'annotation_list': []},
     Production('MemberList', 'MemberList+'): {
       'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
-    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', ';'): {
+    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', 'separator'): {
       'identifier_list': lambda identifier: [identifier(2)],
       'type_list': lambda ast: [ast(4)],
       'annotation_list': lambda annotation_list: [annotation_list(1)]},
-    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', ';',
+    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', 'separator',
                'MemberList+'): {
       'identifier_list': lambda identifier, identifier_list: [identifier(2)] + identifier_list(7),
       'type_list': lambda ast, type_list: [ast(4)] + type_list(7),
@@ -217,7 +244,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'op': 'op.1'},
   },
   syn_attrs={
-    'ast', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list', 'mutates_list',
+    'ast', 'asts', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list', 'mutates_list',
     'mutates', 'op', 'number', 'string'},
   terminal_attr_rules={
     'cmp_op': {'op': lambda value: value},

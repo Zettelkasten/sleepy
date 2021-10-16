@@ -36,10 +36,11 @@ TOKEN_INFO = [
   ('char', '\'([^\']|\\\\[0nrt\'"])\'', "STRING"),
   ('str', '"([^"]|\\\\[0nrt\'"])*"', "STRING"),
   ('hex_int', '0x([0-9]|[A-F]|[a-f])+', "NUMBER"),
+  ('new_line', '\n', "WHITESPACE")
 ]
 
 COMMENT_REGEX = '#[^\n]*'
-WHITESPACE_REGEX = '[ \n\t]+'
+WHITESPACE_REGEX = '[ \t]+'
 
 SLEEPY_LEXER = LexerGenerator(
   [name for name, _, _ in TOKEN_INFO] + [None, None],
