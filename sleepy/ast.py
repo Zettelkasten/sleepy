@@ -143,12 +143,15 @@ class AbstractSyntaxTree(ABC):
 
     # apply type narrowings
     for arg_num, func_arg_expr in enumerate(func_arg_exprs):
+      original_unbound_arg_type = func_args[arg_num].narrowed_type
+      original_bound_arg_type = bound_func_args[arg_num].narrowed_type
       narrowed_arg_types = [concrete_func.arg_type_narrowings[arg_num] for concrete_func in possible_concrete_funcs]
       narrowed_arg_type = get_common_type(narrowed_arg_types)
+      bound_narrowed_arg_type = original_unbound_arg_type.replace_types({original_bound_arg_type: narrowed_arg_type})
       if isinstance(func_arg_expr, IdentifierExpressionAst):
         var_symbol = symbol_table[func_arg_expr.identifier]
         assert isinstance(var_symbol, VariableSymbol)
-        symbol_table[func_arg_expr.identifier] = var_symbol.copy_narrow_type(ReferenceType(narrowed_arg_type))
+        symbol_table[func_arg_expr.identifier] = var_symbol.copy_narrow_type(bound_narrowed_arg_type)
 
     # special handling of 'assert' call
     if func in {symbol_table.inbuilt_symbols.get(identifier) for identifier in {'assert', 'unchecked_assert'}}:
