@@ -659,20 +659,10 @@ def test_struct_free_nested():
     main()
 
 
-def test_annotation_fail_contradiction():
-  with make_execution_engine() as engine:
-    program = """
-    @ValType @RefType struct BadStruct { }
-    func main()  { }
-    """
-    with assert_raises(SemanticError):
-      compile_program(engine, program)
-
-
 def test_annotation_fail_duplicated():
   with make_execution_engine() as engine:
     program = """
-    @ValType @ValType struct BadStruct { }
+    @Inline @Inline func weirdo() { }
     func main() { }
     """
     with assert_raises(SemanticError):
