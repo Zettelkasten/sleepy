@@ -114,7 +114,7 @@ class AbstractSyntaxTree(ABC):
     # work right now.
     func, templ_types = func_caller.func, func_caller.templ_types
     func_args = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in func_arg_exprs]
-    bound_func_args = [arg.copy_bind(context=context, name='call_arg_%s' % num) for num, arg in enumerate(func_args)]
+    bound_func_args = [arg.copy_bind_all(context=context, name='call_arg_%s' % num) for num, arg in enumerate(func_args)]
     calling_types = [arg.narrowed_type for arg in bound_func_args]
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
       func_caller=func_caller, bound_func_args=bound_func_args)
@@ -368,7 +368,7 @@ class ReturnStatementAst(StatementAst):
         return_val = return_expr.make_as_val(symbol_table=symbol_table, context=context)
         if return_val.type == SLEEPY_VOID:
           self.raise_error('Cannot use void return value')
-        return_val = return_val.copy_bind(context=context, name='return_val')
+        return_val = return_val.copy_bind_all(context=context, name='return_val')
         if not can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type):
           if symbol_table.current_func.return_type == SLEEPY_VOID:
             self.raise_error(
@@ -496,7 +496,7 @@ class AssignStatementAst(StatementAst):
       val = self.var_val.make_as_val(symbol_table=symbol_table, context=context)
       if val.type == SLEEPY_VOID:
         self.raise_error('Cannot assign void to variable')
-      val = val.copy_bind(context=context, name='store')
+      val = val.copy_bind_all(context=context, name='store')
       if stated_type is not None:
         if not can_implicit_cast_to(val.narrowed_type, stated_type):
           self.raise_error(
@@ -573,7 +573,7 @@ class IfStatementAst(StatementAst):
     """
     with context.use_pos(self.pos):
       cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
-      cond_val = cond_val.copy_bind(context=context, name='if_cond')
+      cond_val = cond_val.copy_bind_all(context=context, name='if_cond')
       if not cond_val.narrowed_type == SLEEPY_BOOL:
         self.raise_error('Cannot use expression of type %r as if-condition' % cond_val.type)
 
@@ -645,7 +645,7 @@ class WhileStatementAst(StatementAst):
     """
     with context.use_pos(self.pos):
       cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
-      cond_val = cond_val.copy_bind(context=context, name='while_cond')
+      cond_val = cond_val.copy_bind_all(context=context, name='while_cond')
       if not cond_val.narrowed_type == SLEEPY_BOOL:
         self.raise_error('Cannot use expression of type %r as while-condition' % cond_val.type)
 
@@ -1140,7 +1140,7 @@ class MemberExpressionAst(ExpressionAst):
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
       arg_val = self.parent_val_expr.make_as_val(symbol_table=symbol_table, context=context)
-      struct_type = arg_val.copy_bind(context=context.copy_without_builder(), name='struct').narrowed_type
+      struct_type = arg_val.copy_bind_all(context=context.copy_without_builder(), name='struct').narrowed_type
       if not isinstance(struct_type, StructType):
         self.raise_error(
           'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type))
