@@ -309,6 +309,9 @@ class ParserGenerator:
         start_pos_stack.append(prod_start_pos)
         accepted = True
       else:  # error
+        if la == "new_line":
+            pos += 1
+            continue
         la_name = '%r token' % la if la is not EPSILON else 'end of file'
         possible_next_tokens = set(self._state_action_table[state].keys())
         raise ParseError(
