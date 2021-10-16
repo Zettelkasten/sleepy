@@ -38,7 +38,7 @@ TOKEN_INFO = [
   ('hex_int', '0x([0-9]|[A-F]|[a-f])+', "NUMBER"),
 ]
 
-COMMENT_REGEX = '#[^\n]*\n'
+COMMENT_REGEX = '#[^\n]*'
 WHITESPACE_REGEX = '[ \n\t]+'
 
 SLEEPY_LEXER = LexerGenerator(
