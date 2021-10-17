@@ -91,7 +91,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('Stmt', 'Expr', '=', 'Expr'): {
       'ast': lambda _pos, ast: (
         AssignStatementAst(_pos, var_target=ast(1), var_val=ast(3), declared_var_type=None)
-        if isinstance(ast(1), IdentifierExpressionAst) or isinstance(ast(1), MemberExpressionAst)
+        if isinstance(ast(1), (IdentifierExpressionAst, MemberExpressionAst, UnbindExpressionAst))
         else ExpressionStatementAst(_pos, BinaryOperatorExpressionAst(
           _pos, op='=', left_expr=ast(1), right_expr=ast(3))))},
     Production('Stmt', 'Expr', 'assign_op', 'Expr'): {
