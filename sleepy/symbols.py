@@ -2061,7 +2061,7 @@ class TypedValue:
       typ = typ.pointee_type
     return num_binds
 
-  def copy_bind_all(self, context: CodegenContext, name: str) -> TypedValue:
+  def copy_collapse(self, context: CodegenContext, name: str) -> TypedValue:
     binds_left = self.num_possible_binds() - self.num_unbindings
     assert binds_left >= 0
     if binds_left == 0:
@@ -2075,7 +2075,7 @@ class TypedValue:
     if context.emits_ir:
       assert new.ir_val is not None
       new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
-    return new.copy_bind_all(context=context, name=name)
+    return new.copy_collapse(context=context, name=name)
 
   def copy_unbind(self) -> TypedValue:
     new = self.copy()
