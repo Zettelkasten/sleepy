@@ -605,7 +605,7 @@ def test_unbind_operator():
     program = """
     func main(x: Int) -> Int {
       y: Int = x;
-      ref_y: Ref[Int] = !y;
+      !ref_y: Ref[Int] = !y;
       return y;
     }
     """
@@ -632,21 +632,21 @@ def test_unbind_operator_assign_variable():
   with make_execution_engine() as engine:
     program = """
     func main(x: Int) -> Int {
-      y: Ref[Int] = !x;
-      y = !x;
-      x = !x;
-      return y;  # binds automatically
+      !y: Ref[Int] = !x;
+      y = x + 1;  # changes the memory y points to
+      !y = !x;  # changes the pointer itself (in this case a no-op)
+      return y;  # collapses automatically
     }
     """
     main = compile_program(engine, program, add_preamble=False)
-    assert_equal(main(6), 6)
+    assert_equal(main(6), 6 + 1)
 
 
 def test_new_and_delete():
   with make_execution_engine() as engine:
     program = """
     func main(initial: Int) -> Int {
-      x: Ref[Int] = !new(initial);
+      !x: Ref[Int] = !new(initial);
       x += 1;
       res: Int = x;
       delete(!x);
@@ -668,7 +668,7 @@ def test_struct_free():
     func main(x: Double, y: Double, z: Double)  {
       left = 10000;
       while left > 0 {
-        v = !new(Vec3(x, y, z));
+        !v = !new(Vec3(x, y, z));
         delete(!v);
         left -= 1;
       }
