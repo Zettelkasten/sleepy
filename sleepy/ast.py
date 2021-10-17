@@ -473,22 +473,28 @@ class AssignStatementAst(StatementAst):
     self.var_val = var_val
     self.declared_var_type = declared_var_type
 
+  def get_var_identifier(self) -> Optional[str]:
+    target = self.var_target
+    while isinstance(target, UnbindExpressionAst):
+      target = target.arg_expr
+    if isinstance(target, IdentifierExpressionAst):
+      return target.identifier
+    else:
+      return None
+
   def is_declaration(self, symbol_table: SymbolTable) -> bool:
-    if not isinstance(self.var_target, IdentifierExpressionAst):
+    var_identifier = self.get_var_identifier()
+    if var_identifier is None:
       return False
-    var_identifier = self.var_target.identifier
     if var_identifier not in symbol_table.current_scope_identifiers:
       return True
     assert var_identifier in symbol_table
     symbol = symbol_table[var_identifier]
     if not isinstance(symbol, VariableSymbol):
       self.raise_error('Cannot assign non-variable %r to a variable' % var_identifier)
+    return False
 
-  def build_ir(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    """
+  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
       if self.declared_var_type is not None:
         stated_type: Optional[Type] = self.declared_var_type.make_type(symbol_table=symbol_table)
@@ -506,8 +512,7 @@ class AssignStatementAst(StatementAst):
             'Cannot assign variable with stated type %r a value of type %r' % (stated_type, val.narrowed_type))
 
       if self.is_declaration(symbol_table=symbol_table):
-        assert isinstance(self.var_target, IdentifierExpressionAst)
-        var_identifier = self.var_target.identifier
+        var_identifier = self.get_var_identifier()
         assert var_identifier not in symbol_table.current_scope_identifiers
         # variables are always (implicitly) references
         declared_type = ReferenceType(val.type if stated_type is None else stated_type)
@@ -517,9 +522,10 @@ class AssignStatementAst(StatementAst):
         symbol_table[var_identifier] = symbol
 
       # check that declared type matches assigned type
-      target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)
-      if not target_val.is_referenceable():
+      uncollapsed_target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)
+      if not uncollapsed_target_val.is_referenceable():
         self.raise_error('Cannot reassign this variable')
+      target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')
       assert isinstance(target_val.type, ReferenceType)
       declared_type = target_val.type.pointee_type
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
@@ -533,7 +539,9 @@ class AssignStatementAst(StatementAst):
         assert self.var_target.identifier in symbol_table
         symbol = symbol_table[self.var_target.identifier]
         assert isinstance(symbol, VariableSymbol)
-        narrowed_symbol = symbol.copy_with_narrowed_type(ReferenceType(val.narrowed_type))
+        narrowed_uncollapsed_val_type = uncollapsed_target_val.type.replace_types(
+          {target_val.type.pointee_type: val.narrowed_type})
+        narrowed_symbol = symbol.copy_with_narrowed_type(narrowed_uncollapsed_val_type)
         assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
         symbol_table[self.var_target.identifier] = narrowed_symbol
 

@@ -2091,6 +2091,9 @@ class TypedValue:
       new.ir_val = None
     return new.copy_collapse(context=context, name=name)
 
+  def copy_collapse_as_mutates(self, context: CodegenContext, name: str = 'val') -> TypedValue:
+    return self.copy_unbind().copy_collapse(context=context, name=name)
+
   def copy_unbind(self) -> TypedValue:
     assert self.num_unbindings + 1 <= self.num_possible_binds()
     new = self.copy()
