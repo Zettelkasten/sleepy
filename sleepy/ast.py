@@ -880,10 +880,10 @@ class StringLiteralExpressionAst(ExpressionAst):
         ir_val = ir.Constant(str_type.ir_type, (
           ir.FormattedConstant(context.ir_func_malloc.function_type.return_type, constant='undef'),
           ir_length, ir_length))
-        context.builder.insert_value(agg=ir_val, value=ir_start, idx=0, name='str_literal_store_start')
+        completed_string_value = context.builder.insert_value(agg=ir_val, value=ir_start, idx=0, name='str_literal_store_start')
       else:
-        ir_val = None
-      return TypedValue(typ=str_type, ir_val=ir_val)
+        completed_string_value = None
+      return TypedValue(typ=str_type, ir_val=completed_string_value)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use string literal as function')
