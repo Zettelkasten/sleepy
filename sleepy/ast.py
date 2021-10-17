@@ -113,8 +113,7 @@ class AbstractSyntaxTree(ABC):
     # work right now.
     func, templ_types = func_caller.func, func_caller.templ_types
     func_args = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in func_arg_exprs]
-    context_without_builder = context.copy_without_builder()
-    collapsed_func_args = [arg.copy_collapse(context=context_without_builder) for num, arg in enumerate(func_args)]
+    collapsed_func_args = [arg.copy_collapse(context=None) for num, arg in enumerate(func_args)]
     calling_types = [arg.narrowed_type for arg in collapsed_func_args]
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
       func_caller=func_caller, calling_types=calling_types)
@@ -1151,7 +1150,7 @@ class MemberExpressionAst(ExpressionAst):
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
       arg_val = self.parent_val_expr.make_as_val(symbol_table=symbol_table, context=context)
-      struct_type = arg_val.copy_collapse(context=context.copy_without_builder(), name='struct').narrowed_type
+      struct_type = arg_val.copy_collapse(context=None, name='struct').narrowed_type
       if not isinstance(struct_type, StructType):
         self.raise_error(
           'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type))

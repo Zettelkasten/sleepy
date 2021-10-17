@@ -1804,8 +1804,7 @@ def make_func_call_ir(func: FunctionSymbol,
       assert None not in casted_ir_args
       return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
 
-  context_without_builder = context.copy_without_builder()
-  calling_arg_types = [arg.copy_collapse(context=context_without_builder).narrowed_type for arg in func_args]
+  calling_arg_types = [arg.copy_collapse(context=None).narrowed_type for arg in func_args]
   assert func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
   possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
   if len(possible_concrete_funcs) == 1:
@@ -2073,7 +2072,7 @@ class TypedValue:
       typ = typ.pointee_type
     return num_binds
 
-  def copy_collapse(self, context: CodegenContext, name: str = 'val') -> TypedValue:
+  def copy_collapse(self, context: Optional[CodegenContext], name: str = 'val') -> TypedValue:
     binds_left = self.num_possible_binds() - self.num_unbindings
     assert binds_left >= 0
     if binds_left == 0:
@@ -2084,7 +2083,7 @@ class TypedValue:
     new = self.copy()
     new.type = new.type.pointee_type
     new.narrowed_type = new.narrowed_type.pointee_type
-    if context.emits_ir:
+    if context is not None and context.emits_ir:
       assert new.ir_val is not None
       new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
     else:
