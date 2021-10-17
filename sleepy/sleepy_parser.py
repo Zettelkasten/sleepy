@@ -113,7 +113,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': 'ast.1'},
     Production('NegExpr', 'sum_op', 'PrimaryExpr'): {
       'ast': lambda _pos, ast, op: UnaryOperatorExpressionAst(_pos, op(1), ast(2))},
-    Production('NegExpr', 'unbind_op', 'PrimaryExpr'): {
+    Production('NegExpr', 'unbind_op', 'NegExpr'): {
       'ast': lambda _pos, ast: UnbindExpressionAst(_pos, ast(2))},
     Production('NegExpr', 'PrimaryExpr'): {
       'ast': 'ast.1'},
