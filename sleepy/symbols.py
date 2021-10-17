@@ -1001,6 +1001,9 @@ class VariableSymbol(Symbol):
     return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r)' % (
       self.ir_alloca, self.declared_var_type, self.narrowed_var_type)
 
+  def as_typed_var(self, ir_val: Optional[ir.instructions.Value]) -> TypedValue:
+    return TypedValue(typ=self.declared_var_type, narrowed_type=self.narrowed_var_type, ir_val=ir_val)
+
 
 class ConcreteFunction:
   """
