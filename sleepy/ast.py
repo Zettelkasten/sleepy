@@ -754,6 +754,7 @@ class BinaryOperatorExpressionAst(ExpressionAst):
           self.right_expr.pos, type_identifier=self.right_expr.identifier, templ_types=[])
         check_type = check_type_expr.make_type(symbol_table=symbol_table)
         check_value = self.left_expr.make_as_val(symbol_table=symbol_table, context=context)
+        check_value = check_value.copy_collapse(context=context, name='check_val')
         if context.emits_ir:
           ir_val = make_ir_val_is_type(check_value.ir_val, check_value.narrowed_type, check_type, context=context)
         else:
