@@ -1327,23 +1327,22 @@ def annotate_ast(ast: AbstractSyntaxTree, annotation_list: List[AnnotationAst]) 
   return ast
 
 
-def make_narrow_type_from_valid_cond_ast(cond_expr_ast, cond_holds, symbol_table):
-  """
-  :param ExpressionAst cond_expr_ast:
-  :param bool cond_holds:
-  :param SymbolTable symbol_table:
-  """
+def make_narrow_type_from_valid_cond_ast(cond_expr_ast: ExpressionAst,
+                                         cond_holds: bool,
+                                         symbol_table: SymbolTable):
   # TODO: This is super limited currently: Will only work for if(local_var is Type), nothing more.
   if isinstance(cond_expr_ast, BinaryOperatorExpressionAst) and cond_expr_ast.op == 'is':
     var_expr = cond_expr_ast.left_expr
     if not isinstance(var_expr, IdentifierExpressionAst):
       return
     var_symbol = var_expr.get_var_symbol(symbol_table=symbol_table)
+    collapsed_var = var_symbol.as_typed_var(ir_val=None).copy_collapse(context=None)
     assert isinstance(cond_expr_ast.right_expr, IdentifierExpressionAst)
     check_type_expr = IdentifierTypeAst(
       cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.identifier, templ_types=[])
     check_type = check_type_expr.make_type(symbol_table=symbol_table)
+    uncollapsed_check_type = var_symbol.declared_var_type.replace_types({collapsed_var.type: check_type})
     if cond_holds:
-      symbol_table[var_expr.identifier] = var_symbol.copy_narrow_type(check_type)
+      symbol_table[var_expr.identifier] = var_symbol.copy_narrow_type(uncollapsed_check_type)
     else:
-      symbol_table[var_expr.identifier] = var_symbol.copy_exclude_type(check_type)
+      symbol_table[var_expr.identifier] = var_symbol.copy_exclude_type(uncollapsed_check_type)
