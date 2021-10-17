@@ -523,7 +523,7 @@ class AssignStatementAst(StatementAst):
       # check that declared type matches assigned type
       uncollapsed_target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)
       if not uncollapsed_target_val.is_referenceable():
-        self.raise_error('Cannot reassign this variable')
+        self.raise_error('Cannot reassign non-referencable type %s' % uncollapsed_target_val.type)
       target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')
       assert isinstance(target_val.type, ReferenceType)
       declared_type = target_val.type.pointee_type
