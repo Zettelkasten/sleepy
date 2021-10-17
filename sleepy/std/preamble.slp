@@ -81,7 +81,7 @@ func new[T](value: T) -> Ref[T] {
   return !load(ptr);
 }
 func delete[T](ptr: Ref[T]) {
-  free(Ptr(!ptr));
+  deallocate(Ptr(!ptr));
 }
 
 ## Simple Math
@@ -111,6 +111,12 @@ extern_func cos(x: Double) ->  Double
 #   Int length = 0
 #   Int alloc_length = 8
 # }
+func cleanup(str: Str) {
+  str.length = 0;
+  str.alloc_length = 0;
+  deallocate(str.start);
+}
+
 func EmptyStr(alloc_length: Int) ->  Str  {
   return Str(allocate[Char](alloc_length), 0, alloc_length)
 }
