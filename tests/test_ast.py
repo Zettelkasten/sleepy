@@ -642,6 +642,23 @@ def test_unbind_operator_assign_variable():
     assert_equal(main(6), 6 + 1)
 
 
+def test_swap_ref():
+  with make_execution_engine() as engine:
+    program = """
+    func swap[T](a: Ref[T], b: Ref[T]) {
+      tmp: T = a;
+      a = b;
+      b = tmp;
+    }
+    func main(x: Int, y: Int) -> Int {
+      swap(!x, !y);
+      return x - y;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(3, 4), 4 - 3)
+
+
 def test_new_and_delete():
   with make_execution_engine() as engine:
     program = """
