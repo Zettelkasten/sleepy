@@ -7,6 +7,11 @@ func print(long: Long)  { extern_func print_long(l: Long); print_long(long) }
 @Inline func print(bool: Bool)  { if bool { print('T') } else { print('F') } }
 @Inline func print_line()  { print('\n') }
 @Inline func print_line[T](line: T)  { print(line); print_line() }
+@Inline func print_line[T1, T2](a: T1, b: T2) { print(a); print(' '); print(b); print_line() }
+@Inline func print_line[T1, T2, T3](a: T1, b: T2, c: T3) {
+  print(a); print(' '); print(b); print(' '); print(c); print_line() }
+@Inline func print_line[T1, T2, T3, T4](a: T1, b: T2, c: T3, d: T4) {
+  print(a); print(' '); print(b); print(' '); print(c); print(' '); print(d); print_line() }
 extern_func flush()
 @Inline func print_flush[T](text: T)  { print(text); flush() }
 @Inline func print_line_flush[T](line: T)  { print_line(line); flush() }
