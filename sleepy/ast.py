@@ -1163,13 +1163,14 @@ class MemberExpressionAst(ExpressionAst):
 
       if arg_val.is_referenceable():
         if context.emits_ir:
-          parent_ptr = arg_val.ir_val
+          parent_ptr = arg_val.copy_collapse_as_mutates(context=context, name='parent').ir_val
           gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
           self_ptr = context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
         else:
           self_ptr = None
         return TypedValue(typ=ReferenceType(member_type), ir_val=self_ptr)
       else:
+        assert arg_val.num_possible_binds() == 0
         ir_val = struct_type.make_extract_member_val_ir(
           self.member_identifier, struct_ir_val=arg_val.ir_val, context=context) if context.emits_ir else None
         return TypedValue(typ=member_type, ir_val=ir_val)
