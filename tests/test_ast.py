@@ -2047,6 +2047,22 @@ def test_arg_mutates():
     assert_equal(main(10), 11)
 
 
+def test_arg_mutates_inline():
+  with make_execution_engine() as engine:
+    program = """
+    @Inline func increment(mutates x: Int) {
+      x = x + 1;
+    }
+    func main(a: Int) -> Int {
+      increment(a);
+      return a;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), 6)
+    assert_equal(main(10), 11)
+
+
 def test_arg_mutates_called_with_non_referenable():
   with make_execution_engine() as engine:
     program = """
