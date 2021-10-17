@@ -235,7 +235,7 @@ def test_bind_and_unbind():
 
   ref_int = TypedValue(typ=ReferenceType(SLEEPY_INT), ir_val=None, num_unbindings=0)
   assert ref_int.num_possible_binds() == 1
-  int = ref_int.copy_bind_all(context=context, name='bind')
+  int = ref_int.copy_collapse(context=context, name='bind')
   assert int.type == SLEEPY_INT
   assert int.num_possible_binds() == 0
   assert int.num_unbindings == 0
@@ -244,7 +244,7 @@ def test_bind_and_unbind():
   assert unbound_ref_int.num_unbindings == 1
   assert unbound_ref_int.num_possible_binds() == 1
 
-  ref_int_ = unbound_ref_int.copy_bind_all(context=context, name='bind')
+  ref_int_ = unbound_ref_int.copy_collapse(context=context, name='bind')
   assert ref_int_.type == ReferenceType(SLEEPY_INT)
   assert ref_int_.num_unbindings == 1
   assert ref_int_.num_possible_binds() == 1
