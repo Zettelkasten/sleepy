@@ -898,13 +898,13 @@ def test_overload_with_different_structs():
 def test_index_operator():
   with make_execution_engine() as engine:
     program = """
-    func index(ptr: Ptr[Double], pos: Int) -> Ptr[Double] {
-      return ptr + pos;
+    func index(ptr: Ptr[Double], pos: Int) -> Ref[Double] {
+      return !load(ptr + pos);
     }
     func main(val: Double) ->  Double  {
       ptr = allocate[Double](8);
       ptr[0] = val;
-      loaded = +ptr[0];
+      loaded = ptr[0];
       return loaded;
     }
     """
@@ -915,14 +915,14 @@ def test_index_operator():
 def test_index_operator_syntax():
   with make_execution_engine() as engine:
     program = """
-    func (ptr: Ptr[Double])[pos: Int] -> Ptr[Double] {
-      return ptr + pos;
+    func (ptr: Ptr[Double])[pos: Int] -> Ref[Double] {
+      return !load(ptr + pos);
     }
     func main(val: Double) ->  Double  {
       ptr = allocate[Double](8);
       ptr[0] = val;
       loaded = ptr[0];
-      return +loaded;
+      return loaded;
     }
     """
     main = compile_program(engine, program)
