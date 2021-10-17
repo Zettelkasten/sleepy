@@ -40,9 +40,8 @@ class AbstractSyntaxTree(ABC):
 
   def _resolve_possible_concrete_funcs(self,
                                        func_caller: FunctionSymbolCaller,
-                                       bound_func_args: List[TypedValue]) -> List[ConcreteFunction]:
+                                       calling_types: List[Type]) -> List[ConcreteFunction]:
     func, templ_types = func_caller.func, func_caller.templ_types
-    calling_types = [arg.narrowed_type for arg in bound_func_args]
     if templ_types is None:
       templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
     assert templ_types is not None
@@ -114,10 +113,11 @@ class AbstractSyntaxTree(ABC):
     # work right now.
     func, templ_types = func_caller.func, func_caller.templ_types
     func_args = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in func_arg_exprs]
-    bound_func_args = [arg.copy_collapse(context=context, name='call_arg_%s' % num) for num, arg in enumerate(func_args)]
-    calling_types = [arg.narrowed_type for arg in bound_func_args]
+    context_without_builder = context.copy_without_builder()
+    collapsed_func_args = [arg.copy_collapse(context=context_without_builder) for num, arg in enumerate(func_args)]
+    calling_types = [arg.narrowed_type for arg in collapsed_func_args]
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
-      func_caller=func_caller, bound_func_args=bound_func_args)
+      func_caller=func_caller, calling_types=calling_types)
     return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
     if templ_types is None:
@@ -137,14 +137,14 @@ class AbstractSyntaxTree(ABC):
     if context.emits_ir:
       from sleepy.symbols import make_func_call_ir
       return_ir_val = make_func_call_ir(
-        func=func, templ_types=templ_types, bound_func_args=bound_func_args, context=context)
+        func=func, templ_types=templ_types, func_args=func_args, context=context)
     else:
       return_ir_val = None
 
     # apply type narrowings
     for arg_num, func_arg_expr in enumerate(func_arg_exprs):
       original_unbound_arg_type = func_args[arg_num].narrowed_type
-      original_bound_arg_type = bound_func_args[arg_num].narrowed_type
+      original_bound_arg_type = collapsed_func_args[arg_num].narrowed_type
       narrowed_arg_types = [concrete_func.arg_type_narrowings[arg_num] for concrete_func in possible_concrete_funcs]
       narrowed_arg_type = get_common_type(narrowed_arg_types)
       bound_narrowed_arg_type = original_unbound_arg_type.replace_types({original_bound_arg_type: narrowed_arg_type})

@@ -1059,6 +1059,12 @@ class ConcreteFunction:
         self.signature, self.concrete_templ_types, self.return_type, self.arg_types, self.arg_type_narrowings,
         self.arg_mutates))
 
+  @property
+  def uncollapsed_arg_types(self) -> List[Type]:
+    return [
+      ReferenceType(param_type) if mutates else param_type
+      for param_type, mutates in zip(self.arg_types, self.arg_mutates)]
+
   def has_same_signature_as(self, other: ConcreteFunction) -> bool:
     return (
       self.return_type == other.return_type and self.arg_types == other.arg_types and
@@ -1338,7 +1344,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
             templ_types = [concrete_member_type.pointee_type]
           make_func_call_ir(
             func=self.captured_symbol_table.free_symbol, templ_types=templ_types,
-            bound_func_args=[TypedValue(typ=signature_member_type, ir_val=member_ir_val)], context=context)
+            func_args=[TypedValue(typ=signature_member_type, ir_val=member_ir_val)], context=context)
         context.builder.ret_void()
 
 
@@ -1766,7 +1772,7 @@ def make_ir_size(size: int) -> ir.values.Value:
 
 def make_func_call_ir(func: FunctionSymbol,
                       templ_types: List[Type],
-                      bound_func_args: List[TypedValue],
+                      func_args: List[TypedValue],
                       context: CodegenContext) -> Optional[ir.values.Value]:
   assert context.emits_ir
   assert not context.emits_debug or context.builder.debug_metadata is not None
@@ -1775,25 +1781,31 @@ def make_func_call_ir(func: FunctionSymbol,
                      caller_context: CodegenContext) -> ir.values.Value:
     assert caller_context.emits_ir
     assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
-    assert len(concrete_func.arg_types) == len(bound_func_args)
+    assert len(concrete_func.arg_types) == len(func_args)
     assert all(
-      not arg_mutates or arg.is_referenceable() for arg, arg_mutates in zip(bound_func_args, concrete_func.arg_mutates))
+      not arg_mutates or arg.is_referenceable() for arg, arg_mutates in zip(func_args, concrete_func.arg_mutates))
+    # mutates arguments are handled here as Ref[T], all others normally as T.
+    collapsed_func_args = [
+      (arg_val.copy_unbind() if mutates else arg_val).copy_collapse(
+        context=caller_context, name='call_arg_%s_collapse' % identifier)
+      for arg_val, identifier, mutates in zip(func_args, concrete_func.arg_identifiers, concrete_func.arg_mutates)]
     casted_calling_args = [
       arg_val.copy_with_narrowed_type(param_type).copy_with_implicit_cast(
         to_type=param_type, context=caller_context, name='call_arg_%s_cast' % arg_identifier)
       for arg_identifier, arg_val, param_type in zip(
-        concrete_func.arg_identifiers, bound_func_args, concrete_func.arg_types)]
+        concrete_func.arg_identifiers, collapsed_func_args, concrete_func.uncollapsed_arg_types)]
     if concrete_func.is_inline:
       assert concrete_func not in caller_context.inline_func_call_stack
       return concrete_func.make_inline_func_call_ir(func_args=casted_calling_args, caller_context=caller_context)
     else:
       ir_func = concrete_func.ir_func
-      assert ir_func is not None and len(ir_func.args) == len(bound_func_args)
+      assert ir_func is not None and len(ir_func.args) == len(casted_calling_args)
       casted_ir_args = [arg.ir_val for arg in casted_calling_args]
       assert None not in casted_ir_args
       return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
 
-  calling_arg_types = [arg.narrowed_type for arg in bound_func_args]
+  context_without_builder = context.copy_without_builder()
+  calling_arg_types = [arg.copy_collapse(context=context_without_builder).narrowed_type for arg in func_args]
   assert func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
   possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
   if len(possible_concrete_funcs) == 1:
@@ -2061,7 +2073,7 @@ class TypedValue:
       typ = typ.pointee_type
     return num_binds
 
-  def copy_collapse(self, context: CodegenContext, name: str) -> TypedValue:
+  def copy_collapse(self, context: CodegenContext, name: str = 'val') -> TypedValue:
     binds_left = self.num_possible_binds() - self.num_unbindings
     assert binds_left >= 0
     if binds_left == 0:
@@ -2075,6 +2087,8 @@ class TypedValue:
     if context.emits_ir:
       assert new.ir_val is not None
       new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
+    else:
+      new.ir_val = None
     return new.copy_collapse(context=context, name=name)
 
   def copy_unbind(self) -> TypedValue:
