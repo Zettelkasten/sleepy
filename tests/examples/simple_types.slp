@@ -9,34 +9,21 @@ func main()  {
   print('\n');
   int_calc = my_int * 34;
 
-  @RefType
-  struct IntPair {
-    left: Int = 0;
-    right: Int = 0;
+  struct Pair[T] {
+    left: T;
+    right: T;
+  }
+  @Inline func get_left[T](pair: Pair[T]) -> T { return pair.left; }
+  @Inline func set_left[T](mutates pair: Pair[T], new_left: T) { pair.left = new_left; }
+
+  func print[T](pair: Pair[T])  {
+    print('('); print(pair.left); print('|'); print(pair.right); print(')');
   }
 
-  @Inline func get_left(pair: IntPair) ->  Int  {
-    return pair.left;
-  }
-  @Inline func set_left(pair: IntPair, new_left: Int)  {
-    pair.left = new_left;
-  }
-
-  func print(pair: IntPair)  {
-    print('(');
-    print(pair.left);
-    print('|');
-    print(pair.right);
-    print(')');
-  }
-
-  p: IntPair = IntPair(4, -3);
+  p: Pair[Int] = Pair[Int](4, -3);
   print_line(get_left(p));
-  # set_left(p, 6) would fail, as p is immutable!
-  mutable_pair = IntPair(6, 9);
-  set_left(mutable_pair, 53);  # this works however.
-  print_line(get_left(mutable_pair));  # and orints 53.
-  print(mutable_pair);
+  set_left(p, 53);
+  print_line(get_left(p));
+  print(p);
   print_line();
-  free(p); free(mutable_pair);
 }
