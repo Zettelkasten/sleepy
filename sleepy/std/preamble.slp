@@ -70,6 +70,15 @@ func memcpy[T](to: Ptr[T], from: Ptr[T], amount: Long) {
 }
 func memcpy[T](to: Ptr[T], from: Ptr[T], size: Int) { memcpy[T](to, from, ToLong(size)) }
 
+func new[T](value: T) -> Ref[T] {
+  ptr = allocate[T](1l);
+  store(ptr, value);
+  return !load(ptr);
+}
+func delete[T](ptr: Ref[T]) {
+  free(Ptr(!ptr));
+}
+
 ## Simple Math
 func <(left: Int, right: Double) ->  Bool  { return ToDouble(left) < right }
 func <(left: Double, right: Int) ->  Bool  { return left < ToDouble(right) }
