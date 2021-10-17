@@ -678,15 +678,16 @@ def test_struct_free():
     main(0, 1, 2)
 
 
+@unittest.skip('Destructors are not implemented currently')
 def test_struct_free_nested():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Vec3 {
+    struct Vec3 {
       x: Double = 0.0;
       y: Double = 0.0;
       z: Double = 0.0;
     }
-    @RefType struct Mat3x3 {
+    struct Mat3x3 {
       x: Vec3 = Vec3(0.0, 0.0, 0.0);
       y: Vec3 = Vec3(0.0, 0.0, 0.0);
       z: Vec3 = Vec3(0.0, 0.0, 0.0);
