@@ -6,9 +6,7 @@ struct OwnedPtr[T] {
 func cleanup[T](ptr: OwnedPtr[T]) {
   free(ptr.value);
 }
-func cleanup(str: Str) {
-  free(str);
-}
+func cleanup(str: Str|Double) { }
 func new[T](val: T) -> OwnedPtr[T] {
   ptr = allocate[T](1);
   store(ptr, val);
@@ -45,14 +43,14 @@ func add[T](mutates list: List[T], value: T) {
   store(list.start.value + list.size, value);
   list.size += 1l;
 }
-func index[T](list: List[T], i: Long) -> Ptr[T] {
+func index[T](list: List[T], i: Long) -> Ref[T] {
   assert(and(0l <= i, i < list.size));
-  return list.start.value + i;
+  return !load(list.start.value + i);
 }
-func index[T](list: List[T], i: Int) -> Ptr[T] { return index(list, ToLong(i)); }
+func index[T](list: List[T], i: Int) -> Ref[T] { return !index(list, ToLong(i)); }
 func pop[T](mutates list: List[T]) -> T {
   assert(list.size > 0l);
-  value = load(list[list.size - 1l]);
+  value = list[list.size - 1l];
   list.size -= 1l;
   return value;
 }
@@ -73,36 +71,36 @@ func print[T](list: List[T]) {
   print('[');
   pos = 0l;
   while pos < list.size {
-    print(load(list[pos]));
+    print(list[pos]);
     pos += 1l;
     if pos < list.size { print(','); print(' '); }
   }
   print(']');
 }
 
-func swap[T](a: Ptr[T], b: Ptr[T]) {
-  tmp = load(a);
-  store(a, load(b));
-  store(b, tmp);
+func swap[T](a: Ref[T], b: Ref[T]) {
+  tmp: T = a;
+  a = b;
+  b = tmp;
 }
 func quicksort[T](mutates list: List[T]) {
-  _quicksort(list, list[0], list[list.size - 1l]);
+  _quicksort(list, 0l, list.size - 1l);
 }
-func _quicksort[T](mutates list: List[T], from: Ptr[T], to: Ptr[T]) {
+func _quicksort[T](mutates list: List[T], from: Long, to: Long) {
   if from >= to { return; }
   pivot = from;
-  pivot_val = load(pivot);
-  i = from + 1;
+  pivot_val = list[pivot];
+  i = from + 1l;
   j = to;
-  assert(and(list[0] <= i, i <= j, j <= list[list.size - 1l]));
+  assert(and(0l <= i, i <= j, j <= list.size - 1l));
   # goal: [< pivot] pivot [>= pivot]
   while i < j {
-    while and(i < to, load(i) < pivot_val) { i += 1l; }
-    while and(j > from, load(j) >= pivot_val) { j -= 1l; }
-    if i < j { swap(i, j); }
+    while and(i < to, list[i] < pivot_val) { i += 1l; }
+    while and(j > from, list[j] >= pivot_val) { j -= 1l; }
+    if i < j { swap(!list[i], !list[j]); }
   }
 
-  if load(j) < pivot_val { swap(j, pivot); }
+  if list[j] < pivot_val { swap(!list[j], !list[pivot]); }
   pivot = j;
 
   _quicksort(list, from, pivot - 1l);
@@ -112,7 +110,7 @@ func _quicksort[T](mutates list: List[T], from: Ptr[T], to: Ptr[T]) {
 func is_sorted[T](list: List[T]) -> Bool {
   i = 1l;
   while i < list.size {
-    if load(list[i - 1l]) > load(list[i]) { return False(); }
+    if list[i - 1l] > list[i] { return False(); }
     i += 1l;
   }
   return True();
