@@ -642,6 +642,21 @@ def test_unbind_operator_assign_variable():
     assert_equal(main(6), 6 + 1)
 
 
+def test_unbind_operator_assign_member():
+  with make_execution_engine() as engine:
+    program = """
+    struct Foo { amount: Int; }
+    func main(x: Int) -> Int {
+      my_foo = Foo(x);
+      !ptr = !my_foo;
+      ptr.amount = ptr.amount + 1;
+      return my_foo.amount;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6 + 1)
+
+
 def test_swap_ref():
   with make_execution_engine() as engine:
     program = """
