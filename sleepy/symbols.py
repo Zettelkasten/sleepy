@@ -2078,6 +2078,7 @@ class TypedValue:
     return new.copy_collapse(context=context, name=name)
 
   def copy_unbind(self) -> TypedValue:
+    assert self.num_unbindings + 1 <= self.num_possible_binds()
     new = self.copy()
     new.num_unbindings += 1
     return new
