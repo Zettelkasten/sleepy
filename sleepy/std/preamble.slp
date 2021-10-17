@@ -117,7 +117,7 @@ func EmptyStr(alloc_length: Int) ->  Str  {
 func EmptyStr() ->  Str  {
   return EmptyStr(8)
 }
-func resize(str: Str, new_alloc_length: Int)  {
+func resize(mutates str: Str, new_alloc_length: Int)  {
   new_start = allocate[Char](new_alloc_length)
   memcpy(new_start, str.start, str.alloc_length)
   deallocate(str.start)
@@ -134,7 +134,7 @@ func (str: Str)[pos: Int] -> Ptr[Char] {
   return str.start + pos
 }
 
-func insert(str: Str, char: Char, pos: Int)  {
+func insert(mutates str: Str, char: Char, pos: Int)  {
   assert(and(0 <= pos, pos < str.length + 1))
   if str.length + 1 >= str.alloc_length {
     resize(str, max(2 * str.alloc_length, 1))
@@ -143,8 +143,8 @@ func insert(str: Str, char: Char, pos: Int)  {
   str.length += 1
   store(str[pos], char)
 }
-func insert(str: Str, insert_char: Char)  { insert(str, insert_char, str.length) }
-func insert(str: Str, insert_str: Str, pos: Int)  {
+func insert(mutates str: Str, insert_char: Char)  { insert(str, insert_char, str.length) }
+func insert(mutates str: Str, insert_str: Str, pos: Int)  {
   assert(and(0 <= pos, pos < str.length + 1))
   if str.length + insert_str.length >= str.alloc_length {
     resize(str, max(2 * str.alloc_length, str.length + insert_str.length))
@@ -153,7 +153,7 @@ func insert(str: Str, insert_str: Str, pos: Int)  {
   memcpy(str.start + pos, insert_str.start, insert_str.length)
   str.length += insert_str.length
 }
-func insert(str: Str, insert_str: Str)  { insert(str, insert_str, str.length) }
+func insert(mutates str: Str, insert_str: Str)  { insert(str, insert_str, str.length) }
 func ToStr(from_char: Char) ->  Str  {
   str = EmptyStr()
   insert(str, from_char)
