@@ -734,11 +734,11 @@ def test_overload_func():
 def test_const_add_vs_assign_add():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Vec2 { x: Double = 0.0; y: Double = 0.0; }
+    struct Vec2 { x: Double = 0.0; y: Double = 0.0; }
     func add(a: Vec2, b: Vec2) ->  Vec2  {
       return Vec2(a.x + b.x, a.y + b.y);
     }
-    func assign_add(a: Vec2, b: Vec2)  {
+    func assign_add(mutates a: Vec2, b: Vec2)  {
       a.x = a.x + b.x;
       a.y = a.y + b.y;
     }
@@ -758,14 +758,14 @@ def test_const_add_vs_assign_add():
 def test_counter_is_empty():
   with make_execution_engine() as engine:
     program = """
-    @RefType struct Counter { value: Int = 0; }
-    func increase(c: Counter)  {
-      c.value= c.value+ 1;
+    struct Counter { value: Int = 0; }
+    func increase(mutates c: Counter)  {
+      c.value = c.value + 1;
     }
     func is_empty(c: Counter) ->  Bool  {
-      return c.value== 0;
+      return c.value == 0;
     }
-    func increase_if_empty(c: Counter)  {
+    func increase_if_empty(mutates c: Counter)  {
       if is_empty(c) {
         increase(c);
       }
@@ -774,7 +774,7 @@ def test_counter_is_empty():
       c = Counter(0);
       increase(c);
       increase_if_empty(c);  # should not do anything
-      c.value= c.value- 1;
+      c.value = c.value - 1;
       increase_if_empty(c);  # should increase
       increase(c);
       return c.value;
@@ -1484,7 +1484,6 @@ def test_assert_type_narrowing():
 def test_unchecked_assert_type_narrowing():
   with make_execution_engine() as engine:
     program = """
-    @RefType
     struct S {
       val: Double = 0.0;
     }
