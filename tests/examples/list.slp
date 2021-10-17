@@ -7,15 +7,7 @@ func cleanup[T](ptr: OwnedPtr[T]) {
   free(ptr.value);
 }
 func cleanup(str: Str|Double) { }
-func new[T](val: T) -> OwnedPtr[T] {
-  ptr = allocate[T](1);
-  store(ptr, val);
-  return OwnedPtr(ptr);
-}
-
-func cleanup[T](ptr: Ptr[T]) {
-  # does nothing
-}
+func cleanup[T](ptr: Ptr[T]) { }
 
 struct List[T] {
   start: OwnedPtr[T];
@@ -42,6 +34,15 @@ func add[T](mutates list: List[T], value: T) {
   maybe_resize(list, list.size + 1l);
   store(list.start.value + list.size, value);
   list.size += 1l;
+}
+func add_all[T](mutates list: List[T], others: List[T]) {
+  maybe_resize(list, list.size + others.size);
+  i = 0l;
+  while i < others.size {
+    store(list.start.value + list.size + i, others[i]);
+    i += 1l;
+  }
+  list.size += others.size;
 }
 func index[T](list: List[T], i: Long) -> Ref[T] {
   assert(and(0l <= i, i < list.size));
@@ -116,6 +117,13 @@ func is_sorted[T](list: List[T]) -> Bool {
   return True();
 }
 
+func +[T](a: List[T], b: List[T]) -> Ref[List[T]] {
+  !c = !new(EmptyList[T]());
+  add_all(c, a);
+  add_all(c, b);
+  return !c;
+}
+
 func main() {
   a = EmptyList[Double]();
   val = 10l;
@@ -134,7 +142,13 @@ func main() {
   print_line(a);
   assert(a.size == 9l);
   assert(is_sorted(a));
-  remove_all(a);
-  assert(a.size == 0l);
+
+  # now: try a list on the heap!
+  !b = !new(EmptyList[Double]());
+  add(b, 123.1);  # can be used just as if it were on the stack
+  print_line(a + b);  # would also need to call cleanup for a + b
+
+  cleanup(b);
+  delete(!b);
   cleanup(a);
 }
