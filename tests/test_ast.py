@@ -645,7 +645,7 @@ def test_unbind_operator_assign_variable():
 def test_new_and_delete():
   with make_execution_engine() as engine:
     program = """
-    func main(initial: Int) {
+    func main(initial: Int) -> Int {
       x: Ref[Int] = !new(initial);
       x += 1;
       res: Int = x;
