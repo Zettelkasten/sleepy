@@ -2141,3 +2141,31 @@ def test_mutates_struct_member():
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 5)
 
+
+def test_mutates_called_with_ref():
+  with make_execution_engine() as engine:
+    program = """
+    func inc_val(mutates i: Int)  { i += 1; }
+    func main(my_int: Int) -> Int {
+      !my_int_ref: Ref[Int] = !my_int;
+      inc_val(my_int_ref);
+      return my_int_ref;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), 5 + 1)
+
+
+def test_mutates_called_with_ref_ref():
+  with make_execution_engine() as engine:
+    program = """
+    func inc_val(mutates i: Int)  { i += 1; }
+    func main(my_int: Int) -> Int {
+      !my_int_ref: Ref[Int] = !my_int;
+      !!my_int_ref_ref: Ref[Ref[Int]] = !!my_int_ref;
+      inc_val(my_int_ref_ref);
+      return my_int_ref;  # could also use my_int or my_int_ref_ref
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), 5 + 1)
