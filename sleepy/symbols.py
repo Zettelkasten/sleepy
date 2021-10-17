@@ -1607,7 +1607,6 @@ class CodegenContext:
     self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = None
     self.inline_func_call_stack: List[ConcreteFunction] = []
     self.ir_func_malloc: Optional[ir.Function] = None
-    self.ir_func_free: Optional[ir.Function] = None
 
     if not self.emits_debug:
       self.current_di_file: Optional[ir.DIValue] = None

@@ -299,7 +299,7 @@ class TranslationUnitAst(AbstractSyntaxTree):
       source_path=source_path)
 
     build_initial_ir(symbol_table=symbol_table, context=context)
-    assert context.ir_func_malloc is not None and context.ir_func_free is not None
+    assert context.ir_func_malloc is not None
     for ast in self.file_asts:
       for statement in ast.stmt_list:
         assert not context.is_terminated

@@ -264,8 +264,6 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   if context.emits_ir:
     context.ir_func_malloc = ir.Function(
       context.module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
-    context.ir_func_free = ir.Function(
-      context.module, ir.FunctionType(ir.VoidType(), [LLVM_VOID_POINTER_TYPE]), name='free')
 
   # TODO: currently, some inbuilt free() functions are not inlined.
   # This means that we need to add debug information to these functions, but they do not have any line numbers.
