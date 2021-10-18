@@ -7,6 +7,7 @@ import argparse
 from pathlib import Path
 
 import better_exchook
+import networkx.algorithms.dag
 
 import _setup_sleepy_env  # noqa
 # noinspection PyUnresolvedReferences
@@ -19,7 +20,7 @@ from sleepy.parse import make_program_ast, make_ast, make_preamble_ast
 from sleepy.symbols import FunctionSymbol
 import llvmlite.binding as llvm
 
-from tools.import_discovery import build_file_dag
+from tools.import_discovery import build_file_dag, check_graph
 
 
 def _make_file_name(source_path: Path, file_ending: str, allow_exist=False) -> Path:
@@ -68,10 +69,10 @@ def main():
   source_file_path: Path = Path(args.program)
   try:
     file_dag, source_file_path = build_file_dag(source_file_path)
+    check_graph(file_dag)
 
-    file_ast: FileAst = file_dag.nodes[source_file_path]["file_ast"]
-
-    ast = TranslationUnitAst.from_file_asts([make_preamble_ast(), file_ast])
+    file_asts = [file_dag.nodes[node]["file_ast"] for node in networkx.topological_sort(file_dag.reverse())]
+    ast = TranslationUnitAst.from_file_asts([make_preamble_ast()] + file_asts)
 
     print(file_dag.nodes)
     print(file_dag.edges)

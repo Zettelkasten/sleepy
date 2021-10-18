@@ -4,6 +4,7 @@ from typing import List, Tuple
 import networkx as nx
 
 from sleepy.ast import FileAst
+from sleepy.errors import CompilerError
 from sleepy.parse import make_program_ast
 
 
@@ -48,3 +49,8 @@ def build_file_dag(main_file: Path) -> Tuple[nx.DiGraph, Path]:
     todo += process_file(path, dag)
 
   return dag, main_file
+
+def check_graph(graph: nx.DiGraph):
+  if not nx.is_directed_acyclic_graph(graph):
+    sccs = [ scc for scc in nx.strongly_connected_components(graph) if len(scc) > 1 ]
+    raise CompilerError(f"Import are cyclic. The following cycles were found:\n {sccs}")
