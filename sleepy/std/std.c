@@ -58,6 +58,9 @@ long char_ptr_to_long(char* ptr) {
 long float_ptr_to_long(float* ptr) {
     return (long) ptr;
 }
+int char_to_int(unsigned char c) {
+  return c;
+}
 
 double random_double() {
     return (double) rand() / RAND_MAX;

@@ -34,6 +34,7 @@ extern_func assert(condition: Bool)
 func ToInt(d: Double) -> Int { extern_func double_to_int(d: Double) -> Int; return double_to_int(d) }
 func ToInt(b: Bool) -> Int { if b { return 1 } else { return 0 } }
 func ToInt(l: Long) -> Int { extern_func long_to_int(l: Long) -> Int; return long_to_int(l) }
+func Ord(c: Char) -> Int { extern_func char_to_int(c: Char) -> Int; return char_to_int(c) }
 func ToLong(i: Int) -> Long { extern_func int_to_long(i: Int) -> Long; return int_to_long(i) }
 func ToLong[T](ptr: Ptr[T]) -> Long {
   extern_func char_ptr_to_long(ptr: RawPtr) -> Long
