@@ -6,7 +6,7 @@ struct OwnedPtr[T] {
 func cleanup[T](ptr: OwnedPtr[T]) {
   free(ptr.value);
 }
-func cleanup(str: Str|Double) { }
+func cleanup(str: Double) { }
 func cleanup[T](ptr: Ptr[T]) { }
 
 struct List[T] {
