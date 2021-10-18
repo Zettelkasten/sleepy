@@ -10,6 +10,7 @@ TOKEN_INFO = [
   ('while', 'while', "KEYWORD"),
   ('ref', 'ref', "KEYWORD"),
   ('mutates', 'mutates', "KEYWORD"),
+  ('import', 'import', 'KEYWORD'),
   (':', ':', ''),
   ('{', '{', "BRACE"),
   ('}', '}', "BRACE"),

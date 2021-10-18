@@ -252,19 +252,36 @@ class AbstractScopeAst(AbstractSyntaxTree):
 
 
 class FileAst(AbstractSyntaxTree):
-  """
-  TopLevelExpr.
-  """
-
-  def __init__(self, pos: TreePosition, stmt_list: List[StatementAst]):
+  def __init__(self, pos: TreePosition, stmt_list: List[StatementAst], imports_ast: ImportsAst):
     super().__init__(pos)
+    self.imports_ast = imports_ast
     self.stmt_list = stmt_list
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return self.stmt_list
+    return [self.imports_ast] + self.stmt_list
 
   def __repr__(self) -> str:
     return 'TopLevelAst(%s)' % self.stmt_list
+
+class ImportsAst(AbstractSyntaxTree):
+  def __init__(self, pos: TreePosition, import_asts: List[ImportAst]):
+    super().__init__(pos)
+    self.import_asts = import_asts
+
+  @property
+  def imports(self) -> List[str]:
+    return [a.path for a in self.import_asts]
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return self.import_asts
+
+class ImportAst(AbstractSyntaxTree):
+  def __init__(self, pos: TreePosition, path: str):
+    super().__init__(pos)
+    self.path = path
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return []
 
 
 class TranslationUnitAst(AbstractSyntaxTree):
