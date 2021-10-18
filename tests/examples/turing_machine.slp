@@ -1,0 +1,373 @@
+# pointer that will automatically be freed when out-of-scope
+# TODO: implement that cleanup will be called once things leave scope
+struct OwnedPtr[T] {
+  value: Ptr[T];
+}
+func cleanup[T](ptr: OwnedPtr[T]) {
+  free(ptr.value);
+}
+func cleanup(str: Double|Int ) { }
+func cleanup[T](ptr: Ptr[T]) { }
+
+struct List[T] {
+  start: OwnedPtr[T];
+  allocated_size: Long;
+  size: Long;
+}
+
+func EmptyList[T]() -> List[T] {
+  initial_size = 4l;
+  ptr = allocate[T](initial_size);  # currently list are always allocated on the heap.
+  return List[T](OwnedPtr(ptr), initial_size, 0l);
+}
+
+func maybe_resize[T](mutates list: List[T], required_size: Long) {
+  if list.allocated_size >= required_size { return; }
+  list.allocated_size = max(required_size, list.allocated_size * 2l);
+  old_start = list.start;
+  list.start = OwnedPtr(allocate[T](list.allocated_size));
+  memcpy(list.start.value, old_start.value, list.size);
+  deallocate(old_start.value);
+}
+
+func add[T](mutates list: List[T], value: T) {
+  maybe_resize(list, list.size + 1l);
+  store(list.start.value + list.size, value);
+  list.size += 1l;
+}
+func add_all[T](mutates list: List[T], others: List[T]) {
+  maybe_resize(list, list.size + others.size);
+  i = 0l;
+  while i < others.size {
+    store(list.start.value + list.size + i, others[i]);
+    i += 1l;
+  }
+  list.size += others.size;
+}
+func index[T](list: List[T], i: Long) -> Ref[T] {
+  assert(and(0l <= i, i < list.size));
+  return !load(list.start.value + i);
+}
+func index[T](list: List[T], i: Int) -> Ref[T] { return !index(list, ToLong(i)); }
+func pop[T](mutates list: List[T]) -> T {
+  assert(list.size > 0l);
+  value = list[list.size - 1l];
+  list.size -= 1l;
+  return value;
+}
+func remove_all[T](mutates list: List[T]) {
+  pos = 0l;
+  while pos < list.size {
+    cleanup(list[pos]);
+    pos += 1l;
+  }
+  list.size = 0l;
+}
+func cleanup[T](mutates list: List[T]) {
+  remove_all(list);
+  cleanup(list.start);
+}
+
+func print[T](list: List[T]) {
+  print('[');
+  pos = 0l;
+  while pos < list.size {
+    print(list[pos]);
+    pos += 1l;
+    if pos < list.size { print(','); print(' '); }
+  }
+  print(']');
+}
+
+func swap[T](a: Ref[T], b: Ref[T]) {
+  tmp: T = a;
+  a = b;
+  b = tmp;
+}
+func quicksort[T](mutates list: List[T]) {
+  _quicksort(list, 0l, list.size - 1l);
+}
+func _quicksort[T](mutates list: List[T], from: Long, to: Long) {
+  if from >= to { return; }
+  pivot = from;
+  pivot_val = list[pivot];
+  i = from + 1l;
+  j = to;
+  assert(and(0l <= i, i <= j, j <= list.size - 1l));
+  # goal: [< pivot] pivot [>= pivot]
+  while i < j {
+    while and(i < to, list[i] < pivot_val) { i += 1l; }
+    while and(j > from, list[j] >= pivot_val) { j -= 1l; }
+    if i < j { swap(!list[i], !list[j]); }
+  }
+
+  if list[j] < pivot_val { swap(!list[j], !list[pivot]); }
+  pivot = j;
+
+  _quicksort(list, from, pivot - 1l);
+  _quicksort(list, pivot + 1l, to);
+}
+
+func is_sorted[T](list: List[T]) -> Bool {
+  i = 1l;
+  while i < list.size {
+    if list[i - 1l] > list[i] { return False(); }
+    i += 1l;
+  }
+  return True();
+}
+
+func +[T](a: List[T], b: List[T]) -> Ref[List[T]] {
+  !c = !new(EmptyList[T]());
+  add_all(c, a);
+  add_all(c, b);
+  return !c;
+}
+
+
+func binary_search[T, K](list: List[T], key: K) -> Long {
+    begin = 0l;
+    end = list.size;
+    middle = begin + (end - begin) / 2l;
+
+    while(begin != end) {
+        if key < list[middle] {
+            end = middle;
+        } else {
+            if list[middle] < key {
+                begin = middle + 1l;
+            } else {
+                return middle;
+            }
+        }
+        middle = begin + (end - begin) / 2l;
+    }
+    return -1l;
+}
+
+##################### LIST END #####################
+
+struct MapEntry[T, U] {
+    key: T;
+    value: U;
+}
+
+func cleanup[T, U](entry: MapEntry[T, U]) {
+    cleanup(entry.key);
+    cleanup(entry.value);
+}
+
+func <[T, U](lhs: T, rhs: MapEntry[T, U]) -> Bool { return lhs < rhs.key; }
+func <[T, U](lhs: MapEntry[T, U], rhs: T) -> Bool { return lhs.key < rhs; }
+
+func <[T, U](lhs: MapEntry[T, U], rhs: MapEntry[T, U]) -> Bool {
+    return lhs.key < rhs.key;
+}
+
+func >=[T, U](lhs: MapEntry[T, U], rhs: MapEntry[T, U]) -> Bool {
+    return not(lhs.key < rhs.key);
+}
+
+struct Map[T, U] {
+    entries: List[MapEntry[T, U]];
+}
+
+func map_from_entries[T, U](entries: List[MapEntry[T, U]]) -> Map[T, U] {
+    map = Map(entries);
+    quicksort(map.entries);
+    return map;
+}
+
+func index[T, U](map: Map[T, U], key: T) -> Ref[U] {
+    index_of_key = binary_search(map.entries, key);
+    return !(index(map.entries, index_of_key).value);
+}
+
+
+
+func test_map()  {
+    entries = EmptyList[MapEntry[Int, Str]]();
+
+    add(entries, MapEntry(1, "one"));
+    add(entries, MapEntry(5, "five"));
+    add(entries, MapEntry(2, "two"));
+    add(entries, MapEntry(4, "four"));
+    add(entries, MapEntry(3, "three"));
+
+    map = map_from_entries(entries);
+
+    i = 1;
+    while(i <= 5) {
+        print_line(map[i]);
+        i += 1;
+    }
+
+    cleanup(map.entries);
+}
+
+struct Pair[A, B] { first: A; second: B; }
+struct Tuple3[A, B, C] { first: A; second: B; third: C; }
+
+func <[A, B](lhs: Pair[A, B], rhs: Pair[A, B]) -> Bool {
+    if lhs.first < rhs.first { return True(); }
+    if lhs.second < rhs.second { return True(); }
+    return False();
+}
+
+func <[A, B, C](lhs: Tuple3[A, B, C], rhs: Tuple3[A, B, C]) -> Bool {
+    if lhs.first < rhs.first { return True(); }
+    if lhs.second < rhs.second { return True(); }
+    if lhs.third < rhs.third { return True(); }
+    return False();
+}
+
+struct Action { value: Int; }
+func ==(lhs: Action, rhs: Action) -> Bool { return lhs.value == rhs.value; }
+func Left() -> Action { return Action(-1); }
+func Right() -> Action { return Action(1); }
+func Stay() -> Action { return Action(0); }
+
+
+struct Tape[T] {
+    cells: List[T];
+    blank: T;
+}
+
+func EmptyTape[T](blank: T) -> Tape[T] { return Tape(EmptyList[T](), blank); }
+
+func index[T](mutates tape: Tape[T], i: Long) -> Ref[T] {
+    physical_index = 0l;
+    if i < 0l {
+        i = -i;
+        i -= 1l;
+        physical_index = 2l*i + 1l;
+    } else {
+        physical_index = 2l*i;
+    }
+
+    while(physical_index >= tape.cells.size) {
+        add(tape.cells, tape.blank);
+    }
+    return !index(tape.cells, physical_index);
+}
+
+func min_index[T](tape: Tape[T]) -> Long {
+    if tape.cells.size <= 1l { return 0l; }
+    max_physical_index = tape.cells.size - 1l;
+
+    if mod(max_physical_index, 2l) == 0l { max_physical_index -= 1l; }
+
+    return -((max_physical_index / 2l) + 1l);
+}
+
+func max_index[T](tape: Tape[T]) -> Long {
+    if tape.cells.size == 0l { return 0l; }
+    max_physical_index = tape.cells.size - 1l;
+
+    if mod(max_physical_index, 2l) == 1l { max_physical_index -= 1l; }
+
+    return max_physical_index / 2l;
+}
+
+func print[T](tape: Tape[T]) {
+
+    print("Tape: ");
+    i = min_index(tape);
+    max_index = max_index(tape);
+    while(i <= max_index) {
+        print(tape[i]);
+        i += 1l;
+    }
+    print('\n');
+}
+
+func <(lhs: Char, rhs: Char) -> Bool { return Ord(lhs) < Ord(rhs); }
+
+struct TuringMachine {
+    transitions: Map[Pair[Int, Char], Tuple3[Char, Action, Int]];
+    current_state: Int;
+    current_position: Long;
+    tape: Tape[Char];
+}
+
+
+func execute_step(mutates machine: TuringMachine) {
+    current_symbol = index(machine.tape, machine.current_position);
+    triple = index(machine.transitions, Pair(machine.current_state, current_symbol));
+
+    write_symbol = triple.first;
+    action = triple.second;
+    state = triple.third;
+
+    index(machine.tape, machine.current_position) = write_symbol;
+    machine.current_position += ToLong(action.value);
+    machine.current_state = state;
+}
+
+func execute(machine: TuringMachine, final_state: Int) {
+    step_count = 0l;
+    while(machine.current_state != final_state) {
+        execute_step(machine);
+        step_count += 1l;
+    }
+    print(machine.tape);
+    print_line(step_count);
+}
+
+
+func main() {
+    incrementer_transition_entries =
+        EmptyList[MapEntry[Pair[Int, Char], Tuple3[Char, Action, Int]]]();
+
+    add(incrementer_transition_entries, MapEntry(Pair(0, '1'), Tuple3('1', Right(), 0)));
+    add(incrementer_transition_entries, MapEntry(Pair(0, 'B'), Tuple3('1', Stay(), 1)));
+
+    incrementer_transitions = map_from_entries(incrementer_transition_entries);
+
+    incrementer_tape = EmptyTape('B');
+    incrementer_tape[0l] = '1';
+    incrementer_tape[1l] = '1';
+    incrementer_tape[2l] = '1';
+
+    incrementer = TuringMachine(incrementer_transitions, 0, 0l, incrementer_tape);
+    execute(incrementer, 1);
+
+    print_line("##############");
+
+    beaver3_transition_entries = EmptyList[MapEntry[Pair[Int, Char], Tuple3[Char, Action, Int]]]();
+
+    a = 0; b = 1; c = 2; halt = 3;
+    add(beaver3_transition_entries, MapEntry(Pair(a, '0'), Tuple3('1', Right(), b)));
+    add(beaver3_transition_entries, MapEntry(Pair(a, '1'), Tuple3('1', Left(), c)));
+    add(beaver3_transition_entries, MapEntry(Pair(b, '0'), Tuple3('1', Left(), a)));
+    add(beaver3_transition_entries, MapEntry(Pair(b, '1'), Tuple3('1', Right(), b)));
+    add(beaver3_transition_entries, MapEntry(Pair(c, '0'), Tuple3('1', Left(), b)));
+    add(beaver3_transition_entries, MapEntry(Pair(c, '1'), Tuple3('1', Stay(), halt)));
+
+    beaver3_transitions = map_from_entries(beaver3_transition_entries);
+
+    beaver3 = TuringMachine(beaver3_transitions, a, 0l, EmptyTape('0'));
+    execute(beaver3, halt);
+
+    print_line("##############");
+
+    beaver5_transition_entries = EmptyList[MapEntry[Pair[Int, Char], Tuple3[Char, Action, Int]]]();
+
+    A = 0; B = 1; C = 2; D = 3; E = 4; H = 5;
+    add(beaver5_transition_entries, MapEntry(Pair(A, '0'), Tuple3('1', Right(), B)));
+    add(beaver5_transition_entries, MapEntry(Pair(A, '1'), Tuple3('1', Left(), C)));
+    add(beaver5_transition_entries, MapEntry(Pair(B, '0'), Tuple3('1', Right(), C)));
+    add(beaver5_transition_entries, MapEntry(Pair(B, '1'), Tuple3('1', Right(), B)));
+    add(beaver5_transition_entries, MapEntry(Pair(C, '0'), Tuple3('1', Right(), D)));
+    add(beaver5_transition_entries, MapEntry(Pair(C, '1'), Tuple3('0', Left(), E)));
+    add(beaver5_transition_entries, MapEntry(Pair(D, '0'), Tuple3('1', Left(), A)));
+    add(beaver5_transition_entries, MapEntry(Pair(D, '1'), Tuple3('1', Left(), D)));
+    add(beaver5_transition_entries, MapEntry(Pair(E, '0'), Tuple3('1', Stay(), H)));
+    add(beaver5_transition_entries, MapEntry(Pair(E, '1'), Tuple3('0', Left(), A)));
+
+    beaver5_transitions = map_from_entries(beaver5_transition_entries);
+
+    beaver5 = TuringMachine(beaver5_transitions, A, 0l, EmptyTape('0'));
+    execute(beaver5, H);
+}
+
