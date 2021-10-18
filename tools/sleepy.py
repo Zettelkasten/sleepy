@@ -26,7 +26,10 @@ def _make_file_name(source_path: Path, file_ending: str, allow_exist=False) -> P
   """
   :param str file_ending: with leading . if applicable
   """
-  source_path = source_path.with_suffix(file_ending if file_ending != '' else '.out')
+  if source_path.suffix != ".slp":
+    file_ending = ".out" if file_ending == "" else file_ending
+
+  source_path = source_path.with_suffix(file_ending)
 
   if allow_exist or not source_path.exists():
     return source_path
