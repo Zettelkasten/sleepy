@@ -1,6 +1,6 @@
 from typing import List, Dict, Set, Optional
 
-from sleepy.automaton import NonDeterministicAutomaton, make_dfa_from_nfa, DeterministicAutomaton
+from sleepy.automaton import NonDeterministicAutomaton, make_dfa_from_nfa, DeterministicAutomaton, OTHER_CHAR
 from sleepy.errors import LexError
 from sleepy.grammar import Grammar, Production, EPSILON, IGNORED_TOKEN, get_token_word_from_tokens_pos
 from sleepy.parser import ParserGenerator
@@ -8,7 +8,7 @@ from sleepy.parser import ParserGenerator
 REGEX_LIT_TOKEN = 'a'
 REGEX_SPECIAL_TOKENS = frozenset({'(', ')', '\\', '-', '[', ']', '*', '+', '?', '|', '^', '.'})
 # Currently we only recognize 7-bit ASCII
-REGEX_RECOGNIZED_CHARS = frozenset({'\n'} | {chr(c) for c in range(32, 128)})
+REGEX_RECOGNIZED_CHARS = frozenset({'\n', OTHER_CHAR} | {chr(c) for c in range(32, 128)})
 
 REGEX_CHOICE_OP = Production('Choice', 'Choice', '|', 'Concat')
 REGEX_CONCAT_OP = Production('Concat', 'Concat', 'Repeat')
