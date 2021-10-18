@@ -10,35 +10,32 @@ import better_exchook
 
 import _setup_sleepy_env  # noqa
 # noinspection PyUnresolvedReferences
+from sleepy.ast import FileAst, TranslationUnitAst
 from sleepy.errors import CompilerError
 # noinspection PyUnresolvedReferences
 from sleepy.jit import make_execution_engine, compile_ir, LIB_PATH
 # noinspection PyUnresolvedReferences
-from sleepy.parse import make_program_ast, make_ast
+from sleepy.parse import make_program_ast, make_ast, make_preamble_ast
 from sleepy.symbols import FunctionSymbol
 import llvmlite.binding as llvm
 
+from tools.import_discovery import build_file_dag
 
-def _make_file_name(source_file_name, file_ending, allow_exist=False):
+
+def _make_file_name(source_path: Path, file_ending: str, allow_exist=False) -> Path:
   """
-  :param str source_file_name:
   :param str file_ending: with leading . if applicable
-  :param bool allow_exist:
-  :rtype str:
   """
-  if source_file_name.endswith('.slp'):
-    base_file_name = source_file_name[:-len('.slp')]
-  else:
-    base_file_name = source_file_name
-    if file_ending == '':
-      base_file_name += '.out'
-  import os.path
-  if allow_exist or not os.path.isfile('%s%s' % (base_file_name, file_ending)):
-    return '%s%s' % (base_file_name, file_ending)
+  source_path = source_path.with_suffix(file_ending if file_ending != '' else '.out')
+
+  if allow_exist or not source_path.exists():
+    return source_path
   file_num = 0
-  while os.path.isfile('%s.%s%s' % (base_file_name, file_num, file_ending)):
+  source_path = source_path.with_stem(source_path.stem + str(file_num))
+  while source_path.exists():
     file_num += 1
-  return '%s.%s%s' % (base_file_name, file_num, file_ending)
+    source_path = source_path.with_stem(source_path.stem + str(file_num))
+  return source_path
 
 
 def main():
@@ -65,13 +62,19 @@ def main():
   args = parser.parse_args()
 
   main_func_identifier = 'main'
-  source_file_name: str = args.program
-  with open(source_file_name) as program_file:
-    program = program_file.read()
+  source_file_path: Path = Path(args.program)
   try:
-    ast = make_ast(program, add_preamble=not args.no_preamble)
+    file_dag, source_file_path = build_file_dag(source_file_path)
+
+    file_ast: FileAst = file_dag.nodes[source_file_path]["file_ast"]
+
+    ast = TranslationUnitAst.from_file_asts([make_preamble_ast(), file_ast])
+
+    print(file_dag.nodes)
+    print(file_dag.edges)
+
     module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
-      module_name='default_module', emit_debug=args.debug, source_path=Path(source_file_name))
+      module_name='default_module', emit_debug=args.debug, source_path=source_file_path)
     if main_func_identifier not in symbol_table:
       raise CompilerError('Error: Entry point function %r not found' % main_func_identifier)
     main_func_symbol = symbol_table[main_func_identifier]
@@ -97,7 +100,7 @@ def main():
     print('\nExited with return value %r of type %r' % (return_val, concrete_main_func.return_type))
     return
 
-  object_file_name = _make_file_name(source_file_name, '.o', allow_exist=True)
+  object_file_name = _make_file_name(source_file_path, '.o', allow_exist=True)
   module_ref = llvm.parse_assembly(str(module_ir))
 
   print(f'Opt: {args.opt}')
@@ -111,7 +114,7 @@ def main():
     module_passes.run(module_ref)
 
   if args.emit_ir:
-    ir_file_name = _make_file_name(source_file_name, '.ll', allow_exist=True)
+    ir_file_name = _make_file_name(source_file_path, '.ll', allow_exist=True)
     with open(ir_file_name, 'w') as file:
       file.write(str(module_ir))
     return
@@ -123,7 +126,7 @@ def main():
   if args.emit_object:
     return
 
-  exec_file_name = _make_file_name(source_file_name, '', allow_exist=True)
+  exec_file_name = _make_file_name(source_file_path, '', allow_exist=True)
   import subprocess
   subprocess.run(
     ['gcc'] + (['-g'] if args.debug else []) + ['-o', exec_file_name, object_file_name, LIB_PATH + '_static.a']
