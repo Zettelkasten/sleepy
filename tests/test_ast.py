@@ -1517,17 +1517,17 @@ def test_unchecked_assert_type_narrowing():
   with make_execution_engine() as engine:
     program = """
     struct S {
-      val: Double = 0.0;
+      val: Ptr[Double] = 0.0;
     }
     func cast_to_s(ptr: S|Ptr[Double]) ->  S  {
       unchecked_assert(ptr is S);
       return ptr;
     }
     func main(val: Double) ->  Double  {
-      ptr = allocate[Double](2);
+      ptr: Ptr[Double] = allocate[Double](2);
       store(ptr, val);
       s: S = cast_to_s(ptr);
-      return s.val;
+      return load(s.val);
     }
     """
     main = compile_program(engine, program)
