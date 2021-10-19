@@ -1396,28 +1396,27 @@ def test_is_operator_incremental():
 def test_union_if_else_type_narrowing():
   with make_execution_engine() as engine:
     program = """
+    func is_int(b: Int) -> Int { return 0; }
+    func is_bool(b: Bool) -> Int { return 1; }
+    func is_double(b: Double) -> Int { return 2; }
     func make_val() ->  Int|Bool|Double  { return 42.0; }
-    func main() ->  Double  {
+    func main() -> Int {
       val = make_val();
       if val is Int {
-        val = val + 5;
-        return 1.0;
+        return is_int(val);
       } else {
         # must be Bool or Double
         if val is Bool {
-          val = not(val);
-          return 2.0;
+          return is_bool(val);
         } else {
           # must be Double
-          val = sin(val);
-          return val;
+          return is_double(val);
         }
       }
     }
     """
-    main = compile_program(engine, program)
-    from math import sin
-    assert_almost_equal(main(), sin(42.0))
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 2)
 
 
 def test_union_if_without_else_type_narrowing():
