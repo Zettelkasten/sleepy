@@ -1,0 +1,3 @@
+import "up_and_down/down_1.slp"
+
+func main() -> Int { return down1() + down2() + down3() + upup() }

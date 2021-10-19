@@ -1,0 +1,3 @@
+import "import_chain_3.slp"
+struct C2 { v: Int; }
+func chain2() -> Int { return 1 + chain3() }
