@@ -1861,7 +1861,8 @@ def make_func_call_ir(func: FunctionSymbol,
     tag_ir_type = ir.types.IntType(8)
     call_block_index_ir = ir.Constant(tag_ir_type, 0)
     for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
-      ir_func_arg = bound_func_args[arg_num].ir_val
+      # collapse here entirely (regardless of mutates), because we need to look at the tag.
+      ir_func_arg = func_args[arg_num].copy_collapse(context=context, name='call_arg_%s_union' % arg_num).ir_val
       assert ir_func_arg is not None
       base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
       base_ir = ir.Constant(tag_ir_type, base)
