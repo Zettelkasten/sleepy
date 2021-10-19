@@ -27,10 +27,8 @@ def test_narrow_type():
 
 
 def test_exclude_type():
-  from sleepy.symbols import exclude_type, UnionType
-  from sleepy.builtin_symbols import SLEEPY_INT
-  from sleepy.builtin_symbols import SLEEPY_BOOL
-  from sleepy.builtin_symbols import SLEEPY_DOUBLE
+  from sleepy.symbols import exclude_type, UnionType, ReferenceType
+  from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE
   assert_equal(exclude_type(SLEEPY_INT, SLEEPY_NEVER), SLEEPY_INT)
   assert_equal(exclude_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_NEVER)
   assert_equal(
@@ -40,6 +38,16 @@ def test_exclude_type():
   assert_equal(
     exclude_type(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_BOOL),
     UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))
+  assert_equal(
+    exclude_type(ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_INT)), SLEEPY_NEVER)
+  assert_equal(
+    exclude_type(ReferenceType(SLEEPY_INT), SLEEPY_NEVER), ReferenceType(SLEEPY_INT))
+  assert_equal(
+    exclude_type(ReferenceType(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4)), ReferenceType(SLEEPY_INT)),
+    ReferenceType(UnionType([SLEEPY_BOOL], [1], 4)))
+  assert_equal(
+    exclude_type(ReferenceType(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4)), ReferenceType(SLEEPY_BOOL)),
+    ReferenceType(UnionType([SLEEPY_INT], [0], 4)))
 
 
 def test_get_common_type():

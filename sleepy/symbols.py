@@ -887,6 +887,15 @@ def exclude_type(from_type, excluded_type):
     return SLEEPY_NEVER
   if excluded_type == SLEEPY_NEVER:
     return from_type
+  assert isinstance(from_type, ReferenceType) == isinstance(excluded_type, ReferenceType)
+  if len(from_type.templ_types) > 0 or len(excluded_type.templ_types) > 0:  # template types
+    # TODO: This does not work well for unions of templated types. Also see narrow_type
+    if len(from_type.templ_types) != len(excluded_type.templ_types):
+      return from_type
+    new_templ_types = [
+      exclude_type(from_templ_type, to_templ_type)
+      for from_templ_type, to_templ_type in zip(from_type.templ_types, excluded_type.templ_types)]
+    return from_type.replace_types(dict(zip(from_type.templ_types, new_templ_types)))
   if isinstance(excluded_type, UnionType):
     excluded_types = excluded_type.possible_types
   else:
