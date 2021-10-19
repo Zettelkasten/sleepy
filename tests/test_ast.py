@@ -1393,6 +1393,26 @@ def test_is_operator_incremental():
     assert_equal(main(), True)
 
 
+def test_union_negative_else_clause():
+  with make_execution_engine() as engine:
+    program = """
+    func is_int(b: Int) -> Int { return 0; }
+    func is_bool(b: Bool) -> Int { return 1; }
+    func make_val() -> Int|Bool { return 0 == 0; }
+    func main() -> Int {
+      val = make_val();
+      if val is Int {
+        return is_int(val);
+      } else {
+        # must be Bool
+        return is_bool(val);
+      }
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 1)
+
+
 def test_union_if_else_type_narrowing():
   with make_execution_engine() as engine:
     program = """
