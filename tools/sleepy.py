@@ -78,7 +78,7 @@ def main():
     print(file_dag.edges)
 
     module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
-      module_name='default_module', emit_debug=args.debug, source_path=source_file_path)
+      module_name='default_module', emit_debug=args.debug, main_file_path=source_file_path)
     if main_func_identifier not in symbol_table:
       raise CompilerError('Error: Entry point function %r not found' % main_func_identifier)
     main_func_symbol = symbol_table[main_func_identifier]

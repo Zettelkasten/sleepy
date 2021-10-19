@@ -12,6 +12,7 @@ def make_ast_for_file(path: Path) -> FileAst:
   with open(path) as program_file:
     program = program_file.read()
     ast = make_program_ast(program)
+    ast.file_path = path
     return ast
 
 

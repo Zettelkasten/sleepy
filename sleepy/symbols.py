@@ -1661,12 +1661,14 @@ class CodegenContext:
       self.di_declare_func: Optional[ir.Function] = None
       self.known_di_types: Optional[Dict[Type, ir.DIValue]] = None
     else:
-      # TODO: Add compiler version
+      self.file_di_values: Dict[Path, ir.DIValue] = dict()
+
       if source_path is None:
         source_path = Path("./tmp.slp")
+      self.change_file(source_path)
+
+      # TODO: Add compiler version
       producer = 'sleepy compiler'
-      self.current_di_file: Optional[ir.DIValue] = module.add_debug_info(
-        'DIFile', {'filename': source_path.name, 'directory': str(source_path.parent)})
 
       self.current_di_compile_unit: Optional[ir.DIValue] = module.add_debug_info(
         'DICompileUnit', {
@@ -1681,7 +1683,6 @@ class CodegenContext:
       self.module.add_named_metadata('llvm.module.flags', di_debug_info_version)
       self.module.add_named_metadata('llvm.ident', [producer])
 
-      self.current_di_scope: Optional[ir.DIValue] = self.current_di_file
       di_declare_func_type = ir.FunctionType(ir.VoidType(), [ir.MetaDataType()] * 3)
       self.di_declare_func = ir.Function(self.module, di_declare_func_type, 'llvm.dbg.declare')
       self.known_di_types: Dict[Type, ir.DIValue] = {}
@@ -1707,6 +1708,16 @@ class CodegenContext:
   @property
   def emits_ir(self) -> bool:
     return self.builder is not None
+
+  def change_file(self, source_path: Optional[Path]):
+    if not self.emits_debug: return
+    if source_path in self.file_di_values: self.current_di_file = self.file_di_values[source_path]
+    else:
+      self.current_di_file = self.module.add_debug_info(
+      'DIFile', {'filename': source_path.name, 'directory': str(source_path.parent)})
+      self.file_di_values[source_path] = self.current_di_file
+
+    self.current_di_scope: Optional[ir.DIValue] = self.current_di_file
 
   def __repr__(self) -> str:
     return 'CodegenContext(builder=%r, emits_ir=%r, is_terminated=%r)' % (
