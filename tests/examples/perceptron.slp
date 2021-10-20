@@ -34,15 +34,11 @@ struct Vec {
   dim : Int;
   start : Ptr[Double];
 }
-func index(vec: Vec, pos: Int) -> Ptr[Double] {
+func index(mutates vec: Vec, pos: Int) -> Ref[Double] {
   pos = normalized_index(pos, vec.dim);
-  return vec.start + pos;
+  return !load(vec.start + pos);
 }
-func set(vec: Vec, pos: Int, val: Double)  {
-  pos = normalized_index(pos, vec.dim);
-  store(vec.start + pos, val);
-}
-func set(vec: Vec, slice: Slice, val: Double)  {
+func set(mutates vec: Vec, slice: Slice, val: Double)  {
   pos = normalized_from_index(slice.from, vec.dim);
   while pos < normalized_to_index(slice.to, vec.dim) {
     vec[pos] = val;
@@ -115,31 +111,31 @@ struct Mat {
   num_cols : Int = 0;
   start : Ptr[Double] = allocate[Double](0);
 }
-func index(mat: Mat, row: Int, col: Int) -> Ptr[Double]  {
+func index(mutates mat: Mat, row: Int, col: Int) -> Ref[Double]  {
   row = normalized_index(row, mat.num_rows);
   col = normalized_index(col, mat.num_cols);
-  return mat.start + row * mat.num_cols + col;
+  return !load(mat.start + row * mat.num_cols + col);
 }
-func index(mat: Mat, row: Int) ->  Vec  {
+func index(mutates mat: Mat, row: Int) ->  Vec  {
   row_vec = ZeroVec(mat.num_cols);
   col = 0;
   while col < mat.num_cols {
-    row_vec[col] = +mat[row, col];
+    row_vec[col] = mat[row, col];
     col += 1;
   }
   return row_vec;
 }
-func set(mat: Mat, row: Int, col: Int, val: Double)  {
+func set(mutates mat: Mat, row: Int, col: Int, val: Double)  {
   assert(and(0 <= row, row < mat.num_rows));
   assert(and(0 <= col, col < mat.num_cols));
   store(mat.start + row * mat.num_cols + col, val);
 }
-func set(mat: Mat, row: Int, row_vec: Vec)  {
+func set(mutates mat: Mat, row: Int, row_vec: Vec)  {
   assert(and(0 <= row, row < mat.num_rows));
   assert(row_vec.dim == mat.num_cols);
   memcpy(mat.start + row * mat.num_cols, row_vec.start, row_vec.dim * 8);
 }
-func set(mat: Mat, row_slice: Slice, col_slice: Slice, val: Double)  {
+func set(mutates mat: Mat, row_slice: Slice, col_slice: Slice, val: Double)  {
   row = normalized_from_index(row_slice.from, mat.num_rows);
   while row < normalized_to_index(row_slice.to, mat.num_rows) {
     col = normalized_from_index(col_slice.from, mat.num_cols);
