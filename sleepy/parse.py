@@ -12,6 +12,7 @@ def make_program_ast(program: str) -> FileAst:
   assert isinstance(program_ast, FileAst)
   return program_ast
 
+
 def make_preamble_ast() -> FileAst:
   preamble_path = Path(__file__).parent.joinpath("std/preamble.slp").resolve()
   with open(preamble_path) as preamble_file:
@@ -20,9 +21,9 @@ def make_preamble_ast() -> FileAst:
   file_ast.file_path = preamble_path
   return file_ast
 
+
 def make_ast(program: str, add_preamble=True) -> TranslationUnitAst:
   file_asts = [make_preamble_ast()] if add_preamble else []
   file_asts.append(make_program_ast(program))
 
   return TranslationUnitAst.from_file_asts(file_asts)
-

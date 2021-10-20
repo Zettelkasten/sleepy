@@ -2216,12 +2216,14 @@ def test_imports():
     ast = make_ast(program, add_preamble=False)
     assert_equal(ast.file_asts[0].imports_ast.imports, ["a", "b", "c", "d", "e", "f"])
 
+
 def test_empty_imports_disallowed():
   program = """
     import 
   """
   with assert_raises(ParseError):
     make_ast(program, add_preamble=False)
+
 
 def test_no_import():
   program = """

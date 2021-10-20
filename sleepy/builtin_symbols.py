@@ -105,7 +105,6 @@ def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT])
   constructor_symbol = str_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
   str_type.constructor = constructor_symbol
-  type_factory = TypeFactory(placeholder_templ_types=[], signature_type=str_type)
   struct_symbol = TypeTemplateSymbol.make_concrete_type_symbol(str_type)
   str_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
   return struct_symbol

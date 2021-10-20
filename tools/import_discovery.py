@@ -17,8 +17,10 @@ def make_ast_for_file(path: Path) -> FileAst:
 
 
 def resolve_import_path(import_path: Path, importing_path: Path) -> Path:
-  if import_path.is_absolute(): return importing_path.resolve()
+  if import_path.is_absolute():
+    return importing_path.resolve()
   return importing_path.parent.joinpath(import_path).resolve()
+
 
 def process_file(path: Path, dag: nx.DiGraph) -> List[Path]:
   current_ast = make_ast_for_file(path)
@@ -37,8 +39,10 @@ def process_file(path: Path, dag: nx.DiGraph) -> List[Path]:
 
   return new_nodes
 
+
 def build_file_dag(main_file: Path) -> Tuple[nx.DiGraph, Path]:
-  if not main_file.is_absolute(): main_file = Path.cwd().joinpath(main_file).resolve()
+  if not main_file.is_absolute():
+    main_file = Path.cwd().joinpath(main_file).resolve()
 
   dag = nx.DiGraph()
 
@@ -51,7 +55,8 @@ def build_file_dag(main_file: Path) -> Tuple[nx.DiGraph, Path]:
 
   return dag, main_file
 
+
 def check_graph(graph: nx.DiGraph):
   if not nx.is_directed_acyclic_graph(graph):
-    sccs = [ scc for scc in nx.strongly_connected_components(graph) if len(scc) > 1 ]
+    sccs = [scc for scc in nx.strongly_connected_components(graph) if len(scc) > 1]
     raise CompilerError(f"Import are cyclic. The following cycles were found:\n {sccs}")

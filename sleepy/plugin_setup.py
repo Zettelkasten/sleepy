@@ -12,8 +12,10 @@ TOKEN_NAME_TO_HIGHLIGHT = dict(
   ((name, highlight) for name, _, highlight in TOKEN_INFO)
 )
 
+
 def tokenize(word:str) -> Tuple[List[str], List[int]]:
   names, positions = PLUGIN_LEXER.tokenize(word)
   return [TOKEN_NAME_TO_HIGHLIGHT.get(name, name) for name in names], list(positions)
+
 
 print("INITIALIZED CORRECTLY")

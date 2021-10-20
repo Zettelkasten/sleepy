@@ -192,9 +192,9 @@ class AbstractSyntaxTree(ABC):
 
   def check_pos_validity(self) -> bool:
     children = self.children()
-    if len(children) == 0: return True
-    if children[0].pos.from_pos < self.pos.from_pos or \
-      children[-1].pos.to_pos > self.pos.to_pos:
+    if len(children) == 0:
+      return True
+    if children[0].pos.from_pos < self.pos.from_pos or children[-1].pos.to_pos > self.pos.to_pos:
       return False
 
     for pre, post in [(x, x + 1) for x in range(len(children) - 1)]:
@@ -267,6 +267,7 @@ class FileAst(AbstractSyntaxTree):
   def __repr__(self) -> str:
     return 'TopLevelAst(%s)' % self.stmt_list
 
+
 class ImportsAst(AbstractSyntaxTree):
   def __init__(self, pos: TreePosition, import_asts: List[ImportAst]):
     super().__init__(pos)
@@ -278,6 +279,7 @@ class ImportsAst(AbstractSyntaxTree):
 
   def children(self) -> List[AbstractSyntaxTree]:
     return self.import_asts
+
 
 class ImportAst(AbstractSyntaxTree):
   def __init__(self, pos: TreePosition, path: str):

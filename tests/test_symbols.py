@@ -5,6 +5,7 @@ from nose.tools import assert_equal
 from sleepy.symbols import UnionType, SLEEPY_NEVER
 
 
+# noinspection PyPep8Naming
 def test_can_implicit_cast_to():
   from sleepy.symbols import can_implicit_cast_to, ReferenceType, UnionType, StructType, PlaceholderTemplateType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_DOUBLE
@@ -21,21 +22,21 @@ def test_can_implicit_cast_to():
     ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
   assert_equal(can_implicit_cast_to(
     ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), True)
-  templ = PlaceholderTemplateType('T')
-  list = StructType(struct_identifier='List', templ_types=[templ], member_identifiers=[], member_types=[])
+  T = PlaceholderTemplateType('T')
+  List = StructType(struct_identifier='List', templ_types=[T], member_identifiers=[], member_types=[])
   assert_equal(can_implicit_cast_to(
     ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
   assert_equal(can_implicit_cast_to(
     ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), True)
   assert_equal(
     can_implicit_cast_to(
-      list.replace_types({templ: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)}),
-      list.replace_types({templ: SLEEPY_INT})),
+      List.replace_types({T: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)}),
+      List.replace_types({T: SLEEPY_INT})),
     False)
   assert_equal(
     can_implicit_cast_to(
-      list.replace_types({templ: SLEEPY_INT}),
-      list.replace_types({templ: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)})),
+      List.replace_types({T: SLEEPY_INT}),
+      List.replace_types({T: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)})),
     False)
 
 

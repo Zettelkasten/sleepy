@@ -31,8 +31,6 @@ class Symbol(ABC):
   def __init__(self):
     assert self.kind is not None
 
-
-
   class Kind(Enum):
     """
     Possible symbol types.
@@ -609,7 +607,7 @@ class UnionType(Type):
       union_ir_alloca, variant_type=variant_type, context=context, name='%s_val_ptr' % name)
     return context.builder.load(untagged_union_ptr, name=name)
 
-  def copy_with_narrowed_types(self, narrow_to_types: List[Type]|Set[Type]) -> UnionType:
+  def copy_with_narrowed_types(self, narrow_to_types: List[Type] | Set[Type]) -> UnionType:
     possible_types = [possible_type for possible_type in self.possible_types if possible_type in narrow_to_types]
     possible_type_nums = [
       possible_type_num
@@ -1131,7 +1129,8 @@ class ConcreteFunction:
       di_return_type = None if self.signature.returns_void else self.return_type.make_di_type(context=context)
       di_arg_types = [arg_type.make_di_type(context=context) for arg_type in self.arg_types]
       di_arg_types = [
-        context.module.add_debug_info('DIDerivedType',
+        context.module.add_debug_info(
+          'DIDerivedType',
           {'tag': ir.DIToken('DW_TAG_reference_type'), 'baseType': di_type, 'size': LLVM_POINTER_SIZE * 8})
         if mutates else di_type
         for di_type, mutates in zip(di_arg_types, self.arg_mutates)]
@@ -1406,7 +1405,7 @@ class FunctionSymbol(Symbol):
   """
   kind = Symbol.Kind.FUNCTION
 
-  def __init__(self, identifier: str, returns_void: bool, base: Optional[FunctionSymbol] = None):
+  def __init__(self, identifier: str, returns_void: bool):
     super().__init__()
     self.identifier = identifier
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionTemplate]] = {}
@@ -1710,11 +1709,13 @@ class CodegenContext:
     return self.builder is not None
 
   def change_file(self, source_path: Optional[Path]):
-    if not self.emits_debug: return
-    if source_path in self.file_di_values: self.current_di_file = self.file_di_values[source_path]
+    if not self.emits_debug:
+      return
+    if source_path in self.file_di_values:
+      self.current_di_file = self.file_di_values[source_path]
     else:
       self.current_di_file = self.module.add_debug_info(
-      'DIFile', {'filename': source_path.name, 'directory': str(source_path.parent)})
+        'DIFile', {'filename': source_path.name, 'directory': str(source_path.parent)})
       self.file_di_values[source_path] = self.current_di_file
 
     self.current_di_scope: Optional[ir.DIValue] = self.current_di_file

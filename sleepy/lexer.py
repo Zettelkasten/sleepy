@@ -62,7 +62,8 @@ class LexerGenerator:
         dfa.get_next_state(state[i], char) for i, dfa in enumerate(self._automatons))  # type: Tuple[Optional[str]]
       is_error = all(dfa_state == ERROR_STATE for dfa_state in next_state)
       self.transition_table[(state, char)] = (next_state, is_error)
-    else: self.cache_hits += 1
+    else:
+      self.cache_hits += 1
 
     return ERROR_STATE if is_error else next_state
 

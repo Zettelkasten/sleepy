@@ -13,26 +13,26 @@ from sleepy.builtin_symbols import SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEE
 
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   prods_attr_rules={
-    Production('S', 'File'): { 'ast': 'ast.1'},
+    Production('S', 'File'): {'ast': 'ast.1'},
     Production('File', 'SeparatedImportDecl?', 'StmtList'): {
       'ast': lambda _pos, stmt_list, ast: FileAst(_pos, stmt_list=stmt_list(2), imports_ast=ast(1))
     },
 
-    Production('SeparatedImportDecl?') : {'ast': lambda _pos: ImportsAst(pos=_pos, import_asts=[])},
-    Production('SeparatedImportDecl?', 'ImportDecl') : {'ast': 'ast.1'},
+    Production('SeparatedImportDecl?'): {'ast': lambda _pos: ImportsAst(pos=_pos, import_asts=[])},
+    Production('SeparatedImportDecl?', 'ImportDecl'): {'ast': 'ast.1'},
     Production('ImportDecl', 'import', 'Import', 'ImportNames'): {
       'ast': lambda _pos, ast, asts: ImportsAst(_pos, import_asts=[ast(2)] + asts(3))
     },
-    Production('ImportNames'): { 'asts': [] },
+    Production('ImportNames'): {'asts': []},
     Production('ImportNames', ',', 'Import', 'ImportNames'): {
       'asts': lambda ast, asts: [ast(2)] + asts(3)
     },
-    Production('Import', 'str') : {
+    Production('Import', 'str'): {
       'ast': lambda _pos, string: ImportAst(pos=_pos, path=string(1))
     },
 
-    Production(';?') : {},
-    Production(';?', ';') : {},
+    Production(';?'): {},
+    Production(';?', ';'): {},
 
     Production('separator', ';'): {},
     Production('separator', 'new_line'): {},
@@ -41,9 +41,9 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('Scope', '{', 'StmtList', '}'): {
       'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list=stmt_list(2))},
 
-    Production('SeparatedStmt', 'Stmt', 'separator') : { 'ast': 'ast.1' },
-    Production('SeparatedStmt', 'If1Stmt') : { 'ast': 'ast.1' },
-    Production('SeparatedStmt', 'If2Stmt') : { 'ast': 'ast.1' },
+    Production('SeparatedStmt', 'Stmt', 'separator'): {'ast': 'ast.1'},
+    Production('SeparatedStmt', 'If1Stmt'): {'ast': 'ast.1'},
+    Production('SeparatedStmt', 'If2Stmt'): {'ast': 'ast.1'},
 
     Production('AnnotatedStmt', 'AnnotationList', 'Stmt'): {
       'ast': lambda annotation_list, ast: annotate_ast(ast(2), annotation_list(1))
@@ -52,7 +52,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda annotation_list, ast: annotate_ast(ast(2), annotation_list(1))
     },
 
-    Production('StmtList'): { 'stmt_list': [] },
+    Production('StmtList'): {'stmt_list': []},
     Production('StmtList', 'AnnotatedStmt'): {
       'stmt_list': lambda ast: [ast(1)]
     },
@@ -274,16 +274,6 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     'hex_int': {'number': lambda value: parse_hex_int(value)}
   }
 )
-
-
-
-
-
-
-
-
-
-
 
 SLEEPY_GRAMMAR = SLEEPY_ATTR_GRAMMAR.grammar
 SLEEPY_PARSER = ParserGenerator(SLEEPY_GRAMMAR)
