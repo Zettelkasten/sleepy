@@ -118,15 +118,11 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
     Production('SumExpr', 'ProdExpr'): {
       'ast': 'ast.1'},
-    Production('ProdExpr', 'ProdExpr', 'prod_op', 'MemberExpr'): {
+    Production('ProdExpr', 'ProdExpr', 'prod_op', 'NegExpr'): {
       'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
-    Production('ProdExpr', 'MemberExpr'): {
+    Production('ProdExpr', 'NegExpr'): {
       'ast': 'ast.1'},
-    Production('MemberExpr', 'MemberExpr', '.', 'identifier'): {
-      'ast': lambda _pos, ast, identifier: MemberExpressionAst(_pos, ast(1), identifier(3))},
-    Production('MemberExpr', 'NegExpr'): {
-      'ast': 'ast.1'},
-    Production('NegExpr', 'sum_op', 'PrimaryExpr'): {
+    Production('NegExpr', 'sum_op', 'NegExpr'): {
       'ast': lambda _pos, ast, op: UnaryOperatorExpressionAst(_pos, op(1), ast(2))},
     Production('NegExpr', 'unbind_op', 'NegExpr'): {
       'ast': lambda _pos, ast: UnbindExpressionAst(_pos, ast(2))},
@@ -156,6 +152,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('PrimaryExpr', 'PrimaryExpr', '[', 'ExprList', ']'): {
       'ast': lambda _pos, ast, val_list: CallExpressionAst(
         _pos, func_expr=IdentifierExpressionAst(_pos, identifier='index'), func_arg_exprs=[ast(1)] + val_list(3))},
+    Production('PrimaryExpr', 'PrimaryExpr', '.', 'identifier'): {
+      'ast': lambda _pos, ast, identifier: MemberExpressionAst(_pos, ast(1), identifier(3))},
     Production('PrimaryExpr', '(', 'Expr', ')'): {
       'ast': 'ast.2'},
     Production('AnnotationList'): {
