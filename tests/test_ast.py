@@ -4,7 +4,7 @@ import unittest
 from nose.tools import assert_equal, assert_almost_equal, assert_raises
 
 import _setup_test_env  # noqa
-from sleepy.errors import SemanticError
+from sleepy.errors import SemanticError, ParseError
 from sleepy.jit import make_execution_engine
 from tests.compile import compile_program
 from sleepy.parse import make_ast
@@ -2203,3 +2203,28 @@ def test_mutates_called_with_ref_ref():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(5), 5 + 1)
+
+
+def test_imports():
+    program = """
+      import "a", "b",
+        "c", "d"
+        , "e"
+        ,
+        "f"
+    """
+    ast = make_ast(program, add_preamble=False)
+    assert_equal(ast.file_asts[0].imports_ast.imports, ["a", "b", "c", "d", "e", "f"])
+
+def test_empty_imports_disallowed():
+  program = """
+    import 
+  """
+  with assert_raises(ParseError):
+    make_ast(program, add_preamble=False)
+
+def test_no_import():
+  program = """
+  """
+  ast = make_ast(program, add_preamble=False)
+  assert_equal(ast.file_asts[0].imports_ast.imports, [])

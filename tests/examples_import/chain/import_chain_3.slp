@@ -1,0 +1,2 @@
+struct C3 { v: Int; }
+func chain3() -> Int { return 1 }

@@ -1,8 +1,9 @@
 from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
   ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   BinaryOperatorExpressionAst, IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
-  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, \
-  ReferenceExpressionAst, UnbindExpressionAst
+  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst, \
+  ImportAst, ImportsAst, ReferenceExpressionAst, UnbindExpressionAst
+
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
   parse_hex_int
 from sleepy.functions import FunctionDeclarationAst
@@ -12,8 +13,22 @@ from sleepy.builtin_symbols import SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEE
 
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   prods_attr_rules={
-    Production('TopLevelStmt', 'StmtList'): {
-      'ast': lambda _pos, stmt_list: FileAst(_pos, stmt_list=stmt_list(1))
+    Production('S', 'File'): { 'ast': 'ast.1'},
+    Production('File', 'SeparatedImportDecl?', 'StmtList'): {
+      'ast': lambda _pos, stmt_list, ast: FileAst(_pos, stmt_list=stmt_list(2), imports_ast=ast(1))
+    },
+
+    Production('SeparatedImportDecl?') : {'ast': lambda _pos: ImportsAst(pos=_pos, import_asts=[])},
+    Production('SeparatedImportDecl?', 'ImportDecl') : {'ast': 'ast.1'},
+    Production('ImportDecl', 'import', 'Import', 'ImportNames'): {
+      'ast': lambda _pos, ast, asts: ImportsAst(_pos, import_asts=[ast(2)] + asts(3))
+    },
+    Production('ImportNames'): { 'asts': [] },
+    Production('ImportNames', ',', 'Import', 'ImportNames'): {
+      'asts': lambda ast, asts: [ast(2)] + asts(3)
+    },
+    Production('Import', 'str') : {
+      'ast': lambda _pos, string: ImportAst(pos=_pos, path=string(1))
     },
 
     Production(';?') : {},

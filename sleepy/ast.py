@@ -252,19 +252,40 @@ class AbstractScopeAst(AbstractSyntaxTree):
 
 
 class FileAst(AbstractSyntaxTree):
-  """
-  TopLevelExpr.
-  """
-
-  def __init__(self, pos: TreePosition, stmt_list: List[StatementAst]):
+  def __init__(self, pos: TreePosition,
+               stmt_list: List[StatementAst],
+               imports_ast: ImportsAst,
+               file_path: Optional[Path] = None):
     super().__init__(pos)
+    self.imports_ast = imports_ast
     self.stmt_list = stmt_list
+    self.file_path = file_path
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return self.stmt_list
+    return [self.imports_ast] + self.stmt_list
 
   def __repr__(self) -> str:
     return 'TopLevelAst(%s)' % self.stmt_list
+
+class ImportsAst(AbstractSyntaxTree):
+  def __init__(self, pos: TreePosition, import_asts: List[ImportAst]):
+    super().__init__(pos)
+    self.import_asts = import_asts
+
+  @property
+  def imports(self) -> List[str]:
+    return [a.path for a in self.import_asts]
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return self.import_asts
+
+class ImportAst(AbstractSyntaxTree):
+  def __init__(self, pos: TreePosition, path: str):
+    super().__init__(pos)
+    self.path = path
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return []
 
 
 class TranslationUnitAst(AbstractSyntaxTree):
@@ -287,7 +308,7 @@ class TranslationUnitAst(AbstractSyntaxTree):
 
   def make_module_ir_and_symbol_table(self, module_name: str,
                                       emit_debug: bool,
-                                      source_path: Optional[Path] = None) -> (ir.Module, SymbolTable):
+                                      main_file_path: Optional[Path] = None) -> (ir.Module, SymbolTable):
     assert self.check_pos_validity()
 
     module = ir.Module(name=module_name)
@@ -296,11 +317,12 @@ class TranslationUnitAst(AbstractSyntaxTree):
     symbol_table = SymbolTable()
     context = CodegenContext(
       builder=root_builder, module=module, emits_debug=emit_debug,
-      source_path=source_path)
+      source_path=main_file_path)
 
     build_initial_ir(symbol_table=symbol_table, context=context)
     assert context.ir_func_malloc is not None
     for ast in self.file_asts:
+      context.change_file(ast.file_path)
       for statement in ast.stmt_list:
         assert not context.is_terminated
         statement.build_ir(symbol_table=symbol_table, context=context)

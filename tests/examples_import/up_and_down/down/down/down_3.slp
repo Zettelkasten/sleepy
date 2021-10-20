@@ -1,0 +1,3 @@
+import "../../up_up.slp"
+
+func down3() -> Int { return 1 }

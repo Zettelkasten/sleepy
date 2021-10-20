@@ -1,0 +1,8 @@
+import "chain/import_chain_2.slp"
+
+func chain() -> Int { return 1 + chain2() }
+func main() -> Int {
+  c2 = C2(1)
+  c3 = C3(1)
+  return chain() + c2.v + c3.v
+}

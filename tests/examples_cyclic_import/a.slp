@@ -1,0 +1,3 @@
+import "cyclic/b.slp"
+
+func main() {}
