@@ -609,13 +609,8 @@ class UnionType(Type):
       union_ir_alloca, variant_type=variant_type, context=context, name='%s_val_ptr' % name)
     return context.builder.load(untagged_union_ptr, name=name)
 
-  def copy_with_narrowed_types(self, narrow_to_types):
-    """
-    :param list[Type] narrow_to_types:
-    :rtype: UnionType
-    """
-    possible_types = [
-      possible_type for possible_type in self.possible_types if possible_type in narrow_to_types]
+  def copy_with_narrowed_types(self, narrow_to_types: List[Type]|Set[Type]) -> UnionType:
+    possible_types = [possible_type for possible_type in self.possible_types if possible_type in narrow_to_types]
     possible_type_nums = [
       possible_type_num
       for possible_type, possible_type_num in zip(self.possible_types, self.possible_type_nums)
@@ -645,11 +640,7 @@ class UnionType(Type):
       possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=new_val_size)
 
   @classmethod
-  def from_types(cls, possible_types):
-    """
-    :param list[Type] possible_types:
-    :rtype: UnionType
-    """
+  def from_types(cls, possible_types: List[Type]) -> UnionType:
     possible_types = list(dict.fromkeys(possible_types))  # possibly remove duplicates
     possible_type_nums = list(range(len(possible_types)))
     val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in possible_types)
@@ -827,62 +818,112 @@ class PlaceholderTemplateType(Type):
     return None
 
 
-def can_implicit_cast_to(from_type, to_type):
+def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   """
-  :param Type from_type:
-  :param Type to_type:
-  :rtype bool:
+  Whether you can "easily" treat memory of `from_type` as `to_type`.
+  "Easily" means via `TypedValue.copy_with_implicit_cast`, without calling any function / allocating new memory / etc.
+  E.g., if `from_type` is a union, you can treat it as each of each possible member types
+  by simply dropping the union tag.
+  But e.g. List[Int] cannot easily be converted to List[Int|Bool],
+  because that would need to allocate an entirely new list (Int has a different value size than just Int|Bool).
+
+  References are a special case here: If A is a subtype of B, we allow Ref[A] to be implicitly casted to Ref[B].
+  In general, for other template types, this is not true.
   """
   if from_type == to_type:
     return True
   if from_type == SLEEPY_VOID or to_type == SLEEPY_VOID:
     return False
-  if isinstance(from_type, UnionType):
-    possible_from_types = from_type.possible_types
-  else:
-    possible_from_types = [from_type]
-  if isinstance(to_type, UnionType):
-    possible_to_types = to_type.possible_types
-  else:
-    possible_to_types = [to_type]
-  return all(possible_from_type in possible_to_types for possible_from_type in possible_from_types)
+  possible_from_types = set(from_type.possible_types) if isinstance(from_type, UnionType) else {from_type}
+  possible_to_types = set(to_type.possible_types) if isinstance(to_type, UnionType) else {to_type}
+  # handle references specially
+  for a in list(possible_from_types):
+    if not isinstance(a, ReferenceType):
+      continue
+    if not any(isinstance(b, ReferenceType) and is_subtype(a.pointee_type, b.pointee_type) for b in possible_to_types):
+      return False
+    possible_from_types.remove(a)
+  # Note: These elements really need to match exactly,
+  # it is not enough for their template types to be implicitly convertible alone.
+  # E.g. even if A|B can be cast to B implicitly, List[A|B] cannot be to List[B].
+  # That would require creating an entire new list.
+  return possible_from_types.issubset(possible_to_types)
 
 
-def narrow_type(from_type, narrow_to):
+def is_subtype(a: Type, b: Type) -> bool:
   """
-  :param Type from_type:
-  :param Type narrow_to:
-  :rtype: Type
+  Whether all possible values of type `a` are also logically of type `b`.
+  """
+  if a == b:  # quick path
+    return True
+  if isinstance(a, UnionType):
+    return all(is_subtype(possible_type, b) for possible_type in a.possible_types)
+  possible_b_types = set(b.possible_types) if isinstance(b, UnionType) else {b}
+  if a in possible_b_types:  # quick path
+    return True
+
+  for possible_b in possible_b_types:
+    assert not isinstance(possible_b, UnionType)
+    if not a.has_same_symbol_as(possible_b):
+      continue
+    assert len(a.templ_types) == len(b.templ_types)
+    if all(is_subtype(a_templ, b_templ) for a_templ, b_templ in zip(a.templ_types, possible_b.templ_types)):
+      return True
+  return False
+
+
+def narrow_type(from_type: Type, narrow_to: Type) -> Type:
+  """
+  Computes `intersection(from_type, narrow_to)`, but stays compatible to `from_type`,
+  meaning that memory in the form of `from_type` can directly be interpreted as `narrow_type`.
+
+  In case there is no representation of `intersection(from_type, narrow_to)` that is compatible to `from_type`,
+  we use some superset of the intersection which remains a subset of `from_type`.
+  E.g. `narrow_type(List[Int|Bool], List[Int]|List[Bool])` will just return `List[Int|Bool]`,
+  because you cannot implicitly convert `List[Int|Bool]` to `List[Int]|List[Bool]`
+  (you would need to construct an entirely new list).
+  In this sense we over-approximate the actual type.
   """
   if from_type == narrow_to:
     return from_type
-  assert isinstance(from_type, ReferenceType) == isinstance(narrow_to, ReferenceType)
-  if len(from_type.templ_types) > 0 or len(narrow_to.templ_types) > 0:  # template types
-    # TODO: This does not work well for unions of templated types
-    if len(from_type.templ_types) != len(narrow_to.templ_types):
-      return SLEEPY_NEVER
-    new_templ_types = [
-      narrow_type(from_templ_type, to_templ_type)
-      for from_templ_type, to_templ_type in zip(from_type.templ_types, narrow_to.templ_types)]
-    return from_type.replace_types(dict(zip(from_type.templ_types, new_templ_types)))
-  if isinstance(narrow_to, UnionType):
-    narrow_to_types = narrow_to.possible_types
+  all_possible_from_types = set(from_type.possible_types) if isinstance(from_type, UnionType) else {from_type}
+  possible_to_types = set(narrow_to.possible_types) if isinstance(narrow_to, UnionType) else {narrow_to}
+
+  new_possible_from_types = set()
+  new_possible_ref_pointee_types: Dict[ReferenceType, List[Type]] = {
+    ref: [] for ref in all_possible_from_types if isinstance(ref, ReferenceType)}
+  for possible_to_type in possible_to_types:
+    assert not isinstance(possible_to_type, UnionType)
+    for possible_from_type in all_possible_from_types:
+      if not is_subtype(possible_to_type, possible_from_type):
+        continue
+      if isinstance(possible_to_type, ReferenceType):
+        # references are special: we can always implicitly cast between them, so just be as concrete as possible.
+        assert isinstance(possible_from_type, ReferenceType)
+        new_possible_ref_pointee_types[possible_from_type].append(possible_to_type.pointee_type)
+      new_possible_from_types.add(possible_from_type)
+
+  assert len(new_possible_from_types) <= len(all_possible_from_types)
+  if isinstance(from_type, UnionType):
+    narrowed_type = from_type.copy_with_narrowed_types(narrow_to_types=new_possible_from_types)
+  elif len(new_possible_from_types) == 0:
+    # Note: if a variable has type "never", the memory can have every form. So we can safely narrow to this.
+    return SLEEPY_NEVER
   else:
-    narrow_to_types = [narrow_to]
-  if not isinstance(from_type, UnionType):
-    if from_type in narrow_to_types:
-      return from_type
-    else:
-      return SLEEPY_NEVER
-  return from_type.copy_with_narrowed_types(narrow_to_types=narrow_to_types)
+    assert len(new_possible_from_types) == 1
+    narrowed_type = list(new_possible_from_types)[0]
+
+  # Apply Ref[T] specializations
+  if len(new_possible_ref_pointee_types) > 0:
+    ref_replacements = {
+      ref: ReferenceType(narrow_type(ref.pointee_type, get_common_type(possible_types)))
+      for ref, possible_types in new_possible_ref_pointee_types.items()
+      if len(possible_types) > 0}
+    narrowed_type = narrowed_type.replace_types(ref_replacements)
+  return narrowed_type
 
 
-def exclude_type(from_type, excluded_type):
-  """
-  :param Type from_type:
-  :param Type excluded_type:
-  :rtype: Type
-  """
+def exclude_type(from_type: Type, excluded_type: Type) -> Type:
   if from_type == excluded_type:
     return SLEEPY_NEVER
   if excluded_type == SLEEPY_NEVER:
@@ -909,11 +950,7 @@ def exclude_type(from_type, excluded_type):
   return from_type.copy_with_narrowed_types(narrow_to_types=narrow_to_types)
 
 
-def get_common_type(possible_types):
-  """
-  :param list[Type] possible_types:
-  :rtype: Type
-  """
+def get_common_type(possible_types: List[Type]) -> Type:
   assert len(possible_types) >= 1
   common_type = possible_types[0]
   for i, other_type in enumerate(possible_types):
@@ -1800,6 +1837,9 @@ def make_func_call_ir(func: FunctionSymbol,
       (arg_val.copy_unbind() if mutates else arg_val).copy_collapse(
         context=caller_context, name='call_arg_%s_collapse' % identifier)
       for arg_val, identifier, mutates in zip(func_args, concrete_func.arg_identifiers, concrete_func.arg_mutates)]
+    # Note: We first copy with the param_type as narrowed type, because at this point we already checked that
+    # the param actually has the correct param_type.
+    # Then, copy_with_implicit_cast only needs to handle the cases which can actually occur.
     casted_calling_args = [
       arg_val.copy_with_narrowed_type(param_type).copy_with_implicit_cast(
         to_type=param_type, context=caller_context, name='call_arg_%s_cast' % arg_identifier)
@@ -2016,16 +2056,20 @@ class TypedValue:
     return new
 
   def copy_with_implicit_cast(self, to_type: Type, context: CodegenContext, name: str) -> TypedValue:
+    """
+    Returns copy of self so that self.type really is to_type.
+    This changes the memory layout, it will not be compatible to before.
+    """
     from_type = self.narrowed_type
     assert can_implicit_cast_to(from_type, to_type)
     if from_type == to_type:
       return self
     new = self.copy()
     new.type, new.narrowed_type = to_type, to_type
-    new.ir_val, new.ir_val_ptr = None, None
-    new.referenceable = False  # TODO: Implement casts on references.
+    new.ir_val = None
     if not context.emits_ir or self.ir_val is None:
       return new
+    assert not self.is_referenceable(), 'not implemented'
 
     if isinstance(to_type, UnionType):
       to_ir_alloca = context.alloca_at_entry(to_type.ir_type, name='%s_ptr' % name)

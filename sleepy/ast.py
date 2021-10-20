@@ -372,6 +372,7 @@ class ReturnStatementAst(StatementAst):
           self.raise_error('Cannot use void return value')
         return_val = return_val.copy_collapse(context=context, name='return_val')
         if not can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type):
+          can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type)
           if symbol_table.current_func.return_type == SLEEPY_VOID:
             self.raise_error(
               'Function declared to return void, but return value is of type %r' % return_val.narrowed_type)

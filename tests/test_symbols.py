@@ -5,8 +5,42 @@ from nose.tools import assert_equal
 from sleepy.symbols import UnionType, SLEEPY_NEVER
 
 
+def test_can_implicit_cast_to():
+  from sleepy.symbols import can_implicit_cast_to, ReferenceType, UnionType, StructType, PlaceholderTemplateType
+  from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_DOUBLE
+  assert_equal(can_implicit_cast_to(SLEEPY_INT, SLEEPY_DOUBLE), False)
+  assert_equal(can_implicit_cast_to(SLEEPY_INT, SLEEPY_INT), True)
+  assert_equal(can_implicit_cast_to(UnionType([SLEEPY_INT], [0], 8), SLEEPY_INT), True)
+  assert_equal(can_implicit_cast_to(
+    UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_DOUBLE), False)
+  assert_equal(can_implicit_cast_to(
+    SLEEPY_DOUBLE, UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), True)
+  assert_equal(can_implicit_cast_to(ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_DOUBLE)), False)
+  assert_equal(can_implicit_cast_to(ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_INT)), True)
+  assert_equal(can_implicit_cast_to(
+    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
+  assert_equal(can_implicit_cast_to(
+    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), True)
+  templ = PlaceholderTemplateType('T')
+  list = StructType(struct_identifier='List', templ_types=[templ], member_identifiers=[], member_types=[])
+  assert_equal(can_implicit_cast_to(
+    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
+  assert_equal(can_implicit_cast_to(
+    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), True)
+  assert_equal(
+    can_implicit_cast_to(
+      list.replace_types({templ: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)}),
+      list.replace_types({templ: SLEEPY_INT})),
+    False)
+  assert_equal(
+    can_implicit_cast_to(
+      list.replace_types({templ: SLEEPY_INT}),
+      list.replace_types({templ: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)})),
+    False)
+
+
 def test_narrow_type():
-  from sleepy.symbols import narrow_type, UnionType, ReferenceType
+  from sleepy.symbols import narrow_type, UnionType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL
   assert_equal(narrow_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_INT)
   assert_equal(narrow_type(UnionType([SLEEPY_INT], [0], 4), SLEEPY_INT), UnionType([SLEEPY_INT], [0], 4))
@@ -19,11 +53,60 @@ def test_narrow_type():
   assert_equal(
     narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4), UnionType([SLEEPY_BOOL], [0], 1)),
     UnionType([SLEEPY_BOOL], [1], 4))
+  assert_equal(narrow_type(SLEEPY_INT, SLEEPY_BOOL), SLEEPY_NEVER)
+
+
+# noinspection PyPep8Naming
+def test_narrow_type_templates():
+  from sleepy.symbols import narrow_type, UnionType, PlaceholderTemplateType, StructType
+  from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL
+  Int, Bool = SLEEPY_INT, SLEEPY_BOOL
+  T = PlaceholderTemplateType('T')
+  List = StructType(struct_identifier='List', templ_types=[T], member_identifiers=[], member_types=[])
+  # narrow(0:List[Int]|1:List[Bool], List[Int]) = 0:List[Int]
   assert_equal(
-    narrow_type(ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_INT)), ReferenceType(SLEEPY_INT))
+    narrow_type(
+      UnionType.from_types([List.replace_types({T: Int}), List.replace_types({T: Bool})]),
+      List.replace_types({T: Int})),
+    UnionType.from_types([List.replace_types({T: Int})]))
+  # narrow(List[Int|Bool], List[Int]) = List[Int|Bool]
   assert_equal(
-    narrow_type(ReferenceType(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4)), ReferenceType(SLEEPY_INT)),
-    ReferenceType(UnionType([SLEEPY_INT], [0], 4)))
+    narrow_type(List.replace_types({T: UnionType.from_types([Int, Bool])}), List.replace_types({T: Int})),
+    List.replace_types({T: UnionType.from_types([Int, Bool])}))
+  # narrow(List[Int|Bool]|List[Int], List[Int]) = List[Int|Bool]|List[Int]
+  assert_equal(
+    narrow_type(
+      UnionType.from_types([List.replace_types({T: UnionType.from_types([Int, Bool])}), List.replace_types({T: Int})]),
+      List.replace_types({T: Int})),
+    UnionType.from_types([List.replace_types({T: UnionType.from_types([Int, Bool])}), List.replace_types({T: Int})]))
+
+
+# noinspection PyPep8Naming
+def test_narrow_type_references():
+  from sleepy.symbols import narrow_type, UnionType, ReferenceType
+  from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL
+  Int, Bool = SLEEPY_INT, SLEEPY_BOOL
+  Ref = ReferenceType
+  # narrow(Ref[A], Ref[A]) = Ref[A]
+  assert_equal(narrow_type(Ref(Int), Ref(Int)), Ref(Int))
+  # narrow(Ref[0:A|1:B], Ref[A]) = Ref[0:A]
+  assert_equal(narrow_type(Ref(UnionType([Int, Bool], [0, 1], 4)), Ref(Int)), Ref(UnionType.from_types([Int])))
+  # narrow(0:Ref[0:A|1:B]|1:Ref[A], Ref[B]) = 0:Ref[1:B]
+  assert_equal(
+    narrow_type(UnionType.from_types([Ref(UnionType([Int, Bool], [0, 1], 4)), Ref(Int)]), Ref(Bool)),
+    UnionType([Ref(UnionType([Bool], [1], 4))], [0], 8))
+  # narrow(Ref[0:A|1:B], Ref[A]|Ref[B]) = Ref[0:A|1:B]
+  assert_equal(
+    narrow_type(Ref(UnionType([Int, Bool], [0, 1], 8)), UnionType([Ref(Int), Ref(Bool)], [0, 1], 8)),
+    Ref(UnionType([Int, Bool], [0, 1], 8)))
+  # narrow(Ref[A]|Ref[B], Ref[A|B]) = never
+  assert_equal(
+    narrow_type(UnionType.from_types([Ref(Int), Ref(Bool)]), Ref(UnionType.from_types([Int, Bool]))),
+    UnionType([], [], 8))
+  # narrow(Ref[0:A|1:B]|Ref[A], Ref[A]) = Ref[0:A]|Ref[A]
+  assert_equal(
+    narrow_type(UnionType.from_types([Ref(UnionType.from_types([Int, Bool])), Ref(Int)]), Ref(Int)),
+    UnionType.from_types([Ref(UnionType.from_types([Int])), Ref(Int)]))
 
 
 def test_exclude_type():
