@@ -2230,3 +2230,22 @@ def test_no_import():
   """
   ast = make_ast(program, add_preamble=False)
   assert_equal(ast.file_asts[0].imports_ast.imports, [])
+
+
+def test_operator_precedence():
+  with make_execution_engine() as engine:
+    program = """
+    struct Foo { x: Ref[Int]; y: Int; }
+    func index(x: Ref[Int]) -> Ref[Int] { return !x }
+    func index(x: Int) -> Int { return 0; }
+    func main() {
+      x = 5
+      foo = Foo(!x, x)
+      a1 = -foo.y  # . binds stronger than -
+      !a2 = !foo.x  # . binds stronger than !
+      a3 = foo.y[]  # . binds stronger than []
+      a4 = -foo.y[]  # . binds stronger than [] binds stronger than -
+      a5 = (!index(!foo.x))[]  # here I have to use brackets
+    }
+    """
+    compile_program(engine, program, add_preamble=False)  # just check that it compiles
