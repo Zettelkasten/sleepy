@@ -7,6 +7,8 @@ General placeholder for all unproductive (error) states.
 """
 ERROR_STATE = None
 
+OTHER_CHAR = object()
+
 
 class NonDeterministicAutomaton:
   """

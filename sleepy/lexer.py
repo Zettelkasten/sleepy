@@ -1,8 +1,8 @@
-from typing import Dict, Tuple, Set, Union, Optional, List, Iterator
+from typing import Dict, Tuple, Set, Union, Optional, List
 
-from sleepy.automaton import ERROR_STATE
+from sleepy.automaton import ERROR_STATE, OTHER_CHAR
 from sleepy.errors import LexError
-from sleepy.regex import make_regex_dfa
+from sleepy.regex import make_regex_dfa, REGEX_RECOGNIZED_CHARS
 
 State = Union[int, ERROR_STATE]
 Comp_State = Tuple[State]
@@ -23,6 +23,7 @@ class LexerGenerator:
     """
     self.cache_hits = 0
     self.cache_misses = 0
+    self.recognized_chars = REGEX_RECOGNIZED_CHARS
 
     self.transition_table: Dict[Tuple[Comp_State, str], Tuple[Comp_State, bool]] = dict()
 
@@ -53,6 +54,8 @@ class LexerGenerator:
     """
     :returns: the next state, or `ERROR_STATE` if next state is not productive.
     """
+    if char not in self.recognized_chars:
+      char = OTHER_CHAR
     if state is ERROR_STATE:
       return ERROR_STATE
     next_state, is_error = self.transition_table.get((state, char), (None, None))
@@ -87,6 +90,8 @@ class LexerGenerator:
     while len(states_to_check) >= 1:
       state = states_to_check.pop()
       if state in visited_states:
+        continue
+      if state is ERROR_STATE:
         continue
       visited_states.add(state)
       final_state_of = [i for i, dfa in enumerate(self._automatons) if state[i] in dfa.final_states]

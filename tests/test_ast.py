@@ -2249,3 +2249,15 @@ def test_operator_precedence():
     }
     """
     compile_program(engine, program, add_preamble=False)  # just check that it compiles
+
+
+def test_syntax_non_ascii_comment():
+  with make_execution_engine() as engine:
+    program = """
+    func main() -> Int {
+      # Hä, öhm, okay!
+      return 1;
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 1)

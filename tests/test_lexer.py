@@ -94,3 +94,12 @@ def test_LexerGenerator_comments():
         IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';', IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN, IGNORED_TOKEN,
         'name', IGNORED_TOKEN, '=', IGNORED_TOKEN, 'const', ';'),
       (0, 1, 2, 3, 4, 5, 6, 7, 23, 24, 25, 26, 27, 28, 29, 30, 31, 50, 69, 70, 71, 72, 73, 74, 75)))
+
+
+def test_LexerGenerator_non_ascii():
+  lexer = LexerGenerator(
+    ['digit', 'non_digit'], ['[0-9]+', '[^0-9]+'])
+  assert_equal(lexer.tokenize('a'), (('non_digit',), (0,)))
+  assert_equal(lexer.tokenize('ä'), (('non_digit',), (0,)))
+  assert_equal(lexer.tokenize('1'), (('digit',), (0,)))
+  assert_equal(lexer.tokenize('äa1'), (('non_digit', 'digit'), (0, 2)))
