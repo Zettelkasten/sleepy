@@ -14,7 +14,7 @@ import _setup_sleepy_env  # noqa
 from sleepy.ast import FileAst, TranslationUnitAst
 from sleepy.errors import CompilerError
 # noinspection PyUnresolvedReferences
-from sleepy.jit import make_execution_engine, compile_ir, LIB_PATH
+from sleepy.jit import make_execution_engine, compile_ir, PREAMBLE_BINARIES_PATH
 # noinspection PyUnresolvedReferences
 from sleepy.parse import make_program_ast, make_ast, make_preamble_ast
 from sleepy.symbols import FunctionSymbol
@@ -74,9 +74,6 @@ def main():
     file_asts = [file_dag.nodes[node]["file_ast"] for node in networkx.topological_sort(file_dag.reverse())]
     ast = TranslationUnitAst.from_file_asts([make_preamble_ast()] + file_asts)
 
-    print(file_dag.nodes)
-    print(file_dag.edges)
-
     module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
       module_name='default_module', emit_debug=args.debug, main_file_path=source_file_path)
     if main_func_identifier not in symbol_table:
@@ -133,7 +130,8 @@ def main():
   exec_file_name = _make_file_name(source_file_path, '', allow_exist=True)
   import subprocess
   subprocess.run(
-    ['gcc'] + (['-g'] if args.debug else []) + ['-o', exec_file_name, object_file_name, LIB_PATH + '_static.a']
+    ['gcc'] + (['-g'] if args.debug else [])
+    + ['-o', exec_file_name, object_file_name, PREAMBLE_BINARIES_PATH + '_static.a']
     + ['-l%s' % lib_name for lib_name in args.compile_libs])
 
 
