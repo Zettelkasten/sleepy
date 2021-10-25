@@ -1,13 +1,6 @@
-# pointer that will automatically be freed when out-of-scope
-# TODO: implement that cleanup will be called once things leave scope
-struct OwnedPtr[T] {
-  value: Ptr[T];
-}
-func cleanup[T](ptr: OwnedPtr[T]) {
-  free(ptr.value);
-}
-func cleanup(str: Double) { }
-func cleanup[T](ptr: Ptr[T]) { }
+import "ref.slp"
+
+# Generic array list implementation
 
 struct List[T] {
   start: OwnedPtr[T];
@@ -124,31 +117,23 @@ func +[T](a: List[T], b: List[T]) -> Ref[List[T]] {
   return !c;
 }
 
-func main() {
-  a = EmptyList[Double]();
-  val = 10l;
-  while a.size < 10l {
-    add(a, ToDouble(val));
-    val -= 1l;
+func binary_search[T, K](list: List[T], key: K) -> Long {
+  begin = 0l;
+  end = list.size;
+  middle = begin + (end - begin) / 2l;
+
+  while(begin != end) {
+    if key < list[middle] {
+      end = middle;
+    } else {
+      if list[middle] < key {
+        begin = middle + 1l;
+      } else {
+        return middle;
+      }
+    }
+    middle = begin + (end - begin) / 2l;
   }
-  a[0] = -5.0;
-  print_line(a);
-  assert(a.size == 10l);
-  print_line(pop(a));
-  print_line(a);
-  assert(a.size == 9l);
-  assert(not(is_sorted(a)));
-  quicksort(a);
-  print_line(a);
-  assert(a.size == 9l);
-  assert(is_sorted(a));
-
-  # now: try a list on the heap!
-  !b = !new(EmptyList[Double]());
-  add(b, 123.1);  # can be used just as if it were on the stack
-  print_line(a + b);  # would also need to call cleanup for a + b
-
-  cleanup(b);
-  delete(!b);
-  cleanup(a);
+  return -1l;
 }
+

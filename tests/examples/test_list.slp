@@ -1,0 +1,30 @@
+import "list.slp"
+
+func main() {
+  a = EmptyList[Double]();
+  val = 10l;
+  while a.size < 10l {
+    add(a, ToDouble(val));
+    val -= 1l;
+  }
+  a[0] = -5.0;
+  print_line(a);
+  assert(a.size == 10l);
+  print_line(pop(a));
+  print_line(a);
+  assert(a.size == 9l);
+  assert(not(is_sorted(a)));
+  quicksort(a);
+  print_line(a);
+  assert(a.size == 9l);
+  assert(is_sorted(a));
+
+  # now: try a list on the heap!
+  !b = !new(EmptyList[Double]());
+  add(b, 123.1);  # can be used just as if it were on the stack
+  print_line(a + b);  # would also need to call cleanup for a + b
+
+  cleanup(b);
+  delete(!b);
+  cleanup(a);
+}
