@@ -1,0 +1,11 @@
+# Smart reference implementations
+# TODO: Automatically call cleanup(..)
+
+struct OwnedPtr[T] {
+  value: Ptr[T];
+}
+func cleanup[T](ptr: OwnedPtr[T]) {
+  free(ptr.value);
+}
+func cleanup(x: Double|Long|Int) { }
+func cleanup[T](ptr: Ptr[T]) { }
