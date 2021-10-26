@@ -1,4 +1,4 @@
-import "ref.slp"
+import "ref.slp", "slice.slp"
 
 # Generic array list implementation
 
@@ -38,10 +38,21 @@ func add_all[T](mutates list: List[T], others: List[T]) {
   list.size += others.size;
 }
 func index[T](list: List[T], i: Long) -> Ref[T] {
-  assert(and(0l <= i, i < list.size));
+  i = normalized_index(i, list.size);
   return !load(list.start.value + i);
 }
 func index[T](list: List[T], i: Int) -> Ref[T] { return !index(list, ToLong(i)); }
+func index[T](list: List[T], slice: Slice) -> Ref[List[T]] {
+  from_i = normalized_from_index(slice, list.size);
+  to_i = normalized_to_index(slice, list.size);
+  !sliced_list = !new(EmptyList[T]());
+  i = from_i;
+  while i < to_i {
+    add(sliced_list, list[i]);
+    i += 1l;
+  }
+  return !sliced_list;
+}
 func pop[T](mutates list: List[T]) -> T {
   assert(list.size > 0l);
   value = list[list.size - 1l];

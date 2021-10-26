@@ -1,0 +1,29 @@
+# Simple Long slices
+
+struct Unbounded { }
+struct Slice {
+  from : Long|Unbounded; to : Long|Unbounded;
+}
+func SliceFrom(from: Long) -> Slice { return Slice(from, Unbounded()); }  # list[x:]
+func SliceTo(to: Long) -> Slice { return Slice(Unbounded(), to); }        # list[:x]
+func SliceAll() -> Slice { return Slice(Unbounded(), Unbounded()); }     # list[:]
+
+func normalized_index(index: Long, length: Long) -> Long {
+  if index < 0l { index += length; }
+  assert(and(0l <= index, index < length));
+  return index;
+}
+func normalized_from_index(slice: Slice, length: Long) -> Long {
+  index = slice.from;
+  if index is Unbounded { index = 0l; }
+  if index < 0l { index += length; }
+  assert(and(0l <= index, index <= length));
+  return index;
+}
+func normalized_to_index(slice: Slice, length: Long) -> Long {
+  index = slice.to;
+  if index is Unbounded { index = length; }
+  if index < 0l { index += length; }
+  assert(and(0l <= index, index <= length));
+  return index;
+}

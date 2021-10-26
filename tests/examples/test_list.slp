@@ -24,6 +24,9 @@ func main() {
   add(b, 123.1);  # can be used just as if it were on the stack
   print_line(a + b);  # would also need to call cleanup for a + b
 
+  # slices work too:
+  print_line(a[SliceTo(3l)] + a[SliceFrom(6l)]);
+
   cleanup(b);
   delete(!b);
   cleanup(a);
