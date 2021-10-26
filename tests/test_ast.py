@@ -5,21 +5,23 @@ from nose.tools import assert_equal, assert_almost_equal, assert_raises
 
 import _setup_test_env  # noqa
 from sleepy.errors import SemanticError, ParseError
+from sleepy.grammar import DummyPath
 from sleepy.jit import make_execution_engine
 from tests.compile import compile_program
-from sleepy.parse import make_ast
+from sleepy.parse import make_translation_unit_ast_from_str, make_file_ast_from_str
 
 
 def test_ast_parser():
+  dummy = DummyPath("dummy")
   program1 = 'hello_world(123)'
-  make_ast(program1)
+  make_translation_unit_ast_from_str(file_path=dummy, program=program1, add_preamble=False)
   program2 = """# This function will just return 4.
 func do_stuff(val: Double) ->  Int  {
   return 4
 }
 do_stuff(7.5)
 """
-  make_ast(program2)
+  make_translation_unit_ast_from_str(file_path=dummy, program=program2, add_preamble=False)
   program3 = """
   # Compute 0 + 1 + ... + n
   func sum_all(n: Int) ->  Int  {
@@ -29,7 +31,7 @@ do_stuff(7.5)
   
   sum_all(12)
   """
-  make_ast(program3)
+  make_translation_unit_ast_from_str(file_path=dummy, program=program3, add_preamble=False)
 
 
 def test_simple_arithmetic():
@@ -2213,8 +2215,8 @@ def test_imports():
         ,
         "f"
     """
-    ast = make_ast(program, add_preamble=False)
-    assert_equal(ast.file_asts[0].imports_ast.imports, ["a", "b", "c", "d", "e", "f"])
+    ast = make_file_ast_from_str(file_path=DummyPath("test"), program=program)
+    assert_equal(ast.imports_ast.imports, ["a", "b", "c", "d", "e", "f"])
 
 
 def test_empty_imports_disallowed():
@@ -2222,13 +2224,13 @@ def test_empty_imports_disallowed():
     import 
   """
   with assert_raises(ParseError):
-    make_ast(program, add_preamble=False)
+    make_translation_unit_ast_from_str(file_path=DummyPath("test"), program=program, add_preamble=False)
 
 
 def test_no_import():
   program = """
   """
-  ast = make_ast(program, add_preamble=False)
+  ast = make_translation_unit_ast_from_str(file_path=DummyPath("test"), program=program, add_preamble=False)
   assert_equal(ast.file_asts[0].imports_ast.imports, [])
 
 

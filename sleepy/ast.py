@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from llvmlite import ir
 
 from sleepy.errors import SemanticError
-from sleepy.grammar import TreePosition
+from sleepy.grammar import TreePosition, DummyPath
 from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
@@ -36,7 +36,9 @@ class AbstractSyntaxTree(ABC):
     return 'AbstractSyntaxTree'
 
   def raise_error(self, message: str):
-    raise SemanticError(self.pos.word, self.pos.from_pos, self.pos.to_pos, message)
+    raise SemanticError(
+      program_path=self.pos.file_path, word=self.pos.word, from_pos=self.pos.from_pos, to_pos=self.pos.to_pos,
+      message=message)
 
   def _resolve_possible_concrete_funcs(self,
                                        func_caller: FunctionSymbolCaller,
@@ -254,12 +256,16 @@ class AbstractScopeAst(AbstractSyntaxTree):
 class FileAst(AbstractSyntaxTree):
   def __init__(self, pos: TreePosition,
                stmt_list: List[StatementAst],
-               imports_ast: ImportsAst,
-               file_path: Optional[Path] = None):
+               imports_ast: ImportsAst):
     super().__init__(pos)
     self.imports_ast = imports_ast
     self.stmt_list = stmt_list
-    self.file_path = file_path
+
+  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
+    with context.use_pos(self.pos):
+      for statement in self.stmt_list:
+        assert not context.is_terminated
+        statement.build_ir(symbol_table=symbol_table, context=context)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.imports_ast] + self.stmt_list
@@ -290,54 +296,40 @@ class ImportAst(AbstractSyntaxTree):
     return []
 
 
-class TranslationUnitAst(AbstractSyntaxTree):
-
-  def __init__(self, pos: TreePosition, file_asts: List[FileAst]):
+class TranslationUnitAst:
+  """
+  Multiple FileAsts.
+  """
+  def __init__(self, file_asts: List[FileAst]):
     self.file_asts = file_asts
-    super().__init__(pos)
 
   @staticmethod
-  def from_file_asts(asts: List[FileAst]) -> TranslationUnitAst:
-    assert len(asts) > 0, "Must have at least one child ast"
-    return TranslationUnitAst(
-      TreePosition(
-        "".join((ast.pos.word for ast in asts)),
-        asts[0].pos.from_pos,
-        sum(ast.pos.to_pos for ast in asts)
-      ),
-      asts
-    )
+  def from_file_asts(file_asts: List[FileAst]) -> TranslationUnitAst:
+    assert len(file_asts) > 0
+    return TranslationUnitAst(file_asts)
 
   def make_module_ir_and_symbol_table(self, module_name: str,
                                       emit_debug: bool,
-                                      main_file_path: Optional[Path] = None) -> (ir.Module, SymbolTable):
+                                      main_file_path: Path | DummyPath = DummyPath("module")) -> (ir.Module, SymbolTable):  # noqa
     assert self.check_pos_validity()
 
     module = ir.Module(name=module_name)
 
     root_builder = ir.IRBuilder()
     symbol_table = SymbolTable()
-    context = CodegenContext(
-      builder=root_builder, module=module, emits_debug=emit_debug,
-      source_path=main_file_path)
+    context = CodegenContext(builder=root_builder, module=module, emits_debug=emit_debug, file_path=main_file_path)
 
     build_initial_ir(symbol_table=symbol_table, context=context)
     assert context.ir_func_malloc is not None
     for ast in self.file_asts:
-      context.change_file(ast.file_path)
-      for statement in ast.stmt_list:
-        assert not context.is_terminated
-        statement.build_ir(symbol_table=symbol_table, context=context)
+      ast.build_ir(symbol_table=symbol_table, context=context)
     assert not context.is_terminated
     context.is_terminated = True
 
     return module, symbol_table
 
-  def children(self) -> List[AbstractSyntaxTree]:
-    return self.file_asts
-
   def check_pos_validity(self) -> bool:
-    return all(child.check_pos_validity() for child in self.children())
+    return all(child.check_pos_validity() for child in self.file_asts)
 
 
 class ExpressionStatementAst(StatementAst):

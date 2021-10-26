@@ -1,8 +1,11 @@
-from typing import Optional, Dict, List, Set, FrozenSet, Any
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Optional, Dict, List, Set, FrozenSet, Any, Tuple
 
 from sleepy.errors import ParseError
 from sleepy.grammar import EPSILON, Production, SyntaxTree, IGNORED_TOKEN, \
-  get_token_word_from_tokens_pos, TreePosition, AttributeGrammar
+  get_token_word_from_tokens_pos, TreePosition, AttributeGrammar, DummyPath
 
 
 def make_first1_sets(grammar):
@@ -240,7 +243,12 @@ class ParserGenerator:
     analysis, _ = self.parse_syn_attr_analysis(attr_grammar, word=word, tokens=tokens, tokens_pos=tokens_pos)
     return analysis
 
-  def parse_syn_attr_analysis(self, attr_grammar, word, tokens, tokens_pos):
+  def parse_syn_attr_analysis(self,
+                              attr_grammar: AttributeGrammar,
+                              word: str,
+                              tokens: List[str],
+                              tokens_pos: List[int],
+                              file_path: Path | DummyPath = DummyPath('default')) -> (Tuple[Production], Dict[str, Any]):  # noqa
     """
     Integrates evaluating synthetic attributes into LR-parsing.
     Does not work with inherited attributes, i.e. requires the grammar to be s-attributed.
@@ -249,6 +257,7 @@ class ParserGenerator:
     :param str word:
     :param list[str] tokens:
     :param list[int] tokens_pos: start index of word for each token
+    :param Path | DummyPath file_path:
     :rtype: (tuple[Production], dict[str,Any])
     :raises: ParseError
     :returns: a right-most analysis of `tokens` + evaluation of attributes in start symbol
@@ -288,7 +297,8 @@ class ParserGenerator:
           start_pos_stack.pop()
         assert len(right_attr_evals) == len(action.prod.right)
         state_stack.append(self._state_goto_table[state_stack[-1]][action.prod.left])
-        tree_pos = TreePosition.from_token_pos(word, tokens_pos, prod_start_pos, pos)
+        tree_pos = TreePosition.from_token_pos(
+          file_path, word=word, tokens_pos=tokens_pos, from_token_pos=prod_start_pos, to_token_pos=pos)
         attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(
           action.prod, {}, right_attr_evals, helper_values={'_pos': tree_pos}))
         start_pos_stack.append(prod_start_pos)
@@ -302,7 +312,8 @@ class ParserGenerator:
         state_stack.clear()
         attr_eval_stack.clear()
         start_pos_stack.clear()
-        tree_pos = TreePosition.from_token_pos(word, tokens_pos, prod_start_pos, pos)
+        tree_pos = TreePosition.from_token_pos(
+          file_path, word=word, tokens_pos=tokens_pos, from_token_pos=prod_start_pos, to_token_pos=pos)
         attr_eval_stack.append(attr_grammar.eval_prod_syn_attr(
           self._start_prod, {}, right_attr_evals, helper_values={'_pos': tree_pos}))
         rev_analysis.append(self._start_prod)
@@ -315,8 +326,8 @@ class ParserGenerator:
         la_name = '%r token' % la if la is not EPSILON else 'end of file'
         possible_next_tokens = set(self._state_action_table[state].keys())
         raise ParseError(
-          word, tokens_pos[pos] if pos < len(tokens_pos) else len(word),
-          'Unexpected %s, expected: %s' % (la_name, ', '.join(['%r' % t for t in possible_next_tokens])))
+          program_path=file_path, word=word, pos=tokens_pos[pos] if pos < len(tokens_pos) else len(word),
+          message='Unexpected %s, expected: %s' % (la_name, ', '.join(['%r' % t for t in possible_next_tokens])))
 
     assert rev_analysis[-1] == self._start_prod
     assert len(attr_eval_stack) == len(start_pos_stack) == 1

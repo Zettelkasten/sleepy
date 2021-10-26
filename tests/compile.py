@@ -2,8 +2,9 @@ from typing import Callable
 
 from llvmlite.binding import ExecutionEngine
 
+from sleepy.grammar import DummyPath
 from sleepy.jit import compile_ir
-from sleepy.parse import make_ast
+from sleepy.parse import make_translation_unit_ast_from_str
 from sleepy.symbols import FunctionSymbol
 
 
@@ -11,8 +12,8 @@ def compile_program(engine: ExecutionEngine,
                     program: str,
                     main_func_identifier: str = 'main',
                     add_preamble: bool = True) -> Callable:
-
-  ast = make_ast(program, add_preamble=add_preamble)
+  file_path = DummyPath("test")
+  ast = make_translation_unit_ast_from_str(file_path=file_path, program=program, add_preamble=add_preamble)
   module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
     module_name='test_parse_ast', emit_debug=False)
   print('---- module intermediate repr:')

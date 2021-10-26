@@ -1,7 +1,11 @@
+from __future__ import annotations
+
+from pathlib import Path
 from typing import Dict, Tuple, Set, Union, Optional, List
 
 from sleepy.automaton import ERROR_STATE, OTHER_CHAR
 from sleepy.errors import LexError
+from sleepy.grammar import DummyPath
 from sleepy.regex import make_regex_dfa, REGEX_RECOGNIZED_CHARS
 
 State = Union[int, ERROR_STATE]
@@ -102,7 +106,9 @@ class LexerGenerator:
         for char in dfa.state_transition_table[state[i]]}
       states_to_check.update(self._get_next_state(state, char) for char in possible_next_chars)
 
-  def tokenize(self, word: str) -> Tuple[Tuple[str], Tuple[int]]:
+  def tokenize(self,
+               word: str,
+               file_path: Path | DummyPath = DummyPath('default')) -> Tuple[Tuple[str], Tuple[int]]:
     """
     Find first longest matching analysis.
     :returns: token analysis + decomposition (i.e. positions where tokens start).
@@ -137,7 +143,9 @@ class LexerGenerator:
           break
         # unfinished word remaining
         if backtrack_mode is self.NORMAL_MODE:  # normal mode
-          raise LexError(word, pos, 'Missing more characters, expected %r' % self._get_next_possible_chars(state))
+          raise LexError(
+            program_path=file_path, word=word, pos=pos,
+            message='Missing more characters, expected %r' % self._get_next_possible_chars(state))
         else:  # backtracking mode
           do_backtrack()
         continue
@@ -147,8 +155,10 @@ class LexerGenerator:
       state = self._get_next_state(state, char)
       if state is ERROR_STATE:
         if backtrack_mode is self.NORMAL_MODE:  # normal mode, no backtracking yet
-          raise LexError(word, pos, 'Unrecognized pattern to continue token %r, expected: %s' % (
-            word[token_begin_pos:pos], ', '.join(['%r' % c for c in self._get_next_possible_chars(prev_state)])))
+          raise LexError(
+            program_path=file_path, word=word, pos=pos,
+            message='Unrecognized pattern to continue token %r, expected: %s' % (
+              word[token_begin_pos:pos], ', '.join(['%r' % c for c in self._get_next_possible_chars(prev_state)])))
         else:  # backtracking mode, needs to backtrack now
           do_backtrack()
       else:

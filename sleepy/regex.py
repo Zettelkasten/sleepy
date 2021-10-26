@@ -1,8 +1,11 @@
-from typing import List, Dict, Set, Optional
+from __future__ import annotations
+
+from pathlib import Path
+from typing import List, Dict, Set, Optional, Tuple
 
 from sleepy.automaton import NonDeterministicAutomaton, make_dfa_from_nfa, DeterministicAutomaton, OTHER_CHAR
 from sleepy.errors import LexError
-from sleepy.grammar import Grammar, Production, EPSILON, IGNORED_TOKEN, get_token_word_from_tokens_pos
+from sleepy.grammar import Grammar, Production, EPSILON, IGNORED_TOKEN, get_token_word_from_tokens_pos, DummyPath
 from sleepy.parser import ParserGenerator
 
 REGEX_LIT_TOKEN = 'a'
@@ -41,9 +44,10 @@ REGEX_GRAMMAR = Grammar(
 REGEX_PARSER = ParserGenerator(REGEX_GRAMMAR)
 
 
-def tokenize_regex(word):
+def tokenize_regex(word, file_path: Path | DummyPath = DummyPath("regex")) -> (Tuple[str], Tuple[int]):
   """
   :param str word:
+  :param Union[Path, DummyPath] file_path:
   :raises: LexError
   :returns: tokens with decomposition
   :rtype: tuple[tuple[str], tuple[int]]
@@ -53,7 +57,7 @@ def tokenize_regex(word):
   for pos, c in enumerate(word):
     if escape_next:
       if c not in REGEX_SPECIAL_TOKENS:
-        raise LexError(word, pos, 'Cannot escape character %r' % c)
+        raise LexError(file_path, word, pos, 'Cannot escape character %r' % c)
       escape_next = False
       tokens.append(REGEX_LIT_TOKEN)
     elif c == '\\':
@@ -66,7 +70,7 @@ def tokenize_regex(word):
     tokens_pos.append(pos)
 
   if escape_next:
-    raise LexError(word, len(word), 'Cannot end word with escape character')
+    raise LexError(file_path, word, len(word), 'Cannot end word with escape character')
   assert len(tokens) == len(tokens_pos) == len(word)
   return tuple(tokens), tuple(tokens_pos)
 
