@@ -963,6 +963,30 @@ def test_index_operator_syntax():
     assert_equal(main(12.0), 12.0)
 
 
+def test_slice_syntax():
+  with make_execution_engine() as engine:
+    program = """
+    import "slice.slp"
+    struct Interval { max: Long; }
+    func index(i: Interval, slice: Slice) -> Long {
+      from = slice.from; to = slice.to
+      if from is Unbounded { from = 0l }
+      if to is Unbounded { to = i.max }
+      return to - from + 1l
+    }
+    func main() -> Long {
+      s = Interval(10l)
+      a = s[5:6]  # == 2
+      b = s[8:]  # = 3
+      c = s[:3]  # = 4
+      d = s[:]  # = 11
+      return a + b + c + d
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    assert_equal(main(), 2 + 3 + 4 + 11)
+
+
 def test_func_inline():
   with make_execution_engine() as engine:
     program = """
