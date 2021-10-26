@@ -235,13 +235,16 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': 'ast.1'},
     Production('IndexArg', 'Expr', ':', 'Expr'): {
       'ast': lambda ast, _pos: CallExpressionAst(
-        _pos, func_expr=IdentifierExpressionAst(_pos, 'SliceAll'), func_arg_exprs=[ast(1), ast(3)])},
+        _pos, func_expr=IdentifierExpressionAst(_pos, 'SliceFromTo'), func_arg_exprs=[ast(1), ast(3)])},
     Production('IndexArg', 'Expr', ':'): {
       'ast': lambda ast, _pos: CallExpressionAst(
         _pos, func_expr=IdentifierExpressionAst(_pos, 'SliceFrom'), func_arg_exprs=[ast(1)])},
     Production('IndexArg', ':', 'Expr'): {
       'ast': lambda ast, _pos: CallExpressionAst(
         _pos, func_expr=IdentifierExpressionAst(_pos, 'SliceTo'), func_arg_exprs=[ast(2)])},
+    Production('IndexArg', ':'): {
+      'ast': lambda _pos: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, 'SliceAll'), func_arg_exprs=[])},
     Production('Type', 'Type', '|', 'IdentifierType'): {
       'ast': lambda _pos, ast: UnionTypeAst(_pos, [ast(1), ast(3)])},
     Production('Type', 'IdentifierType'): {
