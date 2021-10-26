@@ -16,11 +16,9 @@ from sleepy.errors import CompilerError
 # noinspection PyUnresolvedReferences
 from sleepy.jit import make_execution_engine, compile_ir, PREAMBLE_BINARIES_PATH
 # noinspection PyUnresolvedReferences
-from sleepy.parse import make_program_ast, make_ast, make_preamble_ast
+from sleepy.parse import make_file_ast, make_translation_unit_ast
 from sleepy.symbols import FunctionSymbol
 import llvmlite.binding as llvm
-
-from tools.import_discovery import build_file_dag, check_graph
 
 
 def _make_file_name(source_path: Path, file_ending: str, allow_exist=False) -> Path:
@@ -68,12 +66,7 @@ def main():
   main_func_identifier = 'main'
   source_file_path: Path = Path(args.program)
   try:
-    file_dag, source_file_path = build_file_dag(source_file_path)
-    check_graph(file_dag)
-
-    file_asts = [file_dag.nodes[node]["file_ast"] for node in networkx.topological_sort(file_dag.reverse())]
-    ast = TranslationUnitAst.from_file_asts([make_preamble_ast()] + file_asts)
-
+    ast = make_translation_unit_ast(source_file_path)
     module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
       module_name='default_module', emit_debug=args.debug, main_file_path=source_file_path)
     if main_func_identifier not in symbol_table:

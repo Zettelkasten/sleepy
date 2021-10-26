@@ -14,7 +14,7 @@ from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable
 from llvmlite import ir
 from llvmlite.binding import ExecutionEngine
 
-from sleepy.grammar import TreePosition
+from sleepy.grammar import TreePosition, DummyPath
 from sleepy.symbol_table import HierarchicalDict
 
 LLVM_POINTER_SIZE = 8
@@ -1639,14 +1639,15 @@ class CodegenContext:
   def __init__(self, builder: Optional[ir.IRBuilder],
                module: ir.Module,
                emits_debug: bool,
-               source_path: Optional[Path] = None):
+               file_path: Path | DummyPath):
     self.builder = builder
     self._module = module
 
     self._emits_debug: bool = emits_debug
     self.is_terminated: bool = False
 
-    self.current_pos: Optional[TreePosition] = None
+    # use dummy just to set file_path
+    self.current_pos = TreePosition(word="", from_pos=0, to_pos=0, file_path=file_path)
     self.current_func: Optional[ConcreteFunction] = None
     self.current_func_inline_return_collect_block: Optional[ir.Block] = None
     self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = None
@@ -1654,17 +1655,13 @@ class CodegenContext:
     self.ir_func_malloc: Optional[ir.Function] = None
 
     if not self.emits_debug:
-      self.current_di_file: Optional[ir.DIValue] = None
       self.current_di_compile_unit: Optional[ir.DIValue] = None
       self.current_di_scope: Optional[ir.DIValue] = None
       self.di_declare_func: Optional[ir.Function] = None
       self.known_di_types: Optional[Dict[Type, ir.DIValue]] = None
     else:
-      self.file_di_values: Dict[Path, ir.DIValue] = dict()
-
-      if source_path is None:
-        source_path = Path("./tmp.slp")
-      self.change_file(source_path)
+      self._file_di_value_cache: Dict[Path | DummyPath, ir.DIValue] = dict()
+      self.current_di_scope = self.current_di_file
 
       # TODO: Add compiler version
       producer = 'sleepy compiler'
@@ -1708,17 +1705,24 @@ class CodegenContext:
   def emits_ir(self) -> bool:
     return self.builder is not None
 
-  def change_file(self, source_path: Optional[Path]):
-    if not self.emits_debug:
-      return
-    if source_path in self.file_di_values:
-      self.current_di_file = self.file_di_values[source_path]
+  @property
+  def current_di_file(self) -> ir.DIValue:
+    assert self.emits_debug
+    path = self.current_pos.file_path
+    if path not in self._file_di_value_cache:
+      di_file = self._make_current_di_file(path=path)
+      self._file_di_value_cache[path] = di_file
     else:
-      self.current_di_file = self.module.add_debug_info(
-        'DIFile', {'filename': source_path.name, 'directory': str(source_path.parent)})
-      self.file_di_values[source_path] = self.current_di_file
+      di_file = self._file_di_value_cache[path]
+    return di_file
 
-    self.current_di_scope: Optional[ir.DIValue] = self.current_di_file
+  def _make_current_di_file(self, path: Path | DummyPath):
+    assert self.emits_debug
+    if isinstance(path, Path):
+      file_name, file_dir = path.name, path.parent
+    else:
+      file_name, file_dir = path.dummy_name, ""
+    return self.module.add_debug_info('DIFile', {'filename': file_name, 'directory': file_dir})
 
   def __repr__(self) -> str:
     return 'CodegenContext(builder=%r, emits_ir=%r, is_terminated=%r)' % (

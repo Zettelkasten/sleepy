@@ -2,6 +2,7 @@ import _setup_test_env  # noqa
 
 from nose.tools import assert_equal
 
+from sleepy.grammar import DummyPath
 from sleepy.symbols import UnionType, SLEEPY_NEVER
 
 
@@ -303,19 +304,19 @@ def test_context_use_pos():
   from sleepy.grammar import TreePosition
   from llvmlite import ir
   module = ir.Module(name='module_name')
-  context = CodegenContext(builder=ir.IRBuilder(), module=module, emits_debug=True)
+  file_path = DummyPath("test")
+  context = CodegenContext(builder=ir.IRBuilder(), module=module, emits_debug=True, file_path=file_path)
   program = '123456789'
-  outer_pos = TreePosition(word=program, from_pos=0, to_pos=9)
+  outer_pos = TreePosition(word=program, from_pos=0, to_pos=9, file_path=file_path)
   with context.use_pos(outer_pos):
     assert context.current_pos == outer_pos
     assert context.builder.debug_metadata == make_di_location(outer_pos, context=context)
-    inner_pos = TreePosition(word=program, from_pos=2, to_pos=4)
+    inner_pos = TreePosition(word=program, from_pos=2, to_pos=4, file_path=file_path)
     with context.use_pos(inner_pos):
       assert context.current_pos == inner_pos
       assert context.builder.debug_metadata == make_di_location(inner_pos, context=context)
     assert context.current_pos == outer_pos
     assert context.builder.debug_metadata == make_di_location(outer_pos, context=context)
-  assert context.current_pos is None
 
 
 def test_bind_and_unbind():
@@ -323,7 +324,7 @@ def test_bind_and_unbind():
   from sleepy.builtin_symbols import SLEEPY_INT
   from llvmlite import ir
   module = ir.Module(name='module_name')
-  context = CodegenContext(builder=None, module=module, emits_debug=False)
+  context = CodegenContext(builder=None, module=module, emits_debug=False, file_path=DummyPath("test"))
 
   ref_int = TypedValue(typ=ReferenceType(SLEEPY_INT), ir_val=None, num_unbindings=0)
   assert ref_int.num_possible_binds() == 1

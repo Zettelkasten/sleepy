@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 """
 The empty symbol (!= the empty word).
 Use empty tuple as empty word.
@@ -498,24 +500,48 @@ class SyntaxTree:
       prod for subtree in reversed(self.right) if subtree is not None for prod in subtree.get_right_analysis())
 
 
+class DummyPath:
+  """
+  For file paths that do not really exist.
+  """
+  def __init__(self, dummy_name: str):
+    self.dummy_name = dummy_name
+
+  def __repr__(self) -> str:
+    return '<%s>' % self.dummy_name
+
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, DummyPath):
+      return False
+    return self.dummy_name == other.dummy_name
+
+  def __hash__(self) -> int:
+    return hash(self.dummy_name)
+
+
 class TreePosition:
   """
   The boundaries a sub-tree of a parsed word have.
   """
 
-  def __init__(self, word: str, from_pos: int, to_pos: int) -> None:
+  def __init__(self, word: str, from_pos: int, to_pos: int, file_path: Path | DummyPath = DummyPath('default')) -> None:
     assert 0 <= from_pos <= to_pos <= len(word)
     self.word = word
     self.from_pos = from_pos
     self.to_pos = to_pos
+    if isinstance(file_path, Path) and file_path.is_absolute():
+      file_path = Path.cwd().joinpath(file_path).resolve()
+    self.file_path = file_path
 
   def __repr__(self) -> str:
-    return 'TreePosition(from=%r, to=%r)' % (self.from_pos, self.to_pos)
+    return 'TreePosition(file=%r, from=%r, to=%r)' % (self.file_path, self.from_pos, self.to_pos)
 
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, TreePosition):
       return False
-    return self.word == other.word and self.from_pos == other.from_pos and self.to_pos == other.to_pos
+    return (
+      self.word == other.word and self.from_pos == other.from_pos and self.to_pos == other.to_pos
+      and self.file_path == other.file_path)
 
   def get_from_line_col(self) -> (int, int):
     res = get_line_col_from_pos(
@@ -529,11 +555,12 @@ class TreePosition:
     return self.get_from_line_col()[1]
 
   @classmethod
-  def from_token_pos(cls, word: str, tokens_pos: List[int], from_token_pos: int, to_token_pos: int) -> TreePosition:
+  def from_token_pos(cls, file_path: Path | DummyPath, word: str, tokens_pos: List[int], from_token_pos: int,
+                     to_token_pos: int) -> TreePosition:
     assert 0 <= from_token_pos <= to_token_pos <= len(tokens_pos)
     from_pos = tokens_pos[from_token_pos] if from_token_pos < len(tokens_pos) else len(word)
     to_pos = tokens_pos[to_token_pos] if to_token_pos < len(tokens_pos) else len(word)
-    return TreePosition(word, from_pos, to_pos)
+    return TreePosition(word, from_pos=from_pos, to_pos=to_pos, file_path=file_path)
 
 
 def get_line_col_from_pos(word: str,

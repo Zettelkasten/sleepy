@@ -1,21 +1,19 @@
 import os
-from typing import Tuple, List
+from pathlib import Path
+from typing import Tuple, List, Optional
 
-from sleepy.ast import TranslationUnitAst
 from sleepy.jit import make_execution_engine, compile_ir
-from sleepy.parse import make_program_ast, make_ast
+from sleepy.parse import make_translation_unit_ast
 from sleepy.symbols import FunctionSymbol
 
 
-def run_example(code_file_name=None):
+def run_example(code_file_name: Optional[str] = None):
   if code_file_name is None:
     pass
 
   print('\nLoading example from %s.' % code_file_name)
   with make_execution_engine() as engine:
-    with open(code_file_name, 'r') as file:
-      program = file.read()
-    ast = make_ast(program)
+    ast = make_translation_unit_ast(file_path=Path(code_file_name))
     module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast', emit_debug=False)
     compile_ir(engine, module_ir)
     assert 'main' in symbol_table, 'Need to declare a main function'
