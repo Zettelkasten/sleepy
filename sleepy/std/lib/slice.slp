@@ -5,7 +5,9 @@ struct Slice {
   from : Long|Unbounded; to : Long|Unbounded;
 }
 func SliceFrom(from: Long) -> Slice { return Slice(from, Unbounded()); }  # list[x:]
+func SliceFrom(from: Int) -> Slice { return SliceFrom(ToLong(from)); }
 func SliceTo(to: Long) -> Slice { return Slice(Unbounded(), to); }        # list[:x]
+func SliceTo(to: Int) -> Slice { return SliceTo(ToLong(to)); }
 func SliceAll() -> Slice { return Slice(Unbounded(), Unbounded()); }     # list[:]
 
 func normalized_index(index: Long, length: Long) -> Long {

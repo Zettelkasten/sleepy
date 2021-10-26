@@ -149,7 +149,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
         _pos, func_expr=ast(1), func_arg_exprs=val_list(3))},
     Production('PrimaryExpr', 'ref', '(', 'Expr', ')'): {
       'ast': lambda _pos, ast: ReferenceExpressionAst(_pos, arg_expr=ast(3))},
-    Production('PrimaryExpr', 'PrimaryExpr', '[', 'ExprList', ']'): {
+    Production('PrimaryExpr', 'PrimaryExpr', '[', 'IndexArgList', ']'): {
       'ast': lambda _pos, ast, val_list: CallExpressionAst(
         _pos, func_expr=IdentifierExpressionAst(_pos, identifier='index'), func_arg_exprs=[ast(1)] + val_list(3))},
     Production('PrimaryExpr', 'PrimaryExpr', '.', 'identifier'): {
@@ -223,6 +223,25 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'val_list': lambda ast: [ast(1)]},
     Production('ExprList+', 'Expr', ',', 'ExprList+'): {
       'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
+    Production('IndexArgList'): {
+      'val_list': []},
+    Production('IndexArgList', 'IndexArgList+'): {
+      'val_list': 'val_list.1'},
+    Production('IndexArgList+', 'IndexArg'): {
+      'val_list': lambda ast: [ast(1)]},
+    Production('IndexArgList+', 'IndexArg', ',', 'IndexArgList+'): {
+      'val_list': lambda ast, val_list: [ast(1)] + val_list(3)},
+    Production('IndexArg', 'Expr'): {
+      'ast': 'ast.1'},
+    Production('IndexArg', 'Expr', ':', 'Expr'): {
+      'ast': lambda ast, _pos: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, 'SliceAll'), func_arg_exprs=[ast(1), ast(3)])},
+    Production('IndexArg', 'Expr', ':'): {
+      'ast': lambda ast, _pos: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, 'SliceFrom'), func_arg_exprs=[ast(1)])},
+    Production('IndexArg', ':', 'Expr'): {
+      'ast': lambda ast, _pos: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, 'SliceTo'), func_arg_exprs=[ast(2)])},
     Production('Type', 'Type', '|', 'IdentifierType'): {
       'ast': lambda _pos, ast: UnionTypeAst(_pos, [ast(1), ast(3)])},
     Production('Type', 'IdentifierType'): {

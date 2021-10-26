@@ -25,7 +25,7 @@ func main() {
   print_line(a + b);  # would also need to call cleanup for a + b
 
   # slices work too:
-  print_line(a[SliceTo(3l)] + a[SliceFrom(6l)]);
+  print_line(a[:3] + a[6:]);
 
   cleanup(b);
   delete(!b);
