@@ -33,6 +33,7 @@ func map_from_entries[T, U](entries: List[MapEntry[T, U]]) -> Map[T, U] {
 
 func index[T, U](map: Map[T, U], key: T) -> Ref[U] {
     index_of_key = binary_search(map.entries, key);
+    assert(not(index_of_key is NotFound));
     return !(index(map.entries, index_of_key).value);
 }
 

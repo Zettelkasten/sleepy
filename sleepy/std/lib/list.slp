@@ -117,7 +117,9 @@ func +[T](a: List[T], b: List[T]) -> Ref[List[T]] {
   return !c;
 }
 
-func binary_search[T, K](list: List[T], key: K) -> Long {
+struct NotFound {}
+
+func binary_search[T, K](list: List[T], key: K) -> Long|NotFound {
   begin = 0l;
   end = list.size;
   middle = begin + (end - begin) / 2l;
@@ -134,6 +136,5 @@ func binary_search[T, K](list: List[T], key: K) -> Long {
     }
     middle = begin + (end - begin) / 2l;
   }
-  return -1l;
+  return NotFound();
 }
-
