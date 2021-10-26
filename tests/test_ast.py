@@ -1534,6 +1534,22 @@ def test_assert_type_narrowing():
     assert_equal(main(), 12)
 
 
+def test_assert_type_narrowing_not():
+  with make_execution_engine() as engine:
+    program = """
+    func black_box() -> Int|Char {
+      return 12
+    }
+    func main() ->  Int  {
+      my_thing : Int|Char = black_box()
+      assert(not(my_thing is Char))
+      return my_thing
+    }
+    """
+    main = compile_program(engine, program)
+    assert_equal(main(), 12)
+
+
 def test_unchecked_assert_type_narrowing():
   with make_execution_engine() as engine:
     program = """

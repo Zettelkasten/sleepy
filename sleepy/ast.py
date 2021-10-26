@@ -1349,7 +1349,7 @@ def annotate_ast(ast: AbstractSyntaxTree, annotation_list: List[AnnotationAst]) 
 def make_narrow_type_from_valid_cond_ast(cond_expr_ast: ExpressionAst,
                                          cond_holds: bool,
                                          symbol_table: SymbolTable):
-  # TODO: This is super limited currently: Will only work for if(local_var is Type), nothing more.
+  # TODO: This is super limited currently: Will only work for "local_var is Type", and not(...), nothing more.
   if isinstance(cond_expr_ast, BinaryOperatorExpressionAst) and cond_expr_ast.op == 'is':
     var_expr = cond_expr_ast.left_expr
     if not isinstance(var_expr, IdentifierExpressionAst):
@@ -1365,3 +1365,12 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast: ExpressionAst,
       symbol_table[var_expr.identifier] = var_symbol.copy_narrow_type(uncollapsed_check_type)
     else:
       symbol_table[var_expr.identifier] = var_symbol.copy_exclude_type(uncollapsed_check_type)
+  elif isinstance(cond_expr_ast, CallExpressionAst):
+    func_expr = cond_expr_ast.func_expr
+    if not isinstance(func_expr, IdentifierExpressionAst):
+      return
+    if func_expr.identifier == 'not':
+      if not len(cond_expr_ast.func_arg_exprs) == 1:
+        return
+      arg_ast = cond_expr_ast.func_arg_exprs[0]
+      make_narrow_type_from_valid_cond_ast(cond_expr_ast=arg_ast, cond_holds=not cond_holds, symbol_table=symbol_table)
