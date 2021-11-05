@@ -495,8 +495,7 @@ class UnionType(Type):
       return replacements[self]
     if len(self.possible_types) == 0:
       return self
-    new_possible_types = [
-      replacements.get(possible_type, possible_type) for possible_type in self.possible_types]
+    new_possible_types = [possible_type.replace_types(replacements) for possible_type in self.possible_types]
     new_possible_type_nums = self.possible_type_nums.copy()
     duplicate_indices = [
       index for index, possible_type in enumerate(new_possible_types)
