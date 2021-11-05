@@ -1,0 +1,3 @@
+
+# for Optional values
+struct None {}
