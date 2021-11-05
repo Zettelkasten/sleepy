@@ -1,0 +1,105 @@
+import "optional.slp", "list.slp"
+# Generic hash map implementation
+
+struct _HashNode[K, V] {
+  key: K;
+  value: V;
+  next: None|Ref[_HashNode[K, V]];
+}
+struct _HashBucket[K, V] {
+  first: None|_HashNode[K, V];
+}
+
+struct Map[K, V] {
+  _buckets: List[_HashBucket[K, V]];
+}
+func EmptyMap[K, V]() -> Map[K, V] {
+  buckets = EmptyList[_HashBucket[K, V]]()
+  initial_size = 8l
+  maybe_resize(buckets, initial_size)
+  i = 0l
+  while i < initial_size {
+    add(buckets, _HashBucket[K, V](None()))
+    i += 1l
+  }
+  return Map(buckets)
+}
+
+#func print[K, V](n: _HashNode[K, V]) {
+#  print(n.key);  print(" -> "); print(n.value)
+#  if not(n.next is None) {
+#    print(", ");  print(n.next)
+#  }
+#}
+#func print[K, V](b: _HashBucket[K, V]) {
+#  print("_HashBucket{")
+#  if not(b.first is None) {
+#    print(b.first)
+#  }
+#  print('}')
+#}
+func print[K, V](map: Map[K, V]) {
+  print('{')
+  empty = True()
+  hash = 0l
+  while hash < map._buckets.size {
+    node: None|_HashNode[K, V] = map._buckets[hash].first
+    while not(node is None) {
+      if not(empty) {
+        print(',');  print(' ')
+      }
+      empty = False()
+      print(node.key)
+      print(" -> ")
+      print(node.value)
+      node = node.next
+    }
+    hash += 1l
+  }
+  print('}')
+}
+
+func index[K, V](mutates map: Map[K, V], key: K) -> Ref[V] {
+  hash = mod(hash(key), map._buckets.size)
+
+  found_node: Ref[_HashNode[K, V]]|None = map._buckets[hash]
+  while and(!(found_node is None), found_node.key != key) {
+    found_node = found_node.next
+  }
+}
+
+func add[K, V](mutates map: Map[K, V], key: K, value: V) {
+  hash = mod(hash(key), map._buckets.size)
+  if map._buckets[hash].first is None {  # bucket was empty
+    map._buckets[hash].first = _HashNode[K, V](key, value, None())
+    return
+  }
+  !last_node: Ref[_HashNode[K, V]] = !map._buckets[hash].first
+  if not(last_node is None) {
+    found = False()
+    while not(found) {
+      if last_node.key == key {
+        # override old value
+        last_node.value = value
+        return
+      }
+      if last_node.next is None {
+        found = True()
+      } else {
+        !last_node = !last_node.next
+      }
+    }
+  }
+  !last_node.next = !new(_HashNode[K, V](key, value, None()))
+}
+
+func hash(i: Int) -> Long {
+  return ToLong(i)
+}
+
+func main() {
+  m = EmptyMap[Int, Str]()
+  add(m, 4, "Hello")
+  add(m, 4 + 8, "Hello fellow")
+  print_line(m)
+}

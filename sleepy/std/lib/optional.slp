@@ -1,3 +1,7 @@
 
 # for Optional values
 struct None {}
+
+func print(none: None) {
+  print("None")
+}
