@@ -11,6 +11,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable
 
+import llvmlite
 from llvmlite import ir
 from llvmlite.binding import ExecutionEngine
 
@@ -650,36 +651,103 @@ class UnionType(Type):
     return isinstance(other, UnionType)
 
 
+class PartialIdentifiedStructType(Type):
+  """
+  A struct while it is being declared. Needed for self-referencing struct members.
+  """
+
+  def __init__(self, identity: StructIdentity, templ_types: List[Type]):
+    self.identity = identity
+    self.templ_types = templ_types
+    if identity.context is not None and not any(templ_type.has_templ_placeholder() for templ_type in templ_types):
+      ir_type = identity.context.make_struct_ir_type(identity=self.identity, templ_types=templ_types)
+      c_type = identity.context.make_struct_c_type(identity=self.identity, templ_types=templ_types)
+    else:
+      ir_type, c_type = None, None
+    super().__init__(templ_types=[], ir_type=ir_type, c_type=c_type, constructor=None)
+
+  @property
+  def struct_identifier(self) -> str:
+    return self.identity.struct_identifier
+
+  def _make_di_type(self, context: CodegenContext):
+    assert False, self
+
+  def __repr__(self) -> str:
+    return self.struct_identifier + 'Partial'
+
+  def children(self) -> List[Type]:
+    return []
+
+  def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
+
+
+class StructIdentity:
+  """
+  To distinguish different structs. Similar to TypeSymbol.
+  """
+  def __init__(self, struct_identifier: str, context: CodegenContext):
+    self.struct_identifier = struct_identifier
+    assert context is not None
+    self.context = context
+
+  def __repr__(self):
+    return '%s@%s' % (self.struct_identifier, hex(id(self)))
+
+
 class StructType(Type):
   """
   A struct.
   """
-  def __init__(self, struct_identifier: str, templ_types: List[Type], member_identifiers: List[str],
-               member_types: List[Type], constructor: Optional[FunctionSymbol] = None):
-    self.struct_identifier = struct_identifier
+  def __init__(self,
+               identity: StructIdentity,
+               templ_types: List[Type],
+               member_identifiers: List[str],
+               member_types: List[Type],
+               partial_struct_type: Optional[PartialIdentifiedStructType] = None,
+               constructor: Optional[FunctionSymbol] = None):
+    assert len(member_identifiers) == len(member_types)
+    self.identity = identity
     self.member_identifiers = member_identifiers
     self.member_types = member_types
     self._constructor: Optional[FunctionSymbol] = None
+    assert partial_struct_type is None or partial_struct_type.identity == self.identity
+
     if any(templ_type.has_templ_placeholder() for templ_type in templ_types):
       self.ir_val_type = None
       self.c_val_type: Optional[typing.Type] = None
       super().__init__(templ_types=templ_types, ir_type=None, c_type=None, constructor=constructor)
-    else:  # default case
+    else:
       member_ir_types = [member_type.ir_type for member_type in member_types]
-      self.ir_val_type = ir.types.LiteralStructType(member_ir_types)
       member_c_types = [
         (member_identifier, member_type.c_type)
         for member_identifier, member_type in zip(member_identifiers, member_types)]
-      self.c_val_type: Optional[typing.Type] = type(
-        '%s_CType' % struct_identifier, (ctypes.Structure,), {'_fields_': member_c_types})
-      super().__init__(
-        templ_types=templ_types, ir_type=self.ir_val_type, c_type=self.c_val_type, constructor=constructor)
+      assert None not in member_ir_types
+      assert None not in member_c_types
 
-  def get_member_num(self, member_identifier):
-    """
-    :param str member_identifier:
-    :rtype: int
-    """
+      if partial_struct_type is None:
+        partial_struct_type = PartialIdentifiedStructType(identity=self.identity, templ_types=templ_types)
+      ir_type, c_type = partial_struct_type.ir_type, partial_struct_type.c_type
+      assert ir_type is not None
+      assert c_type is not None
+      assert isinstance(ir_type, ir.types.IdentifiedStructType)
+      if ir_type.is_opaque:
+        ir_type.set_body(*member_ir_types)
+        c_type._fields_ = member_c_types
+      else:  # already defined before
+        assert ir_type.elements == tuple(member_ir_types)
+        # Note that we do not check c_type._fields_ here because ctypes do not properly compare for equality always
+      super().__init__(templ_types=templ_types, ir_type=ir_type, c_type=c_type, constructor=constructor)
+
+    if partial_struct_type is not None:
+      self.member_types = [member_type.replace_types({partial_struct_type: self}) for member_type in self.member_types]
+
+  @property
+  def struct_identifier(self) -> str:
+    return self.identity.struct_identifier
+
+  def get_member_num(self, member_identifier: str) -> int:
     assert member_identifier in self.member_identifiers
     return self.member_identifiers.index(member_identifier)
 
@@ -689,10 +757,14 @@ class StructType(Type):
     if len(replacements) == 0:
       return self
     new_templ_types = [templ_type.replace_types(replacements) for templ_type in self.templ_types]
+    # in case we have a self-referencing member, first replace all occurrences of ourself with something temporary
+    # to avoid infinite recursion.
+    partial_self_replaced = PartialIdentifiedStructType(identity=self.identity, templ_types=new_templ_types)
+    replacements = {**replacements, self: partial_self_replaced}
     new_member_types = [member_type.replace_types(replacements) for member_type in self.member_types]
     new_struct = StructType(
-      struct_identifier=self.struct_identifier, templ_types=new_templ_types, member_identifiers=self.member_identifiers,
-      member_types=new_member_types, constructor=self.constructor)
+      identity=self.identity, templ_types=new_templ_types, member_identifiers=self.member_identifiers,
+      member_types=new_member_types, partial_struct_type=partial_self_replaced, constructor=self.constructor)
     return new_struct
 
   def has_templ_placeholder(self) -> bool:
@@ -718,16 +790,10 @@ class StructType(Type):
   def __eq__(self, other) -> bool:
     if not isinstance(other, StructType):
       return False
-    # TODO: we do not want duck-typing here: keep track of which TypeSymbol this actually belongs to and compare those
-    # instead of comparing the identifiers.
-    return (
-      self.struct_identifier == other.struct_identifier and self.templ_types == other.templ_types and
-      self.member_identifiers == other.member_identifiers and self.member_types == other.member_types)
+    return self.identity == other.identity and self.templ_types == other.templ_types
 
   def __hash__(self) -> int:
-    return hash((
-      self.__class__, self.struct_identifier) + tuple(self.templ_types) + tuple(self.member_identifiers) +
-      tuple(self.member_types))
+    return hash((self.__class__, self.identity) + tuple(self.templ_types))
 
   def __repr__(self) -> str:
     return self.struct_identifier + ('' if len(self.templ_types) == 0 else str(self.templ_types))
@@ -779,11 +845,9 @@ class StructType(Type):
     return self.member_types
 
   def has_same_symbol_as(self, other: Type) -> bool:
-    # TODO: either store the actual symbol, or keep track of a type base (= the signature type)
-    # note: cannot compare types, those might change if they are templates.
-    return (
-      isinstance(other, StructType) and other.struct_identifier == self.struct_identifier
-      and self.member_identifiers == other.member_identifiers)
+    if not isinstance(other, StructType):
+      return False
+    return self.identity == other.identity
 
 
 class PlaceholderTemplateType(Type):
@@ -1333,7 +1397,7 @@ class ConstructorFunctionTemplate(FunctionTemplate):
         self_ir_alloca = concrete_struct_type.make_ir_alloca(context=context)
 
         for member_identifier, ir_func_arg in zip(self.struct.member_identifiers, concrete_function.ir_func.args):
-          ir_func_arg.identifier = member_identifier
+          ir_func_arg.struct_identifier = member_identifier
         concrete_struct_type.make_store_members_ir(
           member_ir_vals=concrete_function.ir_func.args, struct_ir_alloca=self_ir_alloca, context=context)
         context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
@@ -1375,7 +1439,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
 
         assert len(concrete_function.ir_func.args) == 1
         self_ir_alloca = concrete_function.ir_func.args[0]
-        self_ir_alloca.identifier = 'self_ptr'
+        self_ir_alloca.struct_identifier = 'self_ptr'
         # Free members in reversed order
         for member_num in reversed(range(len(self.struct.member_identifiers))):
           member_identifier = self.struct.member_identifiers[member_num]
@@ -1682,6 +1746,8 @@ class CodegenContext:
       self.di_declare_func = ir.Function(self.module, di_declare_func_type, 'llvm.dbg.declare')
       self.known_di_types: Dict[Type, ir.DIValue] = {}
 
+    self._known_struct_c_types: Dict[(StructIdentity, Tuple[Type]), type] = {}
+
   @property
   def emits_debug(self) -> bool:
     return self._emits_debug and self.emits_ir
@@ -1805,6 +1871,19 @@ class CodegenContext:
         [identifier]
         + [str(arg_type) for arg_type in concrete_function.concrete_templ_types + concrete_function.arg_types])
       return self.module.get_unique_name(ir_func_name)
+
+  def _make_struct_type_name(self, identity: StructIdentity, templ_types: List[Type] | Tuple[Type]) -> str:
+    return '_'.join([str(identity)] + [str(templ_type) for templ_type in templ_types])
+
+  def make_struct_ir_type(self, identity: StructIdentity, templ_types: List[Type]) -> llvmlite.ir.IdentifiedStructType:
+    return self.module.context.get_identified_type(name=self._make_struct_type_name(identity, templ_types))
+
+  def make_struct_c_type(self, identity: StructIdentity, templ_types: List[Type]) -> type:
+    templ_types = tuple(templ_types)
+    if (identity, templ_types) not in self._known_struct_c_types:
+      c_type = type(self._make_struct_type_name(identity, templ_types), (ctypes.Structure,), {})
+      self._known_struct_c_types[identity, templ_types] = c_type
+    return self._known_struct_c_types[identity, templ_types]
 
 
 class UsePosRuntimeContext:

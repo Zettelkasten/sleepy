@@ -2,14 +2,22 @@ import _setup_test_env  # noqa
 
 from nose.tools import assert_equal
 
+from llvmlite import ir
 from sleepy.grammar import DummyPath
-from sleepy.symbols import UnionType, SLEEPY_NEVER
+from sleepy.symbols import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext
+
+
+def make_test_context(emits_ir: bool = True) -> CodegenContext:
+  module = ir.Module(name="test_module")
+  builder = ir.IRBuilder() if emits_ir else None
+  return CodegenContext(builder=builder, module=module, emits_debug=True, file_path=DummyPath("test"))
 
 
 # noinspection PyPep8Naming
 def test_can_implicit_cast_to():
   from sleepy.symbols import can_implicit_cast_to, ReferenceType, UnionType, StructType, PlaceholderTemplateType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_DOUBLE
+  context = make_test_context()
   assert_equal(can_implicit_cast_to(SLEEPY_INT, SLEEPY_DOUBLE), False)
   assert_equal(can_implicit_cast_to(SLEEPY_INT, SLEEPY_INT), True)
   assert_equal(can_implicit_cast_to(UnionType([SLEEPY_INT], [0], 8), SLEEPY_INT), True)
@@ -24,7 +32,8 @@ def test_can_implicit_cast_to():
   assert_equal(can_implicit_cast_to(
     ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), True)
   T = PlaceholderTemplateType('T')
-  List = StructType(struct_identifier='List', templ_types=[T], member_identifiers=[], member_types=[])
+  List = StructType(
+    identity=StructIdentity('List', context=context), templ_types=[T], member_identifiers=[], member_types=[])
   assert_equal(can_implicit_cast_to(
     ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
   assert_equal(can_implicit_cast_to(
@@ -62,9 +71,11 @@ def test_narrow_type():
 def test_narrow_type_templates():
   from sleepy.symbols import narrow_type, UnionType, PlaceholderTemplateType, StructType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL
+  context = make_test_context()
   Int, Bool = SLEEPY_INT, SLEEPY_BOOL
   T = PlaceholderTemplateType('T')
-  List = StructType(struct_identifier='List', templ_types=[T], member_identifiers=[], member_types=[])
+  List = StructType(
+    identity=StructIdentity('List', context=context), templ_types=[T], member_identifiers=[], member_types=[])
   # narrow(0:List[Int]|1:List[Bool], List[Int]) = 0:List[Int]
   assert_equal(
     narrow_type(
@@ -238,12 +249,12 @@ def test_try_infer_templ_types_union():
 # noinspection PyPep8Naming
 def test_try_infer_templ_types_struct():
   from sleepy.symbols import try_infer_templ_types, PlaceholderTemplateType, StructType
-  from sleepy.builtin_symbols import SLEEPY_CHAR
-  from sleepy.builtin_symbols import SLEEPY_INT
+  from sleepy.builtin_symbols import SLEEPY_CHAR, SLEEPY_INT
+  context = make_test_context()
   T = PlaceholderTemplateType('T')
   U = PlaceholderTemplateType('U')
   WrapperT = StructType(
-    'Wrapper', templ_types=[T], member_identifiers=['value'], member_types=[T])
+    StructIdentity('Wrapper', context=context), templ_types=[T], member_identifiers=['value'], member_types=[T])
   WrapperU = WrapperT.replace_types({T: U})
   WrapperInt = WrapperT.replace_types({T: SLEEPY_INT})
   WrapperChar = WrapperT.replace_types({T: SLEEPY_CHAR})
@@ -320,11 +331,9 @@ def test_context_use_pos():
 
 
 def test_bind_and_unbind():
-  from sleepy.symbols import TypedValue, ReferenceType, CodegenContext
+  from sleepy.symbols import TypedValue, ReferenceType
   from sleepy.builtin_symbols import SLEEPY_INT
-  from llvmlite import ir
-  module = ir.Module(name='module_name')
-  context = CodegenContext(builder=None, module=module, emits_debug=False, file_path=DummyPath("test"))
+  context = make_test_context(emits_ir=False)
 
   ref_int = TypedValue(typ=ReferenceType(SLEEPY_INT), ir_val=None, num_unbindings=0)
   assert ref_int.num_possible_binds() == 1
