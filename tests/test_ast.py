@@ -577,6 +577,23 @@ def test_struct_member_load_assign():
     assert_equal(main(42.0), 42.0)
 
 
+def test_struct_self_referencing_member():
+  with make_execution_engine() as engine:
+    program = """
+    struct None { }
+    struct LinkedList {
+      value: Int;
+      next: Ref[LinkedList]|None;
+    }
+    func main() {
+      b = LinkedList(42, None());
+      a = LinkedList(41, !b);
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    main()
+
+
 def test_if_missing_return_branch():
   with make_execution_engine() as engine:
     program = """
