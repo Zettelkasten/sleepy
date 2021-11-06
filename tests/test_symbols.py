@@ -350,3 +350,23 @@ def test_bind_and_unbind():
   assert ref_int_.type == ReferenceType(SLEEPY_INT)
   assert ref_int_.num_unbindings == 1
   assert ref_int_.num_possible_binds() == 1
+
+
+# noinspection PyPep8Naming
+def test_struct_self_referencing():
+  from sleepy.symbols import StructType, PlaceholderTemplateType, PartialIdentifiedStructType, ReferenceType
+  from sleepy.builtin_symbols import SLEEPY_INT
+  context = make_test_context()
+
+  struct_identity = StructIdentity("List", context=context)
+  T = PlaceholderTemplateType(identifier="T")
+  ListTPartial = PartialIdentifiedStructType(identity=struct_identity, templ_types=[T])
+  ListT = StructType(
+    identity=struct_identity, templ_types=[T], member_identifiers=["val", "next"],
+    member_types=[T, ReferenceType(ListTPartial)], partial_struct_type=ListTPartial)
+  assert_equal(ListT.member_types, [T, ReferenceType(ListT)])
+
+  Int = SLEEPY_INT
+  ListInt = ListT.replace_types({T: Int})
+  assert isinstance(ListInt, StructType)
+  assert_equal(ListInt.member_types, [Int, ReferenceType(ListInt)])
