@@ -11,7 +11,8 @@ from sleepy.grammar import TreePosition, DummyPath
 from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue, ReferenceType
+  PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue, ReferenceType, \
+  PartialIdentifiedStructType, StructIdentity
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
@@ -452,18 +453,27 @@ class StructDeclarationAst(StatementAst):
       placeholder_templ_types = self._collect_placeholder_templ_types(
         self.templ_identifiers, symbol_table=struct_symbol_table)
 
+      # Struct members might reference this struct itself (indirectly).
+      # We temporarily add a placeholder to the symbol table so it is defined here.
+      struct_identity = StructIdentity(struct_identifier=self.struct_identifier, context=context)
+      partial_struct_type = PartialIdentifiedStructType(identity=struct_identity, templ_types=placeholder_templ_types)
+      struct_identity.partial_struct_type = partial_struct_type
+      symbol_table[self.struct_identifier] = TypeTemplateSymbol(
+        template_parameters=placeholder_templ_types, signature_type=partial_struct_type)
+
       member_types = [type_ast.make_type(symbol_table=struct_symbol_table) for type_ast in self.member_types]
       signature_struct_type = StructType(
-        struct_identifier=self.struct_identifier, templ_types=placeholder_templ_types,
-        member_identifiers=self.member_identifiers, member_types=member_types)
+        identity=struct_identity, templ_types=placeholder_templ_types,
+        member_identifiers=self.member_identifiers, member_types=member_types, partial_struct_type=partial_struct_type)
 
       # make constructor / destructor
-      constructor = signature_struct_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
-      signature_struct_type.constructor = constructor
+      signature_struct_type.constructor = signature_struct_type.build_constructor(
+        parent_symbol_table=symbol_table, parent_context=context)
       signature_struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
 
       # assemble to complete type symbol
-      struct_type_symbol = TypeTemplateSymbol(template_parameters=placeholder_templ_types, signature_type=signature_struct_type)
+      struct_type_symbol = TypeTemplateSymbol(
+        template_parameters=placeholder_templ_types, signature_type=signature_struct_type)
       symbol_table[self.struct_identifier] = struct_type_symbol
 
   def children(self) -> List[AbstractSyntaxTree]:
