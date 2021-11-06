@@ -2084,7 +2084,7 @@ class TypedValue:
     new.ir_val = None
     if not context.emits_ir or self.ir_val is None:
       return new
-    assert not self.is_referenceable(), 'not implemented'
+    assert not to_type.is_referenceable(), 'not implemented'
 
     if isinstance(to_type, UnionType):
       to_ir_alloca = context.alloca_at_entry(to_type.ir_type, name='%s_ptr' % name)
