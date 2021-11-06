@@ -502,7 +502,9 @@ def test_struct_default_constructor():
     }
     """
     main = compile_program(engine, program, add_preamble=False)
-    assert_equal(type(main()).__name__, 'Vec2_CType')
+    res = main()
+    assert_equal(res.x, 0)
+    assert_equal(res.y, 0)
 
 
 def test_struct_member_access():
