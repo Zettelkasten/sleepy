@@ -976,13 +976,7 @@ class CallExpressionAst(ExpressionAst):
 
   def _is_type_union_call(self, symbol_table: SymbolTable):
     # TODO: make this a normal compile time function operating on types
-    if not isinstance(self.func_expr, IdentifierExpressionAst):
-      return False
-    if not self.func_expr.identifier == '|':
-      return False
-    if not len(self.func_arg_exprs) == 2:
-      return False
-    return True
+    return self._is_special_call('|', symbol_table=symbol_table)
 
   def _is_is_call(self, symbol_table: SymbolTable):
     # TODO: make this a normal compile time function operating on types
