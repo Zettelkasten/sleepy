@@ -118,9 +118,13 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
     Production('SumExpr', 'ProdExpr'): {
       'ast': 'ast.1'},
-    Production('ProdExpr', 'ProdExpr', 'prod_op', 'NegExpr'): {
+    Production('ProdExpr', 'ProdExpr', 'prod_op', 'BitExpr'): {
       'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
-    Production('ProdExpr', 'NegExpr'): {
+    Production('ProdExpr', 'BitExpr'): {
+      'ast': 'ast.1'},
+    Production('BitExpr', 'BitExpr', '|', 'NegExpr'): {
+      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
+    Production('BitExpr', 'NegExpr'): {
       'ast': 'ast.1'},
     Production('NegExpr', 'sum_op', 'NegExpr'): {
       'ast': lambda _pos, ast, op: UnaryOperatorExpressionAst(_pos, op(1), ast(2))},
@@ -283,6 +287,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     '=': {'op': lambda value: value},
     'sum_op': {'op': lambda value: value},
     'prod_op': {'op': lambda value: value},
+    '|': {'op': lambda value: value},
     'assign_op': {'op': parse_assign_op},
     'identifier': {'identifier': lambda value: value},
     'int': {'number': lambda value: int(value)},
