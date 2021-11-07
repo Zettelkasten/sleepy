@@ -1,6 +1,6 @@
 from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
   ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
-  IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
+  IfStatementAst, WhileStatementAst, ConstantExpressionAst, \
   StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, \
   ImportAst, ImportsAst, ReferenceExpressionAst, UnbindExpressionAst
 
@@ -131,7 +131,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('BitExpr', 'NegExpr'): {
       'ast': 'ast.1'},
     Production('NegExpr', 'sum_op', 'NegExpr'): {
-      'ast': lambda _pos, ast, op: UnaryOperatorExpressionAst(_pos, op(1), ast(2))},
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, op(1)), func_arg_exprs=[ast(2)])},
     Production('NegExpr', 'unbind_op', 'NegExpr'): {
       'ast': lambda _pos, ast: UnbindExpressionAst(_pos, ast(2))},
     Production('NegExpr', 'PrimaryExpr'): {

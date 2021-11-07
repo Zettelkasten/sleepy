@@ -749,43 +749,6 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
     return 'ExpressionAst'
 
 
-class UnaryOperatorExpressionAst(ExpressionAst):
-  """
-  NegVal.
-  """
-  def __init__(self, pos, op, expr):
-    """
-    :param TreePosition pos:
-    :param str op:
-    :param ExpressionAst expr:
-    """
-    super().__init__(pos)
-    self.op = op
-    self.expr = expr
-
-  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
-    return Symbol.Kind.VARIABLE
-
-  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
-    with context.use_pos(self.pos):
-      operand_exprs = [self.expr]
-      return self.build_func_call_by_identifier(
-        func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
-        context=context)
-
-  def children(self) -> List[AbstractSyntaxTree]:
-    return [self.expr]
-
-  def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use result of operator %r as function' % self.op)
-
-  def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use result of operator %r as type' % self.op)
-
-  def __repr__(self) -> str:
-    return 'UnaryOperatorExpressionAst(op=%r, expr=%r)' % (self.op, self.expr)
-
-
 class ConstantExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> double | int | char
