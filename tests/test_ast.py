@@ -1304,6 +1304,18 @@ def test_union_scope_assertions():
     assert_equal(main(-3, -6), -3 / -6)
 
 
+def test_union_with_reference():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      y: Ref[Bool]|Int = x
+      return y
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
 def test_assign_to_union():
   with make_execution_engine() as engine:
     program = """
