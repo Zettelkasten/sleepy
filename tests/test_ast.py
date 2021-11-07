@@ -1551,6 +1551,19 @@ def test_union_store_into_smaller_value():
     assert_equal(main(4), 4)
 
 
+def test_union_member_access():
+  with make_execution_engine() as engine:
+    program = """
+    struct Wrapper { val: Int; }
+    func main(a: Int) -> Int {
+      w: Int|Wrapper = Wrapper(a)
+      return w.val
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), 5)
+
+
 def test_while_cond_type_narrowing():
   with make_execution_engine() as engine:
     program = """
