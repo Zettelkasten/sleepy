@@ -15,9 +15,6 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   PartialIdentifiedStructType, StructIdentity
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
-# Operator precedence: * / stronger than + - stronger than == != < <= > >=
-SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '=', '|'}
-
 
 class AbstractSyntaxTree(ABC):
   """
