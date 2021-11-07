@@ -16,7 +16,7 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
 # Operator precedence: * / stronger than + - stronger than == != < <= > >=
-SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
+SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '=', '|'}
 
 
 class AbstractSyntaxTree(ABC):
@@ -1035,6 +1035,8 @@ class CallExpressionAst(ExpressionAst):
         self.raise_error('Cannot specify template parameters for symbol of kind %r' % func_kind)
       return func_caller_kind
     if func_kind == Symbol.Kind.FUNCTION:
+      if self._is_type_union_call(symbol_table=symbol_table):
+        return Symbol.Kind.TYPE
       return Symbol.Kind.VARIABLE
     if func_kind == Symbol.Kind.TYPE:
       called_type = self.func_expr.make_as_type(symbol_table=symbol_table)
@@ -1070,6 +1072,16 @@ class CallExpressionAst(ExpressionAst):
     # TODO: make this a normal compile time function operating on types
     return self._is_special_call('size', symbol_table=symbol_table)
 
+  def _is_type_union_call(self, symbol_table: SymbolTable):
+    # TODO: make this a normal compile time function operating on types
+    if not isinstance(self.func_expr, IdentifierExpressionAst):
+      return False
+    if not self.func_expr.identifier == '|':
+      return False
+    if not len(self.func_arg_exprs) == 2:
+      return False
+    return True
+
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     with context.use_pos(self.pos):
@@ -1099,6 +1111,9 @@ class CallExpressionAst(ExpressionAst):
 
   def make_as_type(self, symbol_table: SymbolTable) -> Type:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.TYPE
+    if self._is_type_union_call(symbol_table=symbol_table):
+      possible_types = [arg.make_as_type(symbol_table=symbol_table) for arg in self.func_arg_exprs]
+      return UnionType.from_types(possible_types)
     concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
     assert concrete_templ_types is not None
     signature_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
