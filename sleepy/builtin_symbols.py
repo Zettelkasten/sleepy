@@ -242,6 +242,10 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   symbol_table['size'] = FunctionSymbol(identifier='size', returns_void=False)
   symbol_table.inbuilt_symbols['size'] = symbol_table['size']
 
+  assert 'is' not in symbol_table
+  symbol_table['is'] = FunctionSymbol(identifier='is', returns_void=False)
+  symbol_table.inbuilt_symbols['is'] = symbol_table['is']
+
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table
     symbol_table[type_identifier] = TypeTemplateSymbol.make_concrete_type_symbol(inbuilt_type)

@@ -1,7 +1,7 @@
 from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
   ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
-  BinaryOperatorExpressionAst, IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
-  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ReferenceExpressionAst, \
+  IfStatementAst, WhileStatementAst, UnaryOperatorExpressionAst, ConstantExpressionAst, \
+  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, \
   ImportAst, ImportsAst, ReferenceExpressionAst, UnbindExpressionAst
 
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
@@ -106,24 +106,28 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda _pos, ast: AssignStatementAst(_pos, var_target=ast(1), var_val=ast(3), declared_var_type=None)},
     Production('Stmt', 'Expr', 'assign_op', 'Expr'): {
       'ast': lambda _pos, ast, op: AssignStatementAst(
-        _pos, var_target=ast(1), var_val=BinaryOperatorExpressionAst(
-          _pos, op=op(2), left_expr=ast(1), right_expr=ast(3)), declared_var_type=None)},
+        _pos, var_target=ast(1), var_val=CallExpressionAst(_pos, func_expr=IdentifierExpressionAst(
+          _pos, op(2)), func_arg_exprs=[ast(1), ast(3)]), declared_var_type=None)},
     Production('Stmt', 'while', 'Expr', 'Scope'): {
       'ast': lambda _pos, ast: WhileStatementAst(_pos, condition_val=ast(2), body_scope=ast(3))},
     Production('Expr', 'Expr', 'cmp_op', 'SumExpr'): {
-      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op=op(2), left_expr=ast(1), right_expr=ast(3))},
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, op(2)), func_arg_exprs=[ast(1), ast(3)])},
     Production('Expr', 'SumExpr'): {
       'ast': 'ast.1'},
     Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'): {
-      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, op(2)), func_arg_exprs=[ast(1), ast(3)])},
     Production('SumExpr', 'ProdExpr'): {
       'ast': 'ast.1'},
     Production('ProdExpr', 'ProdExpr', 'prod_op', 'BitExpr'): {
-      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, op(2)), func_arg_exprs=[ast(1), ast(3)])},
     Production('ProdExpr', 'BitExpr'): {
       'ast': 'ast.1'},
     Production('BitExpr', 'BitExpr', '|', 'NegExpr'): {
-      'ast': lambda _pos, ast, op: BinaryOperatorExpressionAst(_pos, op(2), ast(1), ast(3))},
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, op(2)), func_arg_exprs=[ast(1), ast(3)])},
     Production('BitExpr', 'NegExpr'): {
       'ast': 'ast.1'},
     Production('NegExpr', 'sum_op', 'NegExpr'): {

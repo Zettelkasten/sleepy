@@ -749,64 +749,6 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
     return 'ExpressionAst'
 
 
-class BinaryOperatorExpressionAst(ExpressionAst):
-  """
-  Val, SumVal, ProdVal.
-  """
-  def __init__(self, pos, op, left_expr, right_expr):
-    """
-    :param TreePosition pos:
-    :param str op:
-    :param ExpressionAst left_expr:
-    :param ExpressionAst right_expr:
-    """
-    super().__init__(pos)
-    assert op in SLOPPY_OP_TYPES
-    self.op = op
-    self.left_expr, self.right_expr = left_expr, right_expr
-    if self.op == 'is':
-      # TODO: Then it should be a TypeExpressionAst, not a VariableExpressionAst.
-      # Probably it's nicer to make an entire new ExpressionAst for `is` Expressions anyway.
-      if not isinstance(self.right_expr, IdentifierExpressionAst):
-        raise self.raise_error("'is' operator must be applied to a union type and a type.")
-
-  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
-    return Symbol.Kind.VARIABLE
-
-  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
-    with context.use_pos(self.pos):
-      if self.op == 'is':
-        assert isinstance(self.right_expr, IdentifierExpressionAst)
-        check_type_expr = IdentifierTypeAst(
-          self.right_expr.pos, type_identifier=self.right_expr.identifier, templ_types=[])
-        check_type = check_type_expr.make_type(symbol_table=symbol_table)
-        check_value = self.left_expr.make_as_val(symbol_table=symbol_table, context=context)
-        check_value = check_value.copy_collapse(context=context, name='check_val')
-        if context.emits_ir:
-          ir_val = make_ir_val_is_type(check_value.ir_val, check_value.narrowed_type, check_type, context=context)
-        else:
-          ir_val = None
-        return TypedValue(typ=SLEEPY_BOOL, ir_val=ir_val)
-
-      operand_exprs = [self.left_expr, self.right_expr]
-      return self.build_func_call_by_identifier(
-        func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
-        context=context)
-
-  def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use result of operator %r as function' % self.op)
-
-  def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use result of operator %r as type' % self.op)
-
-  def children(self) -> List[AbstractSyntaxTree]:
-    return [self.left_expr, self.right_expr]
-
-  def __repr__(self) -> str:
-    return 'BinaryOperatorExpressionAst(op=%r, left_expr=%r, right_expr=%r)' % (
-      self.op, self.left_expr, self.right_expr)
-
-
 class UnaryOperatorExpressionAst(ExpressionAst):
   """
   NegVal.
@@ -1082,6 +1024,10 @@ class CallExpressionAst(ExpressionAst):
       return False
     return True
 
+  def _is_is_call(self, symbol_table: SymbolTable):
+    # TODO: make this a normal compile time function operating on types
+    return self._is_special_call('is', symbol_table=symbol_table)
+
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     with context.use_pos(self.pos):
@@ -1092,6 +1038,22 @@ class CallExpressionAst(ExpressionAst):
         from sleepy.symbols import LLVM_SIZE_TYPE
         ir_val = ir.Constant(LLVM_SIZE_TYPE, size_of_type.size) if context.emits_ir else None
         return TypedValue(typ=SLEEPY_LONG, ir_val=ir_val)
+      if self._is_is_call(symbol_table=symbol_table):
+        if len(self.func_arg_exprs) != 2:
+          self.raise_error('Operator "is" must be used between exactly two arguments')
+        val_arg, type_arg = self.func_arg_exprs
+        if val_arg.make_symbol_kind(symbol_table=symbol_table) != Symbol.Kind.VARIABLE:
+          self.raise_error('Left-side argument of operator "is" must be a value')
+        if type_arg.make_symbol_kind(symbol_table=symbol_table) != Symbol.Kind.TYPE:
+          self.raise_error('Right-side argument of operator "is" must be a type')
+        check_type = type_arg.make_as_type(symbol_table=symbol_table)
+        check_value = val_arg.make_as_val(symbol_table=symbol_table, context=context)
+        check_value = check_value.copy_collapse(context=context, name='check_val')
+        if context.emits_ir:
+          ir_val = make_ir_val_is_type(check_value.ir_val, check_value.narrowed_type, check_type, context=context)
+        else:
+          ir_val = None
+        return TypedValue(typ=SLEEPY_BOOL, ir_val=ir_val)
 
       # default case
       func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
@@ -1375,16 +1337,15 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast: ExpressionAst,
                                          cond_holds: bool,
                                          symbol_table: SymbolTable):
   # TODO: This is super limited currently: Will only work for "local_var is Type", and not(...), nothing more.
-  if isinstance(cond_expr_ast, BinaryOperatorExpressionAst) and cond_expr_ast.op == 'is':
-    var_expr = cond_expr_ast.left_expr
+  # noinspection PyProtectedMember
+  if isinstance(cond_expr_ast, CallExpressionAst) and cond_expr_ast._is_is_call(symbol_table=symbol_table):
+    assert len(cond_expr_ast.func_arg_exprs) == 2
+    var_expr = cond_expr_ast.func_arg_exprs[0]
     if not isinstance(var_expr, IdentifierExpressionAst):
       return
     var_symbol = var_expr.get_var_symbol(symbol_table=symbol_table)
     collapsed_var = var_symbol.as_typed_var(ir_val=None).copy_collapse(context=None)
-    assert isinstance(cond_expr_ast.right_expr, IdentifierExpressionAst)
-    check_type_expr = IdentifierTypeAst(
-      cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.identifier, templ_types=[])
-    check_type = check_type_expr.make_type(symbol_table=symbol_table)
+    check_type = cond_expr_ast.func_arg_exprs[1].make_as_type(symbol_table=symbol_table)
     uncollapsed_check_type = var_symbol.declared_var_type.replace_types({collapsed_var.type: check_type})
     if cond_holds:
       symbol_table[var_expr.identifier] = var_symbol.copy_narrow_type(uncollapsed_check_type)
