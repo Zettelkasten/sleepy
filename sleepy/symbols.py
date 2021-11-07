@@ -2200,14 +2200,26 @@ class TypedValue:
         ir_to_tag = context.builder.extract_element(ir_tag_mapping, ir_from_tag, name='%s_to_tag' % name)
         context.builder.store(
           ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
-        assert to_type.val_size >= from_type.val_size
-        ir_from_untagged_union = from_type.make_extract_void_val(self.ir_val, context=context,
-                                                                 name='%s_from_val' % name)
+
+        # Note: if the size of to_type is strictly smaller than from_type, we need to truncate the value
+        # There is no LLVM instruction for this, so we alloca memory and reinterpret a pointer on this
+        assert max(possible_from_type.size for possible_from_type in from_type.possible_types) <= to_type.val_size
+        ir_from_untagged_union = from_type.make_extract_void_val(
+          self.ir_val, context=context, name='%s_from_val' % name)
+        ir_from_untagged_union_ptr = context.alloca_at_entry(
+          from_type.untagged_union_ir_type, name='%s_from_ptr' % name)
+        context.builder.store(ir_from_untagged_union, ir_from_untagged_union_ptr)
+        ir_from_untagged_union_ptr_truncated = context.builder.bitcast(
+          ir_from_untagged_union_ptr, ir.PointerType(to_type.untagged_union_ir_type),
+          name='%s_from_ptr_truncated' % name)
+        ir_from_untagged_union_truncated = context.builder.load(
+          ir_from_untagged_union_ptr_truncated, name='%s_from_val_truncated' % name)
+
         ir_to_untagged_union_ptr = to_type.make_untagged_union_void_ptr(
           to_ir_alloca, context=context, name='%s_to_val_raw' % name)
         ir_to_untagged_union_ptr_casted = context.builder.bitcast(
           ir_to_untagged_union_ptr, ir.PointerType(to_type.untagged_union_ir_type), name='%s_to_val' % name)
-        context.builder.store(ir_from_untagged_union, ir_to_untagged_union_ptr_casted)
+        context.builder.store(ir_from_untagged_union_truncated, ir_to_untagged_union_ptr_casted)
       else:
         assert not isinstance(from_type, UnionType)
         ir_to_tag = ir.Constant(to_type.tag_ir_type, to_type.get_variant_num(from_type))
