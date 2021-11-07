@@ -552,7 +552,8 @@ class AssignStatementAst(StatementAst):
       assert isinstance(target_val.type, ReferenceType)
       declared_type = target_val.type.pointee_type
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
-          self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
+        self.raise_error('Cannot %s variable collapsing to type %r with new type %r' % (
+          'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type))
       if not can_implicit_cast_to(val.narrowed_type, declared_type):
         self.raise_error(
           'Cannot redefine variable of type %r with variable of type %r' % (declared_type, val.narrowed_type))
