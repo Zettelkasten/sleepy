@@ -1537,6 +1537,20 @@ def test_union_if_terminated_branch_type_narrowing():
     assert_almost_equal(main(), sin(42.0))
 
 
+def test_union_store_into_smaller_value():
+  with make_execution_engine() as engine:
+    program = """
+    struct None { }
+    func main(int: Int) -> Int {
+      x: Int|Double = int  # takes up 8 bytes
+      y: Int|Bool = x      # only takes 4 bytes
+      return y
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(4), 4)
+
+
 def test_while_cond_type_narrowing():
   with make_execution_engine() as engine:
     program = """
