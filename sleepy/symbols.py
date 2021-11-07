@@ -425,12 +425,11 @@ class UnionType(Type):
   """
   A tagged union, i.e. a type that can be one of a set of different types.
   """
-  def __init__(self, possible_types: List[Type], possible_type_nums: List[int], val_size: int,
+  def __init__(self, possible_types: List[Type], possible_type_nums: List[int], val_size: Optional[int],
                constructor: Optional[FunctionSymbol] = None):
     assert len(possible_types) == len(possible_type_nums)
     assert SLEEPY_VOID not in possible_types
     assert len(set(possible_types)) == len(possible_types)
-    assert all(val_size >= possible_type.size for possible_type in possible_types)
     self.possible_types = possible_types
     self.possible_type_nums = possible_type_nums
     self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
@@ -439,13 +438,23 @@ class UnionType(Type):
     self.tag_c_type = ctypes.c_uint8
     self.tag_ir_type = ir.types.IntType(8)
     self.tag_size = 8
-    self.untagged_union_c_type = ctypes.c_ubyte * max(
-      (ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
-    self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), val_size)
-    c_type = type(
-      '%s_CType' % self.identifier, (ctypes.Structure,),
-      {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
-    ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
+    if any(possible_type.has_templ_placeholder() for possible_type in possible_types):
+      assert val_size is None
+      self.tag_c_type = None
+      self.tag_ir_type = None
+      self.untagged_union_ir_type: Optional[ir.Type] = None
+      self.untagged_union_c_type: Optional[type] = None
+      ir_type, c_type = None, None
+    else:  # default case, non-template
+      assert val_size is not None
+      assert all(val_size >= possible_type.size for possible_type in possible_types)
+      self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), val_size)
+      self.untagged_union_c_type = ctypes.c_ubyte * max(
+        (ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
+      c_type = type(
+        '%s_CType' % self.identifier, (ctypes.Structure,),
+        {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
+      ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
     super().__init__(templ_types=[], ir_type=ir_type, c_type=c_type, constructor=constructor)
 
   def __repr__(self) -> str:
@@ -504,8 +513,14 @@ class UnionType(Type):
     for duplicate_index in reversed(duplicate_indices):
       del new_possible_types[duplicate_index]
       del new_possible_type_nums[duplicate_index]
-    # Note: We don't decrease the size of the union value to stay compatible to before.
-    val_size = max([self.val_size] + [ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types])
+    if any(possible_type.has_templ_placeholder() for possible_type in new_possible_types):
+      val_size = None
+    else: # default case
+      val_size = max([ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types])
+      # Note: We don't decrease the size of the union value to stay compatible to before.
+      if self.val_size is not None:
+        val_size = max(val_size, self.val_size)
+
     return UnionType(
       possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=val_size,
       constructor=self.constructor)
@@ -634,7 +649,10 @@ class UnionType(Type):
       else:
         next_type_num = max(new_possible_type_nums) + 1 if len(new_possible_type_nums) > 0 else 0
         new_possible_type_nums.append(next_type_num)
-    new_val_size = max([self.val_size] + [extended_type.size for extended_type in extended_types])
+    if self.val_size is None or any(extended_type.has_templ_placeholder() for extended_type in extended_types):
+      new_val_size = None
+    else:
+      new_val_size = max([self.val_size] + [extended_type.size for extended_type in extended_types])
     return UnionType(
       possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=new_val_size)
 
@@ -642,7 +660,10 @@ class UnionType(Type):
   def from_types(cls, possible_types: List[Type]) -> UnionType:
     possible_types = list(dict.fromkeys(possible_types))  # possibly remove duplicates
     possible_type_nums = list(range(len(possible_types)))
-    val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in possible_types)
+    if any(possible_type.has_templ_placeholder() for possible_type in possible_types):
+      val_size = None
+    else:  # default case, no template
+      val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in possible_types)
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
 
   def children(self) -> List[Type]:
