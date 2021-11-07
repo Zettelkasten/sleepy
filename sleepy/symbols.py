@@ -504,7 +504,8 @@ class UnionType(Type):
     for duplicate_index in reversed(duplicate_indices):
       del new_possible_types[duplicate_index]
       del new_possible_type_nums[duplicate_index]
-    val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types)
+    # Note: We don't decrease the size of the union value to stay compatible to before.
+    val_size = max([self.val_size] + [ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types])
     return UnionType(
       possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=val_size,
       constructor=self.constructor)
