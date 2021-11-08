@@ -117,7 +117,6 @@ class AbstractSyntaxTree(ABC):
     calling_types = [arg.narrowed_type for arg in collapsed_func_args]
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
       func_caller=func_caller, calling_types=calling_types)
-    return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
     if templ_types is None:
       templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
@@ -135,10 +134,10 @@ class AbstractSyntaxTree(ABC):
 
     if context.emits_ir:
       from sleepy.symbols import make_func_call_ir
-      return_ir_val = make_func_call_ir(
-        func=func, templ_types=templ_types, func_args=func_args, context=context)
+      return_val = make_func_call_ir(func=func, templ_types=templ_types, func_args=func_args, context=context)
     else:
-      return_ir_val = None
+      return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
+      return_val = TypedValue(typ=return_type, ir_val=None)
 
     # apply type narrowings
     for arg_num, func_arg_expr in enumerate(func_arg_exprs):
@@ -157,7 +156,8 @@ class AbstractSyntaxTree(ABC):
       assert len(func_arg_exprs) >= 1
       condition_expr = func_arg_exprs[0]
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
-    return TypedValue(typ=return_type, ir_val=return_ir_val)
+
+    return return_val
 
   def build_func_call_by_identifier(self,
                                     func_identifier: str,
