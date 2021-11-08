@@ -1937,12 +1937,11 @@ def make_ir_size(size: int) -> ir.values.Value:
 def make_func_call_ir(func: FunctionSymbol,
                       templ_types: List[Type],
                       func_args: List[TypedValue],
-                      context: CodegenContext) -> Optional[ir.values.Value]:
-  assert context.emits_ir
+                      context: CodegenContext) -> TypedValue:
   assert not context.emits_debug or context.builder.debug_metadata is not None
 
-  def make_call_func(concrete_func: ConcreteFunction,
-                     caller_context: CodegenContext) -> ir.values.Value:
+  def do_call(concrete_func: ConcreteFunction,
+                     caller_context: CodegenContext) -> TypedValue:
     assert caller_context.emits_ir
     assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
     assert len(concrete_func.arg_types) == len(func_args)
@@ -1963,111 +1962,138 @@ def make_func_call_ir(func: FunctionSymbol,
         concrete_func.arg_identifiers, collapsed_func_args, concrete_func.uncollapsed_arg_types)]
     if concrete_func.is_inline:
       assert concrete_func not in caller_context.inline_func_call_stack
-      return concrete_func.make_inline_func_call_ir(func_args=casted_calling_args, caller_context=caller_context)
+      return_ir = concrete_func.make_inline_func_call_ir(func_args=casted_calling_args, caller_context=caller_context)
     else:
       ir_func = concrete_func.ir_func
       assert ir_func is not None and len(ir_func.args) == len(casted_calling_args)
       casted_ir_args = [arg.ir_val for arg in casted_calling_args]
       assert None not in casted_ir_args
-      return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
+      return_ir = caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
+    if func.returns_void:
+      return TypedValue(typ=SLEEPY_VOID, ir_val=None)
+    else:
+      assert isinstance(return_ir, ir.values.Value)
+      return TypedValue(typ=concrete_func.return_type, ir_val=return_ir)
 
-  calling_arg_types = [arg.copy_collapse(context=None).narrowed_type for arg in func_args]
+  calling_collapsed_args = [arg.copy_collapse(context=context) for arg in func_args]
+  calling_arg_types = [arg.narrowed_type for arg in calling_collapsed_args]
   assert func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
   possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
-  if len(possible_concrete_funcs) == 1:
-    return make_call_func(
-      concrete_func=possible_concrete_funcs[0], caller_context=context)
+  from functools import partial
+  return make_union_switch_ir(
+    case_funcs={
+      tuple(concrete_func.arg_types): partial(do_call, concrete_func) for concrete_func in possible_concrete_funcs},
+    calling_args=calling_collapsed_args, returns_void=func.returns_void, name=func.identifier, context=context)
+
+
+def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext], TypedValue]],
+                         calling_args: List[TypedValue],
+                         returns_void: bool, name: str,
+                         context: CodegenContext) -> TypedValue:
+  """
+  Given different functions to execute for different argument types,
+  this will generate IR to call the correct function for given `calling_args`.
+  This is especially useful if the argument type contains unions,
+  as then it is only clear at run time which function to actually call.
+  """
+  assert context.emits_ir
+  assert not context.emits_debug or context.builder.debug_metadata is not None
+
+  if len(case_funcs) == 1:
+    single_case = next(iter(case_funcs.values()))
+    single_value = single_case(caller_context=context)  # noqa
+    assert (single_value.type is SLEEPY_VOID) == (single_value.ir_val is None)
+    return single_value
+
+  import numpy as np
+  import itertools
+  calling_arg_types = [arg.narrowed_type for arg in calling_args]
+  # The arguments which we need to look at to determine which concrete function to call
+  # TODO: This could use a better heuristic, only because something is a union type does not mean that it
+  # distinguishes different concrete funcs.
+  distinguishing_arg_nums = [
+    arg_num for arg_num, calling_arg_type in enumerate(calling_arg_types)
+    if isinstance(calling_arg_type, UnionType)]
+  assert len(distinguishing_arg_nums) >= 1
+  # noinspection PyTypeChecker
+  distinguishing_calling_arg_types: List[UnionType] = [
+    calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
+  assert all(isinstance(calling_arg, UnionType) for calling_arg in distinguishing_calling_arg_types)
+  # To distinguish which concrete func to call, use this table
+  block_addresses_distinguished_mapping = np.ndarray(
+    shape=tuple(max(calling_arg.possible_type_nums) + 1 for calling_arg in distinguishing_calling_arg_types),
+    dtype=ir.values.BlockAddress)
+
+  # Go through all concrete functions, and add one block for each
+  case_contexts = {
+    case_arg_types: context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
+      name, '_'.join(str(arg_type) for arg_type in case_arg_types)))))
+    for case_arg_types in case_funcs.keys()}
+  for case_arg_types, case_context in case_contexts.items():
+    case_block = case_context.block
+    case_block_address = ir.values.BlockAddress(context.builder.function, case_block)
+    case_distinguishing_args = [case_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
+    case_possible_types_per_arg = [
+      [
+        possible_type
+        for possible_type in (arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type])
+        if possible_type in calling_arg_type.possible_types]
+      for arg_type, calling_arg_type in zip(case_distinguishing_args, distinguishing_calling_arg_types)]
+    assert len(distinguishing_arg_nums) == len(case_possible_types_per_arg)
+
+    # Register the concrete function in the table
+    for expanded_case_types in itertools.product(*case_possible_types_per_arg):
+      assert len(expanded_case_types) == len(distinguishing_calling_arg_types)
+      distinguishing_variant_nums = tuple(
+        calling_arg_type.get_variant_num(concrete_arg_type)
+        for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_case_types))
+      assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
+      block_addresses_distinguished_mapping[distinguishing_variant_nums] = case_block_address
+
+  # Compute the index we have to look at in the table
+  tag_ir_type = ir.types.IntType(8)
+  call_block_index_ir = ir.Constant(tag_ir_type, 0)
+  for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
+    ir_func_arg = calling_args[arg_num].ir_val
+    assert ir_func_arg is not None
+    base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
+    base_ir = ir.Constant(tag_ir_type, base)
+    tag_ir = calling_arg_type.make_extract_tag(
+      ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (name, arg_num))
+    call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
+  call_block_index_ir = context.builder.zext(call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % name)
+
+  # Look it up in the table and call the function
+  ir_block_addresses_type = ir.types.VectorType(
+    LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
+  ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
+    list(block_addresses_distinguished_mapping.flatten())))
+  ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
+  indirect_branch = context.builder.branch_indirect(ir_call_block_target)
+  for case_context in case_contexts.values():
+    indirect_branch.add_destination(case_context.block)
+
+  # Execute the concrete functions and collect their return value
+  collect_block = context.builder.append_basic_block('collect_%s_overload' % name)
+  context.builder = ir.IRBuilder(collect_block)
+  return_vals: List[TypedValue] = []
+  for case_func, case_context in zip(case_funcs.values(), case_contexts.values()):
+    case_return_val = case_func(caller_context=case_context)  # noqa
+    assert not case_context.is_terminated
+    case_context.builder.branch(collect_block)
+    assert (case_return_val.type is SLEEPY_VOID) == (case_return_val.ir_val is None)
+    return_vals.append(case_return_val)
+  assert len(case_funcs) == len(return_vals)
+
+  if returns_void:
+    return TypedValue(typ=SLEEPY_VOID, ir_val=None)
   else:
-    import numpy as np
-    import itertools
-    # The arguments which we need to look at to determine which concrete function to call
-    # TODO: This could use a better heuristic, only because something is a union type does not mean that it
-    # distinguishes different concrete funcs.
-    distinguishing_arg_nums = [
-      arg_num for arg_num, calling_arg_type in enumerate(calling_arg_types)
-      if isinstance(calling_arg_type, UnionType)]
-    assert len(distinguishing_arg_nums) >= 1
-    # noinspection PyTypeChecker
-    distinguishing_calling_arg_types: List[UnionType] = [
-      calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
-    assert all(isinstance(calling_arg, UnionType) for calling_arg in distinguishing_calling_arg_types)
-    # To distinguish which concrete func to call, use this table
-    block_addresses_distinguished_mapping = np.ndarray(
-      shape=tuple(max(calling_arg.possible_type_nums) + 1 for calling_arg in distinguishing_calling_arg_types),
-      dtype=ir.values.BlockAddress)
-
-    # Go through all concrete functions, and add one block for each
-    concrete_func_caller_contexts = [
-      context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
-        func.identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))))
-      for concrete_func in possible_concrete_funcs]
-    for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
-      concrete_func_block = concrete_caller_context.block
-      concrete_func_block_address = ir.values.BlockAddress(context.builder.function, concrete_func_block)
-      concrete_func_distinguishing_args = [concrete_func.arg_types[arg_num] for arg_num in distinguishing_arg_nums]
-      concrete_func_possible_types_per_arg = [
-        [
-          possible_type
-          for possible_type in (arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type])
-          if possible_type in calling_arg_type.possible_types]
-        for arg_type, calling_arg_type in zip(concrete_func_distinguishing_args, distinguishing_calling_arg_types)]
-      assert len(distinguishing_arg_nums) == len(concrete_func_possible_types_per_arg)
-
-      # Register the concrete function in the table
-      for expanded_func_types in itertools.product(*concrete_func_possible_types_per_arg):
-        assert len(expanded_func_types) == len(distinguishing_calling_arg_types)
-        distinguishing_variant_nums = tuple(
-          calling_arg_type.get_variant_num(concrete_arg_type)
-          for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_func_types))
-        assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
-        block_addresses_distinguished_mapping[distinguishing_variant_nums] = concrete_func_block_address
-
-    # Compute the index we have to look at in the table
-    tag_ir_type = ir.types.IntType(8)
-    call_block_index_ir = ir.Constant(tag_ir_type, 0)
-    for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
-      # collapse here entirely (regardless of mutates), because we need to look at the tag.
-      ir_func_arg = func_args[arg_num].copy_collapse(context=context, name='call_arg_%s_union' % arg_num).ir_val
-      assert ir_func_arg is not None
-      base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
-      base_ir = ir.Constant(tag_ir_type, base)
-      tag_ir = calling_arg_type.make_extract_tag(
-        ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (func.identifier, arg_num))
-      call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
-    call_block_index_ir = context.builder.zext(
-      call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % func.identifier)
-
-    # Look it up in the table and call the function
-    ir_block_addresses_type = ir.types.VectorType(
-      LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
-    ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
-      list(block_addresses_distinguished_mapping.flatten())))
-    ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
-    indirect_branch = context.builder.branch_indirect(ir_call_block_target)
-    for concrete_caller_context in concrete_func_caller_contexts:
-      indirect_branch.add_destination(concrete_caller_context.block)
-
-    # Execute the concrete functions and collect their return value
-    collect_block = context.builder.append_basic_block("collect_%s_overload" % func.identifier)
-    context.builder = ir.IRBuilder(collect_block)
-    concrete_func_return_ir_vals: List[ir.values.Value] = []
-    for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
-      concrete_return_ir_val = make_call_func(concrete_func, caller_context=concrete_caller_context)
-      concrete_func_return_ir_vals.append(concrete_return_ir_val)
-      assert not concrete_caller_context.is_terminated
-      concrete_caller_context.builder.branch(collect_block)
-      assert concrete_func.signature.returns_void == func.returns_void
-    assert len(possible_concrete_funcs) == len(concrete_func_return_ir_vals)
-
-    if func.returns_void:
-      return None
-    else:
-      common_return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
-      collect_return_ir_phi = context.builder.phi(
-        common_return_type.ir_type, name="collect_%s_overload_return" % func.identifier)
-      for concrete_return_ir_val, concrete_caller_context in zip(concrete_func_return_ir_vals, concrete_func_caller_contexts):  # noqa
-        collect_return_ir_phi.add_incoming(concrete_return_ir_val, concrete_caller_context.block)
-      return collect_return_ir_phi
+    common_return_type = get_common_type([return_val.narrowed_type for return_val in return_vals])
+    collect_return_ir_phi = context.builder.phi(
+      common_return_type.ir_type, name="collect_%s_overload_return" % name)
+    for case_return_val, case_context in zip(return_vals, case_contexts.values()):
+      collect_return_ir_phi.add_incoming(case_return_val.ir_val, case_context.block)
+    return TypedValue(typ=common_return_type, ir_val=collect_return_ir_phi)
 
 
 def make_di_location(pos: TreePosition, context: CodegenContext):
