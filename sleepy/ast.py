@@ -1099,7 +1099,7 @@ class MemberExpressionAst(ExpressionAst):
             self_ptr = None
           return TypedValue(typ=ReferenceType(member_type), ir_val=self_ptr)
         else:
-          assert arg_val.num_possible_binds() == 0
+          assert arg_val.num_possible_unbindings() == 0
           if context.emits_ir:
             arg_val = arg_val.copy_collapse(context=caller_context, name='parent')
             arg_val = arg_val.copy_with_implicit_cast(struct_type, context=caller_context, name='parent_cast')
