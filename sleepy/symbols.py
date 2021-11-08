@@ -117,7 +117,16 @@ class Type(ABC):
     return copy.copy(self)
 
   def is_referenceable(self) -> bool:
+    if isinstance(self, UnionType):
+      return all(possible_type.is_referenceable() for possible_type in self.possible_types)
     return isinstance(self, ReferenceType)
+
+  def num_possible_unbindings(self):
+    if isinstance(self, UnionType):
+      return min(possible_type.num_possible_unbindings() for possible_type in self.possible_types)
+    if isinstance(self, ReferenceType):
+      return 1 + self.pointee_type.num_possible_unbindings()
+    return 0
 
 
 class VoidType(Type):
@@ -2198,7 +2207,7 @@ class TypedValue:
     assert isinstance(typ, ReferenceType) == isinstance(narrowed_type, ReferenceType)
     self.type = typ
     self.narrowed_type = narrowed_type
-    assert num_unbindings <= self.num_possible_binds()
+    assert num_unbindings <= self.num_possible_unbindings()
     self.num_unbindings = num_unbindings
     self.ir_val = ir_val
 
@@ -2305,17 +2314,11 @@ class TypedValue:
       attrs.append('num_unbindings')
     return 'TypedValue(%s)' % ', '.join(['%s=%r' % (attr, getattr(self, attr)) for attr in attrs])
 
-  def num_possible_binds(self) -> int:
-    num_binds = 0
-    typ = self.type
-    while typ.is_referenceable():
-      assert isinstance(typ, ReferenceType)
-      num_binds += 1
-      typ = typ.pointee_type
-    return num_binds
+  def num_possible_unbindings(self) -> int:
+    return self.type.num_possible_unbindings()
 
   def copy_collapse(self, context: Optional[CodegenContext], name: str = 'val') -> TypedValue:
-    binds_left = self.num_possible_binds() - self.num_unbindings
+    binds_left = self.num_possible_unbindings() - self.num_unbindings  # TODO this is wrong
     assert binds_left >= 0
     if binds_left == 0:
       return self
@@ -2336,7 +2339,7 @@ class TypedValue:
     return self.copy_unbind().copy_collapse(context=context, name=name)
 
   def copy_unbind(self) -> TypedValue:
-    assert self.num_unbindings + 1 <= self.num_possible_binds()
+    assert self.num_unbindings + 1 <= self.num_possible_unbindings()
     new = self.copy()
     new.num_unbindings += 1
     return new
