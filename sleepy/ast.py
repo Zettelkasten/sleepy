@@ -1052,45 +1052,6 @@ class CallExpressionAst(ExpressionAst):
     return 'CallExpressionAst(func_expr=%r, func_arg_exprs=%r)' % (self.func_expr, self.func_arg_exprs)
 
 
-class ReferenceExpressionAst(ExpressionAst):
-  """
-  PrimaryExpr -> ref ( Expr )
-  """
-  def __init__(self, pos: TreePosition, arg_expr: ExpressionAst):
-    super().__init__(pos)
-    self.arg_expr = arg_expr
-
-  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
-    arg_kind = self.arg_expr.make_symbol_kind(symbol_table=symbol_table)
-    if arg_kind != Symbol.Kind.VARIABLE:
-      self.raise_error('Cannot take reference to non-variable, got a %r' % arg_kind)
-    return Symbol.Kind.VARIABLE
-
-  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
-    with context.use_pos(self.pos):
-      arg_val = self.arg_expr.make_as_val(symbol_table=symbol_table, context=context)
-      if not arg_val.is_referenceable():
-        self.raise_error('Cannot take reference to non-assignable variable')
-      assert isinstance(arg_val.type, ReferenceType)
-      assert isinstance(arg_val.narrowed_type, ReferenceType)
-      from sleepy.symbols import PointerType
-      return TypedValue(
-        typ=PointerType(arg_val.type.pointee_type), narrowed_type=PointerType(arg_val.narrowed_type.pointee_type),
-        ir_val=arg_val.ir_val)
-
-  def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use reference as function')
-
-  def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use reference as type')
-
-  def children(self) -> List[AbstractSyntaxTree]:
-    return [self.arg_expr]
-
-  def __repr__(self) -> str:
-    return 'ReferenceExpressionAst(arg_expr=%r)' % self.arg_expr
-
-
 class MemberExpressionAst(ExpressionAst):
   """
   MemberExpr -> MemberExpr . identifier

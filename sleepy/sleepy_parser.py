@@ -2,7 +2,7 @@ from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatem
   ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   IfStatementAst, WhileStatementAst, ConstantExpressionAst, \
   StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, \
-  ImportAst, ImportsAst, ReferenceExpressionAst, UnbindExpressionAst
+  ImportAst, ImportsAst, UnbindExpressionAst
 
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
   parse_hex_int
@@ -156,8 +156,6 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('PrimaryExpr', 'PrimaryExpr', '(', 'ExprList', ')'): {
       'ast': lambda _pos, ast, val_list: CallExpressionAst(
         _pos, func_expr=ast(1), func_arg_exprs=val_list(3))},
-    Production('PrimaryExpr', 'ref', '(', 'Expr', ')'): {
-      'ast': lambda _pos, ast: ReferenceExpressionAst(_pos, arg_expr=ast(3))},
     Production('PrimaryExpr', 'PrimaryExpr', '[', 'IndexArgList', ']'): {
       'ast': lambda _pos, ast, val_list: CallExpressionAst(
         _pos, func_expr=IdentifierExpressionAst(_pos, identifier='index'), func_arg_exprs=[ast(1)] + val_list(3))},
