@@ -2229,14 +2229,10 @@ class TypedValue:
         assert max(possible_from_type.size for possible_from_type in from_type.possible_types) <= to_type.val_size
         ir_from_untagged_union = from_type.make_extract_void_val(
           self.ir_val, context=context, name='%s_from_val' % name)
-        ir_from_untagged_union_ptr = context.alloca_at_entry(
-          from_type.untagged_union_ir_type, name='%s_from_ptr' % name)
-        context.builder.store(ir_from_untagged_union, ir_from_untagged_union_ptr)
-        ir_from_untagged_union_ptr_truncated = context.builder.bitcast(
-          ir_from_untagged_union_ptr, ir.PointerType(to_type.untagged_union_ir_type),
-          name='%s_from_ptr_truncated' % name)
-        ir_from_untagged_union_truncated = context.builder.load(
-          ir_from_untagged_union_ptr_truncated, name='%s_from_val_truncated' % name)
+        from sleepy.util import truncate_ir_value
+        ir_from_untagged_union_truncated = truncate_ir_value(
+          from_type=from_type.untagged_union_ir_type, to_type=to_type.untagged_union_ir_type,
+          ir_val=ir_from_untagged_union, context=context, name=name)
 
         ir_to_untagged_union_ptr = to_type.make_untagged_union_void_ptr(
           to_ir_alloca, context=context, name='%s_to_val_raw' % name)
