@@ -1071,29 +1071,53 @@ class MemberExpressionAst(ExpressionAst):
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
       arg_val = self.parent_val_expr.make_as_val(symbol_table=symbol_table, context=context)
-      struct_type = arg_val.copy_collapse(context=None, name='struct').narrowed_type
-      if not isinstance(struct_type, StructType):
-        self.raise_error(
-          'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type))
-      if self.member_identifier not in struct_type.member_identifiers:
-        self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
-          struct_type, self.member_identifier, ', '.join(struct_type.member_identifiers)))
-      member_num = struct_type.get_member_num(self.member_identifier)
-      member_type = struct_type.member_types[member_num]
 
-      if arg_val.is_referenceable():
-        if context.emits_ir:
-          parent_ptr = arg_val.copy_collapse_as_mutates(context=context, name='parent').ir_val
-          gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
-          self_ptr = context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+      def do_member_access(struct_type: Type, caller_context: CodegenContext) -> TypedValue:
+        nonlocal arg_val
+        assert not isinstance(struct_type, UnionType)
+        if not isinstance(struct_type, StructType):
+          self.raise_error(
+            'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type))
+        if self.member_identifier not in struct_type.member_identifiers:
+          self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
+            struct_type, self.member_identifier, ', '.join(struct_type.member_identifiers)))
+        member_num = struct_type.get_member_num(self.member_identifier)
+        member_type = struct_type.member_types[member_num]
+
+        # TODO This is not entirely correct: It could be that the arg_val is not referenceable for all possible variant
+        # types, but that for the concrete `struct_type` we can reference it.
+        if arg_val.is_referenceable():
+          if context.emits_ir:
+            arg_val = arg_val.copy_collapse_as_mutates(context=caller_context, name='parent_ptr')
+            arg_val = arg_val.copy_with_implicit_cast(
+              ReferenceType(struct_type), context=caller_context, name='parent_ptr_cast')
+            parent_ptr = arg_val.ir_val
+            gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
+            self_ptr = caller_context.builder.gep(
+              parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+          else:
+            self_ptr = None
+          return TypedValue(typ=ReferenceType(member_type), ir_val=self_ptr)
         else:
-          self_ptr = None
-        return TypedValue(typ=ReferenceType(member_type), ir_val=self_ptr)
-      else:
-        assert arg_val.num_possible_binds() == 0
-        ir_val = struct_type.make_extract_member_val_ir(
-          self.member_identifier, struct_ir_val=arg_val.ir_val, context=context) if context.emits_ir else None
-        return TypedValue(typ=member_type, ir_val=ir_val)
+          assert arg_val.num_possible_binds() == 0
+          if context.emits_ir:
+            arg_val = arg_val.copy_collapse(context=caller_context, name='parent')
+            arg_val = arg_val.copy_with_implicit_cast(struct_type, context=caller_context, name='parent_cast')
+            ir_val = struct_type.make_extract_member_val_ir(
+              self.member_identifier, struct_ir_val=arg_val.ir_val, context=caller_context)
+          else:
+            ir_val = None
+          return TypedValue(typ=member_type, ir_val=ir_val)
+
+      from functools import partial
+      from sleepy.symbols import make_union_switch_ir
+      collapsed_arg_val = arg_val.copy_collapse(context=context, name='struct')
+      collapsed_type = collapsed_arg_val.narrowed_type
+      possible_types = collapsed_type.possible_types if isinstance(collapsed_type, UnionType) else {collapsed_type}
+      return make_union_switch_ir(
+        case_funcs={(typ,): partial(do_member_access, typ) for typ in possible_types},
+        calling_args=[collapsed_arg_val],
+        returns_void=False, name='extract_member', context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use member %r as function' % self.member_identifier)
