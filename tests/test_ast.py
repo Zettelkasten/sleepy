@@ -1564,6 +1564,21 @@ def test_union_member_access():
     assert_equal(main(5), 5)
 
 
+def test_ref_of_union():
+  with make_execution_engine() as engine:
+    program = """
+    struct Wrapper { val: Int; }
+    func main(a: Int) -> Int {
+      w: Int|Wrapper = a
+      !ww: Ref[Int|Wrapper] = !w
+      w2: Int = ww
+      return w2
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), 5)
+
+
 def test_while_cond_type_narrowing():
   with make_execution_engine() as engine:
     program = """
