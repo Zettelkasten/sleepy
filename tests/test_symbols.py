@@ -30,14 +30,17 @@ def test_can_implicit_cast_to():
   assert_equal(can_implicit_cast_to(
     ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
   assert_equal(can_implicit_cast_to(
-    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), True)
+    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
   T = PlaceholderTemplateType('T')
   List = StructType(
     identity=StructIdentity('List', context=context), templ_types=[T], member_identifiers=[], member_types=[])
   assert_equal(can_implicit_cast_to(
+    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
+  assert_equal(can_implicit_cast_to(
     ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
   assert_equal(can_implicit_cast_to(
-    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), True)
+    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)),
+    UnionType.from_types([ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_DOUBLE)])), False)
   assert_equal(
     can_implicit_cast_to(
       List.replace_types({T: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)}),
