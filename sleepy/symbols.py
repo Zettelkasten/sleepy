@@ -910,10 +910,15 @@ def can_implicit_cast_ref_to(from_pointee_type: Type, to_pointee_type: Type) -> 
   if from_pointee_type == to_pointee_type:
     return True
 
-  # if they are not exactly equal, we can only cast if `to_pointee_type` is a simple type
-  # (by potentially removing the union tag)
-  return not isinstance(to_pointee_type, UnionType)
-
+  if not isinstance(to_pointee_type, UnionType):
+    return True
+  if isinstance(from_pointee_type, UnionType) and isinstance(to_pointee_type, UnionType):
+    simple_subset = all(
+      to_pointee_type.contains(a_type) and to_pointee_type.get_variant_num(a_type) == a_num
+      for a_num, a_type in zip(from_pointee_type.possible_type_nums, from_pointee_type.possible_types))
+    if simple_subset:
+      return True
+  return False
 
 def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   """
@@ -2227,12 +2232,22 @@ class TypedValue:
       assert isinstance(to_type, ReferenceType)
       assert isinstance(from_type, ReferenceType)
       from_pointee_type, to_pointee_type = from_type.pointee_type, to_type.pointee_type
-      assert from_pointee_type != to_pointee_type  # this case was handled above already
-      # The only case remaining in `can_implicit_cast_ref_to` is this:
-      assert isinstance(from_pointee_type, UnionType) and not isinstance(to_pointee_type, UnionType)
-      # remove the tag by incrementing pointer by one
-      raw_ir_val = from_pointee_type.make_untagged_union_void_ptr(
-        union_ir_alloca=self.ir_val, context=context, name='%s_from_val' % name)
+      assert from_pointee_type != to_pointee_type  # we handled this above already
+      assert isinstance(from_pointee_type, UnionType)
+      if isinstance(to_pointee_type, UnionType):
+        simple_subset = all(
+          to_pointee_type.contains(a_type) and to_pointee_type.get_variant_num(a_type) == a_num
+          for a_num, a_type in zip(from_pointee_type.possible_type_nums, from_pointee_type.possible_types))
+        assert simple_subset
+
+        # Note: if the size of to_type is strictly smaller than from_type, we need to truncate the value
+        assert max(a_type.size for a_type in from_pointee_type.possible_types) <= to_pointee_type.val_size
+        raw_ir_val = self.ir_val
+      else:
+        assert not isinstance(to_pointee_type, UnionType)
+        raw_ir_val = from_pointee_type.make_untagged_union_void_ptr(
+          union_ir_alloca=self.ir_val, context=context, name='%s_from_val' % name)
+      # maybe the size of the pointer decreased
       new.ir_val = context.builder.bitcast(val=raw_ir_val, typ=to_type.ir_type, name='%s_to_val' % name)
 
     elif isinstance(to_type, UnionType):
@@ -2250,7 +2265,6 @@ class TypedValue:
           ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
 
         # Note: if the size of to_type is strictly smaller than from_type, we need to truncate the value
-        # There is no LLVM instruction for this, so we alloca memory and reinterpret a pointer on this
         assert max(possible_from_type.size for possible_from_type in from_type.possible_types) <= to_type.val_size
         ir_from_untagged_union = from_type.make_extract_void_val(
           self.ir_val, context=context, name='%s_from_val' % name)
