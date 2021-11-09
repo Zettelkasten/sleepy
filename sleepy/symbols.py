@@ -562,7 +562,7 @@ class UnionType(Type):
   @staticmethod
   def make_untagged_union_void_ptr(union_ir_alloca, context, name):
     """
-    :param ir.instructions.AllocaInstr union_ir_alloca:
+    :param ir.values.Value union_ir_alloca:
     :param CodegenContext context:
     :param str name:
     :rtype: ir.instructions.Instruction
@@ -901,6 +901,20 @@ class PlaceholderTemplateType(Type):
     return None
 
 
+def can_implicit_cast_ref_to(from_pointee_type: Type, to_pointee_type: Type) -> bool:
+  """
+  Whether `Ref[from_pointee_type]` can easily be treated as `Ref[to_pointee_type]`.
+  """
+  if not is_subtype(from_pointee_type, to_pointee_type):
+    return False
+  if from_pointee_type == to_pointee_type:
+    return True
+
+  # if they are not exactly equal, we can only cast if `to_pointee_type` is a simple type
+  # (by potentially removing the union tag)
+  return not isinstance(to_pointee_type, UnionType)
+
+
 def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   """
   Whether you can "easily" treat memory of `from_type` as `to_type`.
@@ -923,7 +937,7 @@ def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   for a in list(possible_from_types):
     if not isinstance(a, ReferenceType):
       continue
-    if not any(isinstance(b, ReferenceType) and is_subtype(a.pointee_type, b.pointee_type) for b in possible_to_types):
+    if not any(isinstance(b, ReferenceType) and can_implicit_cast_ref_to(a.pointee_type, b.pointee_type) for b in possible_to_types):  # noqa
       return False
     possible_from_types.remove(a)
   # Note: These elements really need to match exactly,
@@ -2208,9 +2222,20 @@ class TypedValue:
     new.ir_val = None
     if not context.emits_ir or self.ir_val is None:
       return new
-    assert not to_type.is_referenceable(), 'not implemented'
 
-    if isinstance(to_type, UnionType):
+    if to_type.is_referenceable():
+      assert isinstance(to_type, ReferenceType)
+      assert isinstance(from_type, ReferenceType)
+      from_pointee_type, to_pointee_type = from_type.pointee_type, to_type.pointee_type
+      assert from_pointee_type != to_pointee_type  # this case was handled above already
+      # The only case remaining in `can_implicit_cast_ref_to` is this:
+      assert isinstance(from_pointee_type, UnionType) and not isinstance(to_pointee_type, UnionType)
+      # remove the tag by incrementing pointer by one
+      raw_ir_val = from_pointee_type.make_untagged_union_void_ptr(
+        union_ir_alloca=self.ir_val, context=context, name='%s_from_val' % name)
+      new.ir_val = context.builder.bitcast(val=raw_ir_val, typ=to_type.ir_type, name='%s_to_val' % name)
+
+    elif isinstance(to_type, UnionType):
       to_ir_alloca = context.alloca_at_entry(to_type.ir_type, name='%s_ptr' % name)
       if isinstance(from_type, UnionType):
         tag_mapping_ir_type = ir.types.VectorType(to_type.tag_ir_type, max(from_type.possible_type_nums) + 1)
