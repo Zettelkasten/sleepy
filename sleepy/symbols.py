@@ -1996,13 +1996,10 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
   This is especially useful if the argument type contains unions,
   as then it is only clear at run time which function to actually call.
   """
-  assert context.emits_ir
-  assert not context.emits_debug or context.builder.debug_metadata is not None
-
   if len(case_funcs) == 1:
     single_case = next(iter(case_funcs.values()))
     single_value = single_case(caller_context=context)  # noqa
-    assert (single_value.type is SLEEPY_VOID) == (single_value.ir_val is None)
+    assert (single_value.type is SLEEPY_VOID or not context.emits_ir) == (single_value.ir_val is None)
     return single_value
 
   import numpy as np
@@ -2081,7 +2078,7 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
     case_return_val = case_func(caller_context=case_context)  # noqa
     assert not case_context.is_terminated
     case_context.builder.branch(collect_block)
-    assert (case_return_val.type is SLEEPY_VOID) == (case_return_val.ir_val is None)
+    assert (case_return_val.type is SLEEPY_VOID or not context.emits_ir) == (case_return_val.ir_val is None)
     return_vals.append(case_return_val)
   assert len(case_funcs) == len(return_vals)
 
