@@ -559,15 +559,15 @@ class AssignStatementAst(StatementAst):
           'Cannot redefine variable of type %r with variable of type %r' % (declared_type, val.narrowed_type))
 
       # if we assign to a variable, narrow type to val_type
-      if isinstance(self.var_target, IdentifierExpressionAst):
-        assert self.var_target.identifier in symbol_table
-        symbol = symbol_table[self.var_target.identifier]
+      if (var_identifier := self.get_var_identifier()) is not None:
+        assert var_identifier in symbol_table
+        symbol = symbol_table[var_identifier]
         assert isinstance(symbol, VariableSymbol)
         narrowed_uncollapsed_val_type = uncollapsed_target_val.type.replace_types(
           {target_val.type.pointee_type: val.narrowed_type})
         narrowed_symbol = symbol.copy_with_narrowed_type(narrowed_uncollapsed_val_type)
         assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
-        symbol_table[self.var_target.identifier] = narrowed_symbol
+        symbol_table[var_identifier] = narrowed_symbol
 
       if context.emits_ir:
         ir_val = val.copy_with_implicit_cast(declared_type, context=context, name='assign_cast').ir_val
