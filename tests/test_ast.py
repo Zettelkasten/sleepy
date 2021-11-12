@@ -678,6 +678,21 @@ def test_unbind_operator_assign_member():
     assert_equal(main(6), 6 + 1)
 
 
+def test_unbind_operator_union_of_ref():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      !x_ref: Ref[Int] = !x
+      !any_ref: Ref[Int]|Ref[Double] = !x_ref
+      any_collapsed: Int|Double = any_ref
+      assert(any_collapsed is Int)
+      return any_collapsed
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
 def test_swap_ref():
   with make_execution_engine() as engine:
     program = """
