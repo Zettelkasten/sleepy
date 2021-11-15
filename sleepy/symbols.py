@@ -429,6 +429,13 @@ class ReferenceType(PointerType):
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, ReferenceType)
 
+  @classmethod
+  def wrap(cls, type: Type, times: int) -> Type:
+    assert times >= 0
+    if times == 0:
+      return type
+    return ReferenceType(pointee_type=type)
+
 
 class UnionType(Type):
   """
@@ -2212,7 +2219,7 @@ class TypedValue:
     self.ir_val = ir_val
 
   def is_referenceable(self) -> bool:
-    return self.type.is_referenceable()
+    return self.narrowed_type.is_referenceable()
 
   def copy(self) -> TypedValue:
     return copy.copy(self)
@@ -2315,7 +2322,7 @@ class TypedValue:
     return 'TypedValue(%s)' % ', '.join(['%s=%r' % (attr, getattr(self, attr)) for attr in attrs])
 
   def num_possible_unbindings(self) -> int:
-    return self.type.num_possible_unbindings()
+    return self.narrowed_type.num_possible_unbindings()
 
   def copy_collapse(self, context: Optional[CodegenContext], name: str = 'val') -> TypedValue:
     binds_left = self.num_possible_unbindings() - self.num_unbindings  # TODO this is wrong

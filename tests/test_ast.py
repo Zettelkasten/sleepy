@@ -722,7 +722,7 @@ def test_unbind_operator_union_of_ref_and_non_ref_assign():
     program = """
     func main(x: Int) -> Int {
       foo: Ref[Int]|Double = 32.0  # some dummy
-      !foo = !x      
+      !foo = !x
       return foo
     }
     """

@@ -519,8 +519,9 @@ class AssignStatementAst(StatementAst):
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
+      # example y: A|B = x (where x is of type A)
       if self.declared_var_type is not None:
-        stated_type: Optional[Type] = self.declared_var_type.make_type(symbol_table=symbol_table)
+        stated_type: Optional[Type] = self.declared_var_type.make_type(symbol_table=symbol_table)  # A|B
       else:
         stated_type: Optional[Type] = None
       if not self.var_val.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE:
@@ -529,28 +530,31 @@ class AssignStatementAst(StatementAst):
       if val.type == SLEEPY_VOID:
         self.raise_error('Cannot assign void to variable')
       val = val.copy_collapse(context=context, name='store')
-      if stated_type is not None:
-        if not can_implicit_cast_to(val.narrowed_type, stated_type):
-          self.raise_error(
-            'Cannot assign variable with stated type %r a value of type %r' % (stated_type, val.narrowed_type))
+      if stated_type is not None and not can_implicit_cast_to(val.narrowed_type, stated_type):
+        self.raise_error('Cannot assign variable with stated type %r a value of type %r' % (
+          stated_type, val.narrowed_type))
 
       if self.is_declaration(symbol_table=symbol_table):
-        var_identifier = self.get_var_identifier()
+        var_identifier = self.get_var_identifier()  # y
         assert var_identifier not in symbol_table.current_scope_identifiers
         # variables are always (implicitly) references
-        declared_type = ReferenceType(val.type if stated_type is None else stated_type)
+        declared_type = ReferenceType(val.type if stated_type is None else stated_type)  # Ref[A|B]
         # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
         symbol = VariableSymbol(None, var_type=declared_type)
         symbol.build_ir_alloca(context=context, identifier=var_identifier)
         symbol_table[var_identifier] = symbol
 
       # check that declared type matches assigned type
-      uncollapsed_target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)
+      uncollapsed_target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)  # Ref[A|B]
       if not uncollapsed_target_val.is_referenceable():
         self.raise_error('Cannot reassign non-referencable type %s' % uncollapsed_target_val.type)
-      target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')
+      # narrow the target type to the assigned type s.t. we can unbind properly even if some unions variants are not
+      # unbindable
+      uncollapsed_target_val = uncollapsed_target_val.copy_with_narrowed_type(
+        ReferenceType.wrap(val.type, times=uncollapsed_target_val.num_unbindings + 1))  # Ref[A]
+      target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')  # Ref[A]
       assert isinstance(target_val.type, ReferenceType)
-      declared_type = target_val.type.pointee_type
+      declared_type = target_val.type.pointee_type  # A
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
         self.raise_error('Cannot %s variable collapsing to type %r with new type %r' % (
           'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type))
