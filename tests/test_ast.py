@@ -693,6 +693,43 @@ def test_unbind_operator_union_of_ref():
     assert_equal(main(6), 6)
 
 
+def test_unbind_operator_union_of_ref_and_non_ref():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      !foo: Ref[Int]|Double = !x
+      return foo
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
+def test_unbind_operator_union_of_ref_and_non_ref_same():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      !foo: Ref[Int]|Int = !x
+      return foo
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
+def test_unbind_operator_union_of_ref_and_non_ref_assign():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      foo: Ref[Int]|Double = 32.0  # some dummy
+      !foo = !x      
+      return foo
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
 def test_swap_ref():
   with make_execution_engine() as engine:
     program = """
