@@ -12,7 +12,7 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
   PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue, ReferenceType, \
-  PartialIdentifiedStructType, StructIdentity
+  PartialIdentifiedStructType, StructIdentity, SLEEPY_NEVER
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
 
@@ -552,15 +552,16 @@ class AssignStatementAst(StatementAst):
       # even if some unions variants are not unbindable
       uncollapsed_target_val = uncollapsed_target_val.copy_with_collapsed_narrowed_type(
         ReferenceType(val.type))  # Ref[A]
+      if uncollapsed_target_val.narrowed_type == SLEEPY_NEVER:
+        self.raise_error('Cannot assign variable of type %r a value of type %r' % (
+          uncollapsed_target_val.type, val.narrowed_type))
       target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')  # Ref[A]
       assert isinstance(target_val.type, ReferenceType)
       declared_type = target_val.type.pointee_type  # A
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
         self.raise_error('Cannot %s variable collapsing to type %r with new type %r' % (
           'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type))
-      if not can_implicit_cast_to(val.narrowed_type, declared_type):
-        self.raise_error(
-          'Cannot redefine variable of type %r with variable of type %r' % (declared_type, val.narrowed_type))
+      assert can_implicit_cast_to(val.narrowed_type, declared_type)
 
       # if we assign to a variable, narrow type to val_type
       if (var_identifier := self.get_var_identifier()) is not None:
