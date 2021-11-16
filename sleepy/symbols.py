@@ -123,7 +123,7 @@ class Type(ABC):
 
   def num_possible_unbindings(self):
     if isinstance(self, UnionType):
-      return min(possible_type.num_possible_unbindings() for possible_type in self.possible_types)
+      return min((possible_type.num_possible_unbindings() for possible_type in self.possible_types), default=0)
     if isinstance(self, ReferenceType):
       return 1 + self.pointee_type.num_possible_unbindings()
     return 0
