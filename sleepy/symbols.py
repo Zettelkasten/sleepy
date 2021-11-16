@@ -1083,6 +1083,8 @@ def get_common_type(possible_types: List[Type]) -> Type:
     else:
       if isinstance(other_type, UnionType):
         common_type = other_type.copy_with_extended_types(extended_types=[common_type])
+      elif common_type == other_type:
+        pass
       else:
         common_type = UnionType.from_types(possible_types=[common_type, other_type])
   return common_type
