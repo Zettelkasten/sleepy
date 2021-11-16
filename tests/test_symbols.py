@@ -4,7 +4,7 @@ from nose.tools import assert_equal
 
 from llvmlite import ir
 from sleepy.grammar import DummyPath
-from sleepy.symbols import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext
+from sleepy.symbols import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext, ReferenceType, TypedValue
 
 
 def make_test_context(emits_ir: bool = True) -> CodegenContext:
@@ -373,3 +373,15 @@ def test_struct_self_referencing():
   ListInt = ListT.replace_types({T: Int})
   assert isinstance(ListInt, StructType)
   assert_equal(ListInt.member_types, [Int, ReferenceType(ListInt)])
+
+
+def test_copy_collapse():
+  from sleepy.builtin_symbols import SLEEPY_INT
+  Int = TypedValue(typ=SLEEPY_INT, num_unbindings=0, ir_val=None)
+  RefInt = TypedValue(typ=ReferenceType(SLEEPY_INT), num_unbindings=0, ir_val=None)
+  Int_RefInt = TypedValue(typ=UnionType.from_types([Int.type, RefInt.type]), num_unbindings=0, ir_val=None)
+  RefInt_Int = TypedValue(typ=UnionType.from_types([RefInt.type, Int.type]), num_unbindings=0, ir_val=None)
+  assert_equal(RefInt.copy_collapse(context=None, name='a'), Int)
+  assert_equal(Int.copy_collapse(context=None, name='a'), Int)
+  assert_equal(RefInt_Int.copy_collapse(context=None, name='a'), Int)
+  assert_equal(Int_RefInt.copy_collapse(context=None, name='a'), Int)
