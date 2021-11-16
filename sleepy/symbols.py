@@ -2261,7 +2261,7 @@ class TypedValue:
       return new
     new.type, new.narrowed_type = to_type, to_type
     new.ir_val = None
-    if not context.emits_ir or self.ir_val is None:
+    if self.ir_val is None or not context.emits_ir:
       return new
 
     def do_simple_cast(from_simple_type: Type, to_simple_type: Type, ir_val: ir.values.Value) -> ir.values.Value:
