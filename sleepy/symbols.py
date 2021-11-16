@@ -2361,13 +2361,14 @@ class TypedValue:
 
     def do_collapse(concrete_type: Type, caller_context: Optional[CodegenContext]) -> TypedValue:
       assert not isinstance(concrete_type, UnionType)
-      concrete_min_ref_depth, concrete_max_ref_depth = min_max_ref_depth(self.narrowed_type)
+      concrete_min_ref_depth, concrete_max_ref_depth = min_max_ref_depth(concrete_type)
       assert 0 <= self.num_unbindings <= concrete_min_ref_depth <= concrete_max_ref_depth
       if self.num_unbindings == concrete_min_ref_depth == concrete_max_ref_depth:  # done.
         return self.copy_with_narrowed_type(concrete_type)
       assert isinstance(concrete_type, ReferenceType)  # still need to collapse, must be a reference.
       # collapse once.
-      new = self.copy_with_implicit_cast(to_type=concrete_type, context=context, name=name)
+      new = self.copy_with_narrowed_type(concrete_type)
+      new = new.copy_with_implicit_cast(to_type=concrete_type, context=context, name=name)
       new.type = concrete_type.pointee_type
       new.narrowed_type = concrete_type.pointee_type
       if context is not None and context.emits_ir:
