@@ -2244,10 +2244,15 @@ class TypedValue:
     if not context.emits_ir or self.ir_val is None:
       return new
 
-    if to_type.is_referenceable():
-      assert isinstance(to_type, ReferenceType)
-      assert isinstance(from_type, ReferenceType)
-      from_pointee_type, to_pointee_type = from_type.pointee_type, to_type.pointee_type
+    def do_simple_cast(from_simple_type: Type, to_simple_type: Type, ir_val: ir.values.Value) -> ir.values.Value:
+      assert not isinstance(from_simple_type, UnionType)
+      assert not isinstance(to_simple_type, UnionType)
+
+      if from_simple_type == to_simple_type:
+        return ir_val
+      assert isinstance(from_simple_type, ReferenceType)
+      assert isinstance(to_simple_type, ReferenceType)
+      from_pointee_type, to_pointee_type = from_simple_type.pointee_type, to_simple_type.pointee_type
       assert from_pointee_type != to_pointee_type  # we handled this above already
       assert isinstance(from_pointee_type, UnionType)
       if isinstance(to_pointee_type, UnionType):
@@ -2264,9 +2269,9 @@ class TypedValue:
         raw_ir_val = from_pointee_type.make_untagged_union_void_ptr(
           union_ir_alloca=self.ir_val, context=context, name='%s_from_val' % name)
       # maybe the size of the pointer decreased
-      new.ir_val = context.builder.bitcast(val=raw_ir_val, typ=to_type.ir_type, name='%s_to_val' % name)
+      return context.builder.bitcast(val=raw_ir_val, typ=to_simple_type.ir_type, name='%s_to_val' % name)
 
-    elif isinstance(to_type, UnionType):
+    if isinstance(to_type, UnionType):
       to_ir_alloca = context.alloca_at_entry(to_type.ir_type, name='%s_ptr' % name)
       if isinstance(from_type, UnionType):
         tag_mapping_ir_type = ir.types.VectorType(to_type.tag_ir_type, max(from_type.possible_type_nums) + 1)
@@ -2305,10 +2310,12 @@ class TypedValue:
       new.ir_val = context.builder.load(to_ir_alloca, name=name)
     else:
       assert not isinstance(to_type, UnionType)
-      # this is only possible when from_type is a single-type union
-      assert isinstance(from_type, UnionType)
-      assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
-      new.ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
+      if isinstance(from_type, UnionType):
+        assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
+        new.ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
+      else:
+        new.ir_val = self.ir_val
+      new.ir_val = do_simple_cast(from_simple_type=to_type, to_simple_type=to_type, ir_val=new.ir_val)
     return new
 
   def __repr__(self):
