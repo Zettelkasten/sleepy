@@ -2369,6 +2369,12 @@ class TypedValue:
 
     possible_types = (
       self.narrowed_type.possible_types if isinstance(self.narrowed_type, UnionType) else {self.narrowed_type})
+    if context is None or not context.emits_ir:
+      new = self.copy()
+      new.type = get_common_type([do_collapse(typ, caller_context=context).narrowed_type for typ in possible_types])
+      new.narrowed_type = new.type
+      new.ir_val = None
+      return new
     from functools import partial
     return make_union_switch_ir(
       case_funcs={(typ,): partial(do_collapse, typ) for typ in possible_types},
