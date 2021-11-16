@@ -548,10 +548,10 @@ class AssignStatementAst(StatementAst):
       uncollapsed_target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)  # Ref[A|B]
       if not uncollapsed_target_val.is_referenceable():
         self.raise_error('Cannot reassign non-referencable type %s' % uncollapsed_target_val.type)
-      # narrow the target type to the assigned type s.t. we can unbind properly even if some unions variants are not
-      # unbindable
-      uncollapsed_target_val = uncollapsed_target_val.copy_with_narrowed_type(
-        ReferenceType.wrap(val.type, times=uncollapsed_target_val.num_unbindings + 1))  # Ref[A]
+      # narrow the target type to the assigned type s.t. we can unbind properly
+      # even if some unions variants are not unbindable
+      uncollapsed_target_val = uncollapsed_target_val.copy_with_collapsed_narrowed_type(
+        ReferenceType(val.type))  # Ref[A]
       target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')  # Ref[A]
       assert isinstance(target_val.type, ReferenceType)
       declared_type = target_val.type.pointee_type  # A
@@ -567,9 +567,7 @@ class AssignStatementAst(StatementAst):
         assert var_identifier in symbol_table
         symbol = symbol_table[var_identifier]
         assert isinstance(symbol, VariableSymbol)
-        narrowed_uncollapsed_val_type = uncollapsed_target_val.type.replace_types(
-          {target_val.type.pointee_type: val.narrowed_type})
-        narrowed_symbol = symbol.copy_with_narrowed_type(narrowed_uncollapsed_val_type)
+        narrowed_symbol = symbol.copy_with_narrowed_type(uncollapsed_target_val.narrowed_type)
         assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
         symbol_table[var_identifier] = narrowed_symbol
 

@@ -2190,6 +2190,17 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
   return [templ_type_replacements[templ_type] for templ_type in placeholder_templ_types]
 
 
+def min_max_ref_depth(typ: Type) -> (int, int):
+  if isinstance(typ, UnionType):
+    possible_types_min_max = [min_max_ref_depth(possible_type) for possible_type in typ.possible_types]
+    possible_types_min, possible_types_max = zip(*possible_types_min_max)
+    return min(possible_types_min, default=0), max(possible_types_max, default=0)
+  if isinstance(typ, ReferenceType):
+    pointee_min, pointee_max = min_max_ref_depth(typ.pointee_type)
+    return pointee_min + 1, pointee_max + 1
+  return 0, 0
+
+
 SLEEPY_VOID = VoidType()
 SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
 
@@ -2228,6 +2239,13 @@ class TypedValue:
     new = self.copy()
     new.narrowed_type = narrow_type(from_type=self.type, narrow_to=narrow_to_type)
     return new
+
+  def copy_with_collapsed_narrowed_type(self, collapsed_type: Type) -> TypedValue:
+    min_ref_depth, max_ref_depth = min_max_ref_depth(self.type)
+    to_min_ref_depth, to_max_ref_depth = min_max_ref_depth(collapsed_type)
+    uncollapsed_type = UnionType.from_types([ReferenceType.wrap(collapsed_type, depth) for depth in range(
+      min_ref_depth - to_max_ref_depth, max_ref_depth - to_min_ref_depth + 1)])
+    return self.copy_with_narrowed_type(uncollapsed_type)
 
   def copy_with_implicit_cast(self, to_type: Type, context: CodegenContext, name: str) -> TypedValue:
     """
@@ -2332,16 +2350,6 @@ class TypedValue:
     return self.narrowed_type.num_possible_unbindings()
 
   def copy_collapse(self, context: Optional[CodegenContext], name: str = 'val') -> TypedValue:
-    def min_max_ref_depth(typ: Type) -> (int, int):
-      if isinstance(typ, UnionType):
-        possible_types_min_max = [min_max_ref_depth(possible_type) for possible_type in typ.possible_types]
-        possible_types_min, possible_types_max = zip(*possible_types_min_max)
-        return min(possible_types_min, default=0), max(possible_types_max, default=0)
-      if isinstance(typ, ReferenceType):
-        pointee_min, pointee_max = min_max_ref_depth(typ.pointee_type)
-        return pointee_min + 1, pointee_max + 1
-      return 0, 0
-
     min_ref_depth, max_ref_depth = min_max_ref_depth(self.narrowed_type)
     assert 0 <= self.num_unbindings <= min_ref_depth <= max_ref_depth
     # If possible, do not split up unions if not necessary
