@@ -2399,3 +2399,9 @@ class TypedValue:
     new = self.copy()
     new.num_unbindings += 1
     return new
+
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, TypedValue):
+      return False
+    return (self.type, self.narrowed_type, self.num_unbindings, self.ir_val) == (
+      other.type, other.narrowed_type, other.num_unbindings, other.ir_val)
