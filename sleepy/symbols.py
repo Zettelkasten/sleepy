@@ -2236,9 +2236,9 @@ class TypedValue:
     """
     from_type = self.narrowed_type
     assert can_implicit_cast_to(from_type, to_type)
-    if from_type == to_type:
-      return self
     new = self.copy()
+    if from_type == to_type:
+      return new
     new.type, new.narrowed_type = to_type, to_type
     new.ir_val = None
     if not context.emits_ir or self.ir_val is None:
