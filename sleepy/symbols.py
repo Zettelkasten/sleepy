@@ -2325,22 +2325,48 @@ class TypedValue:
     return self.narrowed_type.num_possible_unbindings()
 
   def copy_collapse(self, context: Optional[CodegenContext], name: str = 'val') -> TypedValue:
-    binds_left = self.num_possible_unbindings() - self.num_unbindings  # TODO this is wrong
-    assert binds_left >= 0
-    if binds_left == 0:
+    def min_max_ref_depth(typ: Type) -> (int, int):
+      if isinstance(typ, UnionType):
+        possible_types_min_max = [min_max_ref_depth(possible_type) for possible_type in typ.possible_types]
+        possible_types_min, possible_types_max = zip(*possible_types_min_max)
+        return min(possible_types_min, default=0), max(possible_types_max, default=0)
+      if isinstance(typ, ReferenceType):
+        pointee_min, pointee_max = min_max_ref_depth(typ.pointee_type)
+        return pointee_min + 1, pointee_max + 1
+      return 0, 0
+
+    min_ref_depth, max_ref_depth = min_max_ref_depth(self.narrowed_type)
+    assert 0 <= self.num_unbindings <= min_ref_depth <= max_ref_depth
+    # If possible, do not split up unions if not necessary
+    if self.num_unbindings == min_ref_depth == max_ref_depth:
       return self
-    assert self.is_referenceable()
-    assert isinstance(self.type, ReferenceType)
-    assert isinstance(self.narrowed_type, ReferenceType)
-    new = self.copy()
-    new.type = new.type.pointee_type
-    new.narrowed_type = new.narrowed_type.pointee_type
-    if context is not None and context.emits_ir:
-      assert new.ir_val is not None
-      new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
-    else:
-      new.ir_val = None
-    return new.copy_collapse(context=context, name=name)
+    # Otherwise, handle each union member individually
+
+    def do_collapse(concrete_type: Type, caller_context: Optional[CodegenContext]) -> TypedValue:
+      assert not isinstance(concrete_type, UnionType)
+      concrete_min_ref_depth, concrete_max_ref_depth = min_max_ref_depth(self.narrowed_type)
+      assert 0 <= self.num_unbindings <= concrete_min_ref_depth <= concrete_max_ref_depth
+      if self.num_unbindings == concrete_min_ref_depth == concrete_max_ref_depth:  # done.
+        return self.copy_with_narrowed_type(concrete_type)
+      assert isinstance(concrete_type, ReferenceType)  # still need to collapse, must be a reference.
+      # collapse once.
+      new = self.copy_with_implicit_cast(to_type=concrete_type, context=context, name=name)
+      new.type = concrete_type.pointee_type
+      new.narrowed_type = concrete_type.pointee_type
+      if context is not None and context.emits_ir:
+        assert new.ir_val is not None
+        new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
+      else:
+        new.ir_val = None
+      return new.copy_collapse(context=caller_context, name=name)
+
+    possible_types = (
+      self.narrowed_type.possible_types if isinstance(self.narrowed_type, UnionType) else {self.narrowed_type})
+    from functools import partial
+    return make_union_switch_ir(
+      case_funcs={(typ,): partial(do_collapse, typ) for typ in possible_types},
+      calling_args=[self],
+      returns_void=False, name='collapse_%s' % name, context=context)
 
   def copy_collapse_as_mutates(self, context: CodegenContext, name: str = 'val') -> TypedValue:
     return self.copy_unbind().copy_collapse(context=context, name=name)
