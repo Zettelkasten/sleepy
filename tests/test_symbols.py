@@ -4,7 +4,8 @@ from nose.tools import assert_equal
 
 from llvmlite import ir
 from sleepy.grammar import DummyPath
-from sleepy.symbols import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext, ReferenceType, TypedValue
+from sleepy.symbols import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext, ReferenceType, TypedValue, \
+  narrow_with_collapsed_type, narrow_type
 
 
 def make_test_context(emits_ir: bool = True) -> CodegenContext:
@@ -163,6 +164,28 @@ def test_get_common_type():
   assert_equal(get_common_type([int_bool_union, bool_int_union]), int_bool_union)
   assert_equal(
     get_common_type([int_bool_union, SLEEPY_DOUBLE]), UnionType([SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE], [0, 1, 2], 8))
+
+
+# noinspection PyPep8Naming
+def test_narrow_with_collapsed_type():
+  from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_DOUBLE
+  Int = SLEEPY_INT
+  RefInt = ReferenceType(Int)
+  RefRefInt = ReferenceType(RefInt)
+  Int_RefInt = UnionType.from_types([Int, RefInt])
+  Double = SLEEPY_DOUBLE
+  RefDouble = ReferenceType(Double)
+  Int_Double = UnionType.from_types([Int, Double])
+  RefDouble_RefInt = UnionType.from_types([RefDouble, RefInt])
+  assert_equal(narrow_with_collapsed_type(Int, Int), Int)
+  assert_equal(narrow_with_collapsed_type(RefInt, Int), RefInt)
+  assert_equal(narrow_with_collapsed_type(RefRefInt, Int), RefRefInt)
+  assert_equal(narrow_with_collapsed_type(Int_RefInt, Int), Int_RefInt)
+  assert_equal(narrow_with_collapsed_type(RefInt, RefInt), RefInt)
+  assert_equal(narrow_with_collapsed_type(Int, RefInt), SLEEPY_NEVER)
+  assert_equal(narrow_with_collapsed_type(Int_RefInt, RefInt), narrow_type(Int_RefInt, RefInt))
+  assert_equal(narrow_with_collapsed_type(Int_Double, Int), narrow_type(Int_Double, Int))
+  assert_equal(narrow_with_collapsed_type(RefDouble_RefInt, Int), narrow_type(RefDouble_RefInt, RefInt))
 
 
 # noinspection PyPep8Naming
@@ -375,6 +398,7 @@ def test_struct_self_referencing():
   assert_equal(ListInt.member_types, [Int, ReferenceType(ListInt)])
 
 
+# noinspection PyPep8Naming
 def test_copy_collapse():
   from sleepy.builtin_symbols import SLEEPY_INT
   Int = TypedValue(typ=SLEEPY_INT, num_unbindings=0, ir_val=None)
