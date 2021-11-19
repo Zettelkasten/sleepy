@@ -1436,14 +1436,14 @@ def test_call_multiple_concrete_funcs_with_union_arg():
       # in the future, we will probably add assertions so that the compiler does know that, but this will do for now.
       return 1 == 1
     }
-    func is_int(x: Int) ->  Bool  { return True() }
-    func is_int(x: Bool) ->  Bool  { return False() }
+    func is_int(x: Int) ->  Bool  { return 0 == 0 }  # avoid needing preamble
+    func is_int(x: Bool) ->  Bool  { return 1 == 0 }
     func main() ->  Bool  {
       alpha: Bool|Int = const()
       return is_int(alpha)
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), False)
 
 
@@ -1457,17 +1457,17 @@ def test_call_multiple_concrete_void_funcs_with_union_arg():
     }
     func cool_func(x: Int)  { }
     func cool_func(x: Bool)  { }
-    func main() ->  Bool  {
+    func main() -> Int {
       alpha: Bool|Int = const()
       cool_func(alpha)
-      return True()
+      return 1
     }
     """
-    main = compile_program(engine, program)
-    assert_equal(main(), True)
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 1)
 
 
-def test_call_multiple_concrete_funcs_with_union_arg_different_return_typ():
+def test_call_multiple_concrete_funcs_with_union_arg_different_return_type():
   with make_execution_engine() as engine:
     program = """
     func const() -> Double|Int {
