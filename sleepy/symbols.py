@@ -2208,10 +2208,13 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
 
 
 def min_max_ref_depth(typ: Type) -> (int, int):
+  if typ == SLEEPY_NEVER:
+    return 0, 0
   if isinstance(typ, UnionType):
+    assert len(typ.possible_types) > 0  # handled above
     possible_types_min_max = [min_max_ref_depth(possible_type) for possible_type in typ.possible_types]
     possible_types_min, possible_types_max = zip(*possible_types_min_max)
-    return min(possible_types_min, default=0), max(possible_types_max, default=0)
+    return min(possible_types_min), max(possible_types_max)
   if isinstance(typ, ReferenceType):
     pointee_min, pointee_max = min_max_ref_depth(typ.pointee_type)
     return pointee_min + 1, pointee_max + 1
