@@ -1087,6 +1087,8 @@ def get_common_type(possible_types: List[Type]) -> Type:
         pass
       else:
         common_type = UnionType.from_types(possible_types=[common_type, other_type])
+  if isinstance(common_type, UnionType) and len(common_type.possible_types) == 1:
+    return common_type.possible_types[0]  # stay as simple as possible
   return common_type
 
 
