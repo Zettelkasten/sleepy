@@ -1423,7 +1423,7 @@ def test_call_union_arg():
       return accepts_both(thing)
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(4), True)
     assert_equal(main(-7), False)
 
@@ -1654,13 +1654,13 @@ def test_while_cond_type_narrowing():
       value: Int|Bool = initial_value
       while value is Int {
         value -= 1
-        if value < 0 { value = False() }
-        else { if value > 100 { value = True() } }
+        if value < 0 { value = (0 == 1) }  # avoid preamble, use 0 == 1 instead of False()
+        else { if value > 100 { value = (1 == 1) } }
       }
       return value
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(17), False)
     assert_equal(main(-2), False)
     assert_equal(main(117), True)
