@@ -685,7 +685,6 @@ def test_unbind_operator_union_of_ref():
       !x_ref: Ref[Int] = !x
       !any_ref: Ref[Int]|Ref[Double] = !x_ref
       any_collapsed: Int|Double = any_ref
-      assert(any_collapsed is Int)
       return any_collapsed
     }
     """
