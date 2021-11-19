@@ -186,6 +186,13 @@ def test_narrow_with_collapsed_type():
   assert_equal(narrow_with_collapsed_type(Int_RefInt, RefInt), narrow_type(Int_RefInt, RefInt))
   assert_equal(narrow_with_collapsed_type(Int_Double, Int), narrow_type(Int_Double, Int))
   assert_equal(narrow_with_collapsed_type(RefDouble_RefInt, Int), narrow_type(RefDouble_RefInt, RefInt))
+  assert_equal(narrow_with_collapsed_type(ReferenceType(Int_Double), Int), ReferenceType(narrow_type(Int_Double, Int)))
+  assert_equal(
+    narrow_with_collapsed_type(ReferenceType(ReferenceType(Int_Double)), Int),
+    ReferenceType(ReferenceType(narrow_type(Int_Double, Int))))
+  assert_equal(
+    narrow_with_collapsed_type(ReferenceType(ReferenceType(Int_Double)), ReferenceType(Int)),
+    ReferenceType(ReferenceType(narrow_type(Int_Double, Int))))
 
 
 # noinspection PyPep8Naming

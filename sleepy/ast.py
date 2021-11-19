@@ -551,7 +551,7 @@ class AssignStatementAst(StatementAst):
       # narrow the target type to the assigned type s.t. we can unbind properly
       # even if some unions variants are not unbindable
       uncollapsed_target_val = uncollapsed_target_val.copy_with_collapsed_narrowed_type(
-        ReferenceType(val.type))  # Ref[A]
+        ReferenceType(val.narrowed_type))  # Ref[A]
       if uncollapsed_target_val.narrowed_type == SLEEPY_NEVER:
         self.raise_error('Cannot assign variable of type %r a value of type %r' % (
           uncollapsed_target_val.type, val.narrowed_type))
