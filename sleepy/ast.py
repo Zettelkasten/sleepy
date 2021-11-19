@@ -1289,13 +1289,11 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast: ExpressionAst,
     if not isinstance(var_expr, IdentifierExpressionAst):
       return
     var_symbol = var_expr.get_var_symbol(symbol_table=symbol_table)
-    collapsed_var = var_symbol.as_typed_var(ir_val=None).copy_collapse(context=None)
     check_type = cond_expr_ast.func_arg_exprs[1].make_as_type(symbol_table=symbol_table)
-    uncollapsed_check_type = var_symbol.declared_var_type.replace_types({collapsed_var.type: check_type})
     if cond_holds:
-      symbol_table[var_expr.identifier] = var_symbol.copy_narrow_type(uncollapsed_check_type)
+      symbol_table[var_expr.identifier] = var_symbol.copy_narrow_with_collapsed_type(collapsed_type=check_type)
     else:
-      symbol_table[var_expr.identifier] = var_symbol.copy_exclude_type(uncollapsed_check_type)
+      symbol_table[var_expr.identifier] = var_symbol.copy_exclude_with_collapsed_type(collapsed_type=check_type)
   elif isinstance(cond_expr_ast, CallExpressionAst):
     func_expr = cond_expr_ast.func_expr
     if not isinstance(func_expr, IdentifierExpressionAst):

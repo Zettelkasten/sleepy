@@ -1096,19 +1096,29 @@ def get_common_type(possible_types: List[Type]) -> Type:
   return common_type
 
 
-def narrow_with_collapsed_type(from_type: Type, collapsed_type: Type):
-  """
-  Narrows all types away which are not `collapsed_type`, `Ref[collapsed_type]`, etc.
-  E.g. if self is Ref[A]|Ref[B], and collapsed_type=A, this returns Ref[A].
-  However if self if Ref[A]|A, and collapsed_type=A, then self will remain unchanged.
-  """
+def _uncollapse_type(from_type: Type, collapsed_type: Type) -> Type:
   min_ref_depth, max_ref_depth = min_max_ref_depth(from_type)
   to_min_ref_depth, to_max_ref_depth = min_max_ref_depth(collapsed_type)
   check_from = max(min_ref_depth - to_max_ref_depth, 0)
   check_to = max(max_ref_depth - to_min_ref_depth + 1, 0)
   uncollapsed_type = UnionType.from_types([
     ReferenceType.wrap(collapsed_type, depth) for depth in range(check_from, check_to)])
-  return narrow_type(from_type=from_type, narrow_to=uncollapsed_type)
+  return uncollapsed_type
+
+
+def narrow_with_collapsed_type(from_type: Type, collapsed_type: Type):
+  """
+  Narrows all types away which are not `collapsed_type`, `Ref[collapsed_type]`, etc.
+  E.g. if self is Ref[A]|Ref[B], and collapsed_type=A, this returns Ref[A].
+  However if self if Ref[A]|A, and collapsed_type=A, then self will remain unchanged.
+  """
+  return narrow_type(
+    from_type=from_type, narrow_to=_uncollapse_type(from_type=from_type, collapsed_type=collapsed_type))
+
+
+def exclude_with_collapsed_type(from_type: Type, collapsed_type: Type):
+  return exclude_type(
+    from_type=from_type, excluded_type=_uncollapse_type(from_type=from_type, collapsed_type=collapsed_type))
 
 
 def make_ir_val_is_type(ir_val, known_type, check_type, context):
@@ -1159,8 +1169,16 @@ class VariableSymbol(Symbol):
   def copy_reset_narrowed_type(self) -> VariableSymbol:
     return self.copy_with_narrowed_type(new_narrow_type=self.declared_var_type)
 
+  def copy_narrow_with_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
+    return self.copy_with_narrowed_type(narrow_with_collapsed_type(
+      from_type=self.declared_var_type, collapsed_type=collapsed_type))
+
   def copy_exclude_type(self, excluded: Type) -> VariableSymbol:
     return self.copy_with_narrowed_type(new_narrow_type=exclude_type(self.narrowed_var_type, excluded))
+
+  def copy_exclude_with_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
+    return self.copy_with_narrowed_type(exclude_with_collapsed_type(
+      from_type=self.declared_var_type, collapsed_type=collapsed_type))
 
   def build_ir_alloca(self, context: CodegenContext, identifier: str,
                       initial_ir_alloca: Optional[ir.values.Value] = None):
@@ -2274,6 +2292,11 @@ class TypedValue:
   def copy_with_collapsed_narrowed_type(self, collapsed_type: Type) -> TypedValue:
     new = self.copy()
     new.narrowed_type = narrow_with_collapsed_type(from_type=self.type, collapsed_type=collapsed_type)
+    return new
+
+  def copy_with_collapsed_excluded_type(self, collapsed_type: Type) -> TypedValue:
+    new = self.copy()
+    new.narrowed_type = exclude_with_collapsed_type(from_type=self.type, collapsed_type=collapsed_type)
     return new
 
   def copy_with_implicit_cast(self, to_type: Type, context: CodegenContext, name: str) -> TypedValue:
