@@ -863,10 +863,12 @@ class IdentifierExpressionAst(ExpressionAst):
   def get_var_symbol(self, symbol_table: SymbolTable) -> VariableSymbol:
     symbol = self.get_symbol(symbol_table=symbol_table)
     if not isinstance(symbol, VariableSymbol):
-      self.raise_error('Cannot reference a non-variable %r, got a %s' % (self.identifier, symbol.kind))
+      self.raise_error('Cannot use %r as a variable, got a %s' % (self.identifier, symbol.kind))
     if self.identifier not in symbol_table.current_scope_identifiers:
       # TODO add variable captures
       self.raise_error('Cannot capture variable %r from outer scope' % self.identifier)
+    if symbol.narrowed_var_type == SLEEPY_NEVER:
+      self.raise_error('Cannot use variable %r with narrowed type %r' % (self.identifier, symbol.narrowed_var_type))
     return symbol
 
   def get_func_symbol(self, symbol_table: SymbolTable) -> FunctionSymbol:
