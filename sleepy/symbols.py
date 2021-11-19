@@ -1101,7 +1101,7 @@ def _uncollapse_type(from_type: Type, collapsed_type: Type) -> Type:
   to_min_ref_depth, to_max_ref_depth = min_max_ref_depth(collapsed_type)
   check_from = max(min_ref_depth - to_max_ref_depth, 0)
   check_to = max(max_ref_depth - to_min_ref_depth + 1, 0)
-  uncollapsed_type = UnionType.from_types([
+  uncollapsed_type = get_common_type([
     ReferenceType.wrap(collapsed_type, depth) for depth in range(check_from, check_to)])
   return uncollapsed_type
 
