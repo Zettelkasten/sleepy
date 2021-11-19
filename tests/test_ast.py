@@ -1467,6 +1467,23 @@ def test_call_multiple_concrete_void_funcs_with_union_arg():
     assert_equal(main(), True)
 
 
+def test_call_multiple_concrete_funcs_with_union_arg_different_return_typ():
+  with make_execution_engine() as engine:
+    program = """
+    func const() -> Double|Int {
+      return 32.0
+    }
+    func neg(x: Int) -> Int { return -x }
+    func neg(x: Double) -> Double { return -x }
+    func main() {
+      alpha: Double|Int = const()
+      result: Double|Int = neg(alpha)
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    main()
+
+
 def test_union_folding():
   with make_execution_engine() as engine:
     program = """
