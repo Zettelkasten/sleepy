@@ -2242,7 +2242,7 @@ class TypedValue:
                ir_val: Optional[ir.values.Value]):
     if narrowed_type is None:
       narrowed_type = typ
-    assert isinstance(typ, ReferenceType) == isinstance(narrowed_type, ReferenceType)
+    assert narrowed_type == SLEEPY_NEVER or (isinstance(typ, ReferenceType) == isinstance(narrowed_type, ReferenceType))
     self.type = typ
     self.narrowed_type = narrowed_type
     assert num_unbindings <= self.num_possible_unbindings()
