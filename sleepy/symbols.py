@@ -679,7 +679,7 @@ class UnionType(Type):
     if any(possible_type.has_templ_placeholder() for possible_type in possible_types):
       val_size = None
     else:  # default case, no template
-      val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in possible_types)
+      val_size = max((ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
 
   def children(self) -> List[Type]:
