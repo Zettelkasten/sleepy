@@ -2122,26 +2122,31 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
   for case_context in case_contexts.values():
     indirect_branch.add_destination(case_context.block)
 
-  # Execute the concrete functions and collect their return value
+  # Execute the concrete functions
   collect_block = context.builder.append_basic_block('collect_%s_overload' % name)
   context.builder = ir.IRBuilder(collect_block)
   return_vals: List[TypedValue] = []
   for case_func, case_context in zip(case_funcs.values(), case_contexts.values()):
     case_return_val = case_func(caller_context=case_context)  # noqa
     assert not case_context.is_terminated
-    case_context.builder.branch(collect_block)
     assert (case_return_val.type is SLEEPY_VOID or not context.emits_ir) == (case_return_val.ir_val is None)
     return_vals.append(case_return_val)
   assert len(case_funcs) == len(return_vals)
 
+  # Collect the return values / close the branches
   if returns_void:
+    for case_context in case_contexts.values():
+      case_context.builder.branch(collect_block)
     return TypedValue(typ=SLEEPY_VOID, ir_val=None)
   else:
     common_return_type = get_common_type([return_val.narrowed_type for return_val in return_vals])
     collect_return_ir_phi = context.builder.phi(
       common_return_type.ir_type, name="collect_%s_overload_return" % name)
     for case_return_val, case_context in zip(return_vals, case_contexts.values()):
-      collect_return_ir_phi.add_incoming(case_return_val.ir_val, case_context.block)
+      case_return_val_compatible = case_return_val.copy_with_implicit_cast(
+        to_type=common_return_type, context=case_context, name="collect_cast_%s" % name)
+      collect_return_ir_phi.add_incoming(case_return_val_compatible.ir_val, case_context.block)
+      case_context.builder.branch(collect_block)
     return TypedValue(typ=common_return_type, ir_val=collect_return_ir_phi)
 
 
