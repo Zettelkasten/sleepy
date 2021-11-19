@@ -2384,8 +2384,7 @@ class TypedValue:
         assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
         new.ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
       else:
-        new.ir_val = self.ir_val
-      new.ir_val = do_simple_cast(from_simple_type=to_type, to_simple_type=to_type, ir_val=new.ir_val)
+        new.ir_val = do_simple_cast(from_simple_type=from_type, to_simple_type=to_type, ir_val=self.ir_val)
     return new
 
   def __repr__(self):
