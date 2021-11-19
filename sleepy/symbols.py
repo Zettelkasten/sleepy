@@ -984,7 +984,7 @@ def is_subtype(a: Type, b: Type) -> bool:
     assert not isinstance(possible_b, UnionType)
     if not a.has_same_symbol_as(possible_b):
       continue
-    assert len(a.templ_types) == len(b.templ_types)
+    assert len(a.templ_types) == len(possible_b.templ_types)
     if all(is_subtype(a_templ, b_templ) for a_templ, b_templ in zip(a.templ_types, possible_b.templ_types)):
       return True
   return False
