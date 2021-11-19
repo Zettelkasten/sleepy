@@ -483,11 +483,15 @@ class UnionType(Type):
   def __eq__(self, other) -> bool:
     if not isinstance(other, UnionType):
       return False
+    if len(self.possible_types) == len(other.possible_types) == 0:  # self = SLEEPY_NEVER
+      return True
     self_types_dict = dict(zip(self.possible_types, self.possible_type_nums))
     other_types_dict = dict(zip(other.possible_types, other.possible_type_nums))
     return self_types_dict == other_types_dict and self.val_size == other.val_size
 
   def __hash__(self) -> int:
+    if len(self.possible_types) == 0:  # self = SLEEPY_NEVER
+      return 0
     return hash(tuple(sorted(zip(self.possible_type_nums, self.possible_types))) + (self.val_size,))
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
