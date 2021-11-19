@@ -434,7 +434,7 @@ class ReferenceType(PointerType):
     assert times >= 0
     if times == 0:
       return type
-    return ReferenceType(pointee_type=type)
+    return ReferenceType(pointee_type=ReferenceType.wrap(type, times=times - 1))
 
 
 class UnionType(Type):
