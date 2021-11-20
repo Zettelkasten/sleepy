@@ -1073,7 +1073,8 @@ def exclude_type(from_type: Type, excluded_type: Type) -> Type:
 
 
 def get_common_type(possible_types: List[Type]) -> Type:
-  assert len(possible_types) >= 1
+  if len(possible_types) == 0:
+    return SLEEPY_NEVER
   common_type = possible_types[0]
   for i, other_type in enumerate(possible_types):
     if i == 0 or other_type in possible_types[:i]:
