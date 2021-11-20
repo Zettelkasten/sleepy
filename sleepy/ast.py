@@ -550,7 +550,7 @@ class AssignStatementAst(StatementAst):
         self.raise_error('Cannot reassign non-referencable type %s' % uncollapsed_target_val.type)
       # narrow the target type to the assigned type s.t. we can unbind properly
       # even if some unions variants are not unbindable
-      uncollapsed_target_val = uncollapsed_target_val.copy_with_collapsed_narrowed_type(
+      uncollapsed_target_val = uncollapsed_target_val.copy_set_narrowed_collapsed_type(
         ReferenceType(val.narrowed_type))  # Ref[A]
       if uncollapsed_target_val.narrowed_type == SLEEPY_NEVER:
         self.raise_error('Cannot assign variable of type %r a value of type %r' % (
@@ -568,7 +568,7 @@ class AssignStatementAst(StatementAst):
         assert var_identifier in symbol_table
         symbol = symbol_table[var_identifier]
         assert isinstance(symbol, VariableSymbol)
-        narrowed_symbol = symbol.copy_with_narrowed_type(uncollapsed_target_val.narrowed_type)
+        narrowed_symbol = symbol.copy_set_narrowed_type(uncollapsed_target_val.narrowed_type)
         assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
         symbol_table[var_identifier] = narrowed_symbol
 
@@ -1291,9 +1291,9 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast: ExpressionAst,
     var_symbol = var_expr.get_var_symbol(symbol_table=symbol_table)
     check_type = cond_expr_ast.func_arg_exprs[1].make_as_type(symbol_table=symbol_table)
     if cond_holds:
-      symbol_table[var_expr.identifier] = var_symbol.copy_narrow_with_collapsed_type(collapsed_type=check_type)
+      symbol_table[var_expr.identifier] = var_symbol.copy_narrow_collapsed_type(collapsed_type=check_type)
     else:
-      symbol_table[var_expr.identifier] = var_symbol.copy_exclude_with_collapsed_type(collapsed_type=check_type)
+      symbol_table[var_expr.identifier] = var_symbol.copy_exclude_collapsed_type(collapsed_type=check_type)
   elif isinstance(cond_expr_ast, CallExpressionAst):
     func_expr = cond_expr_ast.func_expr
     if not isinstance(func_expr, IdentifierExpressionAst):
