@@ -1416,7 +1416,7 @@ def test_call_union_arg():
     func accepts_both(thing: Int|Bool) ->  Bool  {
       if thing is Int { return thing >= 0 }
       if thing is Bool { return thing }
-      return False()  # never happens...
+      return 0 == 1  # never happens...
     }
     func main(a: Int) ->  Bool  {
       thing: Int|Bool = a
