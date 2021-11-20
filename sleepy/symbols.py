@@ -1158,28 +1158,32 @@ class VariableSymbol(Symbol):
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
 
-  def copy_with_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
+  def copy_set_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)
     # explicitly apply narrowing from declared type here: always stay compatible to the base type
     new_var_symbol.narrowed_var_type = narrow_type(from_type=self.declared_var_type, narrow_to=new_narrow_type)
     return new_var_symbol
 
   def copy_narrow_type(self, narrow_to: Type) -> VariableSymbol:
-    return self.copy_with_narrowed_type(new_narrow_type=narrow_type(self.narrowed_var_type, narrow_to))
+    return self.copy_set_narrowed_type(new_narrow_type=narrow_type(self.narrowed_var_type, narrow_to))
 
   def copy_reset_narrowed_type(self) -> VariableSymbol:
-    return self.copy_with_narrowed_type(new_narrow_type=self.declared_var_type)
+    return self.copy_set_narrowed_type(new_narrow_type=self.declared_var_type)
 
-  def copy_narrow_with_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
-    return self.copy_with_narrowed_type(narrow_with_collapsed_type(
+  def copy_set_narrowed_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
+    return self.copy_set_narrowed_type(narrow_with_collapsed_type(
       from_type=self.declared_var_type, collapsed_type=collapsed_type))
+
+  def copy_narrow_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
+    return self.copy_set_narrowed_type(narrow_with_collapsed_type(
+      from_type=self.narrowed_var_type, collapsed_type=collapsed_type))
 
   def copy_exclude_type(self, excluded: Type) -> VariableSymbol:
-    return self.copy_with_narrowed_type(new_narrow_type=exclude_type(self.narrowed_var_type, excluded))
+    return self.copy_set_narrowed_type(new_narrow_type=exclude_type(self.narrowed_var_type, excluded))
 
-  def copy_exclude_with_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
-    return self.copy_with_narrowed_type(exclude_with_collapsed_type(
-      from_type=self.declared_var_type, collapsed_type=collapsed_type))
+  def copy_exclude_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
+    return self.copy_set_narrowed_type(exclude_with_collapsed_type(
+      from_type=self.narrowed_var_type, collapsed_type=collapsed_type))
 
   def build_ir_alloca(self, context: CodegenContext, identifier: str,
                       initial_ir_alloca: Optional[ir.values.Value] = None):
@@ -1763,7 +1767,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
       if len(other_symbols) == 0:
         continue
       common_type = get_common_type([other_symbol.narrowed_var_type for other_symbol in other_symbols])
-      self[symbol_identifier] = self_symbol.copy_with_narrowed_type(common_type)
+      self[symbol_identifier] = self_symbol.copy_set_narrowed_type(common_type)
 
   def reset_narrowed_types(self):
     """
@@ -2033,7 +2037,7 @@ def make_func_call_ir(func: FunctionSymbol,
     # the param actually has the correct param_type.
     # Then, copy_with_implicit_cast only needs to handle the cases which can actually occur.
     casted_calling_args = [
-      arg_val.copy_with_narrowed_type(param_type).copy_with_implicit_cast(
+      arg_val.copy_set_narrowed_type(param_type).copy_with_implicit_cast(
         to_type=param_type, context=caller_context, name='call_arg_%s_cast' % arg_identifier)
       for arg_identifier, arg_val, param_type in zip(
         concrete_func.arg_identifiers, collapsed_func_args, concrete_func.uncollapsed_arg_types)]
@@ -2285,19 +2289,14 @@ class TypedValue:
   def copy(self) -> TypedValue:
     return copy.copy(self)
 
-  def copy_with_narrowed_type(self, narrow_to_type: Type) -> TypedValue:
+  def copy_set_narrowed_type(self, narrow_to_type: Type) -> TypedValue:
     new = self.copy()
     new.narrowed_type = narrow_type(from_type=self.type, narrow_to=narrow_to_type)
     return new
 
-  def copy_with_collapsed_narrowed_type(self, collapsed_type: Type) -> TypedValue:
+  def copy_set_narrowed_collapsed_type(self, collapsed_type: Type) -> TypedValue:
     new = self.copy()
     new.narrowed_type = narrow_with_collapsed_type(from_type=self.type, collapsed_type=collapsed_type)
-    return new
-
-  def copy_with_collapsed_excluded_type(self, collapsed_type: Type) -> TypedValue:
-    new = self.copy()
-    new.narrowed_type = exclude_with_collapsed_type(from_type=self.type, collapsed_type=collapsed_type)
     return new
 
   def copy_with_implicit_cast(self, to_type: Type, context: CodegenContext, name: str) -> TypedValue:
@@ -2414,10 +2413,10 @@ class TypedValue:
       concrete_min_ref_depth, concrete_max_ref_depth = min_max_ref_depth(concrete_type)
       assert 0 <= self.num_unbindings <= concrete_min_ref_depth <= concrete_max_ref_depth
       if self.num_unbindings == concrete_min_ref_depth == concrete_max_ref_depth:  # done.
-        return self.copy_with_narrowed_type(concrete_type)
+        return self.copy_set_narrowed_type(concrete_type)
       assert isinstance(concrete_type, ReferenceType)  # still need to collapse, must be a reference.
       # collapse once.
-      new = self.copy_with_narrowed_type(concrete_type)
+      new = self.copy_set_narrowed_type(concrete_type)
       new = new.copy_with_implicit_cast(to_type=concrete_type, context=context, name=name)
       new.type = concrete_type.pointee_type
       new.narrowed_type = concrete_type.pointee_type
