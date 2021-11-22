@@ -36,8 +36,6 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
 
     Production('separator', ';'): {},
     Production('separator', 'new_line'): {},
-    Production('separator?'): {},
-    Production('separator?', 'separator'): {},
     Production('Scope', '{', 'StmtList', '}'): {
       'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list=stmt_list(2))},
 
@@ -195,12 +193,12 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'identifier_list': [], 'type_list': [], 'annotation_list': []},
     Production('MemberList', 'MemberList+'): {
       'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
-    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', 'separator'): {
+    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit'): {
       'identifier_list': lambda identifier: [identifier(2)],
       'type_list': lambda ast: [ast(4)],
       'annotation_list': lambda annotation_list: [annotation_list(1)]},
     Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', 'separator',
-               'MemberList+'): {
+               'MemberList'): {
       'identifier_list': lambda identifier, identifier_list: [identifier(2)] + identifier_list(7),
       'type_list': lambda ast, type_list: [ast(4)] + type_list(7),
       'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(7)},

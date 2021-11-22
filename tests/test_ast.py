@@ -2322,3 +2322,11 @@ def test_syntax_non_ascii_comment():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 1)
+
+
+def test_no_semicolon_one_line_struct():
+  with make_execution_engine() as engine:
+    program = """
+      func main() { struct S { i: Int } }
+    """
+    compile_program(engine, program, add_preamble=False)
