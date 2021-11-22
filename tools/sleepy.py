@@ -60,6 +60,7 @@ def main():
     '--Optimization', '-O', dest='opt', action='store', type=int, default=0, help='Optimize code.')
   parser.add_argument('--no-preamble', default=False, action='store_true', help='Do not add preamble to source code.')
   parser.add_argument('--debug', default=False, action='store_true', help='Add debug symbols.')
+  parser.add_argument('--output', default=None, action='store', help='output file path')
 
   args = parser.parse_args()
 
@@ -120,7 +121,9 @@ def main():
   if args.emit_object:
     return
 
-  exec_file_name = _make_file_name(source_file_path, '', allow_exist=True)
+  if args.output is not None: exec_file_name = args.output
+  else: exec_file_name = _make_file_name(source_file_path, '', allow_exist=True)
+
   import subprocess
   subprocess.run(
     ['gcc'] + (['-g'] if args.debug else [])

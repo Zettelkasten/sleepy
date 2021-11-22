@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections import namedtuple
 from pathlib import Path
-from typing import Optional, Dict, List, Set, FrozenSet, Any, Tuple
+from typing import Optional, Dict, List, Set, FrozenSet, Any
+from typing import Tuple
 
 from sleepy.errors import ParseError
 from sleepy.grammar import EPSILON, Production, SyntaxTree, IGNORED_TOKEN, \
@@ -88,10 +90,7 @@ class _AcceptAction(_Action):
 
 
 class _ReduceAction(_Action):
-  def __init__(self, prod):
-    """
-    :param Production prod:
-    """
+  def __init__(self, prod: Production):
     self.prod = prod
 
   def __repr__(self) -> str:
@@ -99,10 +98,7 @@ class _ReduceAction(_Action):
 
 
 class _ShiftAction(_Action):
-  def __init__(self, symbol):
-    """
-    :param str symbol:
-    """
+  def __init__(self, symbol: str):
     assert symbol is not EPSILON
     self.symbol = symbol
 
@@ -167,7 +163,7 @@ class ParserGenerator:
       next_symbols.add(next_symbol)
       if next_symbol in self.grammar.non_terminals:
         # If A-> alpha . B beta in state, add all [B -> . gamma, fi(beta x)]
-        word_after_next_symbol = item.prod.right[item.pointer+1:] + (() if item.la is EPSILON else (item.la,))
+        word_after_next_symbol = item.prod.right[item.pointer + 1:] + (() if item.la is EPSILON else (item.la,))
         add_item_queue.extend([_Item(p, 0, new_la)
                                for p in self.grammar.get_prods_for(next_symbol)
                                for new_la in get_first1_set_for_word(self.first1_sets, word_after_next_symbol)])
@@ -321,8 +317,8 @@ class ParserGenerator:
         accepted = True
       else:  # error
         if la == "new_line":
-            pos += 1
-            continue
+          pos += 1
+          continue
         la_name = '%r token' % la if la is not EPSILON else 'end of file'
         possible_next_tokens = set(self._state_action_table[state].keys())
         raise ParseError(
@@ -364,3 +360,59 @@ class ParserGenerator:
     assert isinstance(root_tree, SyntaxTree)
     assert root_tree.prod == self._start_prod
     return root_tree
+
+  def parse_stream(self, token_stream):
+    SE = namedtuple("StackElement", ("state", "marker"))
+    stack = [SE(self._initial_state, token_stream.mark())]
+
+    def token():
+      return None if token_stream.current() == "null" else token_stream.current()
+
+    while True:
+      state = stack[-1].state
+      action = self._state_action_table[state].get(token())
+
+      if isinstance(action, _ShiftAction) and action.symbol == token():
+
+        current_token = token()
+        token_stream.advance()
+        post_token_marker = token_stream.mark() # marker after current_token
+        stack.append(SE(self._state_goto_table[state][current_token], post_token_marker))
+
+      elif isinstance(action, _ReduceAction):
+
+        for _ in range(len(action.prod.right)):
+          stack[-1].marker.drop()
+          stack.pop()
+
+        begin_state, begin_marker = stack[-1] # marker and state before the subtree we are reducing
+        stack[-1] = SE(stack[-1].state, begin_marker.precede()) # replace marker so we can use begin_marker
+
+        begin_marker.done(action.prod.left) # finish subtree
+
+        stack.append(SE(self._state_goto_table[begin_state][action.prod.left], token_stream.mark()))
+
+      elif isinstance(action, _AcceptAction) and len(stack) == 2:
+        stack[1].marker.drop()
+        stack[0].marker.done("FILE")
+        return
+      else:
+        # error case
+        if token() == "new_line":
+          token_stream.advance()
+          continue
+
+        for state, marker in stack[1:-1]:
+          marker.drop()
+
+        token_name = '%r token' % token() if token() is not None else 'end of file'
+        possible_next_tokens = map(lambda t: "EOF" if t is None else t, self._state_action_table[stack[-1].state].keys())
+        message = 'Unexpected %s, expected: %s' % (token_name, ', '.join(['%r' % t for t in possible_next_tokens]))
+
+        token_stream.advance()
+        stack[-1].marker.error(message)
+
+        while token() is not None: token_stream.advance()
+
+        stack[0].marker.done("FILE")
+        return
