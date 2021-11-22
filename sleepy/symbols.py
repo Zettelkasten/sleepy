@@ -117,7 +117,16 @@ class Type(ABC):
     return copy.copy(self)
 
   def is_referenceable(self) -> bool:
+    if isinstance(self, UnionType):
+      return all(possible_type.is_referenceable() for possible_type in self.possible_types)
     return isinstance(self, ReferenceType)
+
+  def num_possible_unbindings(self):
+    if isinstance(self, UnionType):
+      return min((possible_type.num_possible_unbindings() for possible_type in self.possible_types), default=0)
+    if isinstance(self, ReferenceType):
+      return 1 + self.pointee_type.num_possible_unbindings()
+    return 0
 
 
 class VoidType(Type):
@@ -420,17 +429,23 @@ class ReferenceType(PointerType):
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, ReferenceType)
 
+  @classmethod
+  def wrap(cls, type: Type, times: int) -> Type:
+    assert times >= 0
+    if times == 0:
+      return type
+    return ReferenceType(pointee_type=ReferenceType.wrap(type, times=times - 1))
+
 
 class UnionType(Type):
   """
   A tagged union, i.e. a type that can be one of a set of different types.
   """
-  def __init__(self, possible_types: List[Type], possible_type_nums: List[int], val_size: int,
+  def __init__(self, possible_types: List[Type], possible_type_nums: List[int], val_size: Optional[int],
                constructor: Optional[FunctionSymbol] = None):
     assert len(possible_types) == len(possible_type_nums)
     assert SLEEPY_VOID not in possible_types
     assert len(set(possible_types)) == len(possible_types)
-    assert all(val_size >= possible_type.size for possible_type in possible_types)
     self.possible_types = possible_types
     self.possible_type_nums = possible_type_nums
     self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
@@ -439,13 +454,23 @@ class UnionType(Type):
     self.tag_c_type = ctypes.c_uint8
     self.tag_ir_type = ir.types.IntType(8)
     self.tag_size = 8
-    self.untagged_union_c_type = ctypes.c_ubyte * max(
-      (ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
-    self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), val_size)
-    c_type = type(
-      '%s_CType' % self.identifier, (ctypes.Structure,),
-      {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
-    ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
+    if any(possible_type.has_templ_placeholder() for possible_type in possible_types):
+      assert val_size is None
+      self.tag_c_type = None
+      self.tag_ir_type = None
+      self.untagged_union_ir_type: Optional[ir.Type] = None
+      self.untagged_union_c_type: Optional[type] = None
+      ir_type, c_type = None, None
+    else:  # default case, non-template
+      assert val_size is not None
+      assert all(val_size >= possible_type.size for possible_type in possible_types)
+      self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), val_size)
+      self.untagged_union_c_type = ctypes.c_ubyte * max(
+        (ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
+      c_type = type(
+        '%s_CType' % self.identifier, (ctypes.Structure,),
+        {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
+      ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
     super().__init__(templ_types=[], ir_type=ir_type, c_type=c_type, constructor=constructor)
 
   def __repr__(self) -> str:
@@ -458,11 +483,15 @@ class UnionType(Type):
   def __eq__(self, other) -> bool:
     if not isinstance(other, UnionType):
       return False
+    if len(self.possible_types) == len(other.possible_types) == 0:  # self = SLEEPY_NEVER
+      return True
     self_types_dict = dict(zip(self.possible_types, self.possible_type_nums))
     other_types_dict = dict(zip(other.possible_types, other.possible_type_nums))
     return self_types_dict == other_types_dict and self.val_size == other.val_size
 
   def __hash__(self) -> int:
+    if len(self.possible_types) == 0:  # self = SLEEPY_NEVER
+      return 0
     return hash(tuple(sorted(zip(self.possible_type_nums, self.possible_types))) + (self.val_size,))
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
@@ -504,7 +533,14 @@ class UnionType(Type):
     for duplicate_index in reversed(duplicate_indices):
       del new_possible_types[duplicate_index]
       del new_possible_type_nums[duplicate_index]
-    val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types)
+    if any(possible_type.has_templ_placeholder() for possible_type in new_possible_types):
+      val_size = None
+    else: # default case
+      val_size = max([ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types])
+      # Note: We don't decrease the size of the union value to stay compatible to before.
+      if self.val_size is not None:
+        val_size = max(val_size, self.val_size)
+
     return UnionType(
       possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=val_size,
       constructor=self.constructor)
@@ -546,7 +582,7 @@ class UnionType(Type):
   @staticmethod
   def make_untagged_union_void_ptr(union_ir_alloca, context, name):
     """
-    :param ir.instructions.AllocaInstr union_ir_alloca:
+    :param ir.values.Value union_ir_alloca:
     :param CodegenContext context:
     :param str name:
     :rtype: ir.instructions.Instruction
@@ -633,7 +669,10 @@ class UnionType(Type):
       else:
         next_type_num = max(new_possible_type_nums) + 1 if len(new_possible_type_nums) > 0 else 0
         new_possible_type_nums.append(next_type_num)
-    new_val_size = max([self.val_size] + [extended_type.size for extended_type in extended_types])
+    if self.val_size is None or any(extended_type.has_templ_placeholder() for extended_type in extended_types):
+      new_val_size = None
+    else:
+      new_val_size = max([self.val_size] + [extended_type.size for extended_type in extended_types])
     return UnionType(
       possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=new_val_size)
 
@@ -641,7 +680,10 @@ class UnionType(Type):
   def from_types(cls, possible_types: List[Type]) -> UnionType:
     possible_types = list(dict.fromkeys(possible_types))  # possibly remove duplicates
     possible_type_nums = list(range(len(possible_types)))
-    val_size = max(ctypes.sizeof(possible_type.c_type) for possible_type in possible_types)
+    if any(possible_type.has_templ_placeholder() for possible_type in possible_types):
+      val_size = None
+    else:  # default case, no template
+      val_size = max((ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
 
   def children(self) -> List[Type]:
@@ -879,6 +921,25 @@ class PlaceholderTemplateType(Type):
     return None
 
 
+def can_implicit_cast_ref_to(from_pointee_type: Type, to_pointee_type: Type) -> bool:
+  """
+  Whether `Ref[from_pointee_type]` can easily be treated as `Ref[to_pointee_type]`.
+  """
+  if not is_subtype(from_pointee_type, to_pointee_type):
+    return False
+  if from_pointee_type == to_pointee_type:
+    return True
+
+  if not isinstance(to_pointee_type, UnionType):
+    return True
+  if isinstance(from_pointee_type, UnionType) and isinstance(to_pointee_type, UnionType):
+    simple_subset = all(
+      to_pointee_type.contains(a_type) and to_pointee_type.get_variant_num(a_type) == a_num
+      for a_num, a_type in zip(from_pointee_type.possible_type_nums, from_pointee_type.possible_types))
+    if simple_subset:
+      return True
+  return False
+
 def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   """
   Whether you can "easily" treat memory of `from_type` as `to_type`.
@@ -901,7 +962,7 @@ def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   for a in list(possible_from_types):
     if not isinstance(a, ReferenceType):
       continue
-    if not any(isinstance(b, ReferenceType) and is_subtype(a.pointee_type, b.pointee_type) for b in possible_to_types):
+    if not any(isinstance(b, ReferenceType) and can_implicit_cast_ref_to(a.pointee_type, b.pointee_type) for b in possible_to_types):  # noqa
       return False
     possible_from_types.remove(a)
   # Note: These elements really need to match exactly,
@@ -927,7 +988,7 @@ def is_subtype(a: Type, b: Type) -> bool:
     assert not isinstance(possible_b, UnionType)
     if not a.has_same_symbol_as(possible_b):
       continue
-    assert len(a.templ_types) == len(b.templ_types)
+    assert len(a.templ_types) == len(possible_b.templ_types)
     if all(is_subtype(a_templ, b_templ) for a_templ, b_templ in zip(a.templ_types, possible_b.templ_types)):
       return True
   return False
@@ -1012,7 +1073,8 @@ def exclude_type(from_type: Type, excluded_type: Type) -> Type:
 
 
 def get_common_type(possible_types: List[Type]) -> Type:
-  assert len(possible_types) >= 1
+  if len(possible_types) == 0:
+    return SLEEPY_NEVER
   common_type = possible_types[0]
   for i, other_type in enumerate(possible_types):
     if i == 0 or other_type in possible_types[:i]:
@@ -1026,9 +1088,38 @@ def get_common_type(possible_types: List[Type]) -> Type:
     else:
       if isinstance(other_type, UnionType):
         common_type = other_type.copy_with_extended_types(extended_types=[common_type])
+      elif common_type == other_type:
+        pass
       else:
         common_type = UnionType.from_types(possible_types=[common_type, other_type])
+  if isinstance(common_type, UnionType) and len(common_type.possible_types) == 1:
+    return common_type.possible_types[0]  # stay as simple as possible
   return common_type
+
+
+def _uncollapse_type(from_type: Type, collapsed_type: Type) -> Type:
+  min_ref_depth, max_ref_depth = min_max_ref_depth(from_type)
+  to_min_ref_depth, to_max_ref_depth = min_max_ref_depth(collapsed_type)
+  check_from = max(min_ref_depth - to_max_ref_depth, 0)
+  check_to = max(max_ref_depth - to_min_ref_depth + 1, 0)
+  uncollapsed_type = get_common_type([
+    ReferenceType.wrap(collapsed_type, depth) for depth in range(check_from, check_to)])
+  return uncollapsed_type
+
+
+def narrow_with_collapsed_type(from_type: Type, collapsed_type: Type):
+  """
+  Narrows all types away which are not `collapsed_type`, `Ref[collapsed_type]`, etc.
+  E.g. if self is Ref[A]|Ref[B], and collapsed_type=A, this returns Ref[A].
+  However if self if Ref[A]|A, and collapsed_type=A, then self will remain unchanged.
+  """
+  return narrow_type(
+    from_type=from_type, narrow_to=_uncollapse_type(from_type=from_type, collapsed_type=collapsed_type))
+
+
+def exclude_with_collapsed_type(from_type: Type, collapsed_type: Type):
+  return exclude_type(
+    from_type=from_type, excluded_type=_uncollapse_type(from_type=from_type, collapsed_type=collapsed_type))
 
 
 def make_ir_val_is_type(ir_val, known_type, check_type, context):
@@ -1067,20 +1158,32 @@ class VariableSymbol(Symbol):
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
 
-  def copy_with_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
+  def copy_set_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)
     # explicitly apply narrowing from declared type here: always stay compatible to the base type
     new_var_symbol.narrowed_var_type = narrow_type(from_type=self.declared_var_type, narrow_to=new_narrow_type)
     return new_var_symbol
 
   def copy_narrow_type(self, narrow_to: Type) -> VariableSymbol:
-    return self.copy_with_narrowed_type(new_narrow_type=narrow_type(self.narrowed_var_type, narrow_to))
+    return self.copy_set_narrowed_type(new_narrow_type=narrow_type(self.narrowed_var_type, narrow_to))
 
   def copy_reset_narrowed_type(self) -> VariableSymbol:
-    return self.copy_with_narrowed_type(new_narrow_type=self.declared_var_type)
+    return self.copy_set_narrowed_type(new_narrow_type=self.declared_var_type)
+
+  def copy_set_narrowed_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
+    return self.copy_set_narrowed_type(narrow_with_collapsed_type(
+      from_type=self.declared_var_type, collapsed_type=collapsed_type))
+
+  def copy_narrow_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
+    return self.copy_set_narrowed_type(narrow_with_collapsed_type(
+      from_type=self.narrowed_var_type, collapsed_type=collapsed_type))
 
   def copy_exclude_type(self, excluded: Type) -> VariableSymbol:
-    return self.copy_with_narrowed_type(new_narrow_type=exclude_type(self.narrowed_var_type, excluded))
+    return self.copy_set_narrowed_type(new_narrow_type=exclude_type(self.narrowed_var_type, excluded))
+
+  def copy_exclude_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
+    return self.copy_set_narrowed_type(exclude_with_collapsed_type(
+      from_type=self.narrowed_var_type, collapsed_type=collapsed_type))
 
   def build_ir_alloca(self, context: CodegenContext, identifier: str,
                       initial_ir_alloca: Optional[ir.values.Value] = None):
@@ -1664,7 +1767,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
       if len(other_symbols) == 0:
         continue
       common_type = get_common_type([other_symbol.narrowed_var_type for other_symbol in other_symbols])
-      self[symbol_identifier] = self_symbol.copy_with_narrowed_type(common_type)
+      self[symbol_identifier] = self_symbol.copy_set_narrowed_type(common_type)
 
   def reset_narrowed_types(self):
     """
@@ -1915,12 +2018,11 @@ def make_ir_size(size: int) -> ir.values.Value:
 def make_func_call_ir(func: FunctionSymbol,
                       templ_types: List[Type],
                       func_args: List[TypedValue],
-                      context: CodegenContext) -> Optional[ir.values.Value]:
-  assert context.emits_ir
+                      context: CodegenContext) -> TypedValue:
   assert not context.emits_debug or context.builder.debug_metadata is not None
 
-  def make_call_func(concrete_func: ConcreteFunction,
-                     caller_context: CodegenContext) -> ir.values.Value:
+  def do_call(concrete_func: ConcreteFunction,
+                     caller_context: CodegenContext) -> TypedValue:
     assert caller_context.emits_ir
     assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
     assert len(concrete_func.arg_types) == len(func_args)
@@ -1935,117 +2037,146 @@ def make_func_call_ir(func: FunctionSymbol,
     # the param actually has the correct param_type.
     # Then, copy_with_implicit_cast only needs to handle the cases which can actually occur.
     casted_calling_args = [
-      arg_val.copy_with_narrowed_type(param_type).copy_with_implicit_cast(
+      arg_val.copy_set_narrowed_type(param_type).copy_with_implicit_cast(
         to_type=param_type, context=caller_context, name='call_arg_%s_cast' % arg_identifier)
       for arg_identifier, arg_val, param_type in zip(
         concrete_func.arg_identifiers, collapsed_func_args, concrete_func.uncollapsed_arg_types)]
     if concrete_func.is_inline:
       assert concrete_func not in caller_context.inline_func_call_stack
-      return concrete_func.make_inline_func_call_ir(func_args=casted_calling_args, caller_context=caller_context)
+      return_ir = concrete_func.make_inline_func_call_ir(func_args=casted_calling_args, caller_context=caller_context)
     else:
       ir_func = concrete_func.ir_func
       assert ir_func is not None and len(ir_func.args) == len(casted_calling_args)
       casted_ir_args = [arg.ir_val for arg in casted_calling_args]
       assert None not in casted_ir_args
-      return caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
+      return_ir = caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
+    if func.returns_void:
+      return TypedValue(typ=SLEEPY_VOID, ir_val=None)
+    else:
+      assert isinstance(return_ir, ir.values.Value)
+      return TypedValue(typ=concrete_func.return_type, ir_val=return_ir)
 
-  calling_arg_types = [arg.copy_collapse(context=None).narrowed_type for arg in func_args]
+  calling_collapsed_args = [arg.copy_collapse(context=context) for arg in func_args]
+  calling_arg_types = [arg.narrowed_type for arg in calling_collapsed_args]
   assert func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
   possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
-  if len(possible_concrete_funcs) == 1:
-    return make_call_func(
-      concrete_func=possible_concrete_funcs[0], caller_context=context)
+  from functools import partial
+  return make_union_switch_ir(
+    case_funcs={
+      tuple(concrete_func.arg_types): partial(do_call, concrete_func) for concrete_func in possible_concrete_funcs},
+    calling_args=calling_collapsed_args, returns_void=func.returns_void, name=func.identifier, context=context)
+
+
+def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext], TypedValue]],
+                         calling_args: List[TypedValue],
+                         returns_void: bool, name: str,
+                         context: CodegenContext) -> TypedValue:
+  """
+  Given different functions to execute for different argument types,
+  this will generate IR to call the correct function for given `calling_args`.
+  This is especially useful if the argument type contains unions,
+  as then it is only clear at run time which function to actually call.
+  """
+  if len(case_funcs) == 1:
+    single_case = next(iter(case_funcs.values()))
+    single_value = single_case(caller_context=context)  # noqa
+    assert (single_value.type is SLEEPY_VOID or not context.emits_ir) == (single_value.ir_val is None)
+    return single_value
+
+  import numpy as np
+  import itertools
+  calling_arg_types = [arg.narrowed_type for arg in calling_args]
+  # The arguments which we need to look at to determine which concrete function to call
+  # TODO: This could use a better heuristic, only because something is a union type does not mean that it
+  # distinguishes different concrete funcs.
+  distinguishing_arg_nums = [
+    arg_num for arg_num, calling_arg_type in enumerate(calling_arg_types)
+    if isinstance(calling_arg_type, UnionType)]
+  assert len(distinguishing_arg_nums) >= 1
+  # noinspection PyTypeChecker
+  distinguishing_calling_arg_types: List[UnionType] = [
+    calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
+  assert all(isinstance(calling_arg, UnionType) for calling_arg in distinguishing_calling_arg_types)
+  # To distinguish which concrete func to call, use this table
+  block_addresses_distinguished_mapping = np.ndarray(
+    shape=tuple(max(calling_arg.possible_type_nums) + 1 for calling_arg in distinguishing_calling_arg_types),
+    dtype=ir.values.BlockAddress)
+
+  # Go through all concrete functions, and add one block for each
+  case_contexts = {
+    case_arg_types: context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
+      name, '_'.join(str(arg_type) for arg_type in case_arg_types)))))
+    for case_arg_types in case_funcs.keys()}
+  for case_arg_types, case_context in case_contexts.items():
+    case_block = case_context.block
+    case_block_address = ir.values.BlockAddress(context.builder.function, case_block)
+    case_distinguishing_args = [case_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
+    case_possible_types_per_arg = [
+      [
+        possible_type
+        for possible_type in (arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type])
+        if possible_type in calling_arg_type.possible_types]
+      for arg_type, calling_arg_type in zip(case_distinguishing_args, distinguishing_calling_arg_types)]
+    assert len(distinguishing_arg_nums) == len(case_possible_types_per_arg)
+
+    # Register the concrete function in the table
+    for expanded_case_types in itertools.product(*case_possible_types_per_arg):
+      assert len(expanded_case_types) == len(distinguishing_calling_arg_types)
+      distinguishing_variant_nums = tuple(
+        calling_arg_type.get_variant_num(concrete_arg_type)
+        for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_case_types))
+      assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
+      block_addresses_distinguished_mapping[distinguishing_variant_nums] = case_block_address
+
+  # Compute the index we have to look at in the table
+  tag_ir_type = ir.types.IntType(8)
+  call_block_index_ir = ir.Constant(tag_ir_type, 0)
+  for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
+    ir_func_arg = calling_args[arg_num].ir_val
+    assert ir_func_arg is not None
+    base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
+    base_ir = ir.Constant(tag_ir_type, base)
+    tag_ir = calling_arg_type.make_extract_tag(
+      ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (name, arg_num))
+    call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
+  call_block_index_ir = context.builder.zext(call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % name)
+
+  # Look it up in the table and call the function
+  ir_block_addresses_type = ir.types.VectorType(
+    LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
+  ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
+    list(block_addresses_distinguished_mapping.flatten())))
+  ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
+  indirect_branch = context.builder.branch_indirect(ir_call_block_target)
+  for case_context in case_contexts.values():
+    indirect_branch.add_destination(case_context.block)
+
+  # Execute the concrete functions
+  collect_block = context.builder.append_basic_block('collect_%s_overload' % name)
+  context.builder = ir.IRBuilder(collect_block)
+  return_vals: List[TypedValue] = []
+  for case_func, case_context in zip(case_funcs.values(), case_contexts.values()):
+    case_return_val = case_func(caller_context=case_context)  # noqa
+    assert not case_context.is_terminated
+    assert (case_return_val.type is SLEEPY_VOID or not context.emits_ir) == (case_return_val.ir_val is None)
+    return_vals.append(case_return_val)
+  assert len(case_funcs) == len(return_vals)
+
+  # Collect the return values / close the branches
+  if returns_void:
+    for case_context in case_contexts.values():
+      case_context.builder.branch(collect_block)
+    return TypedValue(typ=SLEEPY_VOID, ir_val=None)
   else:
-    import numpy as np
-    import itertools
-    # The arguments which we need to look at to determine which concrete function to call
-    # TODO: This could use a better heuristic, only because something is a union type does not mean that it
-    # distinguishes different concrete funcs.
-    distinguishing_arg_nums = [
-      arg_num for arg_num, calling_arg_type in enumerate(calling_arg_types)
-      if isinstance(calling_arg_type, UnionType)]
-    assert len(distinguishing_arg_nums) >= 1
-    # noinspection PyTypeChecker
-    distinguishing_calling_arg_types: List[UnionType] = [
-      calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
-    assert all(isinstance(calling_arg, UnionType) for calling_arg in distinguishing_calling_arg_types)
-    # To distinguish which concrete func to call, use this table
-    block_addresses_distinguished_mapping = np.ndarray(
-      shape=tuple(max(calling_arg.possible_type_nums) + 1 for calling_arg in distinguishing_calling_arg_types),
-      dtype=ir.values.BlockAddress)
-
-    # Go through all concrete functions, and add one block for each
-    concrete_func_caller_contexts = [
-      context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
-        func.identifier, '_'.join(str(arg_type) for arg_type in concrete_func.arg_types)))))
-      for concrete_func in possible_concrete_funcs]
-    for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
-      concrete_func_block = concrete_caller_context.block
-      concrete_func_block_address = ir.values.BlockAddress(context.builder.function, concrete_func_block)
-      concrete_func_distinguishing_args = [concrete_func.arg_types[arg_num] for arg_num in distinguishing_arg_nums]
-      concrete_func_possible_types_per_arg = [
-        [
-          possible_type
-          for possible_type in (arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type])
-          if possible_type in calling_arg_type.possible_types]
-        for arg_type, calling_arg_type in zip(concrete_func_distinguishing_args, distinguishing_calling_arg_types)]
-      assert len(distinguishing_arg_nums) == len(concrete_func_possible_types_per_arg)
-
-      # Register the concrete function in the table
-      for expanded_func_types in itertools.product(*concrete_func_possible_types_per_arg):
-        assert len(expanded_func_types) == len(distinguishing_calling_arg_types)
-        distinguishing_variant_nums = tuple(
-          calling_arg_type.get_variant_num(concrete_arg_type)
-          for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_func_types))
-        assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
-        block_addresses_distinguished_mapping[distinguishing_variant_nums] = concrete_func_block_address
-
-    # Compute the index we have to look at in the table
-    tag_ir_type = ir.types.IntType(8)
-    call_block_index_ir = ir.Constant(tag_ir_type, 0)
-    for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
-      # collapse here entirely (regardless of mutates), because we need to look at the tag.
-      ir_func_arg = func_args[arg_num].copy_collapse(context=context, name='call_arg_%s_union' % arg_num).ir_val
-      assert ir_func_arg is not None
-      base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
-      base_ir = ir.Constant(tag_ir_type, base)
-      tag_ir = calling_arg_type.make_extract_tag(
-        ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (func.identifier, arg_num))
-      call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
-    call_block_index_ir = context.builder.zext(
-      call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % func.identifier)
-
-    # Look it up in the table and call the function
-    ir_block_addresses_type = ir.types.VectorType(
-      LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
-    ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
-      list(block_addresses_distinguished_mapping.flatten())))
-    ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
-    indirect_branch = context.builder.branch_indirect(ir_call_block_target)
-    for concrete_caller_context in concrete_func_caller_contexts:
-      indirect_branch.add_destination(concrete_caller_context.block)
-
-    # Execute the concrete functions and collect their return value
-    collect_block = context.builder.append_basic_block("collect_%s_overload" % func.identifier)
-    context.builder = ir.IRBuilder(collect_block)
-    concrete_func_return_ir_vals: List[ir.values.Value] = []
-    for concrete_func, concrete_caller_context in zip(possible_concrete_funcs, concrete_func_caller_contexts):
-      concrete_return_ir_val = make_call_func(concrete_func, caller_context=concrete_caller_context)
-      concrete_func_return_ir_vals.append(concrete_return_ir_val)
-      assert not concrete_caller_context.is_terminated
-      concrete_caller_context.builder.branch(collect_block)
-      assert concrete_func.signature.returns_void == func.returns_void
-    assert len(possible_concrete_funcs) == len(concrete_func_return_ir_vals)
-
-    if func.returns_void:
-      return None
-    else:
-      common_return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
-      collect_return_ir_phi = context.builder.phi(
-        common_return_type.ir_type, name="collect_%s_overload_return" % func.identifier)
-      for concrete_return_ir_val, concrete_caller_context in zip(concrete_func_return_ir_vals, concrete_func_caller_contexts):  # noqa
-        collect_return_ir_phi.add_incoming(concrete_return_ir_val, concrete_caller_context.block)
-      return collect_return_ir_phi
+    common_return_type = get_common_type([return_val.narrowed_type for return_val in return_vals])
+    collect_return_ir_phi = context.builder.phi(
+      common_return_type.ir_type, name="collect_%s_overload_return" % name)
+    for case_return_val, case_context in zip(return_vals, case_contexts.values()):
+      case_return_val_compatible = case_return_val.copy_with_implicit_cast(
+        to_type=common_return_type, context=case_context, name="collect_cast_%s" % name)
+      collect_return_ir_phi.add_incoming(case_return_val_compatible.ir_val, case_context.block)
+      case_context.builder.branch(collect_block)
+    return TypedValue(typ=common_return_type, ir_val=collect_return_ir_phi)
 
 
 def make_di_location(pos: TreePosition, context: CodegenContext):
@@ -2110,6 +2241,20 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
   return [templ_type_replacements[templ_type] for templ_type in placeholder_templ_types]
 
 
+def min_max_ref_depth(typ: Type) -> (int, int):
+  if typ == SLEEPY_NEVER:
+    return 0, 0
+  if isinstance(typ, UnionType):
+    assert len(typ.possible_types) > 0  # handled above
+    possible_types_min_max = [min_max_ref_depth(possible_type) for possible_type in typ.possible_types]
+    possible_types_min, possible_types_max = zip(*possible_types_min_max)
+    return min(possible_types_min), max(possible_types_max)
+  if isinstance(typ, ReferenceType):
+    pointee_min, pointee_max = min_max_ref_depth(typ.pointee_type)
+    return pointee_min + 1, pointee_max + 1
+  return 0, 0
+
+
 SLEEPY_VOID = VoidType()
 SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
 
@@ -2131,22 +2276,27 @@ class TypedValue:
                ir_val: Optional[ir.values.Value]):
     if narrowed_type is None:
       narrowed_type = typ
-    assert isinstance(typ, ReferenceType) == isinstance(narrowed_type, ReferenceType)
+    assert narrowed_type == SLEEPY_NEVER or (isinstance(typ, ReferenceType) == isinstance(narrowed_type, ReferenceType))
     self.type = typ
     self.narrowed_type = narrowed_type
-    assert num_unbindings <= self.num_possible_binds()
+    assert num_unbindings <= self.num_possible_unbindings()
     self.num_unbindings = num_unbindings
     self.ir_val = ir_val
 
   def is_referenceable(self) -> bool:
-    return self.type.is_referenceable()
+    return self.narrowed_type.is_referenceable()
 
   def copy(self) -> TypedValue:
     return copy.copy(self)
 
-  def copy_with_narrowed_type(self, narrow_to_type: Type) -> TypedValue:
+  def copy_set_narrowed_type(self, narrow_to_type: Type) -> TypedValue:
     new = self.copy()
     new.narrowed_type = narrow_type(from_type=self.type, narrow_to=narrow_to_type)
+    return new
+
+  def copy_set_narrowed_collapsed_type(self, collapsed_type: Type) -> TypedValue:
+    new = self.copy()
+    new.narrowed_type = narrow_with_collapsed_type(from_type=self.type, collapsed_type=collapsed_type)
     return new
 
   def copy_with_implicit_cast(self, to_type: Type, context: CodegenContext, name: str) -> TypedValue:
@@ -2156,14 +2306,40 @@ class TypedValue:
     """
     from_type = self.narrowed_type
     assert can_implicit_cast_to(from_type, to_type)
-    if from_type == to_type:
-      return self
     new = self.copy()
+    if from_type == to_type:
+      return new
     new.type, new.narrowed_type = to_type, to_type
     new.ir_val = None
-    if not context.emits_ir or self.ir_val is None:
+    if self.ir_val is None or not context.emits_ir:
       return new
-    assert not to_type.is_referenceable(), 'not implemented'
+
+    def do_simple_cast(from_simple_type: Type, to_simple_type: Type, ir_val: ir.values.Value) -> ir.values.Value:
+      assert not isinstance(from_simple_type, UnionType)
+      assert not isinstance(to_simple_type, UnionType)
+
+      if from_simple_type == to_simple_type:
+        return ir_val
+      assert isinstance(from_simple_type, ReferenceType)
+      assert isinstance(to_simple_type, ReferenceType)
+      from_pointee_type, to_pointee_type = from_simple_type.pointee_type, to_simple_type.pointee_type
+      assert from_pointee_type != to_pointee_type  # we handled this above already
+      assert isinstance(from_pointee_type, UnionType)
+      if isinstance(to_pointee_type, UnionType):
+        simple_subset = all(
+          to_pointee_type.contains(a_type) and to_pointee_type.get_variant_num(a_type) == a_num
+          for a_num, a_type in zip(from_pointee_type.possible_type_nums, from_pointee_type.possible_types))
+        assert simple_subset
+
+        # Note: if the size of to_type is strictly smaller than from_type, we need to truncate the value
+        assert max(a_type.size for a_type in from_pointee_type.possible_types) <= to_pointee_type.val_size
+        raw_ir_val = self.ir_val
+      else:
+        assert not isinstance(to_pointee_type, UnionType)
+        raw_ir_val = from_pointee_type.make_untagged_union_void_ptr(
+          union_ir_alloca=self.ir_val, context=context, name='%s_from_val' % name)
+      # maybe the size of the pointer decreased
+      return context.builder.bitcast(val=raw_ir_val, typ=to_simple_type.ir_type, name='%s_to_val' % name)
 
     if isinstance(to_type, UnionType):
       to_ir_alloca = context.alloca_at_entry(to_type.ir_type, name='%s_ptr' % name)
@@ -2178,14 +2354,21 @@ class TypedValue:
         ir_to_tag = context.builder.extract_element(ir_tag_mapping, ir_from_tag, name='%s_to_tag' % name)
         context.builder.store(
           ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
-        assert to_type.val_size >= from_type.val_size
-        ir_from_untagged_union = from_type.make_extract_void_val(self.ir_val, context=context,
-                                                                 name='%s_from_val' % name)
+
+        # Note: if the size of to_type is strictly smaller than from_type, we need to truncate the value
+        assert max(possible_from_type.size for possible_from_type in from_type.possible_types) <= to_type.val_size
+        ir_from_untagged_union = from_type.make_extract_void_val(
+          self.ir_val, context=context, name='%s_from_val' % name)
+        from sleepy.util import truncate_ir_value
+        ir_from_untagged_union_truncated = truncate_ir_value(
+          from_type=from_type.untagged_union_ir_type, to_type=to_type.untagged_union_ir_type,
+          ir_val=ir_from_untagged_union, context=context, name=name)
+
         ir_to_untagged_union_ptr = to_type.make_untagged_union_void_ptr(
           to_ir_alloca, context=context, name='%s_to_val_raw' % name)
         ir_to_untagged_union_ptr_casted = context.builder.bitcast(
           ir_to_untagged_union_ptr, ir.PointerType(to_type.untagged_union_ir_type), name='%s_to_val' % name)
-        context.builder.store(ir_from_untagged_union, ir_to_untagged_union_ptr_casted)
+        context.builder.store(ir_from_untagged_union_truncated, ir_to_untagged_union_ptr_casted)
       else:
         assert not isinstance(from_type, UnionType)
         ir_to_tag = ir.Constant(to_type.tag_ir_type, to_type.get_variant_num(from_type))
@@ -2197,10 +2380,11 @@ class TypedValue:
       new.ir_val = context.builder.load(to_ir_alloca, name=name)
     else:
       assert not isinstance(to_type, UnionType)
-      # this is only possible when from_type is a single-type union
-      assert isinstance(from_type, UnionType)
-      assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
-      new.ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
+      if isinstance(from_type, UnionType):
+        assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
+        new.ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
+      else:
+        new.ir_val = do_simple_cast(from_simple_type=from_type, to_simple_type=to_type, ir_val=self.ir_val)
     return new
 
   def __repr__(self):
@@ -2213,38 +2397,61 @@ class TypedValue:
       attrs.append('num_unbindings')
     return 'TypedValue(%s)' % ', '.join(['%s=%r' % (attr, getattr(self, attr)) for attr in attrs])
 
-  def num_possible_binds(self) -> int:
-    num_binds = 0
-    typ = self.type
-    while typ.is_referenceable():
-      assert isinstance(typ, ReferenceType)
-      num_binds += 1
-      typ = typ.pointee_type
-    return num_binds
+  def num_possible_unbindings(self) -> int:
+    return self.narrowed_type.num_possible_unbindings()
 
   def copy_collapse(self, context: Optional[CodegenContext], name: str = 'val') -> TypedValue:
-    binds_left = self.num_possible_binds() - self.num_unbindings
-    assert binds_left >= 0
-    if binds_left == 0:
+    min_ref_depth, max_ref_depth = min_max_ref_depth(self.narrowed_type)
+    assert 0 <= self.num_unbindings <= min_ref_depth <= max_ref_depth
+    # If possible, do not split up unions if not necessary
+    if self.num_unbindings == min_ref_depth == max_ref_depth:
       return self
-    assert self.is_referenceable()
-    assert isinstance(self.type, ReferenceType)
-    assert isinstance(self.narrowed_type, ReferenceType)
-    new = self.copy()
-    new.type = new.type.pointee_type
-    new.narrowed_type = new.narrowed_type.pointee_type
-    if context is not None and context.emits_ir:
-      assert new.ir_val is not None
-      new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
-    else:
+    # Otherwise, handle each union member individually
+
+    def do_collapse(concrete_type: Type, caller_context: Optional[CodegenContext]) -> TypedValue:
+      assert not isinstance(concrete_type, UnionType)
+      concrete_min_ref_depth, concrete_max_ref_depth = min_max_ref_depth(concrete_type)
+      assert 0 <= self.num_unbindings <= concrete_min_ref_depth <= concrete_max_ref_depth
+      if self.num_unbindings == concrete_min_ref_depth == concrete_max_ref_depth:  # done.
+        return self.copy_set_narrowed_type(concrete_type)
+      assert isinstance(concrete_type, ReferenceType)  # still need to collapse, must be a reference.
+      # collapse once.
+      new = self.copy_set_narrowed_type(concrete_type)
+      new = new.copy_with_implicit_cast(to_type=concrete_type, context=context, name=name)
+      new.type = concrete_type.pointee_type
+      new.narrowed_type = concrete_type.pointee_type
+      if context is not None and context.emits_ir:
+        assert new.ir_val is not None
+        new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
+      else:
+        new.ir_val = None
+      return new.copy_collapse(context=caller_context, name=name)
+
+    possible_types = (
+      self.narrowed_type.possible_types if isinstance(self.narrowed_type, UnionType) else {self.narrowed_type})
+    if context is None or not context.emits_ir:
+      new = self.copy()
+      new.type = get_common_type([do_collapse(typ, caller_context=context).narrowed_type for typ in possible_types])
+      new.narrowed_type = new.type
       new.ir_val = None
-    return new.copy_collapse(context=context, name=name)
+      return new
+    from functools import partial
+    return make_union_switch_ir(
+      case_funcs={(typ,): partial(do_collapse, typ) for typ in possible_types},
+      calling_args=[self],
+      returns_void=False, name='collapse_%s' % name, context=context)
 
   def copy_collapse_as_mutates(self, context: CodegenContext, name: str = 'val') -> TypedValue:
     return self.copy_unbind().copy_collapse(context=context, name=name)
 
   def copy_unbind(self) -> TypedValue:
-    assert self.num_unbindings + 1 <= self.num_possible_binds()
+    assert self.num_unbindings + 1 <= self.num_possible_unbindings()
     new = self.copy()
     new.num_unbindings += 1
     return new
+
+  def __eq__(self, other) -> bool:
+    if not isinstance(other, TypedValue):
+      return False
+    return (self.type, self.narrowed_type, self.num_unbindings, self.ir_val) == (
+      other.type, other.narrowed_type, other.num_unbindings, other.ir_val)

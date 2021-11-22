@@ -4,7 +4,8 @@ from nose.tools import assert_equal
 
 from llvmlite import ir
 from sleepy.grammar import DummyPath
-from sleepy.symbols import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext
+from sleepy.symbols import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext, ReferenceType, TypedValue, \
+  narrow_with_collapsed_type, narrow_type
 
 
 def make_test_context(emits_ir: bool = True) -> CodegenContext:
@@ -30,14 +31,17 @@ def test_can_implicit_cast_to():
   assert_equal(can_implicit_cast_to(
     ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
   assert_equal(can_implicit_cast_to(
-    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), True)
+    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
   T = PlaceholderTemplateType('T')
   List = StructType(
     identity=StructIdentity('List', context=context), templ_types=[T], member_identifiers=[], member_types=[])
   assert_equal(can_implicit_cast_to(
+    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
+  assert_equal(can_implicit_cast_to(
     ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
   assert_equal(can_implicit_cast_to(
-    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), True)
+    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)),
+    UnionType.from_types([ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_DOUBLE)])), False)
   assert_equal(
     can_implicit_cast_to(
       List.replace_types({T: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)}),
@@ -160,6 +164,35 @@ def test_get_common_type():
   assert_equal(get_common_type([int_bool_union, bool_int_union]), int_bool_union)
   assert_equal(
     get_common_type([int_bool_union, SLEEPY_DOUBLE]), UnionType([SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE], [0, 1, 2], 8))
+
+
+# noinspection PyPep8Naming
+def test_narrow_with_collapsed_type():
+  from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_DOUBLE
+  Int = SLEEPY_INT
+  RefInt = ReferenceType(Int)
+  RefRefInt = ReferenceType(RefInt)
+  Int_RefInt = UnionType.from_types([Int, RefInt])
+  Double = SLEEPY_DOUBLE
+  RefDouble = ReferenceType(Double)
+  Int_Double = UnionType.from_types([Int, Double])
+  RefDouble_RefInt = UnionType.from_types([RefDouble, RefInt])
+  assert_equal(narrow_with_collapsed_type(Int, Int), Int)
+  assert_equal(narrow_with_collapsed_type(RefInt, Int), RefInt)
+  assert_equal(narrow_with_collapsed_type(RefRefInt, Int), RefRefInt)
+  assert_equal(narrow_with_collapsed_type(Int_RefInt, Int), Int_RefInt)
+  assert_equal(narrow_with_collapsed_type(RefInt, RefInt), RefInt)
+  assert_equal(narrow_with_collapsed_type(Int, RefInt), SLEEPY_NEVER)
+  assert_equal(narrow_with_collapsed_type(Int_RefInt, RefInt), narrow_type(Int_RefInt, RefInt))
+  assert_equal(narrow_with_collapsed_type(Int_Double, Int), narrow_type(Int_Double, Int))
+  assert_equal(narrow_with_collapsed_type(RefDouble_RefInt, Int), narrow_type(RefDouble_RefInt, RefInt))
+  assert_equal(narrow_with_collapsed_type(ReferenceType(Int_Double), Int), ReferenceType(narrow_type(Int_Double, Int)))
+  assert_equal(
+    narrow_with_collapsed_type(ReferenceType(ReferenceType(Int_Double)), Int),
+    ReferenceType(ReferenceType(narrow_type(Int_Double, Int))))
+  assert_equal(
+    narrow_with_collapsed_type(ReferenceType(ReferenceType(Int_Double)), ReferenceType(Int)),
+    ReferenceType(ReferenceType(narrow_type(Int_Double, Int))))
 
 
 # noinspection PyPep8Naming
@@ -336,20 +369,20 @@ def test_bind_and_unbind():
   context = make_test_context(emits_ir=False)
 
   ref_int = TypedValue(typ=ReferenceType(SLEEPY_INT), ir_val=None, num_unbindings=0)
-  assert ref_int.num_possible_binds() == 1
+  assert ref_int.num_possible_unbindings() == 1
   int = ref_int.copy_collapse(context=context, name='bind')
   assert int.type == SLEEPY_INT
-  assert int.num_possible_binds() == 0
+  assert int.num_possible_unbindings() == 0
   assert int.num_unbindings == 0
 
   unbound_ref_int = ref_int.copy_unbind()
   assert unbound_ref_int.num_unbindings == 1
-  assert unbound_ref_int.num_possible_binds() == 1
+  assert unbound_ref_int.num_possible_unbindings() == 1
 
   ref_int_ = unbound_ref_int.copy_collapse(context=context, name='bind')
   assert ref_int_.type == ReferenceType(SLEEPY_INT)
   assert ref_int_.num_unbindings == 1
-  assert ref_int_.num_possible_binds() == 1
+  assert ref_int_.num_possible_unbindings() == 1
 
 
 # noinspection PyPep8Naming
@@ -370,3 +403,16 @@ def test_struct_self_referencing():
   ListInt = ListT.replace_types({T: Int})
   assert isinstance(ListInt, StructType)
   assert_equal(ListInt.member_types, [Int, ReferenceType(ListInt)])
+
+
+# noinspection PyPep8Naming
+def test_copy_collapse():
+  from sleepy.builtin_symbols import SLEEPY_INT
+  Int = TypedValue(typ=SLEEPY_INT, num_unbindings=0, ir_val=None)
+  RefInt = TypedValue(typ=ReferenceType(SLEEPY_INT), num_unbindings=0, ir_val=None)
+  Int_RefInt = TypedValue(typ=UnionType.from_types([Int.type, RefInt.type]), num_unbindings=0, ir_val=None)
+  RefInt_Int = TypedValue(typ=UnionType.from_types([RefInt.type, Int.type]), num_unbindings=0, ir_val=None)
+  assert_equal(RefInt.copy_collapse(context=None, name='a'), Int)
+  assert_equal(Int.copy_collapse(context=None, name='a'), Int)
+  assert_equal(RefInt_Int.copy_collapse(context=None, name='a'), Int)
+  assert_equal(Int_RefInt.copy_collapse(context=None, name='a'), Int)

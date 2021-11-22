@@ -234,13 +234,10 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   free_symbol = FunctionSymbol(identifier='free', returns_void=True)
   symbol_table['free'] = free_symbol
 
-  assert 'index' not in symbol_table
-  symbol_table['index'] = FunctionSymbol(identifier='index', returns_void=False)
-  symbol_table.inbuilt_symbols['index'] = symbol_table['index']
-
-  assert 'size' not in symbol_table
-  symbol_table['size'] = FunctionSymbol(identifier='size', returns_void=False)
-  symbol_table.inbuilt_symbols['size'] = symbol_table['size']
+  for func_identifier in ['index', 'size', 'is', '|']:
+    assert func_identifier not in symbol_table
+    symbol_table[func_identifier] = FunctionSymbol(identifier=func_identifier, returns_void=False)
+    symbol_table.inbuilt_symbols[func_identifier] = symbol_table[func_identifier]
 
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table

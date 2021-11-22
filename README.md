@@ -19,6 +19,7 @@ For examples see [tests/examples](https://github.com/Zettelkasten/sleepy/tree/ma
 * Loops, functions, variables, pointers... a C-ish imperative language.
 * Imports
 * Operator overloading, slices
+* Debugging with e.g. GDB
 
 ## How to use
 To get started, clone the repository and run `nosetests` in the root directory.

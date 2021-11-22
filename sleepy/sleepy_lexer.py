@@ -8,7 +8,6 @@ TOKEN_INFO = [
   ('else', 'else', "KEYWORD"),
   ('return', 'return', "KEYWORD"),
   ('while', 'while', "KEYWORD"),
-  ('ref', 'ref', "KEYWORD"),
   ('mutates', 'mutates', "KEYWORD"),
   ('import', 'import', 'KEYWORD'),
   (':', ':', ''),

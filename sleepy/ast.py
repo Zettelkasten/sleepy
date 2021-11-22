@@ -12,11 +12,8 @@ from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
   PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue, ReferenceType, \
-  PartialIdentifiedStructType, StructIdentity
+  PartialIdentifiedStructType, StructIdentity, SLEEPY_NEVER
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
-
-# Operator precedence: * / stronger than + - stronger than == != < <= > >=
-SLOPPY_OP_TYPES = {'*', '/', '+', '-', '==', '!=', '<', '>', '<=', '>', '>=', 'is', '='}
 
 
 class AbstractSyntaxTree(ABC):
@@ -120,7 +117,6 @@ class AbstractSyntaxTree(ABC):
     calling_types = [arg.narrowed_type for arg in collapsed_func_args]
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
       func_caller=func_caller, calling_types=calling_types)
-    return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
 
     if templ_types is None:
       templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
@@ -138,10 +134,10 @@ class AbstractSyntaxTree(ABC):
 
     if context.emits_ir:
       from sleepy.symbols import make_func_call_ir
-      return_ir_val = make_func_call_ir(
-        func=func, templ_types=templ_types, func_args=func_args, context=context)
+      return_val = make_func_call_ir(func=func, templ_types=templ_types, func_args=func_args, context=context)
     else:
-      return_ir_val = None
+      return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
+      return_val = TypedValue(typ=return_type, ir_val=None)
 
     # apply type narrowings
     for arg_num, func_arg_expr in enumerate(func_arg_exprs):
@@ -160,7 +156,8 @@ class AbstractSyntaxTree(ABC):
       assert len(func_arg_exprs) >= 1
       condition_expr = func_arg_exprs[0]
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
-    return TypedValue(typ=return_type, ir_val=return_ir_val)
+
+    return return_val
 
   def build_func_call_by_identifier(self,
                                     func_identifier: str,
@@ -522,8 +519,9 @@ class AssignStatementAst(StatementAst):
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
+      # example y: A|B = x (where x is of type A)
       if self.declared_var_type is not None:
-        stated_type: Optional[Type] = self.declared_var_type.make_type(symbol_table=symbol_table)
+        stated_type: Optional[Type] = self.declared_var_type.make_type(symbol_table=symbol_table)  # A|B
       else:
         stated_type: Optional[Type] = None
       if not self.var_val.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE:
@@ -532,44 +530,47 @@ class AssignStatementAst(StatementAst):
       if val.type == SLEEPY_VOID:
         self.raise_error('Cannot assign void to variable')
       val = val.copy_collapse(context=context, name='store')
-      if stated_type is not None:
-        if not can_implicit_cast_to(val.narrowed_type, stated_type):
-          self.raise_error(
-            'Cannot assign variable with stated type %r a value of type %r' % (stated_type, val.narrowed_type))
+      if stated_type is not None and not can_implicit_cast_to(val.narrowed_type, stated_type):
+        self.raise_error('Cannot assign variable with stated type %r a value of type %r' % (
+          stated_type, val.narrowed_type))
 
       if self.is_declaration(symbol_table=symbol_table):
-        var_identifier = self.get_var_identifier()
+        var_identifier = self.get_var_identifier()  # y
         assert var_identifier not in symbol_table.current_scope_identifiers
         # variables are always (implicitly) references
-        declared_type = ReferenceType(val.type if stated_type is None else stated_type)
+        declared_type = ReferenceType(val.type if stated_type is None else stated_type)  # Ref[A|B]
         # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
         symbol = VariableSymbol(None, var_type=declared_type)
         symbol.build_ir_alloca(context=context, identifier=var_identifier)
         symbol_table[var_identifier] = symbol
 
       # check that declared type matches assigned type
-      uncollapsed_target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)
+      uncollapsed_target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)  # Ref[A|B]
       if not uncollapsed_target_val.is_referenceable():
         self.raise_error('Cannot reassign non-referencable type %s' % uncollapsed_target_val.type)
-      target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')
+      # narrow the target type to the assigned type s.t. we can unbind properly
+      # even if some unions variants are not unbindable
+      uncollapsed_target_val = uncollapsed_target_val.copy_set_narrowed_collapsed_type(
+        ReferenceType(val.narrowed_type))  # Ref[A]
+      if uncollapsed_target_val.narrowed_type == SLEEPY_NEVER:
+        self.raise_error('Cannot assign variable of type %r a value of type %r' % (
+          uncollapsed_target_val.type, val.narrowed_type))
+      target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')  # Ref[A]
       assert isinstance(target_val.type, ReferenceType)
-      declared_type = target_val.type.pointee_type
+      declared_type = target_val.type.pointee_type  # A
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
-          self.raise_error('Cannot redefine variable of type %r with new type %r' % (declared_type, stated_type))
-      if not can_implicit_cast_to(val.narrowed_type, declared_type):
-        self.raise_error(
-          'Cannot redefine variable of type %r with variable of type %r' % (declared_type, val.narrowed_type))
+        self.raise_error('Cannot %s variable collapsing to type %r with new type %r' % (
+          'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type))
+      assert can_implicit_cast_to(val.narrowed_type, declared_type)
 
       # if we assign to a variable, narrow type to val_type
-      if isinstance(self.var_target, IdentifierExpressionAst):
-        assert self.var_target.identifier in symbol_table
-        symbol = symbol_table[self.var_target.identifier]
+      if (var_identifier := self.get_var_identifier()) is not None:
+        assert var_identifier in symbol_table
+        symbol = symbol_table[var_identifier]
         assert isinstance(symbol, VariableSymbol)
-        narrowed_uncollapsed_val_type = uncollapsed_target_val.type.replace_types(
-          {target_val.type.pointee_type: val.narrowed_type})
-        narrowed_symbol = symbol.copy_with_narrowed_type(narrowed_uncollapsed_val_type)
+        narrowed_symbol = symbol.copy_set_narrowed_type(uncollapsed_target_val.narrowed_type)
         assert not isinstance(narrowed_symbol, UnionType) or len(narrowed_symbol.possible_types) > 0
-        symbol_table[self.var_target.identifier] = narrowed_symbol
+        symbol_table[var_identifier] = narrowed_symbol
 
       if context.emits_ir:
         ir_val = val.copy_with_implicit_cast(declared_type, context=context, name='assign_cast').ir_val
@@ -749,101 +750,6 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
     return 'ExpressionAst'
 
 
-class BinaryOperatorExpressionAst(ExpressionAst):
-  """
-  Val, SumVal, ProdVal.
-  """
-  def __init__(self, pos, op, left_expr, right_expr):
-    """
-    :param TreePosition pos:
-    :param str op:
-    :param ExpressionAst left_expr:
-    :param ExpressionAst right_expr:
-    """
-    super().__init__(pos)
-    assert op in SLOPPY_OP_TYPES
-    self.op = op
-    self.left_expr, self.right_expr = left_expr, right_expr
-    if self.op == 'is':
-      # TODO: Then it should be a TypeExpressionAst, not a VariableExpressionAst.
-      # Probably it's nicer to make an entire new ExpressionAst for `is` Expressions anyway.
-      if not isinstance(self.right_expr, IdentifierExpressionAst):
-        raise self.raise_error("'is' operator must be applied to a union type and a type.")
-
-  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
-    return Symbol.Kind.VARIABLE
-
-  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
-    with context.use_pos(self.pos):
-      if self.op == 'is':
-        assert isinstance(self.right_expr, IdentifierExpressionAst)
-        check_type_expr = IdentifierTypeAst(
-          self.right_expr.pos, type_identifier=self.right_expr.identifier, templ_types=[])
-        check_type = check_type_expr.make_type(symbol_table=symbol_table)
-        check_value = self.left_expr.make_as_val(symbol_table=symbol_table, context=context)
-        check_value = check_value.copy_collapse(context=context, name='check_val')
-        if context.emits_ir:
-          ir_val = make_ir_val_is_type(check_value.ir_val, check_value.narrowed_type, check_type, context=context)
-        else:
-          ir_val = None
-        return TypedValue(typ=SLEEPY_BOOL, ir_val=ir_val)
-
-      operand_exprs = [self.left_expr, self.right_expr]
-      return self.build_func_call_by_identifier(
-        func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
-        context=context)
-
-  def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use result of operator %r as function' % self.op)
-
-  def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use result of operator %r as type' % self.op)
-
-  def children(self) -> List[AbstractSyntaxTree]:
-    return [self.left_expr, self.right_expr]
-
-  def __repr__(self) -> str:
-    return 'BinaryOperatorExpressionAst(op=%r, left_expr=%r, right_expr=%r)' % (
-      self.op, self.left_expr, self.right_expr)
-
-
-class UnaryOperatorExpressionAst(ExpressionAst):
-  """
-  NegVal.
-  """
-  def __init__(self, pos, op, expr):
-    """
-    :param TreePosition pos:
-    :param str op:
-    :param ExpressionAst expr:
-    """
-    super().__init__(pos)
-    self.op = op
-    self.expr = expr
-
-  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
-    return Symbol.Kind.VARIABLE
-
-  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
-    with context.use_pos(self.pos):
-      operand_exprs = [self.expr]
-      return self.build_func_call_by_identifier(
-        func_identifier=self.op, templ_types=None, func_arg_exprs=operand_exprs, symbol_table=symbol_table,
-        context=context)
-
-  def children(self) -> List[AbstractSyntaxTree]:
-    return [self.expr]
-
-  def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use result of operator %r as function' % self.op)
-
-  def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use result of operator %r as type' % self.op)
-
-  def __repr__(self) -> str:
-    return 'UnaryOperatorExpressionAst(op=%r, expr=%r)' % (self.op, self.expr)
-
-
 class ConstantExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> double | int | char
@@ -957,10 +863,12 @@ class IdentifierExpressionAst(ExpressionAst):
   def get_var_symbol(self, symbol_table: SymbolTable) -> VariableSymbol:
     symbol = self.get_symbol(symbol_table=symbol_table)
     if not isinstance(symbol, VariableSymbol):
-      self.raise_error('Cannot reference a non-variable %r, got a %s' % (self.identifier, symbol.kind))
+      self.raise_error('Cannot use %r as a variable, got a %s' % (self.identifier, symbol.kind))
     if self.identifier not in symbol_table.current_scope_identifiers:
       # TODO add variable captures
       self.raise_error('Cannot capture variable %r from outer scope' % self.identifier)
+    if symbol.narrowed_var_type == SLEEPY_NEVER:
+      self.raise_error('Cannot use variable %r with narrowed type %r' % (self.identifier, symbol.narrowed_var_type))
     return symbol
 
   def get_func_symbol(self, symbol_table: SymbolTable) -> FunctionSymbol:
@@ -1035,6 +943,8 @@ class CallExpressionAst(ExpressionAst):
         self.raise_error('Cannot specify template parameters for symbol of kind %r' % func_kind)
       return func_caller_kind
     if func_kind == Symbol.Kind.FUNCTION:
+      if self._is_type_union_call(symbol_table=symbol_table):
+        return Symbol.Kind.TYPE
       return Symbol.Kind.VARIABLE
     if func_kind == Symbol.Kind.TYPE:
       called_type = self.func_expr.make_as_type(symbol_table=symbol_table)
@@ -1070,6 +980,14 @@ class CallExpressionAst(ExpressionAst):
     # TODO: make this a normal compile time function operating on types
     return self._is_special_call('size', symbol_table=symbol_table)
 
+  def _is_type_union_call(self, symbol_table: SymbolTable):
+    # TODO: make this a normal compile time function operating on types
+    return self._is_special_call('|', symbol_table=symbol_table)
+
+  def _is_is_call(self, symbol_table: SymbolTable):
+    # TODO: make this a normal compile time function operating on types
+    return self._is_special_call('is', symbol_table=symbol_table)
+
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
     with context.use_pos(self.pos):
@@ -1080,6 +998,22 @@ class CallExpressionAst(ExpressionAst):
         from sleepy.symbols import LLVM_SIZE_TYPE
         ir_val = ir.Constant(LLVM_SIZE_TYPE, size_of_type.size) if context.emits_ir else None
         return TypedValue(typ=SLEEPY_LONG, ir_val=ir_val)
+      if self._is_is_call(symbol_table=symbol_table):
+        if len(self.func_arg_exprs) != 2:
+          self.raise_error('Operator "is" must be used between exactly two arguments')
+        val_arg, type_arg = self.func_arg_exprs
+        if val_arg.make_symbol_kind(symbol_table=symbol_table) != Symbol.Kind.VARIABLE:
+          self.raise_error('Left-side argument of operator "is" must be a value')
+        if type_arg.make_symbol_kind(symbol_table=symbol_table) != Symbol.Kind.TYPE:
+          self.raise_error('Right-side argument of operator "is" must be a type')
+        check_type = type_arg.make_as_type(symbol_table=symbol_table)
+        check_value = val_arg.make_as_val(symbol_table=symbol_table, context=context)
+        check_value = check_value.copy_collapse(context=context, name='check_val')
+        if context.emits_ir:
+          ir_val = make_ir_val_is_type(check_value.ir_val, check_value.narrowed_type, check_type, context=context)
+        else:
+          ir_val = None
+        return TypedValue(typ=SLEEPY_BOOL, ir_val=ir_val)
 
       # default case
       func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
@@ -1099,6 +1033,9 @@ class CallExpressionAst(ExpressionAst):
 
   def make_as_type(self, symbol_table: SymbolTable) -> Type:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.TYPE
+    if self._is_type_union_call(symbol_table=symbol_table):
+      possible_types = [arg.make_as_type(symbol_table=symbol_table) for arg in self.func_arg_exprs]
+      return UnionType.from_types(possible_types)
     concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
     assert concrete_templ_types is not None
     signature_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
@@ -1120,45 +1057,6 @@ class CallExpressionAst(ExpressionAst):
     return 'CallExpressionAst(func_expr=%r, func_arg_exprs=%r)' % (self.func_expr, self.func_arg_exprs)
 
 
-class ReferenceExpressionAst(ExpressionAst):
-  """
-  PrimaryExpr -> ref ( Expr )
-  """
-  def __init__(self, pos: TreePosition, arg_expr: ExpressionAst):
-    super().__init__(pos)
-    self.arg_expr = arg_expr
-
-  def make_symbol_kind(self, symbol_table: SymbolTable) -> Symbol.Kind:
-    arg_kind = self.arg_expr.make_symbol_kind(symbol_table=symbol_table)
-    if arg_kind != Symbol.Kind.VARIABLE:
-      self.raise_error('Cannot take reference to non-variable, got a %r' % arg_kind)
-    return Symbol.Kind.VARIABLE
-
-  def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
-    with context.use_pos(self.pos):
-      arg_val = self.arg_expr.make_as_val(symbol_table=symbol_table, context=context)
-      if not arg_val.is_referenceable():
-        self.raise_error('Cannot take reference to non-assignable variable')
-      assert isinstance(arg_val.type, ReferenceType)
-      assert isinstance(arg_val.narrowed_type, ReferenceType)
-      from sleepy.symbols import PointerType
-      return TypedValue(
-        typ=PointerType(arg_val.type.pointee_type), narrowed_type=PointerType(arg_val.narrowed_type.pointee_type),
-        ir_val=arg_val.ir_val)
-
-  def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use reference as function')
-
-  def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use reference as type')
-
-  def children(self) -> List[AbstractSyntaxTree]:
-    return [self.arg_expr]
-
-  def __repr__(self) -> str:
-    return 'ReferenceExpressionAst(arg_expr=%r)' % self.arg_expr
-
-
 class MemberExpressionAst(ExpressionAst):
   """
   MemberExpr -> MemberExpr . identifier
@@ -1178,29 +1076,53 @@ class MemberExpressionAst(ExpressionAst):
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
       arg_val = self.parent_val_expr.make_as_val(symbol_table=symbol_table, context=context)
-      struct_type = arg_val.copy_collapse(context=None, name='struct').narrowed_type
-      if not isinstance(struct_type, StructType):
-        self.raise_error(
-          'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type))
-      if self.member_identifier not in struct_type.member_identifiers:
-        self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
-          struct_type, self.member_identifier, ', '.join(struct_type.member_identifiers)))
-      member_num = struct_type.get_member_num(self.member_identifier)
-      member_type = struct_type.member_types[member_num]
 
-      if arg_val.is_referenceable():
-        if context.emits_ir:
-          parent_ptr = arg_val.copy_collapse_as_mutates(context=context, name='parent').ir_val
-          gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
-          self_ptr = context.builder.gep(parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+      def do_member_access(struct_type: Type, caller_context: CodegenContext) -> TypedValue:
+        nonlocal arg_val
+        assert not isinstance(struct_type, UnionType)
+        if not isinstance(struct_type, StructType):
+          self.raise_error(
+            'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type))
+        if self.member_identifier not in struct_type.member_identifiers:
+          self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
+            struct_type, self.member_identifier, ', '.join(struct_type.member_identifiers)))
+        member_num = struct_type.get_member_num(self.member_identifier)
+        member_type = struct_type.member_types[member_num]
+
+        # TODO This is not entirely correct: It could be that the arg_val is not referenceable for all possible variant
+        # types, but that for the concrete `struct_type` we can reference it.
+        if arg_val.is_referenceable():
+          if context.emits_ir:
+            arg_val = arg_val.copy_collapse_as_mutates(context=caller_context, name='parent_ptr')
+            arg_val = arg_val.copy_with_implicit_cast(
+              ReferenceType(struct_type), context=caller_context, name='parent_ptr_cast')
+            parent_ptr = arg_val.ir_val
+            gep_indices = [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), member_num)]
+            self_ptr = caller_context.builder.gep(
+              parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
+          else:
+            self_ptr = None
+          return TypedValue(typ=ReferenceType(member_type), ir_val=self_ptr)
         else:
-          self_ptr = None
-        return TypedValue(typ=ReferenceType(member_type), ir_val=self_ptr)
-      else:
-        assert arg_val.num_possible_binds() == 0
-        ir_val = struct_type.make_extract_member_val_ir(
-          self.member_identifier, struct_ir_val=arg_val.ir_val, context=context) if context.emits_ir else None
-        return TypedValue(typ=member_type, ir_val=ir_val)
+          assert arg_val.num_possible_unbindings() == 0
+          if context.emits_ir:
+            arg_val = arg_val.copy_collapse(context=caller_context, name='parent')
+            arg_val = arg_val.copy_with_implicit_cast(struct_type, context=caller_context, name='parent_cast')
+            ir_val = struct_type.make_extract_member_val_ir(
+              self.member_identifier, struct_ir_val=arg_val.ir_val, context=caller_context)
+          else:
+            ir_val = None
+          return TypedValue(typ=member_type, ir_val=ir_val)
+
+      from functools import partial
+      from sleepy.symbols import make_union_switch_ir
+      collapsed_arg_val = arg_val.copy_collapse(context=context, name='struct')
+      collapsed_type = collapsed_arg_val.narrowed_type
+      possible_types = collapsed_type.possible_types if isinstance(collapsed_type, UnionType) else {collapsed_type}
+      return make_union_switch_ir(
+        case_funcs={(typ,): partial(do_member_access, typ) for typ in possible_types},
+        calling_args=[collapsed_arg_val],
+        returns_void=False, name='extract_member', context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use member %r as function' % self.member_identifier)
@@ -1360,21 +1282,18 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast: ExpressionAst,
                                          cond_holds: bool,
                                          symbol_table: SymbolTable):
   # TODO: This is super limited currently: Will only work for "local_var is Type", and not(...), nothing more.
-  if isinstance(cond_expr_ast, BinaryOperatorExpressionAst) and cond_expr_ast.op == 'is':
-    var_expr = cond_expr_ast.left_expr
+  # noinspection PyProtectedMember
+  if isinstance(cond_expr_ast, CallExpressionAst) and cond_expr_ast._is_is_call(symbol_table=symbol_table):
+    assert len(cond_expr_ast.func_arg_exprs) == 2
+    var_expr = cond_expr_ast.func_arg_exprs[0]
     if not isinstance(var_expr, IdentifierExpressionAst):
       return
     var_symbol = var_expr.get_var_symbol(symbol_table=symbol_table)
-    collapsed_var = var_symbol.as_typed_var(ir_val=None).copy_collapse(context=None)
-    assert isinstance(cond_expr_ast.right_expr, IdentifierExpressionAst)
-    check_type_expr = IdentifierTypeAst(
-      cond_expr_ast.right_expr.pos, cond_expr_ast.right_expr.identifier, templ_types=[])
-    check_type = check_type_expr.make_type(symbol_table=symbol_table)
-    uncollapsed_check_type = var_symbol.declared_var_type.replace_types({collapsed_var.type: check_type})
+    check_type = cond_expr_ast.func_arg_exprs[1].make_as_type(symbol_table=symbol_table)
     if cond_holds:
-      symbol_table[var_expr.identifier] = var_symbol.copy_narrow_type(uncollapsed_check_type)
+      symbol_table[var_expr.identifier] = var_symbol.copy_narrow_collapsed_type(collapsed_type=check_type)
     else:
-      symbol_table[var_expr.identifier] = var_symbol.copy_exclude_type(uncollapsed_check_type)
+      symbol_table[var_expr.identifier] = var_symbol.copy_exclude_collapsed_type(collapsed_type=check_type)
   elif isinstance(cond_expr_ast, CallExpressionAst):
     func_expr = cond_expr_ast.func_expr
     if not isinstance(func_expr, IdentifierExpressionAst):

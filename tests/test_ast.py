@@ -678,6 +678,57 @@ def test_unbind_operator_assign_member():
     assert_equal(main(6), 6 + 1)
 
 
+def test_unbind_operator_union_of_ref():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      !x_ref: Ref[Int] = !x
+      !any_ref: Ref[Int]|Ref[Double] = !x_ref
+      any_collapsed: Int|Double = any_ref
+      return any_collapsed
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
+def test_unbind_operator_union_of_ref_and_non_ref():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      !foo: Ref[Int]|Double = !x
+      return foo
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
+def test_unbind_operator_union_of_ref_and_non_ref_same():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      !foo: Ref[Int]|Int = !x
+      return foo
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
+def test_unbind_operator_union_of_ref_and_non_ref_assign():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      foo: Ref[Int]|Double = 32.0  # some dummy
+      !foo = !x
+      return foo
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
 def test_swap_ref():
   with make_execution_engine() as engine:
     program = """
@@ -1304,6 +1355,18 @@ def test_union_scope_assertions():
     assert_equal(main(-3, -6), -3 / -6)
 
 
+def test_union_with_reference():
+  with make_execution_engine() as engine:
+    program = """
+    func main(x: Int) -> Int {
+      y: Ref[Bool]|Int = x
+      return y
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(6), 6)
+
+
 def test_assign_to_union():
   with make_execution_engine() as engine:
     program = """
@@ -1353,14 +1416,14 @@ def test_call_union_arg():
     func accepts_both(thing: Int|Bool) ->  Bool  {
       if thing is Int { return thing >= 0 }
       if thing is Bool { return thing }
-      return False()  # never happens...
+      return 0 == 1  # never happens...
     }
     func main(a: Int) ->  Bool  {
       thing: Int|Bool = a
       return accepts_both(thing)
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(4), True)
     assert_equal(main(-7), False)
 
@@ -1373,14 +1436,14 @@ def test_call_multiple_concrete_funcs_with_union_arg():
       # in the future, we will probably add assertions so that the compiler does know that, but this will do for now.
       return 1 == 1
     }
-    func is_int(x: Int) ->  Bool  { return True() }
-    func is_int(x: Bool) ->  Bool  { return False() }
+    func is_int(x: Int) ->  Bool  { return 0 == 0 }  # avoid needing preamble
+    func is_int(x: Bool) ->  Bool  { return 1 == 0 }
     func main() ->  Bool  {
       alpha: Bool|Int = const()
       return is_int(alpha)
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), False)
 
 
@@ -1394,14 +1457,31 @@ def test_call_multiple_concrete_void_funcs_with_union_arg():
     }
     func cool_func(x: Int)  { }
     func cool_func(x: Bool)  { }
-    func main() ->  Bool  {
+    func main() -> Int {
       alpha: Bool|Int = const()
       cool_func(alpha)
-      return True()
+      return 1
     }
     """
-    main = compile_program(engine, program)
-    assert_equal(main(), True)
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 1)
+
+
+def test_call_multiple_concrete_funcs_with_union_arg_different_return_type():
+  with make_execution_engine() as engine:
+    program = """
+    func const() -> Double|Int {
+      return 32.0
+    }
+    func neg(x: Int) -> Int { return -x }
+    func neg(x: Double) -> Double { return -x }
+    func main() {
+      alpha: Double|Int = const()
+      result: Double|Int = neg(alpha)
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    main()
 
 
 def test_union_folding():
@@ -1525,6 +1605,48 @@ def test_union_if_terminated_branch_type_narrowing():
     assert_almost_equal(main(), sin(42.0))
 
 
+def test_union_store_into_smaller_value():
+  with make_execution_engine() as engine:
+    program = """
+    struct None { }
+    func main(int: Int) -> Int {
+      x: Int|Double = int  # takes up 8 bytes
+      y: Int|Bool = x      # only takes 4 bytes
+      return y
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(4), 4)
+
+
+def test_union_member_access():
+  with make_execution_engine() as engine:
+    program = """
+    struct Wrapper { val: Int; }
+    func main(a: Int) -> Int {
+      w: Int|Wrapper = Wrapper(a)
+      return w.val
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), 5)
+
+
+def test_ref_of_union():
+  with make_execution_engine() as engine:
+    program = """
+    struct Wrapper { val: Int; }
+    func main(a: Int) -> Int {
+      w: Int|Wrapper = a
+      !ww: Ref[Int|Wrapper] = !w
+      w2: Int = ww
+      return w2
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), 5)
+
+
 def test_while_cond_type_narrowing():
   with make_execution_engine() as engine:
     program = """
@@ -1532,13 +1654,13 @@ def test_while_cond_type_narrowing():
       value: Int|Bool = initial_value
       while value is Int {
         value -= 1
-        if value < 0 { value = False() }
-        else { if value > 100 { value = True() } }
+        if value < 0 { value = (0 == 1) }  # avoid preamble, use 0 == 1 instead of False()
+        else { if value > 100 { value = (1 == 1) } }
       }
       return value
     }
     """
-    main = compile_program(engine, program)
+    main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(17), False)
     assert_equal(main(-2), False)
     assert_equal(main(117), True)
