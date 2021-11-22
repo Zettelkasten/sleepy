@@ -1,4 +1,4 @@
-# Compiler for Sleepy
+# ![Sleepy Icon](https://github.com/leanderBehr/SleepyLangSupport/blob/master/src/main/resources/icons/bearded-man.png) Compiler for Sleepy
 
 ![CI Badge](https://github.com/Zettelkasten/sleepy/actions/workflows/main.yml/badge.svg)
 
