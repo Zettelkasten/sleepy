@@ -6,8 +6,8 @@ from sleepy.sleepy_lexer import WHITESPACE_REGEX, COMMENT_REGEX, TOKEN_INFO
 from sleepy.sleepy_parser import SLEEPY_PARSER
 
 PLUGIN_LEXER = LexerGenerator(
-  ["ANNOTATION"] + [name for name, _, _ in TOKEN_INFO] + ["COMMENT", "WHITESPACE", "BAD_CHARACTER"],
-  ["@([A-Z]|[a-z]|_)([A-Z]|[a-z]|[0-9]|_)*"] + [regex for _, regex, _ in TOKEN_INFO] + [COMMENT_REGEX, WHITESPACE_REGEX, "[^b-a]"]
+  [name for name, _, _ in TOKEN_INFO] + ["COMMENT", "WHITESPACE", "BAD_CHARACTER"],
+  [regex for _, regex, _ in TOKEN_INFO] + [COMMENT_REGEX, WHITESPACE_REGEX, "[^b-a]"]
 )
 
 TOKEN_NAME_TO_HIGHLIGHT = dict(
