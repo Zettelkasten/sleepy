@@ -399,6 +399,7 @@ class ParserGenerator:
       else:
         # error case
         if token() == "new_line":
+          token_stream.makeCurrentWhitespace()
           token_stream.advance()
           continue
 
