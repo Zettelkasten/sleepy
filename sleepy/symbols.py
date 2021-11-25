@@ -1006,12 +1006,20 @@ def narrow_type(from_type: Type, narrow_to: Type) -> Type:
   (you would need to construct an entirely new list).
   In this sense we over-approximate the actual type.
   """
+  return _narrow_type(from_type=from_type, narrow_to=narrow_to, narrow_to_complement=False)
+
+
+def exclude_type(from_type: Type, excluded_type: Type) -> Type:
+  return _narrow_type(from_type=from_type, narrow_to=excluded_type, narrow_to_complement=True)
+
+
+def _narrow_type(from_type: Type, narrow_to: Type, narrow_to_complement: bool = False) -> Type:
   if from_type == narrow_to:
-    return from_type
+    return SLEEPY_NEVER if narrow_to_complement else from_type
   all_possible_from_types = set(from_type.possible_types) if isinstance(from_type, UnionType) else {from_type}
   possible_to_types = set(narrow_to.possible_types) if isinstance(narrow_to, UnionType) else {narrow_to}
 
-  new_possible_from_types = set()
+  new_possible_from_types: Set[Type] = set()
   new_possible_ref_pointee_types: Dict[ReferenceType, List[Type]] = {
     ref: [] for ref in all_possible_from_types if isinstance(ref, ReferenceType)}
   for possible_to_type in possible_to_types:
@@ -1023,7 +1031,15 @@ def narrow_type(from_type: Type, narrow_to: Type) -> Type:
         # references are special: we can always implicitly cast between them, so just be as concrete as possible.
         assert isinstance(possible_from_type, ReferenceType)
         new_possible_ref_pointee_types[possible_from_type].append(possible_to_type.pointee_type)
-      new_possible_from_types.add(possible_from_type)
+      else:
+        new_possible_from_types.add(possible_from_type)
+
+  if narrow_to_complement:
+    new_possible_from_types = all_possible_from_types - new_possible_from_types
+
+  # always keep all Ref elements for now (no matter if narrow_to_complement is set)
+  new_possible_from_types.update(
+    ref for ref, possible_types in new_possible_ref_pointee_types.items() if len(possible_types) > 0)
 
   assert len(new_possible_from_types) <= len(all_possible_from_types)
   if isinstance(from_type, UnionType):
@@ -1038,38 +1054,11 @@ def narrow_type(from_type: Type, narrow_to: Type) -> Type:
   # Apply Ref[T] specializations
   if len(new_possible_ref_pointee_types) > 0:
     ref_replacements = {
-      ref: ReferenceType(narrow_type(ref.pointee_type, get_common_type(possible_types)))
+      ref: ReferenceType(_narrow_type(ref.pointee_type, get_common_type(possible_types), narrow_to_complement))
       for ref, possible_types in new_possible_ref_pointee_types.items()
       if len(possible_types) > 0}
     narrowed_type = narrowed_type.replace_types(ref_replacements)
   return narrowed_type
-
-
-def exclude_type(from_type: Type, excluded_type: Type) -> Type:
-  if from_type == excluded_type:
-    return SLEEPY_NEVER
-  if excluded_type == SLEEPY_NEVER:
-    return from_type
-  assert isinstance(from_type, ReferenceType) == isinstance(excluded_type, ReferenceType)
-  if len(from_type.templ_types) > 0 or len(excluded_type.templ_types) > 0:  # template types
-    # TODO: This does not work well for unions of templated types. Also see narrow_type
-    if len(from_type.templ_types) != len(excluded_type.templ_types):
-      return from_type
-    new_templ_types = [
-      exclude_type(from_templ_type, to_templ_type)
-      for from_templ_type, to_templ_type in zip(from_type.templ_types, excluded_type.templ_types)]
-    return from_type.replace_types(dict(zip(from_type.templ_types, new_templ_types)))
-  if isinstance(excluded_type, UnionType):
-    excluded_types = excluded_type.possible_types
-  else:
-    excluded_types = [excluded_type]
-  if not isinstance(from_type, UnionType):
-    if from_type in excluded_types:
-      return SLEEPY_NEVER
-    else:
-      return from_type
-  narrow_to_types = [possible_type for possible_type in from_type.possible_types if possible_type not in excluded_types]
-  return from_type.copy_with_narrowed_types(narrow_to_types=narrow_to_types)
 
 
 def get_common_type(possible_types: List[Type]) -> Type:
