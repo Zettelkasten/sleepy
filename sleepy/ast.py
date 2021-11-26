@@ -311,7 +311,7 @@ class TranslationUnitAst:
                                       main_file_path: Path | DummyPath = DummyPath("module")) -> (ir.Module, SymbolTable):  # noqa
     assert self.check_pos_validity()
 
-    module = ir.Module(name=module_name)
+    module = ir.Module(name=module_name, context=ir.Context())
 
     root_builder = ir.IRBuilder()
     symbol_table = SymbolTable()
