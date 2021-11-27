@@ -590,8 +590,9 @@ def test_struct_self_referencing_member():
       a = LinkedList(41, !b);
     }
     """
-    main = compile_program(engine, program, add_preamble=False)
+    main = compile_program(engine, program, add_preamble=False, emit_debug=False)
     main()
+    assert False, "Should work with emit_debug=True but infinitely recurses"
 
 
 def test_if_missing_return_branch():

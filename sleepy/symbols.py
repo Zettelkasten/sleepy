@@ -823,7 +823,7 @@ class StructType(Type):
       di_derived_types.append(context.module.add_debug_info(
         'DIDerivedType', {
           'tag': ir.DIToken('DW_TAG_member'), 'baseType': member_type.make_di_type(context=context),
-          'name': member_identifier, 'size': member_type.size * 8, 'offset': getattr(self.c_val_type, member_identifier).offset * 8}))
+          'name': member_identifier, 'size': member_type.size * 8, 'offset': getattr(self.c_type, member_identifier).offset * 8}))
     return context.module.add_debug_info(
       'DICompositeType', {
         'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
@@ -1876,7 +1876,7 @@ class CodegenContext:
   def _make_current_di_file(self, path: Path | DummyPath):
     assert self.emits_debug
     if isinstance(path, Path):
-      file_name, file_dir = path.name, path.parent
+      file_name, file_dir = path.name, str(path.parent)
     else:
       file_name, file_dir = path.dummy_name, ""
     return self.module.add_debug_info('DIFile', {'filename': file_name, 'directory': file_dir})
