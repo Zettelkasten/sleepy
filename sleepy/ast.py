@@ -115,6 +115,9 @@ class AbstractSyntaxTree(ABC):
     func_args = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in func_arg_exprs]
     collapsed_func_args = [arg.copy_collapse(context=None) for num, arg in enumerate(func_args)]
     calling_types = [arg.narrowed_type for arg in collapsed_func_args]
+    for calling_type, func_arg_expr in zip(calling_types, func_arg_exprs):
+      if not calling_type.is_realizable():
+        func_arg_expr.raise_error("Cannot call function %r with argument of unrealizable type" % func.identifier)
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
       func_caller=func_caller, calling_types=calling_types)
 

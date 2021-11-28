@@ -1915,6 +1915,20 @@ def test_unreachable_code2():
       compile_program(engine, program)
 
 
+def test_unreachable_code_after_free():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    func main()  {
+      x = "hello"
+      free(x)
+      y = x + " world"  # should fail.
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program, add_preamble=False)
+
+
 def test_bitwise_or():
   with make_execution_engine() as engine:
     # language=Sleepy
