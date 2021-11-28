@@ -308,7 +308,7 @@ class TranslationUnitAst:
 
   def make_module_ir_and_symbol_table(self, module_name: str,
                                       emit_debug: bool,
-                                      main_file_path: Path | DummyPath = DummyPath("module")) -> (ir.Module, SymbolTable):  # noqa
+                                      main_file_path: Path | DummyPath = DummyPath("module")) -> (str, SymbolTable):  # noqa
     assert self.check_pos_validity()
 
     module = ir.Module(name=module_name, context=ir.Context())
@@ -324,7 +324,7 @@ class TranslationUnitAst:
     assert not context.is_terminated
     context.is_terminated = True
 
-    return module, symbol_table
+    return context.get_patched_ir() , symbol_table
 
   def check_pos_validity(self) -> bool:
     return all(child.check_pos_validity() for child in self.file_asts)

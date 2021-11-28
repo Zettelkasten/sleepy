@@ -33,14 +33,7 @@ def make_execution_engine():
   del engine
 
 
-def compile_ir(engine, llvm_ir):
-  """
-  :param ExecutionEngine engine:
-  :param str|Any llvm_ir:
-  :rtype: llvm.ModuleRef
-  """
-  if not isinstance(llvm_ir, str):
-    llvm_ir = llvm_ir.__repr__()
+def compile_ir(engine: ExecutionEngine, llvm_ir: str) -> llvm.ModuleRef:
   mod = llvm.parse_assembly(llvm_ir)
   mod.verify()
   engine.add_module(mod)

@@ -5,10 +5,11 @@ from __future__ import annotations
 
 import copy
 import ctypes
+import random
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, TypedDict
 
 import llvmlite
 from llvmlite import ir
@@ -816,16 +817,26 @@ class StructType(Type):
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
+
+    # register placeholder for self so that members can reference this struct
+    placeholder = context.debug_ir_patcher.get_placeholder()
+    context.known_di_types[self] = placeholder
+
     di_derived_types = []
     for member_identifier, member_type in zip(self.member_identifiers, self.member_types):
       di_derived_types.append(context.module.add_debug_info(
         'DIDerivedType', {
           'tag': ir.DIToken('DW_TAG_member'), 'baseType': member_type.make_di_type(context=context),
           'name': member_identifier, 'size': member_type.size * 8, 'offset': getattr(self.c_type, member_identifier).offset * 8}))
-    return context.module.add_debug_info(
+    debug_value = context.module.add_debug_info(
       'DICompositeType', {
         'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
         'file': context.current_di_file, 'elements': di_derived_types})
+
+    # set replacement for placeholder for this type
+    context.debug_ir_patcher.set_replacement(placeholder, debug_value.get_reference())
+    return debug_value
+
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, StructType):
@@ -1784,6 +1795,25 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     return free_symbol
 
 
+class DebugValueIrPatcher:
+  def __init__(self):
+      self._patches: Dict[int, Optional[str]] = {}
+
+  def get_placeholder(self) -> int:
+    placeholder = random.randint(0, 2**64 - 1)
+    self._patches[placeholder] = None
+    return placeholder
+
+  def set_replacement(self, placeholder: int, replacement: str):
+    assert placeholder in self._patches and self._patches[placeholder] is None
+    self._patches[placeholder] = replacement
+
+  def patch_ir(self, ir_str: str) -> str:
+    for placeholder, replacement in self._patches.items():
+      ir_str = ir_str.replace(str(placeholder), str(replacement))
+    return ir_str
+
+
 class CodegenContext:
   """
   Used to keep track where code is currently generated.
@@ -1806,6 +1836,8 @@ class CodegenContext:
     self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = None
     self.inline_func_call_stack: List[ConcreteFunction] = []
     self.ir_func_malloc: Optional[ir.Function] = None
+
+    self.debug_ir_patcher = DebugValueIrPatcher()
 
     if not self.emits_debug:
       self.current_di_compile_unit: Optional[ir.DIValue] = None
@@ -1834,7 +1866,7 @@ class CodegenContext:
 
       di_declare_func_type = ir.FunctionType(ir.VoidType(), [ir.MetaDataType()] * 3)
       self.di_declare_func = ir.Function(self.module, di_declare_func_type, 'llvm.dbg.declare')
-      self.known_di_types: Dict[Type, ir.DIValue] = {}
+      self.known_di_types: Dict[Type, Union[ir.DIValue, int]] = {}
 
     self._known_struct_c_types: Dict[(StructIdentity, Tuple[Type]), type] = {}
 
@@ -1974,6 +2006,9 @@ class CodegenContext:
       c_type = type(self._make_struct_type_name(identity, templ_types), (ctypes.Structure,), {})
       self._known_struct_c_types[identity, templ_types] = c_type
     return self._known_struct_c_types[identity, templ_types]
+
+  def get_patched_ir(self) -> str:
+    return self.debug_ir_patcher.patch_ir(repr(self.module))
 
 
 class UsePosRuntimeContext:
