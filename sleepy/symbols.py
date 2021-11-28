@@ -1799,7 +1799,11 @@ class DebugValueIrPatcher:
   def __init__(self):
       self._patches: Dict[int, Optional[str]] = {}
 
-  def get_placeholder(self) -> int:
+  def get_placeholder(self, name: str) -> int:
+    # ggf. noch irgendwas um name packen um es zu escapen?
+    assert escaped_name not in self._patches
+    self._patches[escaped_name] = None
+    return escaped_name
     placeholder = random.randint(0, 2**64 - 1)
     self._patches[placeholder] = None
     return placeholder
