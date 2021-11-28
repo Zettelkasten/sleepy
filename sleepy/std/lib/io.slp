@@ -1,0 +1,60 @@
+
+struct IOSuccess {
+}
+struct IOError {
+  exception: Str
+}
+func print(err: IOError) {
+  print(err.exception)
+}
+
+struct _FilePtr { ptr: Ptr[Int] }
+struct File {
+  ptr: _FilePtr
+  name: Str
+  mode: Str
+}
+
+func open_file(file_name: Str, mode: Str) -> File | IOError {
+  extern_func fopen(file_name: Ptr[Char], mode: Ptr[Char]) -> _FilePtr
+  file_name += '\0'; mode += '\0'
+  file_ptr = fopen(file_name.start, mode.start)
+  if file_ptr.ptr == NullPtr[Int]() {
+    return IOError("Cannot open: " + file_name)
+  }
+  return File(file_ptr, file_name, mode)
+}
+func close(file: File | IOError) -> IOSuccess | IOError {
+  if file is IOError { return file }
+
+  extern_func fclose(stream: _FilePtr) -> Int
+  if fclose(file.ptr) != 0 {
+    return IOError("Cannot close: " + file.name)
+  }
+  free(file.name);  free(file.mode)
+  return IOSuccess()
+}
+
+func read_all(file: File | IOError) -> Str | IOError {
+  if file is IOError { return file }
+
+  struct SeekOrigin { val: Int }
+  func SeekBeginning() -> SeekOrigin { return SeekOrigin(0) }
+  func SeekCurrent() -> SeekOrigin { return SeekOrigin(1) }
+  func SeekEnd() -> SeekOrigin { return SeekOrigin(2) }
+  extern_func fseek(stream: _FilePtr, offset: Long, origin: SeekOrigin) -> Int
+  extern_func ftell(stream: _FilePtr) -> Long
+  extern_func rewind(stream: _FilePtr)
+  extern_func fread(buffer: Ptr[Char], size: Long, count: Long, stream: _FilePtr) -> Long
+
+  fseek(file.ptr, 0l, SeekEnd())     # go to end of file
+  file_size: Long = ftell(file.ptr)  # get position (= size: file)
+  rewind(file.ptr)                   # go back to front
+  if ToLong(ToInt(file_size)) != file_size {
+    return IOError("File too big: " + file.name)
+  }
+  file_content = EmptyStr(ToInt(file_size))
+  fread(file_content.start, file_size, 1l, file.ptr)  # read file content
+  file_content.length = ToInt(file_size)
+  return file_content
+}
