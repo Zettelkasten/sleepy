@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import copy
 import ctypes
-import random
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, TypedDict
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable
 
 import llvmlite
 from llvmlite import ir
@@ -819,7 +818,7 @@ class StructType(Type):
     assert context.emits_debug
 
     # register placeholder for self so that members can reference this struct
-    placeholder = context.debug_ir_patcher.get_placeholder(name=repr(self.identity))
+    placeholder = DebugValueIrPatcher.make_placeholder(repr(self.identity))
     context.known_di_types[self] = placeholder
 
     di_derived_types = []
@@ -834,7 +833,7 @@ class StructType(Type):
         'file': context.current_di_file, 'elements': di_derived_types})
 
     # set replacement for placeholder for this type
-    context.debug_ir_patcher.set_replacement(placeholder, debug_value.get_reference())
+    context.debug_ir_patcher.add_replacement(placeholder, debug_value.get_reference())
     return debug_value
 
 
@@ -1797,24 +1796,19 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
 
 class DebugValueIrPatcher:
   def __init__(self):
-      self._patches: Dict[int, Optional[str]] = {}
+      self._patches: Dict[str, Optional[str]] = {}
 
-  def get_placeholder(self, name: str) -> int:
-    # ggf. noch irgendwas um name packen um es zu escapen?
-    assert escaped_name not in self._patches
-    self._patches[escaped_name] = None
-    return escaped_name
-    placeholder = random.randint(0, 2**64 - 1)
-    self._patches[placeholder] = None
-    return placeholder
+  @staticmethod
+  def make_placeholder(unique_name: str) -> str:
+    return f"dbg_val_placeholder_{unique_name}"
 
-  def set_replacement(self, placeholder: int, replacement: str):
-    assert placeholder in self._patches and self._patches[placeholder] is None
+  def add_replacement(self, placeholder: str, replacement: str):
+    assert placeholder not in self._patches
     self._patches[placeholder] = replacement
 
   def patch_ir(self, ir_str: str) -> str:
     for placeholder, replacement in self._patches.items():
-      ir_str = ir_str.replace(str(placeholder), str(replacement))
+      ir_str = ir_str.replace(f"\"{placeholder}\"", str(replacement))
     return ir_str
 
 
@@ -1870,7 +1864,7 @@ class CodegenContext:
 
       di_declare_func_type = ir.FunctionType(ir.VoidType(), [ir.MetaDataType()] * 3)
       self.di_declare_func = ir.Function(self.module, di_declare_func_type, 'llvm.dbg.declare')
-      self.known_di_types: Dict[Type, Union[ir.DIValue, int]] = {}
+      self.known_di_types: Dict[Type, Union[ir.DIValue, str]] = {}
 
     self._known_struct_c_types: Dict[(StructIdentity, Tuple[Type]), type] = {}
 
