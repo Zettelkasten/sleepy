@@ -1,0 +1,13 @@
+import "io.slp"
+
+func main() {
+  file = open_file("tests/examples/input.slp", "r")
+  content = read_all(file)
+
+  if content is IOError {
+    print_line("Oh no, something bad happened.. " + content.exception)
+    return
+  }
+  print("File length: ");  print_line(content.length)
+  close(file)
+}
