@@ -819,7 +819,7 @@ class StructType(Type):
     assert context.emits_debug
 
     # register placeholder for self so that members can reference this struct
-    placeholder = context.debug_ir_patcher.get_placeholder()
+    placeholder = context.debug_ir_patcher.get_placeholder(name=repr(self.identity))
     context.known_di_types[self] = placeholder
 
     di_derived_types = []
