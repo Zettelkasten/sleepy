@@ -8,7 +8,7 @@ from sleepy.grammar import TreePosition
 from sleepy.symbols import FunctionTemplate, PlaceholderTemplateType, Type, ConcreteFunction, \
   ConcreteBuiltinOperationFunction, ConcreteBitcastFunction, DoubleType, FloatType, BoolType, \
   IntType, LongType, CharType, RawPointerType, PointerType, SymbolTable, CodegenContext, FunctionSymbol, \
-  LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, TypeTemplateSymbol, StructType, TypeFactory, SLEEPY_VOID, SLEEPY_NEVER, \
+  LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, TypeTemplateSymbol, StructType, TypeFactory, SLEEPY_UNIT, SLEEPY_NEVER, \
   ReferenceType, StructIdentity
 from sleepy.util import concat_dicts
 
@@ -69,7 +69,7 @@ SLEEPY_CHAR = CharType()
 SLEEPY_RAW_PTR = RawPointerType()
 SLEEPY_CHAR_PTR = PointerType(SLEEPY_CHAR)
 SLEEPY_TYPES: Dict[str, Type] = {
-  'Void': SLEEPY_VOID, 'Double': SLEEPY_DOUBLE, 'Float': SLEEPY_FLOAT, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT,
+  'Unit': SLEEPY_UNIT, 'Double': SLEEPY_DOUBLE, 'Float': SLEEPY_FLOAT, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT,
   'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR}
 INT_TYPES: Set[Type] = {SLEEPY_INT, SLEEPY_LONG}
 FLOAT_TYPES: Set[Type] = {SLEEPY_FLOAT, SLEEPY_DOUBLE}
@@ -116,7 +116,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   ptr_type = PointerType(pointee_type=pointee_type)
 
   assert 'load' not in symbol_table
-  load_symbol = FunctionSymbol(identifier='load', returns_void=False)
+  load_symbol = FunctionSymbol(identifier='load')
   load_signature = BuiltinOperationFunctionTemplate(
     placeholder_template_types=[pointee_type], return_type=ReferenceType(pointee_type), arg_identifiers=['ptr'],
     arg_types=[ptr_type], arg_type_narrowings=[ptr_type], arg_mutates=[False],
@@ -126,16 +126,16 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   symbol_table.inbuilt_symbols['load'] = load_symbol
 
   assert 'store' not in symbol_table
-  store_symbol = FunctionSymbol(identifier='store', returns_void=True)
+  store_symbol = FunctionSymbol(identifier='store')
   store_signature = BuiltinOperationFunctionTemplate(
-    placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID, arg_identifiers=['ptr', 'value'],
+    placeholder_template_types=[pointee_type], return_type=SLEEPY_UNIT, arg_identifiers=['ptr', 'value'],
     arg_types=[ptr_type, pointee_type], arg_type_narrowings=[ptr_type, pointee_type], arg_mutates=[False, False],
     instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr), emits_ir=context.emits_ir)
   store_symbol.add_signature(store_signature)
   symbol_table['store'] = store_symbol
 
   # cast from RawPtr -> Ptr[T] and Ref[T] -> Ptr[T]
-  constructor_symbol = FunctionSymbol(identifier='Ptr', returns_void=False)
+  constructor_symbol = FunctionSymbol(identifier='Ptr')
   constructor_signature = BitcastFunctionTemplate(
     placeholder_template_types=[pointee_type], return_type=ptr_type, arg_identifiers=['raw_ptr'],
     arg_types=[SLEEPY_RAW_PTR], arg_type_narrowings=[ptr_type])
@@ -160,7 +160,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     for op in Simple_Comparison_Ops]
   for operator, overloads in ptr_op_decls:
     if operator.value not in symbol_table:
-      symbol_table[operator.value] = FunctionSymbol(identifier=operator.value, returns_void=False)
+      symbol_table[operator.value] = FunctionSymbol(identifier=operator.value)
     function_symbol = symbol_table[operator.value]
     assert isinstance(function_symbol, FunctionSymbol)
 
@@ -171,8 +171,8 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
       function_symbol.add_signature(signature)
 
   free_signature = BuiltinOperationFunctionTemplate(
-    placeholder_template_types=[pointee_type], return_type=SLEEPY_VOID, arg_identifiers=['ptr'], arg_types=[ptr_type],
-    arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False], instruction=lambda builder, value: None,
+    placeholder_template_types=[pointee_type], return_type=SLEEPY_UNIT, arg_identifiers=['ptr'], arg_types=[ptr_type],
+    arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False], instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
     emits_ir=context.emits_ir)
   symbol_table.free_symbol.add_signature(free_signature)
 
@@ -182,14 +182,14 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeTemplateSymbol:
   # add destructor
   destructor_signature = BuiltinOperationFunctionTemplate(
-    placeholder_template_types=[], return_type=SLEEPY_VOID, arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR],
-    arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False], instruction=lambda builder, value: None,
+    placeholder_template_types=[], return_type=SLEEPY_UNIT, arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR],
+    arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False], instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
     emits_ir=context.emits_ir)
   symbol_table.free_symbol.add_signature(destructor_signature)
 
   pointee_type = PlaceholderTemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
-  constructor_symbol = FunctionSymbol(identifier='RawPtr', returns_void=False)
+  constructor_symbol = FunctionSymbol(identifier='RawPtr')
   # RawPtr[T](Ptr[T]) -> RawPtr
   from_specific_signature = BitcastFunctionTemplate(
     placeholder_template_types=[pointee_type], return_type=SLEEPY_RAW_PTR, arg_identifiers=['ptr'],
@@ -220,7 +220,7 @@ def _make_ref_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> FunctionSymbol:
   del symbol_table  # only to keep API consistent
   del context
-  bitcast_func = FunctionSymbol(identifier='bitcast', returns_void=False)
+  bitcast_func = FunctionSymbol(identifier='bitcast')
   to_type, from_type = PlaceholderTemplateType('T'), PlaceholderTemplateType('U')
   bitcast_signature = BitcastFunctionTemplate(
     placeholder_template_types=[to_type, from_type], return_type=to_type,
@@ -231,30 +231,30 @@ def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
 
 def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   assert 'free' not in symbol_table
-  free_symbol = FunctionSymbol(identifier='free', returns_void=True)
+  free_symbol = FunctionSymbol(identifier='free')
   symbol_table['free'] = free_symbol
 
   for func_identifier in ['index', 'size', 'is', '|']:
     assert func_identifier not in symbol_table
-    symbol_table[func_identifier] = FunctionSymbol(identifier=func_identifier, returns_void=False)
+    symbol_table[func_identifier] = FunctionSymbol(identifier=func_identifier)
     symbol_table.inbuilt_symbols[func_identifier] = symbol_table[func_identifier]
 
   for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table
     symbol_table[type_identifier] = TypeTemplateSymbol.make_concrete_type_symbol(inbuilt_type)
-    if inbuilt_type == SLEEPY_VOID:
+    if inbuilt_type == SLEEPY_UNIT:
       continue
 
     # add destructor
     destructor_signature = BuiltinOperationFunctionTemplate(
-      placeholder_template_types=[], return_type=SLEEPY_VOID, arg_identifiers=['var'], arg_types=[inbuilt_type],
-      arg_type_narrowings=[SLEEPY_NEVER], instruction=lambda builder, value: None, emits_ir=context.emits_ir,
+      placeholder_template_types=[], return_type=SLEEPY_UNIT, arg_identifiers=['var'], arg_types=[inbuilt_type],
+      arg_type_narrowings=[SLEEPY_NEVER], instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(), emits_ir=context.emits_ir,
       arg_mutates=[False])
     symbol_table.free_symbol.add_signature(destructor_signature)
 
   for assert_identifier in ['assert', 'unchecked_assert']:
     assert assert_identifier not in symbol_table
-    assert_symbol = FunctionSymbol(identifier=assert_identifier, returns_void=True)
+    assert_symbol = FunctionSymbol(identifier=assert_identifier)
     symbol_table[assert_identifier] = assert_symbol
     symbol_table.inbuilt_symbols[assert_identifier] = assert_symbol
 
@@ -351,7 +351,7 @@ BINARY_OP_DECL: List[Tuple[BuiltinBinaryOps, List[Tuple[Callable[..., ir.values.
 def _make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
   for operator, overloads in BINARY_OP_DECL:
     if operator.value not in symbol_table:
-      symbol_table[operator.value] = FunctionSymbol(identifier=operator.value, returns_void=False)
+      symbol_table[operator.value] = FunctionSymbol(identifier=operator.value)
     function_symbol = symbol_table[operator.value]
     assert isinstance(function_symbol, FunctionSymbol)
 

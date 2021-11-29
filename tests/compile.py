@@ -19,9 +19,7 @@ def compile_program(engine: ExecutionEngine,
     module_name='test_parse_ast', emit_debug=emit_debug)
   print('---- module intermediate repr:')
   print(module_ir)
-  optimized_module_ir = compile_ir(engine, module_ir)
-  print('---- optimized module intermediate repr:')
-  print(optimized_module_ir)
+  compile_ir(engine, module_ir)
   assert main_func_identifier in symbol_table
   main_func_symbol = symbol_table[main_func_identifier]
   assert isinstance(main_func_symbol, FunctionSymbol)
