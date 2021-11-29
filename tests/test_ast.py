@@ -7,6 +7,7 @@ import _setup_test_env  # noqa
 from sleepy.errors import SemanticError, ParseError
 from sleepy.grammar import DummyPath
 from sleepy.jit import make_execution_engine
+from sleepy.symbols import SLEEPY_UNIT
 from tests.compile import compile_program
 from sleepy.parse import make_translation_unit_ast_from_str, make_file_ast_from_str
 
@@ -88,8 +89,7 @@ def test_empty_func():
     }
     """
     nothing = compile_program(engine, program, add_preamble=False)
-    assert_equal(nothing(), None)
-
+    assert_equal(type(nothing()), SLEEPY_UNIT.c_type)
 
 def test_empty_func_with_preamble():
   with make_execution_engine() as engine:
@@ -99,7 +99,7 @@ def test_empty_func_with_preamble():
     }
     """
     nothing = compile_program(engine, program, add_preamble=True)
-    assert_equal(nothing(), None)
+    assert_equal(type(nothing()), SLEEPY_UNIT.c_type)
 
 
 def test_empty_func_with_arg():
@@ -110,7 +110,7 @@ def test_empty_func_with_arg():
     }
     """
     nothing = compile_program(engine, program, add_preamble=False)
-    assert_equal(nothing(2), None)
+    assert_equal(type(nothing(5)), SLEEPY_UNIT.c_type)
 
 
 def test_lerp():
