@@ -135,7 +135,7 @@ class UnitType(Type):
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=ir.types.LiteralStructType(()), c_type=type("Unit", (ctypes.Structure,), {}), constructor=None)
+    super().__init__(templ_types=[], ir_type=ir.types.LiteralStructType(()), c_type=ctypes.c_char * 0, constructor=None)
 
   def __repr__(self) -> str:
     return 'Unit'
