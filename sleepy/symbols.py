@@ -734,7 +734,6 @@ class StructType(Type):
     assert partial_struct_type is None or partial_struct_type.identity == self.identity
 
     if any(templ_type.has_templ_placeholder() for templ_type in templ_types):
-      self.ir_val_type = None
       super().__init__(templ_types=templ_types, ir_type=None, c_type=None, constructor=constructor)
     else:
       member_ir_types = [member_type.ir_type for member_type in member_types]
