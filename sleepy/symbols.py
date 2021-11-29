@@ -44,6 +44,7 @@ class Type(ABC):
   """
   A type of a declared variable.
   """
+
   def __init__(self, *,
                templ_types: List[Type],
                ir_type: Optional[ir.types.Type],
@@ -132,6 +133,7 @@ class VoidType(Type):
   """
   Type returned when nothing is returned.
   """
+
   def __init__(self):
     super().__init__(templ_types=[], ir_type=ir.VoidType(), c_type=None, constructor=None)
 
@@ -158,6 +160,7 @@ class DoubleType(Type):
   """
   A double.
   """
+
   def __init__(self):
     super().__init__(templ_types=[], ir_type=ir.DoubleType(), c_type=ctypes.c_double, constructor=None)
 
@@ -187,6 +190,7 @@ class FloatType(Type):
   """
   A double.
   """
+
   def __init__(self):
     super().__init__(templ_types=[], ir_type=ir.FloatType(), c_type=ctypes.c_float, constructor=None)
 
@@ -216,6 +220,7 @@ class BoolType(Type):
   """
   A 1-bit integer.
   """
+
   def __init__(self):
     super().__init__(templ_types=[], ir_type=ir.IntType(bits=1), c_type=ctypes.c_bool, constructor=None)
 
@@ -245,6 +250,7 @@ class IntType(Type):
   """
   An 32-bit integer.
   """
+
   def __init__(self):
     super().__init__(templ_types=[], ir_type=ir.IntType(bits=32), c_type=ctypes.c_int32, constructor=None)
 
@@ -274,6 +280,7 @@ class LongType(Type):
   """
   A 64-bit integer.
   """
+
   def __init__(self):
     super().__init__(templ_types=[], ir_type=ir.IntType(bits=64), c_type=ctypes.c_int64, constructor=None)
 
@@ -303,6 +310,7 @@ class CharType(Type):
   """
   An 8-bit character.
   """
+
   def __init__(self):
     super().__init__(templ_types=[], ir_type=ir.IntType(bits=8), c_type=ctypes.c_uint8, constructor=None)
 
@@ -332,6 +340,7 @@ class PointerType(Type):
   """
   A (not-raw) pointer with a known underlying type.
   """
+
   def __init__(self, pointee_type: Type, constructor: Optional[FunctionSymbol] = None):
     super().__init__(
       templ_types=[pointee_type], ir_type=ir.PointerType(pointee_type.ir_type),
@@ -372,6 +381,7 @@ class RawPointerType(Type):
   """
   A raw (void) pointer from which we do not know the underlying type.
   """
+
   def __init__(self):
     super().__init__(templ_types=[], ir_type=LLVM_VOID_POINTER_TYPE, c_type=ctypes.c_void_p, constructor=None)
 
@@ -401,6 +411,7 @@ class ReferenceType(PointerType):
   """
   A reference to some other type.
   """
+
   def __init__(self, pointee_type: Type, constructor: Optional[FunctionSymbol] = None):
     super().__init__(pointee_type=pointee_type, constructor=constructor)
 
@@ -435,6 +446,7 @@ class UnionType(Type):
   """
   A tagged union, i.e. a type that can be one of a set of different types.
   """
+
   def __init__(self, possible_types: List[Type], possible_type_nums: List[int], val_size: Optional[int],
                constructor: Optional[FunctionSymbol] = None):
     assert len(possible_types) == len(possible_type_nums)
@@ -529,7 +541,7 @@ class UnionType(Type):
       del new_possible_type_nums[duplicate_index]
     if any(possible_type.has_templ_placeholder() for possible_type in new_possible_types):
       val_size = None
-    else: # default case
+    else:  # default case
       val_size = max([ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types])
       # Note: We don't decrease the size of the union value to stay compatible to before.
       if self.val_size is not None:
@@ -542,57 +554,38 @@ class UnionType(Type):
   def has_templ_placeholder(self) -> bool:
     return any(possible_type.has_templ_placeholder() for possible_type in self.possible_types)
 
-  def contains(self, contained_type):
-    """
-    :param Type contained_type:
-    :rtype: bool
-    """
+  def contains(self, contained_type: Type) -> bool:
     if isinstance(contained_type, UnionType):
       contained_possible_types = set(contained_type.possible_types)
     else:
       contained_possible_types = {contained_type}
     return contained_possible_types.issubset(self.possible_types)
 
-  def get_variant_num(self, variant_type):
-    """
-    :param Type variant_type:
-    :rtype: int
-    """
+  def get_variant_num(self, variant_type: Type) -> int:
     assert variant_type in self.possible_types
     return self.possible_type_nums[self.possible_types.index(variant_type)]
 
   @staticmethod
-  def make_tag_ptr(union_ir_alloca, context, name):
-    """
-    :param ir.instructions.AllocaInstr union_ir_alloca:
-    :param CodegenContext context:
-    :param str name:
-    :rtype: ir.instructions.Instruction
-    """
+  def make_tag_ptr(union_ir_alloca: ir.instructions.AllocaInstr,
+                   context: CodegenContext,
+                   name: str) -> ir.instructions.Instruction:
     assert context.emits_ir
     tag_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
     return context.builder.gep(union_ir_alloca, tag_gep_indices, name=name)
 
   @staticmethod
-  def make_untagged_union_void_ptr(union_ir_alloca, context, name):
-    """
-    :param ir.values.Value union_ir_alloca:
-    :param CodegenContext context:
-    :param str name:
-    :rtype: ir.instructions.Instruction
-    """
+  def make_untagged_union_void_ptr(union_ir_alloca: ir.values.Value,
+                                   context: CodegenContext,
+                                   name: str) -> ir.instructions.Instruction:
     assert context.emits_ir
     untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1))
     return context.builder.gep(union_ir_alloca, untagged_union_gep_indices, name=name)
 
-  def make_untagged_union_ptr(self, union_ir_alloca, variant_type, context, name):
-    """
-    :param ir.instructions.AllocaInstr union_ir_alloca:
-    :param Type variant_type:
-    :param CodegenContext context:
-    :param str name:
-    :rtype: ir.instructions.Instruction
-    """
+  def make_untagged_union_ptr(self,
+                              union_ir_alloca: ir.instructions.AllocaInstr,
+                              variant_type: Type,
+                              context: CodegenContext,
+                              name: str) -> ir.instructions.Instruction:
     assert variant_type in self.possible_types
     untagged_union_ptr = self.make_untagged_union_void_ptr(
       union_ir_alloca=union_ir_alloca, context=context, name='%s_raw' % name)
@@ -601,23 +594,11 @@ class UnionType(Type):
       name=name)
 
   @staticmethod
-  def make_extract_tag(union_ir_val, context, name):
-    """
-    :param ir.values.Value union_ir_val:
-    :param CodegenContext context:
-    :param str name:
-    :rtype: ir.values.Value
-    """
+  def make_extract_tag(union_ir_val: ir.values.Value, context: CodegenContext, name: str) -> ir.values.Value:
     return context.builder.extract_value(union_ir_val, 0, name=name)
 
   @staticmethod
-  def make_extract_void_val(union_ir_val, context, name):
-    """
-    :param ir.values.Value union_ir_val:
-    :param CodegenContext context:
-    :param str name:
-    :rtype: ir.values.Value
-    """
+  def make_extract_void_val(union_ir_val: ir.values.Value, context: CodegenContext, name: str) -> ir.values.Value:
     assert context.emits_ir
     return context.builder.extract_value(union_ir_val, idx=1, name=name)
 
@@ -723,6 +704,7 @@ class StructIdentity:
   """
   To distinguish different structs. Similar to TypeSymbol.
   """
+
   def __init__(self, struct_identifier: str, context: CodegenContext):
     self.struct_identifier = struct_identifier
     assert context is not None
@@ -736,6 +718,7 @@ class StructType(Type):
   """
   A struct.
   """
+
   def __init__(self,
                identity: StructIdentity,
                templ_types: List[Type],
@@ -821,7 +804,8 @@ class StructType(Type):
       di_derived_types.append(context.module.add_debug_info(
         'DIDerivedType', {
           'tag': ir.DIToken('DW_TAG_member'), 'baseType': member_type.make_di_type(context=context),
-          'name': member_identifier, 'size': member_type.size * 8, 'offset': getattr(self.c_type, member_identifier).offset * 8}))
+          'name': member_identifier, 'size': member_type.size * 8,
+          'offset': getattr(self.c_type, member_identifier).offset * 8}))
     debug_value = context.module.add_debug_info(
       'DICompositeType', {
         'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
@@ -830,7 +814,6 @@ class StructType(Type):
     # set replacement for placeholder for this type
     context.debug_ir_patcher.add_replacement(placeholder, debug_value.get_reference())
     return debug_value
-
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, StructType):
@@ -943,6 +926,7 @@ def can_implicit_cast_ref_to(from_pointee_type: Type, to_pointee_type: Type) -> 
       return True
   return False
 
+
 def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   """
   Whether you can "easily" treat memory of `from_type` as `to_type`.
@@ -965,7 +949,8 @@ def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   for a in list(possible_from_types):
     if not isinstance(a, ReferenceType):
       continue
-    if not any(isinstance(b, ReferenceType) and can_implicit_cast_ref_to(a.pointee_type, b.pointee_type) for b in possible_to_types):  # noqa
+    if not any(isinstance(b, ReferenceType) and can_implicit_cast_ref_to(a.pointee_type, b.pointee_type) for b in
+               possible_to_types):  # noqa
       return False
     possible_from_types.remove(a)
   # Note: These elements really need to match exactly,
@@ -1211,12 +1196,14 @@ class ConcreteFunction:
   """
   An actual function implementation.
   """
+
   def __init__(self, signature: FunctionTemplate, ir_func: Optional[ir.Function], template_arguments: List[Type],
                return_type: Type, parameter_types: List[Type], narrowed_parameter_types: List[Type],
                parameter_mutates: List[bool]):
     assert ir_func is None or isinstance(ir_func, ir.Function)
     assert (
-      len(signature.arg_identifiers) == len(parameter_types) == len(narrowed_parameter_types) == len(parameter_mutates))
+            len(signature.arg_identifiers) == len(parameter_types) == len(narrowed_parameter_types) == len(
+      parameter_mutates))
     assert all(not templ_type.has_templ_placeholder() for templ_type in template_arguments)
     assert not return_type.has_templ_placeholder()
     assert all(not arg_type.has_templ_placeholder() for arg_type in parameter_types)
@@ -1259,10 +1246,10 @@ class ConcreteFunction:
 
   def __repr__(self) -> str:
     return (
-      'ConcreteFunction(signature=%r, concrete_templ_types=%r, return_type=%r, arg_types=%r, '
-      'arg_type_narrowings=%r, arg_mutates=%r)' % (
-        self.signature, self.concrete_templ_types, self.return_type, self.arg_types, self.arg_type_narrowings,
-        self.arg_mutates))
+            'ConcreteFunction(signature=%r, concrete_templ_types=%r, return_type=%r, arg_types=%r, '
+            'arg_type_narrowings=%r, arg_mutates=%r)' % (
+              self.signature, self.concrete_templ_types, self.return_type, self.arg_types, self.arg_type_narrowings,
+              self.arg_mutates))
 
   @property
   def uncollapsed_arg_types(self) -> List[Type]:
@@ -1272,8 +1259,8 @@ class ConcreteFunction:
 
   def has_same_signature_as(self, other: ConcreteFunction) -> bool:
     return (
-      self.return_type == other.return_type and self.arg_types == other.arg_types and
-      self.arg_type_narrowings == other.arg_type_narrowings)
+            self.return_type == other.return_type and self.arg_types == other.arg_types and
+            self.arg_type_narrowings == other.arg_type_narrowings)
 
   def make_ir_func(self, identifier: str, extern: bool, context: CodegenContext):
     assert context.emits_ir
@@ -1365,6 +1352,7 @@ class FunctionTemplate(ABC):
   """
   Given template arguments, this builds a concrete function implementation on demand.
   """
+
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
                arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type],
                arg_mutates: List[bool], base: FunctionTemplate = None):
@@ -1604,7 +1592,8 @@ class FunctionSymbol(Symbol):
     possible_concrete_funcs = []
     for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types):
       for signature in signatures:
-        if signature.can_call_with_expanded_arg_types(concrete_templ_types=templ_types, expanded_arg_types=expanded_arg_types):  # noqa
+        if signature.can_call_with_expanded_arg_types(concrete_templ_types=templ_types,
+                                                      expanded_arg_types=expanded_arg_types):  # noqa
           concrete_func = signature.get_concrete_func(concrete_templ_types=templ_types)
           if concrete_func not in possible_concrete_funcs:
             possible_concrete_funcs.append(concrete_func)
@@ -1645,6 +1634,7 @@ class FunctionSymbolCaller:
   """
   A FunctionSymbol plus template types it is called with.
   """
+
   def __init__(self, func: FunctionSymbol, templ_types: Optional[List[Type]] = None):
     if templ_types is not None:
       assert all(not templ_type.has_templ_placeholder() for templ_type in templ_types)
@@ -1699,6 +1689,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
+
   def __init__(self, parent: Optional[SymbolTable] = None,
                new_function: Optional[ConcreteFunction] = None,
                inherit_outer_variables: bool = None):
@@ -1791,7 +1782,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
 
 class DebugValueIrPatcher:
   def __init__(self):
-      self._patches: Dict[str, Optional[str]] = {}
+    self._patches: Dict[str, Optional[str]] = {}
 
   @staticmethod
   def make_placeholder(unique_name: str) -> str:
@@ -1812,6 +1803,7 @@ class CodegenContext:
   Used to keep track where code is currently generated.
   This is essentially a pointer to an ir.IRBuilder.
   """
+
   def __init__(self, builder: Optional[ir.IRBuilder],
                module: ir.Module,
                emits_debug: bool,
@@ -2037,7 +2029,7 @@ def make_func_call_ir(func: FunctionSymbol,
   assert not context.emits_debug or context.builder.debug_metadata is not None
 
   def do_call(concrete_func: ConcreteFunction,
-                     caller_context: CodegenContext) -> TypedValue:
+              caller_context: CodegenContext) -> TypedValue:
     assert caller_context.emits_ir
     assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
     assert len(concrete_func.arg_types) == len(func_args)
@@ -2284,6 +2276,7 @@ class TypedValue:
   This is also recursive, e.g. Ref[Ref[T]] also behaves like T.
   If num_unbindings > 0, this prevents this behavior and gives access to the reference-like type itself.
   """
+
   def __init__(self, *,
                typ: Type,
                narrowed_type: Type = None,
@@ -2421,6 +2414,7 @@ class TypedValue:
     # If possible, do not split up unions if not necessary
     if self.num_unbindings == min_ref_depth == max_ref_depth:
       return self
+
     # Otherwise, handle each union member individually
 
     def do_collapse(concrete_type: Type, caller_context: Optional[CodegenContext]) -> TypedValue:

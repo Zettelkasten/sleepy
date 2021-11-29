@@ -208,20 +208,10 @@ class AbstractSyntaxTree(ABC):
 
 
 class StatementAst(AbstractSyntaxTree, ABC):
-  """
-  Expr.
-  """
-  def __init__(self, pos):
-    """
-    :param TreePosition pos:
-    """
+  def __init__(self, pos: TreePosition):
     super().__init__(pos)
 
-  def build_ir(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    """
+  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     raise NotImplementedError()
 
   def __repr__(self) -> str:
