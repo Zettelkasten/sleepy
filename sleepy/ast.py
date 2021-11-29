@@ -276,22 +276,9 @@ class FileAst(AbstractSyntaxTree):
 
 
 class ImportsAst(AbstractSyntaxTree):
-  def __init__(self, pos: TreePosition, import_asts: List[ImportAst]):
+  def __init__(self, pos: TreePosition, imports: List[str]):
     super().__init__(pos)
-    self.import_asts = import_asts
-
-  @property
-  def imports(self) -> List[str]:
-    return [a.path for a in self.import_asts]
-
-  def children(self) -> List[AbstractSyntaxTree]:
-    return self.import_asts
-
-
-class ImportAst(AbstractSyntaxTree):
-  def __init__(self, pos: TreePosition, path: str):
-    super().__init__(pos)
-    self.path = path
+    self.imports = imports
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []

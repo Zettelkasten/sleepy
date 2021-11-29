@@ -1,8 +1,8 @@
 from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
   ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   IfStatementAst, WhileStatementAst, ConstantExpressionAst, \
-  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, \
-  ImportAst, ImportsAst, UnbindExpressionAst
+  StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ImportsAst, \
+  UnbindExpressionAst
 
 from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
   parse_hex_int
@@ -18,17 +18,17 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda _pos, stmt_list, ast: FileAst(_pos, stmt_list=stmt_list(2), imports_ast=ast(1))
     },
 
-    Production('SeparatedImportDecl?'): {'ast': lambda _pos: ImportsAst(pos=_pos, import_asts=[])},
+    Production('SeparatedImportDecl?'): {'ast': lambda _pos: ImportsAst(pos=_pos, imports=[])},
     Production('SeparatedImportDecl?', 'ImportDecl'): {'ast': 'ast.1'},
     Production('ImportDecl', 'import', 'Import', 'ImportNames'): {
-      'ast': lambda _pos, ast, asts: ImportsAst(_pos, import_asts=[ast(2)] + asts(3))
+      'ast': lambda _pos, path, paths: ImportsAst(_pos, imports=[path(2)] + paths(3))
     },
-    Production('ImportNames'): {'asts': []},
+    Production('ImportNames'): {'paths': []},
     Production('ImportNames', ',', 'Import', 'ImportNames'): {
-      'asts': lambda ast, asts: [ast(2)] + asts(3)
+      'paths': lambda path, paths: [path(2)] + paths(3)
     },
     Production('Import', 'str'): {
-      'ast': lambda _pos, string: ImportAst(pos=_pos, path=string(1))
+      'path': lambda _pos, string: string(1)
     },
 
     Production(';?'): {},
@@ -58,7 +58,6 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'stmt_list': lambda ast, stmt_list: [ast(1)] + stmt_list(2)
     },
 
-
     Production('If1Stmt', 'if', 'Expr', 'Scope'): {
       'ast': lambda _pos, ast: IfStatementAst(_pos, condition_val=ast(2), true_scope=ast(3), false_scope=None)
     },
@@ -67,19 +66,22 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     },
     Production('Stmt', 'Expr'): {
       'ast': lambda _pos, ast: ExpressionStatementAst(_pos, expr=ast(1))},
-    Production('Stmt', 'func', 'identifier', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {  # noqa
+    Production('Stmt', 'func', 'identifier', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType',
+               'Scope'): {  # noqa
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=identifier(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
           arg_types=type_list(5), arg_annotations=annotation_list(5), arg_mutates=mutates_list(5), return_type=ast(7),
           return_annotation_list=annotation_list(7), body_scope=ast(8)))},
-    Production('Stmt', 'func', 'Op', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {  # noqa
+    Production('Stmt', 'func', 'Op', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType',
+               'Scope'): {  # noqa
       'ast': lambda _pos, op, identifier_list, type_list, annotation_list, mutates_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=op(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
           arg_types=type_list(5), arg_annotations=annotation_list(5), arg_mutates=mutates_list(5), return_type=ast(7),
           return_annotation_list=annotation_list(7), body_scope=ast(8)))},
-    Production('Stmt', 'func', '(', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', ')', '[', 'TypedIdentifierList', ']', 'ReturnType', 'Scope'): {  # noqa
+    Production('Stmt', 'func', '(', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', ')', '[',
+               'TypedIdentifierList', ']', 'ReturnType', 'Scope'): {  # noqa
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates, mutates_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier='index', arg_identifiers=[identifier(5)] + identifier_list(10), templ_identifiers=[],
@@ -190,7 +192,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'type_list': lambda ast: [ast(5)],
       'annotation_list': lambda annotation_list: [annotation_list(1)],
       'mutates_list': lambda mutates: [mutates(2)]},
-    Production('TypedIdentifierList+', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', 'OptDefaultInit', ',', 'TypedIdentifierList+'): {  # noqa
+    Production('TypedIdentifierList+', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', 'OptDefaultInit', ',',
+               'TypedIdentifierList+'): {  # noqa
       'identifier_list': lambda identifier, identifier_list: [identifier(3)] + identifier_list(8),
       'type_list': lambda ast, type_list: [ast(5)] + type_list(8),
       'annotation_list': lambda annotation_list: [annotation_list(1)] + annotation_list(8),
@@ -285,7 +288,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   },
   syn_attrs={
     'ast', 'asts', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
-    'mutates_list', 'mutates', 'op', 'number', 'string'},
+    'mutates_list', 'mutates', 'op', 'number', 'string', 'path', 'paths'},
   terminal_attr_rules={
     'cmp_op': {'op': lambda value: value},
     '=': {'op': lambda value: value},
