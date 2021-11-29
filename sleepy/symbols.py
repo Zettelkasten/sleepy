@@ -384,11 +384,6 @@ class RawPointerType(Type):
   def __repr__(self) -> str:
     return 'RawPtr'
 
-  def replace_types(self, replacements: Dict[Type, Type]) -> Type:
-    if self in replacements:
-      return replacements[self]
-    return self
-
   def children(self) -> List[Type]:
     return []
 
