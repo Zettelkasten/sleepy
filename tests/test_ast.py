@@ -976,31 +976,28 @@ def test_if_inside_while2():
     assert_equal(main(0), 7)
 
 
-def test_wrong_assign_void():
+def test_assign_unit():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
     func nothing()  { }
     func main()  {
-      x = nothing()  # cannot assign void to x.
+      x = nothing()
     }
     """
-    with assert_raises(SemanticError):
-      compile_program(engine, program)
+    compile_program(engine, program)
 
 
-def test_wrong_return_void():
+def test_return_unit_expression():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
     func nothing()  { }
     func main()  {
-      return nothing()  # cannot return void.
+      return nothing()  # should work
     }
     """
-    with assert_raises(SemanticError):
-      compile_program(engine, program)
-
+    compile_program(engine, program, add_preamble=False)
 
 def test_func_operator():
   with make_execution_engine() as engine:
@@ -2610,5 +2607,22 @@ def test_no_semicolon_one_line_struct():
     # language=Sleepy
     program = """
       func main() { struct S { i: Int } }
+    """
+    compile_program(engine, program, add_preamble=False)
+
+def test_unit_in_union():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+      func U() { }
+      func main() -> Int {
+        u: Unit|Int = U()
+        while(1 == 2) {}
+        if u is Unit {
+          return 42
+        } else {
+          return u
+        }
+      }
     """
     compile_program(engine, program, add_preamble=False)

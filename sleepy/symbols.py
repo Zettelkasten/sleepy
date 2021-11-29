@@ -110,7 +110,7 @@ class Type(ABC):
 
   @constructor.setter
   def constructor(self, new_constructor: FunctionSymbol):
-    assert new_constructor is None or not new_constructor.returns_void
+    assert new_constructor is None or all(not s.return_type is SLEEPY_UNIT for s in new_constructor.signatures)
     self._constructor = new_constructor
 
   def copy(self) -> Type:
@@ -129,22 +129,22 @@ class Type(ABC):
     return 0
 
 
-class VoidType(Type):
+class UnitType(Type):
   """
   Type returned when nothing is returned.
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=ir.VoidType(), c_type=None, constructor=None)
+    super().__init__(templ_types=[], ir_type=ir.types.LiteralStructType(()), c_type=type("Unit", (ctypes.Structure,), {}), constructor=None)
 
   def __repr__(self) -> str:
-    return 'Void'
+    return 'Unit'
 
   def children(self) -> List[Type]:
     return []
 
   def __eq__(self, other) -> bool:
-    return isinstance(other, VoidType)
+    return isinstance(other, UnitType)
 
   def __hash__(self) -> int:
     return id(type(self))
@@ -152,9 +152,16 @@ class VoidType(Type):
   def has_same_symbol_as(self, other: Type) -> bool:
     return self == other
 
-  def _make_di_type(self, context: CodegenContext):
-    assert False, self
+  def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
+    return context.module.add_debug_info(
+      'DICompositeType', {
+          'name': repr(self), 'size': 0, 'tag': ir.DIToken('DW_TAG_structure_type'),
+        'file': context.current_di_file, 'elements': []
+      }
+    )
 
+  def unit_constant(self) -> ir.Constant:
+    return ir.Constant(self.ir_type, ())
 
 class DoubleType(Type):
   """
@@ -450,7 +457,6 @@ class UnionType(Type):
   def __init__(self, possible_types: List[Type], possible_type_nums: List[int], val_size: Optional[int],
                constructor: Optional[FunctionSymbol] = None):
     assert len(possible_types) == len(possible_type_nums)
-    assert SLEEPY_VOID not in possible_types
     assert len(set(possible_types)) == len(possible_types)
     self.possible_types = possible_types
     self.possible_type_nums = possible_type_nums
@@ -846,7 +852,7 @@ class StructType(Type):
   def build_constructor(self, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> FunctionSymbol:
     assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
-    constructor_symbol = FunctionSymbol(identifier=self.struct_identifier, returns_void=False)
+    constructor_symbol = FunctionSymbol(identifier=self.struct_identifier)
     placeholder_templ_types = [
       templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
     signature = ConstructorFunctionTemplate(
@@ -940,8 +946,7 @@ def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   """
   if from_type == to_type:
     return True
-  if from_type == SLEEPY_VOID or to_type == SLEEPY_VOID:
-    return False
+
   possible_from_types = set(from_type.possible_types) if isinstance(from_type, UnionType) else {from_type}
   possible_to_types = set(to_type.possible_types) if isinstance(to_type, UnionType) else {to_type}
   # handle references specially
@@ -1129,7 +1134,6 @@ class VariableSymbol(Symbol):
   def __init__(self, ir_alloca: Optional[ir.instructions.AllocaInstr], var_type: Type):
     super().__init__()
     assert ir_alloca is None or isinstance(ir_alloca, (ir.instructions.AllocaInstr, ir.Argument))
-    assert var_type != SLEEPY_VOID
     self.ir_alloca = ir_alloca
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
@@ -1270,7 +1274,7 @@ class ConcreteFunction:
     self.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
     if context.emits_debug and not extern:
       assert self.di_subprogram is None
-      di_return_type = None if self.signature.returns_void else self.return_type.make_di_type(context=context)
+      di_return_type = self.return_type.make_di_type(context=context)
       di_arg_types = [arg_type.make_di_type(context=context) for arg_type in self.arg_types]
       di_arg_types = [
         context.module.add_debug_info(
@@ -1402,10 +1406,6 @@ class FunctionTemplate(ABC):
                              concrete_return_type: Type) -> ConcreteFunction:
     raise NotImplementedError()
 
-  @property
-  def returns_void(self) -> bool:
-    return self.return_type == SLEEPY_VOID
-
   def can_call_with_expanded_arg_types(self, concrete_templ_types: List[Type], expanded_arg_types: List[Type]):
     assert all(not isinstance(arg_type, UnionType) for arg_type in expanded_arg_types)
     assert all(not templ_type.has_templ_placeholder() for templ_type in concrete_templ_types)
@@ -1491,7 +1491,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
     super().__init__(
-      placeholder_template_types=placeholder_templ_types, return_type=SLEEPY_VOID, arg_types=[struct],
+      placeholder_template_types=placeholder_templ_types, return_type=SLEEPY_UNIT, arg_types=[struct],
       arg_identifiers=['self'], arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False])
     self.struct = struct
     self.captured_symbol_table = captured_symbol_table
@@ -1538,7 +1538,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
           make_func_call_ir(
             func=self.captured_symbol_table.free_symbol, templ_types=templ_types,
             func_args=[TypedValue(typ=signature_member_type, ir_val=member_ir_val)], context=context)
-        context.builder.ret_void()
+        context.builder.ret(SLEEPY_UNIT.unit_constant())
 
 
 class FunctionSymbol(Symbol):
@@ -1550,11 +1550,10 @@ class FunctionSymbol(Symbol):
   """
   kind = Symbol.Kind.FUNCTION
 
-  def __init__(self, identifier: str, returns_void: bool):
+  def __init__(self, identifier: str):
     super().__init__()
     self.identifier = identifier
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionTemplate]] = {}
-    self.returns_void = returns_void
 
   @property
   def signatures(self) -> List[FunctionTemplate]:
@@ -1601,7 +1600,6 @@ class FunctionSymbol(Symbol):
   def add_signature(self, signature: FunctionTemplate):
     assert self.is_undefined_for_arg_types(
       placeholder_templ_types=signature.placeholder_templ_types, arg_types=signature.arg_types)
-    assert signature.returns_void == self.returns_void
     if len(signature.placeholder_templ_types) not in self.signatures_by_number_of_templ_args:
       self.signatures_by_number_of_templ_args[len(signature.placeholder_templ_types)] = []
     self.signatures_by_number_of_templ_args[len(signature.placeholder_templ_types)].append(signature)
@@ -2056,11 +2054,9 @@ def make_func_call_ir(func: FunctionSymbol,
       casted_ir_args = [arg.ir_val for arg in casted_calling_args]
       assert None not in casted_ir_args
       return_ir = caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
-    if func.returns_void:
-      return TypedValue(typ=SLEEPY_VOID, ir_val=None)
-    else:
-      assert isinstance(return_ir, ir.values.Value)
-      return TypedValue(typ=concrete_func.return_type, ir_val=return_ir)
+
+    assert isinstance(return_ir, ir.values.Value)
+    return TypedValue(typ=concrete_func.return_type, ir_val=return_ir)
 
   calling_collapsed_args = [arg.copy_collapse(context=context) for arg in func_args]
   calling_arg_types = [arg.narrowed_type for arg in calling_collapsed_args]
@@ -2070,12 +2066,12 @@ def make_func_call_ir(func: FunctionSymbol,
   return make_union_switch_ir(
     case_funcs={
       tuple(concrete_func.arg_types): partial(do_call, concrete_func) for concrete_func in possible_concrete_funcs},
-    calling_args=calling_collapsed_args, returns_void=func.returns_void, name=func.identifier, context=context)
+    calling_args=calling_collapsed_args, name=func.identifier, context=context)
 
 
 def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext], TypedValue]],
                          calling_args: List[TypedValue],
-                         returns_void: bool, name: str,
+                         name: str,
                          context: CodegenContext) -> TypedValue:
   """
   Given different functions to execute for different argument types,
@@ -2086,7 +2082,6 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
   if len(case_funcs) == 1:
     single_case = next(iter(case_funcs.values()))
     single_value = single_case(caller_context=context)  # noqa
-    assert (single_value.type is SLEEPY_VOID or not context.emits_ir) == (single_value.ir_val is None)
     return single_value
 
   import numpy as np
@@ -2164,25 +2159,18 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
   for case_func, case_context in zip(case_funcs.values(), case_contexts.values()):
     case_return_val = case_func(caller_context=case_context)  # noqa
     assert not case_context.is_terminated
-    assert (case_return_val.type is SLEEPY_VOID or not context.emits_ir) == (case_return_val.ir_val is None)
     return_vals.append(case_return_val)
   assert len(case_funcs) == len(return_vals)
 
-  # Collect the return values / close the branches
-  if returns_void:
-    for case_context in case_contexts.values():
-      case_context.builder.branch(collect_block)
-    return TypedValue(typ=SLEEPY_VOID, ir_val=None)
-  else:
-    common_return_type = get_common_type([return_val.narrowed_type for return_val in return_vals])
-    collect_return_ir_phi = context.builder.phi(
-      common_return_type.ir_type, name="collect_%s_overload_return" % name)
-    for case_return_val, case_context in zip(return_vals, case_contexts.values()):
-      case_return_val_compatible = case_return_val.copy_with_implicit_cast(
-        to_type=common_return_type, context=case_context, name="collect_cast_%s" % name)
-      collect_return_ir_phi.add_incoming(case_return_val_compatible.ir_val, case_context.block)
-      case_context.builder.branch(collect_block)
-    return TypedValue(typ=common_return_type, ir_val=collect_return_ir_phi)
+  common_return_type = get_common_type([return_val.narrowed_type for return_val in return_vals])
+  collect_return_ir_phi = context.builder.phi(
+    common_return_type.ir_type, name="collect_%s_overload_return" % name)
+  for case_return_val, case_context in zip(return_vals, case_contexts.values()):
+    case_return_val_compatible = case_return_val.copy_with_implicit_cast(
+      to_type=common_return_type, context=case_context, name="collect_cast_%s" % name)
+    collect_return_ir_phi.add_incoming(case_return_val_compatible.ir_val, case_context.block)
+    case_context.builder.branch(collect_block)
+  return TypedValue(typ=common_return_type, ir_val=collect_return_ir_phi)
 
 
 def make_di_location(pos: TreePosition, context: CodegenContext):
@@ -2261,7 +2249,7 @@ def min_max_ref_depth(typ: Type) -> (int, int):
   return 0, 0
 
 
-SLEEPY_VOID = VoidType()
+SLEEPY_UNIT = UnitType()
 SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
 
 
@@ -2447,7 +2435,7 @@ class TypedValue:
     return make_union_switch_ir(
       case_funcs={(typ,): partial(do_collapse, typ) for typ in possible_types},
       calling_args=[self],
-      returns_void=False, name='collapse_%s' % name, context=context)
+      name='collapse_%s' % name, context=context)
 
   def copy_collapse_as_mutates(self, context: CodegenContext, name: str = 'val') -> TypedValue:
     return self.copy_unbind().copy_collapse(context=context, name=name)

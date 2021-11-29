@@ -11,7 +11,7 @@ from sleepy.grammar import TreePosition, DummyPath
 from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_VOID, TypedValue, ReferenceType, \
+  PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, ReferenceType, \
   PartialIdentifiedStructType, StructIdentity, SLEEPY_NEVER
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
@@ -362,17 +362,13 @@ class ReturnStatementAst(StatementAst):
       if len(self.return_exprs) == 1:
         return_expr = self.return_exprs[0]
         return_val = return_expr.make_as_val(symbol_table=symbol_table, context=context)
-        if return_val.type == SLEEPY_VOID:
-          self.raise_error('Cannot use void return value')
+
         return_val = return_val.copy_collapse(context=context, name='return_val')
         if not can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type):
           can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type)
-          if symbol_table.current_func.return_type == SLEEPY_VOID:
-            self.raise_error(
-              'Function declared to return void, but return value is of type %r' % return_val.narrowed_type)
-          else:
-            self.raise_error('Function declared to return type %r, but return value is of type %r' % (
-              symbol_table.current_func.return_type, return_val.narrowed_type))
+
+          self.raise_error('Function declared to return type %r, but return value is of type %r' % (
+            symbol_table.current_func.return_type, return_val.narrowed_type))
 
         if context.emits_ir:
           ir_val = return_val.copy_with_implicit_cast(
@@ -385,14 +381,11 @@ class ReturnStatementAst(StatementAst):
             context.builder.ret(ir_val)
       else:
         assert len(self.return_exprs) == 0
-        if symbol_table.current_func.return_type != SLEEPY_VOID:
-          self.raise_error('Function declared to return a value of type %r, but returned void' % (
-            symbol_table.current_func.return_type))
-        if context.emits_ir:
-          if symbol_table.current_func.is_inline:
-            assert context.current_func_inline_return_ir_alloca is None
-          else:
-            context.builder.ret_void()
+        if symbol_table.current_func.return_type != SLEEPY_UNIT:
+          self.raise_error('Function declared to return a value of type %r, but implicitly returned %s' % (
+            symbol_table.current_func.return_type, SLEEPY_UNIT))
+        if context.emits_ir and not symbol_table.current_func.is_inline:
+          context.builder.ret(SLEEPY_UNIT.unit_constant())
 
       if context.emits_ir and symbol_table.current_func.is_inline:
         collect_block = context.current_func_inline_return_collect_block
@@ -507,8 +500,7 @@ class AssignStatementAst(StatementAst):
       if not self.var_val.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE:
         self.raise_error('Can only reassign variables')
       val = self.var_val.make_as_val(symbol_table=symbol_table, context=context)
-      if val.type == SLEEPY_VOID:
-        self.raise_error('Cannot assign void to variable')
+
       val = val.copy_collapse(context=context, name='store')
       if stated_type is not None and not can_implicit_cast_to(val.narrowed_type, stated_type):
         self.raise_error('Cannot assign variable with stated type %r a value of type %r' % (
@@ -1102,7 +1094,7 @@ class MemberExpressionAst(ExpressionAst):
       return make_union_switch_ir(
         case_funcs={(typ,): partial(do_member_access, typ) for typ in possible_types},
         calling_args=[collapsed_arg_val],
-        returns_void=False, name='extract_member', context=context)
+        name='extract_member', context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     self.raise_error('Cannot use member %r as function' % self.member_identifier)

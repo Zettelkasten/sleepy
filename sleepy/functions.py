@@ -5,7 +5,7 @@ from llvmlite import ir
 from sleepy.ast import StatementAst, TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree
 from sleepy.grammar import TreePosition
 from sleepy.symbols import SymbolTable, Type, CodegenContext, FunctionSymbol, ConcreteFunction, FunctionTemplate, \
-  VariableSymbol, PlaceholderTemplateType, SLEEPY_VOID, TypedValue, ReferenceType
+  VariableSymbol, PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType
 from sleepy.builtin_symbols import SLEEPY_BOOL
 
 
@@ -73,7 +73,7 @@ class FunctionDeclarationAst(StatementAst):
 
     arg_types = self.make_arg_types(func_symbol_table=func_symbol_table)
     if self.return_type is None:
-      return_type = SLEEPY_VOID
+      return_type = SLEEPY_UNIT
     else:
       return_type = self.return_type.make_type(symbol_table=func_symbol_table)
     if return_type is None:
@@ -83,7 +83,7 @@ class FunctionDeclarationAst(StatementAst):
       if not isinstance(func_symbol, FunctionSymbol):
         self.raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier)
     else:
-      func_symbol = FunctionSymbol(identifier=self.identifier, returns_void=(return_type == SLEEPY_VOID))
+      func_symbol = FunctionSymbol(identifier=self.identifier)
       symbol_table[self.identifier] = func_symbol
       func_symbol_table[self.identifier] = func_symbol
     if func_symbol in {symbol_table.inbuilt_symbols.get(name) for name in {'assert', 'unchecked_assert'}}:
@@ -96,10 +96,6 @@ class FunctionDeclarationAst(StatementAst):
           ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
           ', '.join(['%s%s' % ('mutates 'if mutates else '', typ) for mutates, typ in zip(self.arg_mutates, arg_types)]),  # noqa
           func_symbol.make_signature_list_str()))
-    if func_symbol.returns_void != (return_type == SLEEPY_VOID):
-      self.raise_error(
-        'Function declared with name %r must consistently return a value or consistently return void' %
-        self.identifier)
     if self.is_inline and self.is_extern:
       self.raise_error('Extern function %r cannot be inlined' % self.identifier)
 
@@ -155,7 +151,7 @@ class FunctionDeclarationAst(StatementAst):
         self.pos.from_pos if len(self.body_scope.stmt_list) == 0 else self.body_scope.stmt_list[-1].pos.to_pos,
         self.pos.to_pos)
       return_ast = ReturnStatementAst(return_pos, [])
-      if concrete_func.return_type != SLEEPY_VOID:
+      if concrete_func.return_type != SLEEPY_UNIT:
         return_ast.raise_error(
           'Not all branches within function declaration of %r return something' % self.identifier)
       return_ast.build_ir(symbol_table=body_symbol_table, context=body_context)
@@ -199,11 +195,10 @@ class ConcreteDeclaredFunction(ConcreteFunction):
     assert len(func_args) == len(self.arg_identifiers)
     assert caller_context.emits_ir
     assert not caller_context.is_terminated
-    if self.return_type == SLEEPY_VOID:
-      return_val_ir_alloca = None
-    else:
-      return_val_ir_alloca = caller_context.alloca_at_entry(
-        self.return_type.ir_type, name='return_%s_alloca' % self.ast.identifier)
+
+    return_val_ir_alloca = caller_context.alloca_at_entry(
+      self.return_type.ir_type, name='return_%s_alloca' % self.ast.identifier)
+
     collect_block = caller_context.builder.append_basic_block('collect_return_%s_block' % self.ast.identifier)
     inline_context = caller_context.copy_with_inline_func(
       self, return_ir_alloca=return_val_ir_alloca, return_collect_block=collect_block)
@@ -215,10 +210,8 @@ class ConcreteDeclaredFunction(ConcreteFunction):
     # use the caller_context instead of reusing the inline_context
     # because the inline_context will be terminated
     caller_context.builder = ir.IRBuilder(collect_block)
-    if self.return_type == SLEEPY_VOID:
-      return_val = None
-    else:
-      return_val = caller_context.builder.load(return_val_ir_alloca, name='return_%s' % self.ast.identifier)
+
+    return_val = caller_context.builder.load(return_val_ir_alloca, name='return_%s' % self.ast.identifier)
     assert not caller_context.is_terminated
     return return_val
 
