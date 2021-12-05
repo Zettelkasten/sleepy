@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional, Any
-from abc import ABC, abstractmethod
 
 from llvmlite import ir
 
+from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 from sleepy.errors import SemanticError
 from sleepy.grammar import TreePosition, DummyPath
-from sleepy.symbols import FunctionSymbol, VariableSymbol, Type, SymbolTable, \
+from sleepy.symbols import OverloadSet, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
   PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, ReferenceType, \
   PartialIdentifiedStructType, StructIdentity, SLEEPY_NEVER
-from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 
 
 class AbstractSyntaxTree(ABC):
@@ -62,7 +62,7 @@ class AbstractSyntaxTree(ABC):
     assert len(possible_concrete_funcs) >= 1
     return possible_concrete_funcs
 
-  def _infer_templ_args(self, func: FunctionSymbol, calling_types: List[Type]) -> List[Type]:
+  def _infer_templ_args(self, func: OverloadSet, calling_types: List[Type]) -> List[Type]:
     # TODO: We currently require that the template types must be statically determinable.
     # e.g. assume that our function takes a union argument.
     # If we have overloaded signatures each with template arguments, it can happen that you should use different
@@ -126,7 +126,7 @@ class AbstractSyntaxTree(ABC):
     assert templ_types is not None
 
     for concrete_func in possible_concrete_funcs:
-      if concrete_func in context.inline_func_call_stack:
+      if concrete_func in context.inline_func_call_stack: 
         self.raise_error(
           'An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
             ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func))
@@ -155,7 +155,7 @@ class AbstractSyntaxTree(ABC):
         symbol_table[func_arg_expr.identifier] = var_symbol.copy_narrow_type(bound_narrowed_arg_type)
 
     # special handling of 'assert' call
-    if func in {symbol_table.inbuilt_symbols.get(identifier) for identifier in {'assert', 'unchecked_assert'}}:
+    if func.identifier in {'assert', 'unchecked_assert'}:
       assert len(func_arg_exprs) >= 1
       condition_expr = func_arg_exprs[0]
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
@@ -171,7 +171,7 @@ class AbstractSyntaxTree(ABC):
     if func_identifier not in symbol_table:
       self.raise_error('Function %r called before declared' % func_identifier)
     symbol = symbol_table[func_identifier]
-    if not isinstance(symbol, FunctionSymbol):
+    if not isinstance(symbol, OverloadSet):
       self.raise_error('Cannot call non-function %r' % func_identifier)
     func_caller = FunctionSymbolCaller(func=symbol, templ_types=templ_types)
     return self.build_func_call(
@@ -769,8 +769,8 @@ class StringLiteralExpressionAst(ExpressionAst):
 
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert 'Str' in symbol_table.inbuilt_symbols is not None
-      str_symbol = symbol_table.inbuilt_symbols['Str']
+      assert 'Str' in symbol_table.inbuilt_symbols
+      str_symbol = symbol_table['Str']
       assert isinstance(str_symbol, TypeTemplateSymbol)
       str_type = str_symbol.get_type(template_arguments=[])
       assert isinstance(str_type, StructType)
@@ -843,14 +843,14 @@ class IdentifierExpressionAst(ExpressionAst):
       self.raise_error('Cannot use variable %r with narrowed type %r' % (self.identifier, symbol.narrowed_var_type))
     return symbol
 
-  def get_func_symbol(self, symbol_table: SymbolTable) -> FunctionSymbol:
+  def get_func_symbol(self, symbol_table: SymbolTable) -> OverloadSet:
     symbol = self.get_symbol(symbol_table=symbol_table)
     if isinstance(symbol, TypeTemplateSymbol):
       symbol_type = self.make_as_type(symbol_table=symbol_table)
       if symbol_type.constructor is None:
         self.raise_error('Cannot call non-existing constructor of type %r' % symbol_type)
       symbol = symbol_type.constructor
-    if not isinstance(symbol, FunctionSymbol):
+    if not isinstance(symbol, OverloadSet):
       self.raise_error('Cannot reference a non-function %r, got a %s' % (self.identifier, symbol.kind))
     return symbol
 
@@ -940,13 +940,9 @@ class CallExpressionAst(ExpressionAst):
         self.func_expr.make_symbol_kind(symbol_table=symbol_table)))
 
   def _is_special_call(self, inbuilt_func_identifier: str, symbol_table: SymbolTable):
-    if not isinstance(self.func_expr, IdentifierExpressionAst):
-      return False
-    inbuilt_func = symbol_table.inbuilt_symbols[inbuilt_func_identifier]
-    assert isinstance(inbuilt_func, FunctionSymbol)
-    if self.func_expr.make_as_func_caller(symbol_table=symbol_table).func != inbuilt_func:
-      return False
-    return True
+    return isinstance(self.func_expr, IdentifierExpressionAst) \
+           and self.func_expr.identifier == inbuilt_func_identifier \
+           and inbuilt_func_identifier in symbol_table.inbuilt_symbols
 
   def _is_size_call(self, symbol_table: SymbolTable):
     # TODO: make this a normal compile time function operating on types

@@ -2610,6 +2610,23 @@ def test_no_semicolon_one_line_struct():
     """
     compile_program(engine, program, add_preamble=False)
 
+def test_function_not_escaping_scope():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+      func f() -> Int { return 1 }
+
+      func container() {
+        func f(i: Int) -> Int { return i; }
+      }
+      
+      func main() -> Int {
+        return f(5);
+      }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program, add_preamble=False)
+
 def test_unit_in_union():
   with make_execution_engine() as engine:
     # language=Sleepy

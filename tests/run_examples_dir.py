@@ -4,7 +4,7 @@ from typing import Tuple, List, Optional
 
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.parse import make_translation_unit_ast
-from sleepy.symbols import FunctionSymbol
+from sleepy.symbols import OverloadSet
 
 
 def run_example(code_file_name: Optional[str] = None):
@@ -18,7 +18,7 @@ def run_example(code_file_name: Optional[str] = None):
     compile_ir(engine, module_ir)
     assert 'main' in symbol_table, 'Need to declare a main function'
     main_func_symbol = symbol_table['main']
-    assert isinstance(main_func_symbol, FunctionSymbol), 'main needs to be a function'
+    assert isinstance(main_func_symbol, OverloadSet), 'main needs to be a function'
     assert len(main_func_symbol.signatures) == 1, 'need to declare exactly one main function'
     concrete_main_func = main_func_symbol.get_single_concrete_func()
     py_func = concrete_main_func.make_py_func(engine)
