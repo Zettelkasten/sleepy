@@ -6,7 +6,7 @@ from itertools import takewhile
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any
 
 import llvmlite
 from llvmlite import ir
@@ -40,16 +40,16 @@ class Symbol(ABC):
 
 class Type(ABC):
   """
-  A type of a declared variable.
+  The type of a declared variable.
   """
 
   def __init__(self, *,
                templ_types: List[Type],
                ir_type: Optional[ir.types.Type],
-               c_type,
+               c_type: Optional[Any],
                constructor: Optional[OverloadSet]):
     """
-    :param ctypes._CData|None c_type: may be None if this is non-realizable (e.g. template types / void)
+    param c_type: may be None if this is non-realizable (e.g. template types / void)
     """
     self.templ_types = templ_types
     self.ir_type = ir_type
@@ -153,13 +153,14 @@ class UnitType(Type):
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     return context.module.add_debug_info(
       'DICompositeType', {
-          'name': repr(self), 'size': 0, 'tag': ir.DIToken('DW_TAG_structure_type'),
+        'name': repr(self), 'size': 0, 'tag': ir.DIToken('DW_TAG_structure_type'),
         'file': context.current_di_file, 'elements': []
       }
     )
 
   def unit_constant(self) -> ir.Constant:
     return ir.Constant(self.ir_type, ())
+
 
 class DoubleType(Type):
   """
@@ -440,11 +441,11 @@ class ReferenceType(PointerType):
     return isinstance(other, ReferenceType)
 
   @classmethod
-  def wrap(cls, type: Type, times: int) -> Type:
+  def wrap(cls, typ: Type, times: int) -> Type:
     assert times >= 0
     if times == 0:
-      return type
-    return ReferenceType(pointee_type=ReferenceType.wrap(type, times=times - 1))
+      return typ
+    return ReferenceType(pointee_type=ReferenceType.wrap(typ, times=times - 1))
 
 
 class UnionType(Type):
@@ -1088,7 +1089,7 @@ def narrow_with_collapsed_type(from_type: Type, collapsed_type: Type):
   """
   Narrows all types away which are not `collapsed_type`, `Ref[collapsed_type]`, etc.
   E.g. if self is Ref[A]|Ref[B], and collapsed_type=A, this returns Ref[A].
-  However if self if Ref[A]|A, and collapsed_type=A, then self will remain unchanged.
+  However, if self is Ref[A]|A, and collapsed_type=A, then self will remain unchanged.
   """
   return narrow_type(
     from_type=from_type, narrow_to=_uncollapse_type(from_type=from_type, collapsed_type=collapsed_type))
@@ -1099,14 +1100,10 @@ def exclude_with_collapsed_type(from_type: Type, collapsed_type: Type):
     from_type=from_type, excluded_type=_uncollapse_type(from_type=from_type, collapsed_type=collapsed_type))
 
 
-def make_ir_val_is_type(ir_val, known_type, check_type, context):
-  """
-  :param ir.values.Value ir_val:
-  :param Type known_type:
-  :param Type check_type:
-  :param CodegenContext context:
-  :rtype: ir.values.Value
-  """
+def make_ir_val_is_type(ir_val: ir.values.Value,
+                        known_type: Type,
+                        check_type: Type,
+                        context: CodegenContext) -> ir.values.Value:
   assert context.emits_ir
   if known_type == check_type:
     return ir.Constant(ir.IntType(1), True)
@@ -1216,8 +1213,8 @@ class ConcreteFunction:
     self.arg_mutates = parameter_mutates
     self.di_subprogram: Optional[ir.DIValue] = None
 
-  def get_c_arg_types(self) -> Tuple[Callable]:
-    return (self.return_type.c_type,) + tuple(arg_type.c_type for arg_type in self.arg_types)
+  def get_c_arg_types(self) -> Tuple[Any]:
+    return (cast(Any, self.return_type.c_type),) + tuple(cast(Any, arg_type.c_type) for arg_type in self.arg_types)
 
   def make_ir_function_type(self) -> ir.FunctionType:
     arg_types = [arg_type.ir_type for arg_type in self.arg_types]
@@ -1351,6 +1348,7 @@ class FunctionTemplate:
   """
   Given template arguments, this builds a concrete function implementation on demand.
   """
+
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
                arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type],
                arg_mutates: List[bool], base: FunctionTemplate = None):
@@ -1433,6 +1431,7 @@ class FunctionTemplate:
   def __repr__(self) -> str:
     return 'FunctionSignature(placeholder_templ_types=%r, return_type=%r, arg_identifiers=%r, arg_types=%r)' % (
       self.placeholder_templ_types, self.return_type, self.arg_identifiers, self.arg_types)
+
 
 class DummyFunctionTemplate(FunctionTemplate):
 
@@ -1555,6 +1554,7 @@ class FunctionSymbol(Symbol):
     if functions is None: functions = []
     self.functions = functions
 
+
 class OverloadSet(Symbol):
   """
   A set of declared overloaded function signatures with the same name.
@@ -1590,14 +1590,14 @@ class OverloadSet(Symbol):
     assert all(not arg_type.has_templ_placeholder() for arg_type in arg_types)
     all_expanded_arg_types = self.iter_expanded_possible_arg_types(arg_types)
     return all(
-      self.can_call_with_expanded_arg_types(concrete_templ_types=concrete_templ_types, expanded_arg_types=arg_types)
+      self.can_call_with_expanded_arg_types(concrete_templ_types=concrete_templ_types, expanded_arg_types=list(arg_types))
       for arg_types in all_expanded_arg_types)
 
   def is_undefined_for_arg_types(self, placeholder_templ_types: List[PlaceholderTemplateType], arg_types: List[Type]):
     signatures = self.signatures_by_number_of_templ_args.get(len(placeholder_templ_types), [])
     return all(
       signature.is_undefined_for_expanded_arg_types(
-        placeholder_templ_types=placeholder_templ_types, expanded_arg_types=expanded_arg_types)
+        placeholder_templ_types=placeholder_templ_types, expanded_arg_types=list(expanded_arg_types))
       for signature in signatures for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types))
 
   def get_concrete_funcs(self, templ_types: List[Type], arg_types: List[Type]) -> List[ConcreteFunction]:
@@ -1626,11 +1626,7 @@ class OverloadSet(Symbol):
     return signature.get_concrete_func(concrete_templ_types=[])
 
   @classmethod
-  def iter_expanded_possible_arg_types(cls, arg_types):
-    """
-    :param list[Type]|tuple[Type] arg_types:
-    :rtype: Iterator[Tuple[Type]]
-    """
+  def iter_expanded_possible_arg_types(cls, arg_types: Iterable[Type]) -> Iterable[Iterable[Type]]:
     import itertools
     return itertools.product(*[
       arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type] for arg_type in arg_types])
@@ -1752,8 +1748,10 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
 
   def __getitem__(self, key):
     value = super(SymbolTable, self).__getitem__(key)
-    if isinstance(value, FunctionSymbol): return self.get_overloads(key)
-    else: return value
+    if isinstance(value, FunctionSymbol):
+      return self.get_overloads(key)
+    else:
+      return value
 
   def apply_type_narrowings_from(self, *other_symbol_tables: SymbolTable):
     """
@@ -1792,7 +1790,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     assert not self.has_extern_func(func_identifier)
     self.known_extern_funcs[func_identifier] = concrete_func
 
-  def get_overloads(self, key: str, include_shadowed = False) -> Optional[OverloadSet]:
+  def get_overloads(self, key: str, include_shadowed=False) -> Optional[OverloadSet]:
     symbols = self._get_all(key)
 
     if include_shadowed:
@@ -1802,11 +1800,11 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
 
     functions = cast(List[FunctionSymbol], functions)
 
-    functions = [func_templ for sym in functions for func_templ in sym.functions] # flat map
+    functions = [func_templ for sym in functions for func_templ in sym.functions]  # flat map
 
     return OverloadSet(key, functions)
 
-  def add_overload(self, identifier: str, overload: Union[FunctionTemplate|List[FunctionTemplate]]) -> bool:
+  def add_overload(self, identifier: str, overload: Union[FunctionTemplate | List[FunctionTemplate]]) -> bool:
     if not isinstance(overload, List): overload = [overload]
 
     symbol = self.underlying_dict.setdefault(identifier, FunctionSymbol())
@@ -1818,7 +1816,6 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   def free_overloads(self) -> OverloadSet:
     assert 'free' in self
     return self.get_overloads('free')
-
 
 
 class DebugValueIrPatcher:
@@ -2020,7 +2017,8 @@ class CodegenContext:
         + [str(arg_type) for arg_type in concrete_function.concrete_templ_types + concrete_function.arg_types])
       return self.module.get_unique_name(ir_func_name)
 
-  def _make_struct_type_name(self, identity: StructIdentity, templ_types: List[Type] | Tuple[Type]) -> str:
+  @staticmethod
+  def _make_struct_type_name(identity: StructIdentity, templ_types: List[Type] | Tuple[Type]) -> str:
     return '_'.join([str(identity)] + [str(templ_type) for templ_type in templ_types])
 
   def make_struct_ir_type(self, identity: StructIdentity, templ_types: List[Type]) -> llvmlite.ir.IdentifiedStructType:
@@ -2456,16 +2454,16 @@ class TypedValue:
         return self.copy_set_narrowed_type(concrete_type)
       assert isinstance(concrete_type, ReferenceType)  # still need to collapse, must be a reference.
       # collapse once.
-      new = self.copy_set_narrowed_type(concrete_type)
-      new = new.copy_with_implicit_cast(to_type=concrete_type, context=context, name=name)
-      new.type = concrete_type.pointee_type
-      new.narrowed_type = concrete_type.pointee_type
+      new_value = self.copy_set_narrowed_type(concrete_type)
+      new_value = new_value.copy_with_implicit_cast(to_type=concrete_type, context=context, name=name)
+      new_value.type = concrete_type.pointee_type
+      new_value.narrowed_type = concrete_type.pointee_type
       if context is not None and context.emits_ir:
-        assert new.ir_val is not None
-        new.ir_val = context.builder.load(new.ir_val, name="%s_unbind" % name)
+        assert new_value.ir_val is not None
+        new_value.ir_val = context.builder.load(new_value.ir_val, name="%s_unbind" % name)
       else:
-        new.ir_val = None
-      return new.copy_collapse(context=caller_context, name=name)
+        new_value.ir_val = None
+      return new_value.copy_collapse(context=caller_context, name=name)
 
     possible_types = (
       self.narrowed_type.possible_types if isinstance(self.narrowed_type, UnionType) else {self.narrowed_type})

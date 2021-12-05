@@ -2,7 +2,8 @@ from typing import List, Optional, cast
 
 from llvmlite import ir
 
-from sleepy.ast import StatementAst, TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree
+from sleepy.ast import StatementAst, TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree, \
+  raise_error
 from sleepy.grammar import TreePosition
 from sleepy.symbols import SymbolTable, Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
   VariableSymbol, PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType
@@ -53,16 +54,17 @@ class FunctionDeclarationAst(StatementAst):
   def make_arg_types(self, func_symbol_table: SymbolTable) -> List[Type]:
     arg_types = [arg_type.make_type(symbol_table=func_symbol_table) for arg_type in self.arg_types]
     if any(arg_type is None for arg_type in arg_types):
-      self.raise_error('Need to specify all parameter types of function %r' % self.identifier)
+      raise_error('Need to specify all parameter types of function %r' % self.identifier, self.pos)
     all_annotation_list = (
       self.arg_annotations + ([self.return_annotation_list] if self.return_annotation_list is not None else []))
     for arg_annotation_list in all_annotation_list:
       for arg_annotation_num, arg_annotation in enumerate(arg_annotation_list):
         if arg_annotation.identifier in arg_annotation_list[:arg_annotation_num]:
-          arg_annotation.raise_error('Cannot apply annotation with identifier %r twice' % arg_annotation.identifier)
+          raise_error('Cannot apply annotation with identifier %r twice' % arg_annotation.identifier,
+                                     arg_annotation.pos)
         if arg_annotation.identifier not in self.allowed_arg_annotation_identifiers:
-          arg_annotation.raise_error('Cannot apply annotation with identifier %r, allowed: %r' % (
-            arg_annotation.identifier, ', '.join(self.allowed_arg_annotation_identifiers)))
+          raise_error('Cannot apply annotation with identifier %r, allowed: %r' % (
+            arg_annotation.identifier, ', '.join(self.allowed_arg_annotation_identifiers)), arg_annotation.pos)
     return arg_types
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
@@ -78,29 +80,31 @@ class FunctionDeclarationAst(StatementAst):
       return_type = self.return_type.make_type(symbol_table=func_symbol_table)
 
     if return_type is None:
-      self.raise_error('Need to specify return type of function %r' % self.identifier)
+      raise_error('Need to specify return type of function %r' % self.identifier, self.pos)
 
     if self.identifier in symbol_table:
       func_symbol = symbol_table[self.identifier]
       if not isinstance(func_symbol, OverloadSet):
-        self.raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier)
+        raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier,
+                         self.pos)
       if not func_symbol.is_undefined_for_arg_types(placeholder_templ_types=placeholder_templ_types,
                                                     arg_types=arg_types):
-        self.raise_error(
+        raise_error(
           'Cannot override definition of function %r with signature [%s](%s), already declared:\n%s' % (  # noqa
             self.identifier,
             ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
             ', '.join(
               ['%s%s' % ('mutates ' if mutates else '', typ) for mutates, typ in zip(self.arg_mutates, arg_types)]),
             # noqa
-            func_symbol.make_signature_list_str()))
+            func_symbol.make_signature_list_str()), self.pos)
 
     if self.identifier in {'assert', 'unchecked_assert'}:
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
-        self.raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier)
+        raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier,
+                         self.pos)
 
     if self.is_inline and self.is_extern:
-      self.raise_error('Extern function %r cannot be inlined' % self.identifier)
+      raise_error('Extern function %r cannot be inlined' % self.identifier, self.pos)
 
     signature = DeclaredFunctionTemplate(
       placeholder_template_types=placeholder_templ_types,
@@ -155,8 +159,8 @@ class FunctionDeclarationAst(StatementAst):
         self.pos.to_pos)
       return_ast = ReturnStatementAst(return_pos, [])
       if concrete_func.return_type != SLEEPY_UNIT:
-        return_ast.raise_error(
-          'Not all branches within function declaration of %r return something' % self.identifier)
+        raise_error('Not all branches within function declaration of %r return something' % self.identifier,
+                               return_ast.pos)
       return_ast.build_ir(symbol_table=body_symbol_table, context=body_context)
     assert body_context.is_terminated
 
@@ -224,9 +228,9 @@ class ConcreteDeclaredFunction(ConcreteFunction):
         if self.captured_symbol_table.has_extern_func(self.ast.identifier):
           extern_concrete_func = self.captured_symbol_table.get_extern_func(self.ast.identifier)
           if not extern_concrete_func.has_same_signature_as(self):
-            self.ast.raise_error('Cannot redefine extern func %r previously declared as %s with new signature %s' % (
+            raise_error('Cannot redefine extern func %r previously declared as %s with new signature %s' % (
               self.ast.identifier, extern_concrete_func.signature.to_signature_str(),
-              self.signature.to_signature_str()))
+              self.signature.to_signature_str()), self.ast.pos)
           # Sometimes the ir_func has not been set for a previously declared extern func,
           # e.g. because it was declared in an inlined func.
           should_declare_func = extern_concrete_func.ir_func is None

@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import networkx as nx
 
-from sleepy.ast import FileAst
+from sleepy.ast import FileAst, raise_error
 from sleepy.grammar import DummyPath
 from sleepy.parse import make_file_ast
 
@@ -25,7 +25,7 @@ def _process_file(path: Path | DummyPath, dag: nx.DiGraph) -> List[Path]:
         child_path = check_path
         break
     if child_path is None:
-      current_ast.imports_ast.raise_error('Cannot resolve import %r.\nSearched in %r' % (child, search_paths))
+      raise_error('Cannot resolve import %r.\nSearched in %r' % (child, search_paths), current_ast.imports_ast.pos)
 
     if child_path not in dag.nodes:
       dag.add_node(child_path, file_ast=make_file_ast(child_path))

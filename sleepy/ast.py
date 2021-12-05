@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Any
+from typing import List, Optional, Any, cast
 
 from llvmlite import ir
 
@@ -15,6 +15,10 @@ from sleepy.symbols import OverloadSet, VariableSymbol, Type, SymbolTable, \
   PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, ReferenceType, \
   PartialIdentifiedStructType, StructIdentity, SLEEPY_NEVER
 
+
+def raise_error(message: str, pos: TreePosition):
+  raise SemanticError(
+    program_path=pos.file_path, word=pos.word, from_pos=pos.from_pos, to_pos=pos.to_pos, message=message)
 
 class AbstractSyntaxTree(ABC):
   """
@@ -32,11 +36,7 @@ class AbstractSyntaxTree(ABC):
 
   def __repr__(self) -> str:
     return 'AbstractSyntaxTree'
-
-  def raise_error(self, message: str):
-    raise SemanticError(
-      program_path=self.pos.file_path, word=self.pos.word, from_pos=self.pos.from_pos, to_pos=self.pos.to_pos,
-      message=message)
+  
 
   def _resolve_possible_concrete_funcs(self,
                                        func_caller: FunctionSymbolCaller,
@@ -48,15 +48,14 @@ class AbstractSyntaxTree(ABC):
     assert all(not templ_type.has_templ_placeholder() for templ_type in templ_types)
 
     if not func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_types):
-      self.raise_error(
-        'Cannot call function %r with arguments of types %r and template parameters %r, '
-        'only declared for parameter types:\n%s' % (
-          func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-          ', '.join([str(templ_type) for templ_type in templ_types]),
-          func.make_signature_list_str()))
+      raise_error('Cannot call function %r with arguments of types %r and template parameters %r, '
+                       'only declared for parameter types:\n%s' % (
+                         func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+                         ', '.join([str(templ_type) for templ_type in templ_types]),
+                         func.make_signature_list_str()), self.pos)
     if not all(called_type.is_realizable() for called_type in calling_types):
-      self.raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
-        func.identifier, ', '.join([str(called_type) for called_type in calling_types])))
+      raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
+        func.identifier, ', '.join([str(called_type) for called_type in calling_types])), self.pos)
 
     possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_types)
     assert len(possible_concrete_funcs) >= 1
@@ -74,32 +73,29 @@ class AbstractSyntaxTree(ABC):
     for expanded_calling_types in func.iter_expanded_possible_arg_types(calling_types):
       infers = [
         try_infer_templ_types(
-          calling_types=expanded_calling_types, signature_types=signature.arg_types,
+          calling_types=list(expanded_calling_types), signature_types=signature.arg_types,
           placeholder_templ_types=signature.placeholder_templ_types)
         for signature in func.signatures]
       possible_infers = [idx for idx, infer in enumerate(infers) if infer is not None]
       if len(possible_infers) == 0:
-        self.raise_error(
-          'Cannot infer template types for function %r from arguments of types %r, '
-          'is declared for parameter types:\n%s\n\nSpecify the template types explicitly.' % (
-            func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-            func.make_signature_list_str()))
+        raise_error('Cannot infer template types for function %r from arguments of types %r, '
+                         'is declared for parameter types:\n%s\n\nSpecify the template types explicitly.' % (
+                           func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+                           func.make_signature_list_str()), self.pos)
       if len(possible_infers) > 1:
-        self.raise_error(
-          'Cannot uniquely infer template types for function %r from arguments of types %r, '
-          'is declared for parameter types:\n%s' % (
-            func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-            func.make_signature_list_str()))
+        raise_error('Cannot uniquely infer template types for function %r from arguments of types %r, '
+                         'is declared for parameter types:\n%s' % (
+                           func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+                           func.make_signature_list_str()), self.pos)
       assert len(possible_infers) == 1
       expanded_signature_templ_types = infers[possible_infers[0]]
       assert expanded_signature_templ_types is not None
       if signature_templ_types is not None and signature_templ_types != expanded_signature_templ_types:
-        self.raise_error(
-          'Cannot uniquely statically infer template types for function %r from arguments of types %r '
-          'because different expanded union types would require different template types. '
-          'Function is declared for parameter types:\n%s' % (
-            func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-            func.make_signature_list_str()))
+        raise_error('Cannot uniquely statically infer template types for function %r from arguments of types %r '
+                         'because different expanded union types would require different template types. '
+                         'Function is declared for parameter types:\n%s' % (
+                           func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+                           func.make_signature_list_str()), self.pos)
       signature_templ_types = expanded_signature_templ_types
     assert signature_templ_types is not None
     return signature_templ_types
@@ -117,7 +113,8 @@ class AbstractSyntaxTree(ABC):
     calling_types = [arg.narrowed_type for arg in collapsed_func_args]
     for calling_type, func_arg_expr in zip(calling_types, func_arg_exprs):
       if not calling_type.is_realizable():
-        func_arg_expr.raise_error("Cannot call function %r with argument of unrealizable type" % func.identifier)
+        raise_error("Cannot call function %r with argument of unrealizable type" % func.identifier,
+                                  func_arg_expr.pos)
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
       func_caller=func_caller, calling_types=calling_types)
 
@@ -126,14 +123,13 @@ class AbstractSyntaxTree(ABC):
     assert templ_types is not None
 
     for concrete_func in possible_concrete_funcs:
-      if concrete_func in context.inline_func_call_stack: 
-        self.raise_error(
-          'An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
-            ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func))
+      if concrete_func in context.inline_func_call_stack:
+        raise_error('An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
+          ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func), self.pos)
       for arg_identifier, arg_mutates, arg in zip(concrete_func.arg_identifiers, concrete_func.arg_mutates, func_args):
         if arg_mutates and not arg.is_referenceable():
-          self.raise_error('Cannot call function %s%s mutating parameter %r with non-referencable argument' % (
-            func.identifier, concrete_func.signature.to_signature_str(), arg_identifier))
+          raise_error('Cannot call function %s%s mutating parameter %r with non-referencable argument' % (
+            func.identifier, concrete_func.signature.to_signature_str(), arg_identifier), self.pos)
 
     if context.emits_ir:
       from sleepy.symbols import make_func_call_ir
@@ -169,10 +165,10 @@ class AbstractSyntaxTree(ABC):
                                     symbol_table: SymbolTable,
                                     context: CodegenContext) -> TypedValue:
     if func_identifier not in symbol_table:
-      self.raise_error('Function %r called before declared' % func_identifier)
+      raise_error('Function %r called before declared' % func_identifier, self.pos)
     symbol = symbol_table[func_identifier]
     if not isinstance(symbol, OverloadSet):
-      self.raise_error('Cannot call non-function %r' % func_identifier)
+      raise_error('Cannot call non-function %r' % func_identifier, self.pos)
     func_caller = FunctionSymbolCaller(func=symbol, templ_types=templ_types)
     return self.build_func_call(
       func_caller=func_caller, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table, context=context)
@@ -186,7 +182,7 @@ class AbstractSyntaxTree(ABC):
     templ_types = []
     for templ_type_identifier in templ_identifiers:
       if templ_type_identifier in symbol_table.current_scope_identifiers:
-        self.raise_error('Cannot declare template variable %r multiple times' % templ_type_identifier)
+        raise_error('Cannot declare template variable %r multiple times' % templ_type_identifier, self.pos)
       template_type = PlaceholderTemplateType(templ_type_identifier)
       templ_types.append(template_type)
       template_type_symbol = TypeTemplateSymbol(template_parameters=[], signature_type=template_type)
@@ -234,7 +230,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
     with scope_context.use_pos(self.pos):
       for stmt in self.stmt_list:
         if scope_context.is_terminated:
-          stmt.raise_error('Code is unreachable')
+          raise_error('Code is unreachable', stmt.pos)
         stmt.build_ir(symbol_table=scope_symbol_table, context=scope_context)
 
   def __repr__(self) -> str:
@@ -259,7 +255,7 @@ class FileAst(AbstractSyntaxTree):
         statement.build_ir(symbol_table=symbol_table, context=context)
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return [self.imports_ast] + self.stmt_list
+    return [cast(AbstractSyntaxTree, self.imports_ast)] + self.stmt_list
 
   def __repr__(self) -> str:
     return 'TopLevelAst(%s)' % self.stmt_list
@@ -350,14 +346,14 @@ class ReturnStatementAst(StatementAst):
     super().__init__(pos)
     self.return_exprs = return_exprs
     if len(return_exprs) > 1:
-      self.raise_error('Returning multiple values not support yet')
+      raise_error('Returning multiple values not support yet', self.pos)
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
       if symbol_table.current_func is None:
-        self.raise_error('Can only use return inside a function declaration')
+        raise_error('Can only use return inside a function declaration', self.pos)
       if context.is_terminated:
-        self.raise_error('Cannot return from function after having returned already')
+        raise_error('Cannot return from function after having returned already', self.pos)
 
       if len(self.return_exprs) == 1:
         return_expr = self.return_exprs[0]
@@ -367,8 +363,8 @@ class ReturnStatementAst(StatementAst):
         if not can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type):
           can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type)
 
-          self.raise_error('Function declared to return type %r, but return value is of type %r' % (
-            symbol_table.current_func.return_type, return_val.narrowed_type))
+          raise_error('Function declared to return type %r, but return value is of type %r' % (
+            symbol_table.current_func.return_type, return_val.narrowed_type), self.pos)
 
         if context.emits_ir:
           ir_val = return_val.copy_with_implicit_cast(
@@ -382,8 +378,8 @@ class ReturnStatementAst(StatementAst):
       else:
         assert len(self.return_exprs) == 0
         if symbol_table.current_func.return_type != SLEEPY_UNIT:
-          self.raise_error('Function declared to return a value of type %r, but implicitly returned %s' % (
-            symbol_table.current_func.return_type, SLEEPY_UNIT))
+          raise_error('Function declared to return a value of type %r, but implicitly returned %s' % (
+            symbol_table.current_func.return_type, SLEEPY_UNIT), self.pos)
         if context.emits_ir and not symbol_table.current_func.is_inline:
           context.builder.ret(SLEEPY_UNIT.unit_constant())
 
@@ -416,7 +412,7 @@ class StructDeclarationAst(StatementAst):
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
       if self.struct_identifier in symbol_table.current_scope_identifiers:
-        self.raise_error('Cannot redefine struct with name %r' % self.struct_identifier)
+        raise_error('Cannot redefine struct with name %r' % self.struct_identifier, self.pos)
 
       struct_symbol_table = symbol_table.make_child_scope(
         inherit_outer_variables=False)  # symbol table including placeholder types
@@ -487,7 +483,7 @@ class AssignStatementAst(StatementAst):
     assert var_identifier in symbol_table
     symbol = symbol_table[var_identifier]
     if not isinstance(symbol, VariableSymbol):
-      self.raise_error('Cannot assign non-variable %r to a variable' % var_identifier)
+      raise_error('Cannot assign non-variable %r to a variable' % var_identifier, self.pos)
     return False
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
@@ -498,13 +494,13 @@ class AssignStatementAst(StatementAst):
       else:
         stated_type: Optional[Type] = None
       if not self.var_val.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE:
-        self.raise_error('Can only reassign variables')
+        raise_error('Can only reassign variables', self.pos)
       val = self.var_val.make_as_val(symbol_table=symbol_table, context=context)
 
       val = val.copy_collapse(context=context, name='store')
       if stated_type is not None and not can_implicit_cast_to(val.narrowed_type, stated_type):
-        self.raise_error('Cannot assign variable with stated type %r a value of type %r' % (
-          stated_type, val.narrowed_type))
+        raise_error('Cannot assign variable with stated type %r a value of type %r' % (
+          stated_type, val.narrowed_type), self.pos)
 
       if self.is_declaration(symbol_table=symbol_table):
         var_identifier = self.get_var_identifier()  # y
@@ -519,20 +515,21 @@ class AssignStatementAst(StatementAst):
       # check that declared type matches assigned type
       uncollapsed_target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)  # Ref[A|B]
       if not uncollapsed_target_val.is_referenceable():
-        self.raise_error('Cannot reassign non-referencable type %s' % uncollapsed_target_val.type)
+        raise_error('Cannot reassign non-referencable type %s' % uncollapsed_target_val.type, self.pos)
       # narrow the target type to the assigned type s.t. we can unbind properly
       # even if some unions variants are not unbindable
       uncollapsed_target_val = uncollapsed_target_val.copy_set_narrowed_collapsed_type(
         ReferenceType(val.narrowed_type))  # Ref[A]
       if uncollapsed_target_val.narrowed_type == SLEEPY_NEVER:
-        self.raise_error('Cannot assign variable of type %r a value of type %r' % (
-          uncollapsed_target_val.type, val.narrowed_type))
+        raise_error('Cannot assign variable of type %r a value of type %r' % (
+          uncollapsed_target_val.type, val.narrowed_type), self.pos)
       target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')  # Ref[A]
       assert isinstance(target_val.type, ReferenceType)
       declared_type = target_val.type.pointee_type  # A
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
-        self.raise_error('Cannot %s variable collapsing to type %r with new type %r' % (
-          'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type))
+        raise_error('Cannot %s variable collapsing to type %r with new type %r' % (
+          'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type),
+                         self.pos)
       assert can_implicit_cast_to(val.narrowed_type, declared_type)
 
       # if we assign to a variable, narrow type to val_type
@@ -585,7 +582,7 @@ class IfStatementAst(StatementAst):
       cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
       cond_val = cond_val.copy_collapse(context=context, name='if_cond')
       if not cond_val.narrowed_type == SLEEPY_BOOL:
-        self.raise_error('Cannot use expression of type %r as if-condition' % cond_val.type)
+        raise_error('Cannot use expression of type %r as if-condition' % cond_val.type, self.pos)
 
       true_symbol_table, false_symbol_table = symbol_table.make_child_scope(
         inherit_outer_variables=True), symbol_table.make_child_scope(inherit_outer_variables=True)
@@ -657,7 +654,7 @@ class WhileStatementAst(StatementAst):
       cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
       cond_val = cond_val.copy_collapse(context=context, name='while_cond')
       if not cond_val.narrowed_type == SLEEPY_BOOL:
-        self.raise_error('Cannot use expression of type %r as while-condition' % cond_val.type)
+        raise_error('Cannot use expression of type %r as while-condition' % cond_val.type, self.pos)
 
       body_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=True)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=body_symbol_table)
@@ -740,10 +737,10 @@ class ConstantExpressionAst(ExpressionAst):
       return TypedValue(typ=self.constant_type, ir_val=ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use constant expression as function')
+    raise_error('Cannot use constant expression as function', self.pos)
 
   def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use constant expression as type')
+    raise_error('Cannot use constant expression as type', self.pos)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
@@ -799,10 +796,10 @@ class StringLiteralExpressionAst(ExpressionAst):
       return TypedValue(typ=str_type, ir_val=completed_string_value)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use string literal as function')
+    raise_error('Cannot use string literal as function', self.pos)
 
   def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use string literal as type')
+    raise_error('Cannot use string literal as type', self.pos)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
@@ -828,19 +825,20 @@ class IdentifierExpressionAst(ExpressionAst):
 
   def get_symbol(self, symbol_table: SymbolTable) -> Symbol:
     if self.identifier not in symbol_table:
-      self.raise_error('Identifier %r referenced before declaring' % self.identifier)
+      raise_error('Identifier %r referenced before declaring' % self.identifier, self.pos)
     symbol = symbol_table[self.identifier]
     return symbol
 
   def get_var_symbol(self, symbol_table: SymbolTable) -> VariableSymbol:
     symbol = self.get_symbol(symbol_table=symbol_table)
     if not isinstance(symbol, VariableSymbol):
-      self.raise_error('Cannot use %r as a variable, got a %s' % (self.identifier, symbol.kind))
+      raise_error('Cannot use %r as a variable, got a %s' % (self.identifier, symbol.kind), self.pos)
     if self.identifier not in symbol_table.current_scope_identifiers:
       # TODO add variable captures
-      self.raise_error('Cannot capture variable %r from outer scope' % self.identifier)
+      raise_error('Cannot capture variable %r from outer scope' % self.identifier, self.pos)
     if symbol.narrowed_var_type == SLEEPY_NEVER:
-      self.raise_error('Cannot use variable %r with narrowed type %r' % (self.identifier, symbol.narrowed_var_type))
+      raise_error('Cannot use variable %r with narrowed type %r' % (self.identifier, symbol.narrowed_var_type),
+                       self.pos)
     return symbol
 
   def get_func_symbol(self, symbol_table: SymbolTable) -> OverloadSet:
@@ -848,10 +846,10 @@ class IdentifierExpressionAst(ExpressionAst):
     if isinstance(symbol, TypeTemplateSymbol):
       symbol_type = self.make_as_type(symbol_table=symbol_table)
       if symbol_type.constructor is None:
-        self.raise_error('Cannot call non-existing constructor of type %r' % symbol_type)
+        raise_error('Cannot call non-existing constructor of type %r' % symbol_type, self.pos)
       symbol = symbol_type.constructor
     if not isinstance(symbol, OverloadSet):
-      self.raise_error('Cannot reference a non-function %r, got a %s' % (self.identifier, symbol.kind))
+      raise_error('Cannot reference a non-function %r, got a %s' % (self.identifier, symbol.kind), self.pos)
     return symbol
 
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
@@ -868,7 +866,7 @@ class IdentifierExpressionAst(ExpressionAst):
   def make_as_type(self, symbol_table: SymbolTable) -> Type:
     type_symbol = self.get_symbol(symbol_table=symbol_table)
     if not isinstance(type_symbol, TypeTemplateSymbol):
-      self.raise_error('%r is not a type, but a %r' % (self.identifier, type_symbol.kind))
+      raise_error('%r is not a type, but a %r' % (self.identifier, type_symbol.kind), self.pos)
     return type_symbol.signature_type
 
   def children(self) -> List[AbstractSyntaxTree]:
@@ -912,7 +910,7 @@ class CallExpressionAst(ExpressionAst):
       assert func_kind == Symbol.Kind.FUNCTION  # func is get/set
       func_caller_kind = self.func_arg_exprs[0].make_symbol_kind(symbol_table=symbol_table)
       if func_caller_kind not in {Symbol.Kind.FUNCTION, Symbol.Kind.TYPE}:
-        self.raise_error('Cannot specify template parameters for symbol of kind %r' % func_kind)
+        raise_error('Cannot specify template parameters for symbol of kind %r' % func_kind, self.pos)
       return func_caller_kind
     if func_kind == Symbol.Kind.FUNCTION:
       if self._is_type_union_call(symbol_table=symbol_table):
@@ -921,9 +919,9 @@ class CallExpressionAst(ExpressionAst):
     if func_kind == Symbol.Kind.TYPE:
       called_type = self.func_expr.make_as_type(symbol_table=symbol_table)
       if called_type.constructor is None:
-        self.raise_error('Cannot call constructor of type %r because it does not exist' % called_type)
+        raise_error('Cannot call constructor of type %r because it does not exist' % called_type, self.pos)
       return Symbol.Kind.VARIABLE
-    self.raise_error('Cannot call non-function symbol, is a %r' % func_kind)
+    raise_error('Cannot call non-function symbol, is a %r' % func_kind, self.pos)
 
   def _make_func_expr_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     assert self.make_symbol_kind(symbol_table=symbol_table) == Symbol.Kind.VARIABLE
@@ -933,11 +931,11 @@ class CallExpressionAst(ExpressionAst):
     elif func_kind == Symbol.Kind.TYPE:
       called_type = self.func_expr.make_as_type(symbol_table=symbol_table)
       if called_type.constructor is None:
-        self.raise_error('Cannot call constructor of type %r because it does not exist' % called_type)
+        raise_error('Cannot call constructor of type %r because it does not exist' % called_type, self.pos)
       return called_type.constructor_caller
     else:
-      self.raise_error('Cannot call an expression of kind %r' % (
-        self.func_expr.make_symbol_kind(symbol_table=symbol_table)))
+      raise_error('Cannot call an expression of kind %r' % (
+        self.func_expr.make_symbol_kind(symbol_table=symbol_table)), self.pos)
 
   def _is_special_call(self, inbuilt_func_identifier: str, symbol_table: SymbolTable):
     return isinstance(self.func_expr, IdentifierExpressionAst) \
@@ -961,19 +959,19 @@ class CallExpressionAst(ExpressionAst):
     with context.use_pos(self.pos):
       if self._is_size_call(symbol_table=symbol_table):
         if len(self.func_arg_exprs) != 1:
-          self.raise_error('Must call size(type: Type) with exactly one argument')
+          raise_error('Must call size(type: Type) with exactly one argument', self.pos)
         size_of_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
         from sleepy.symbols import LLVM_SIZE_TYPE
         ir_val = ir.Constant(LLVM_SIZE_TYPE, size_of_type.size) if context.emits_ir else None
         return TypedValue(typ=SLEEPY_LONG, ir_val=ir_val)
       if self._is_is_call(symbol_table=symbol_table):
         if len(self.func_arg_exprs) != 2:
-          self.raise_error('Operator "is" must be used between exactly two arguments')
+          raise_error('Operator "is" must be used between exactly two arguments', self.pos)
         val_arg, type_arg = self.func_arg_exprs
         if val_arg.make_symbol_kind(symbol_table=symbol_table) != Symbol.Kind.VARIABLE:
-          self.raise_error('Left-side argument of operator "is" must be a value')
+          raise_error('Left-side argument of operator "is" must be a value', self.pos)
         if type_arg.make_symbol_kind(symbol_table=symbol_table) != Symbol.Kind.TYPE:
-          self.raise_error('Right-side argument of operator "is" must be a type')
+          raise_error('Right-side argument of operator "is" must be a type', self.pos)
         check_type = type_arg.make_as_type(symbol_table=symbol_table)
         check_value = val_arg.make_as_val(symbol_table=symbol_table, context=context)
         check_value = check_value.copy_collapse(context=context, name='check_val')
@@ -996,7 +994,7 @@ class CallExpressionAst(ExpressionAst):
     else:
       func_caller = self.func_arg_exprs[0].make_as_func_caller(symbol_table=symbol_table)
       if func_caller.templ_types is not None:
-        self.raise_error('Cannot specify template types multiple times')
+        raise_error('Cannot specify template types multiple times', self.pos)
       return func_caller.copy_with_templ_types(concrete_templ_types)
 
   def make_as_type(self, symbol_table: SymbolTable) -> Type:
@@ -1009,12 +1007,12 @@ class CallExpressionAst(ExpressionAst):
     signature_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
     if len(concrete_templ_types) != len(signature_type.templ_types):
       if len(concrete_templ_types) == 0:
-        self.raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
-          signature_type, signature_type.templ_types))
+        raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
+          signature_type, signature_type.templ_types), self.pos)
       else:
-        self.raise_error(
+        raise_error(
           'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
-            signature_type, signature_type.templ_types, concrete_templ_types))
+            signature_type, signature_type.templ_types, concrete_templ_types), self.pos)
     replacements = dict(zip(signature_type.templ_types, concrete_templ_types))
     return signature_type.replace_types(replacements=replacements)
 
@@ -1049,11 +1047,12 @@ class MemberExpressionAst(ExpressionAst):
         nonlocal arg_val
         assert not isinstance(struct_type, UnionType)
         if not isinstance(struct_type, StructType):
-          self.raise_error(
-            'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type))
+          raise_error(
+            'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type),
+            self.pos)
         if self.member_identifier not in struct_type.member_identifiers:
-          self.raise_error('Struct type %r has no member variable %r, only available: %r' % (
-            struct_type, self.member_identifier, ', '.join(struct_type.member_identifiers)))
+          raise_error('Struct type %r has no member variable %r, only available: %r' % (
+            struct_type, self.member_identifier, ', '.join(struct_type.member_identifiers)), self.pos)
         member_num = struct_type.get_member_num(self.member_identifier)
         member_type = struct_type.member_types[member_num]
 
@@ -1093,10 +1092,10 @@ class MemberExpressionAst(ExpressionAst):
         name='extract_member', context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use member %r as function' % self.member_identifier)
+    raise_error('Cannot use member %r as function' % self.member_identifier, self.pos)
 
   def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use member %r as type' % self.member_identifier)
+    raise_error('Cannot use member %r as type' % self.member_identifier, self.pos)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.parent_val_expr]
@@ -1123,10 +1122,10 @@ class UnbindExpressionAst(ExpressionAst):
       return arg_val.copy_unbind()
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use unbind expression as function')
+    raise_error('Cannot use unbind expression as function', self.pos)
 
   def make_as_type(self, symbol_table: SymbolTable):
-    self.raise_error('Cannot use unbind expression as type')
+    raise_error('Cannot use unbind expression as type', self.pos)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.arg_expr]
@@ -1168,20 +1167,20 @@ class IdentifierTypeAst(TypeAst):
 
   def make_type(self, symbol_table: SymbolTable) -> Type:
     if self.type_identifier not in symbol_table:
-      self.raise_error('Unknown type identifier %r' % self.type_identifier)
+      raise_error('Unknown type identifier %r' % self.type_identifier, self.pos)
     type_symbol = symbol_table[self.type_identifier]
     if not isinstance(type_symbol, TypeTemplateSymbol):
-      self.raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)))
+      raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)), self.pos)
     templ_type_symbols = [
       template_type.make_type(symbol_table=symbol_table) for template_type in self.templ_types]
     if len(templ_type_symbols) != len(type_symbol.template_parameters):
       if len(templ_type_symbols) == 0:
-        self.raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
-          self.type_identifier, type_symbol.template_parameters))
+        raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
+          self.type_identifier, type_symbol.template_parameters), self.pos)
       else:
-        self.raise_error(
+        raise_error(
           'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
-            self.type_identifier, type_symbol.template_parameters, templ_type_symbols))
+            self.type_identifier, type_symbol.template_parameters, templ_type_symbols), self.pos)
     return type_symbol.get_type(template_arguments=templ_type_symbols)
 
   def children(self) -> List[AbstractSyntaxTree]:
@@ -1238,10 +1237,10 @@ def annotate_ast(ast: AbstractSyntaxTree, annotation_list: List[AnnotationAst]) 
   assert len(ast.annotations) == 0
   for annotation in annotation_list:
     if annotation.identifier not in ast.allowed_annotation_identifiers:
-      annotation.raise_error('Annotations with name %r not allowed here, only allowed: %s' % (
-        annotation.identifier, ', '.join(ast.allowed_annotation_identifiers)))
+      raise_error('Annotations with name %r not allowed here, only allowed: %s' % (
+        annotation.identifier, ', '.join(ast.allowed_annotation_identifiers)), annotation.pos)
     if any(annotation.identifier == other.identifier for other in ast.annotations):
-      annotation.raise_error('Cannot add annotation with name %r multiple times' % annotation.identifier)
+      raise_error('Cannot add annotation with name %r multiple times' % annotation.identifier, annotation.pos)
     ast.annotations.append(annotation)
   return ast
 
