@@ -23,7 +23,7 @@ import llvmlite.binding as llvm
 
 def _make_file_name(source_path: Path, file_ending: str, allow_exist=False) -> Path:
   """
-  :param str file_ending: with leading . if applicable
+   :param str file_ending: with leading . if applicable
   """
   if source_path.suffix != ".slp":
     file_ending = ".out" if file_ending == "" else file_ending
