@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import itertools
-from typing import TypeVar, Dict, Mapping, Iterator
+from typing import TypeVar, Dict, Mapping, Iterator, List
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -42,3 +42,7 @@ class HierarchicalDict(Mapping[K, V]):
   def __len__(self) -> int:
     return len(self.underlying_dict) + len(self.parent)
 
+  def _get_all(self, key: K) -> List[V]:
+    parent_items = self.parent._get_all(key) if isinstance(self.parent, HierarchicalDict) else []
+    own_item = self.underlying_dict.get(key)
+    return ([own_item] if own_item is not None else []) + parent_items

@@ -5,7 +5,7 @@ from llvmlite.binding import ExecutionEngine
 from sleepy.grammar import DummyPath
 from sleepy.jit import compile_ir
 from sleepy.parse import make_translation_unit_ast_from_str
-from sleepy.symbols import FunctionSymbol
+from sleepy.symbols import OverloadSet
 
 
 def compile_program(engine: ExecutionEngine,
@@ -22,7 +22,7 @@ def compile_program(engine: ExecutionEngine,
   compile_ir(engine, module_ir)
   assert main_func_identifier in symbol_table
   main_func_symbol = symbol_table[main_func_identifier]
-  assert isinstance(main_func_symbol, FunctionSymbol)
+  assert isinstance(main_func_symbol, OverloadSet)
   py_func = main_func_symbol.get_single_concrete_func().make_py_func(engine)
   assert callable(py_func)
   return py_func

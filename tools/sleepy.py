@@ -17,7 +17,7 @@ from sleepy.errors import CompilerError
 from sleepy.jit import make_execution_engine, compile_ir, PREAMBLE_BINARIES_PATH
 # noinspection PyUnresolvedReferences
 from sleepy.parse import make_file_ast, make_translation_unit_ast
-from sleepy.symbols import FunctionSymbol
+from sleepy.symbols import OverloadSet
 import llvmlite.binding as llvm
 
 
@@ -73,7 +73,7 @@ def main():
     if main_func_identifier not in symbol_table:
       raise CompilerError('Error: Entry point function %r not found' % main_func_identifier)
     main_func_symbol = symbol_table[main_func_identifier]
-    if not isinstance(main_func_symbol, FunctionSymbol):
+    if not isinstance(main_func_symbol, OverloadSet):
       raise CompilerError('Error: Entry point %r must be a function' % main_func_identifier)
     if len(main_func_symbol.signatures) != 1:
       raise CompilerError('Error: Must declare exactly one entry point function %r' % main_func_identifier)

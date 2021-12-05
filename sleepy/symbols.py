@@ -1,14 +1,12 @@
-"""
-Implements a symbol table.
-"""
 from __future__ import annotations
 
 import copy
 import ctypes
+from itertools import takewhile
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast
 
 import llvmlite
 from llvmlite import ir
@@ -49,14 +47,14 @@ class Type(ABC):
                templ_types: List[Type],
                ir_type: Optional[ir.types.Type],
                c_type,
-               constructor: Optional[FunctionSymbol]):
+               constructor: Optional[OverloadSet]):
     """
     :param ctypes._CData|None c_type: may be None if this is non-realizable (e.g. template types / void)
     """
     self.templ_types = templ_types
     self.ir_type = ir_type
     self.c_type = c_type
-    self._constructor: Optional[FunctionSymbol] = constructor
+    self._constructor: Optional[OverloadSet] = constructor
 
   def __repr__(self) -> str:
     return self.__class__.__name__
@@ -94,7 +92,7 @@ class Type(ABC):
     return context.known_di_types[self]
 
   @property
-  def constructor(self) -> Optional[FunctionSymbol]:
+  def constructor(self) -> Optional[OverloadSet]:
     return self._constructor
 
   @property
@@ -109,7 +107,7 @@ class Type(ABC):
     return FunctionSymbolCaller(self.constructor, templ_types=templ_types)
 
   @constructor.setter
-  def constructor(self, new_constructor: FunctionSymbol):
+  def constructor(self, new_constructor: OverloadSet):
     assert new_constructor is None or all(not s.return_type is SLEEPY_UNIT for s in new_constructor.signatures)
     self._constructor = new_constructor
 
@@ -348,7 +346,7 @@ class PointerType(Type):
   A (not-raw) pointer with a known underlying type.
   """
 
-  def __init__(self, pointee_type: Type, constructor: Optional[FunctionSymbol] = None):
+  def __init__(self, pointee_type: Type, constructor: Optional[OverloadSet] = None):
     super().__init__(
       templ_types=[pointee_type], ir_type=ir.PointerType(pointee_type.ir_type),
       c_type=ctypes.POINTER(pointee_type.c_type), constructor=constructor)
@@ -419,7 +417,7 @@ class ReferenceType(PointerType):
   A reference to some other type.
   """
 
-  def __init__(self, pointee_type: Type, constructor: Optional[FunctionSymbol] = None):
+  def __init__(self, pointee_type: Type, constructor: Optional[OverloadSet] = None):
     super().__init__(pointee_type=pointee_type, constructor=constructor)
 
   def __repr__(self) -> str:
@@ -455,7 +453,7 @@ class UnionType(Type):
   """
 
   def __init__(self, possible_types: List[Type], possible_type_nums: List[int], val_size: Optional[int],
-               constructor: Optional[FunctionSymbol] = None):
+               constructor: Optional[OverloadSet] = None):
     assert len(possible_types) == len(possible_type_nums)
     assert len(set(possible_types)) == len(possible_types)
     self.possible_types = possible_types
@@ -731,12 +729,12 @@ class StructType(Type):
                member_identifiers: List[str],
                member_types: List[Type],
                partial_struct_type: Optional[PartialIdentifiedStructType] = None,
-               constructor: Optional[FunctionSymbol] = None):
+               constructor: Optional[OverloadSet] = None):
     assert len(member_identifiers) == len(member_types)
     self.identity = identity
     self.member_identifiers = member_identifiers
     self.member_types = member_types
-    self._constructor: Optional[FunctionSymbol] = None
+    self._constructor: Optional[OverloadSet] = None
     assert partial_struct_type is None or partial_struct_type.identity == self.identity
 
     if any(templ_type.has_templ_placeholder() for templ_type in templ_types):
@@ -849,19 +847,17 @@ class StructType(Type):
       member_ptr = context.builder.gep(struct_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
       context.builder.store(ir_func_arg, member_ptr)
 
-  def build_constructor(self, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> FunctionSymbol:
+  def build_constructor(self, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> OverloadSet:
     assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
-    constructor_symbol = FunctionSymbol(identifier=self.struct_identifier)
     placeholder_templ_types = [
       templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
     signature = ConstructorFunctionTemplate(
       placeholder_templ_types=placeholder_templ_types, struct=self,
       captured_symbol_table=parent_symbol_table, captured_context=parent_context)
-    constructor_symbol.add_signature(signature)
-    return constructor_symbol
+    return OverloadSet(identifier=self.struct_identifier, signatures=[signature])
 
-  def build_destructor(self, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> FunctionSymbol:
+  def build_destructor(self, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> OverloadSet:
     assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
     placeholder_template_types = [
@@ -871,8 +867,8 @@ class StructType(Type):
     signature_ = DestructorFunctionTemplate(
       placeholder_templ_types=placeholder_template_types, struct=self,
       captured_symbol_table=parent_symbol_table, captured_context=parent_context)
-    parent_symbol_table.free_symbol.add_signature(signature_)
-    return parent_symbol_table.free_symbol
+    parent_symbol_table.add_overload('free', signature_)
+    return parent_symbol_table.free_overloads
 
   def children(self) -> List[Type]:
     return self.member_types
@@ -908,7 +904,7 @@ class PlaceholderTemplateType(Type):
     return self == other
 
   @property
-  def constructor(self) -> Optional[FunctionSymbol]:
+  def constructor(self) -> Optional[OverloadSet]:
     return None
 
 
@@ -1351,14 +1347,14 @@ class ConcreteBitcastFunction(ConcreteFunction):
     return True
 
 
-class FunctionTemplate(ABC):
+class FunctionTemplate:
   """
   Given template arguments, this builds a concrete function implementation on demand.
   """
-
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
                arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type],
                arg_mutates: List[bool], base: FunctionTemplate = None):
+    super().__init__()
     assert isinstance(return_type, Type)
     assert len(arg_identifiers) == len(arg_types) == len(arg_type_narrowings) == len(arg_mutates)
     assert all(isinstance(templ_type, PlaceholderTemplateType) for templ_type in placeholder_template_types)
@@ -1437,6 +1433,16 @@ class FunctionTemplate(ABC):
   def __repr__(self) -> str:
     return 'FunctionSignature(placeholder_templ_types=%r, return_type=%r, arg_identifiers=%r, arg_types=%r)' % (
       self.placeholder_templ_types, self.return_type, self.arg_identifiers, self.arg_types)
+
+class DummyFunctionTemplate(FunctionTemplate):
+
+  def __init__(self):
+    super().__init__([], SLEEPY_NEVER, [], [], [], [])
+
+  def _get_concrete_function(self, concrete_template_arguments: List[Type], concrete_parameter_types: List[Type],
+                             concrete_narrowed_parameter_types: List[Type],
+                             concrete_return_type: Type) -> ConcreteFunction:
+    raise NotImplementedError()
 
 
 class ConstructorFunctionTemplate(FunctionTemplate):
@@ -1536,12 +1542,20 @@ class DestructorFunctionTemplate(FunctionTemplate):
           if isinstance(concrete_member_type, PointerType):
             templ_types = [concrete_member_type.pointee_type]
           make_func_call_ir(
-            func=self.captured_symbol_table.free_symbol, templ_types=templ_types,
+            func=self.captured_symbol_table.free_overloads, templ_types=templ_types,
             func_args=[TypedValue(typ=signature_member_type, ir_val=member_ir_val)], context=context)
         context.builder.ret(SLEEPY_UNIT.unit_constant())
 
 
 class FunctionSymbol(Symbol):
+  kind = Symbol.Kind.FUNCTION
+
+  def __init__(self, functions: Optional[List[FunctionTemplate]] = None):
+    super().__init__()
+    if functions is None: functions = []
+    self.functions = functions
+
+class OverloadSet(Symbol):
   """
   A set of declared overloaded function signatures with the same name.
   Can have one or multiple overloaded signatures accepting different parameter types (FunctionSignature).
@@ -1550,10 +1564,11 @@ class FunctionSymbol(Symbol):
   """
   kind = Symbol.Kind.FUNCTION
 
-  def __init__(self, identifier: str):
+  def __init__(self, identifier: str, signatures: List[FunctionTemplate]):
     super().__init__()
     self.identifier = identifier
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionTemplate]] = {}
+    for s in signatures: self._add_signature(s)
 
   @property
   def signatures(self) -> List[FunctionTemplate]:
@@ -1597,7 +1612,7 @@ class FunctionSymbol(Symbol):
             possible_concrete_funcs.append(concrete_func)
     return possible_concrete_funcs
 
-  def add_signature(self, signature: FunctionTemplate):
+  def _add_signature(self, signature: FunctionTemplate):
     assert self.is_undefined_for_arg_types(
       placeholder_templ_types=signature.placeholder_templ_types, arg_types=signature.arg_types)
     if len(signature.placeholder_templ_types) not in self.signatures_by_number_of_templ_args:
@@ -1632,7 +1647,7 @@ class FunctionSymbolCaller:
   A FunctionSymbol plus template types it is called with.
   """
 
-  def __init__(self, func: FunctionSymbol, templ_types: Optional[List[Type]] = None):
+  def __init__(self, func: OverloadSet, templ_types: Optional[List[Type]] = None):
     if templ_types is not None:
       assert all(not templ_type.has_templ_placeholder() for templ_type in templ_types)
     self.func = func
@@ -1641,12 +1656,6 @@ class FunctionSymbolCaller:
   def copy_with_templ_types(self, templ_types: List[Type]) -> FunctionSymbolCaller:
     assert self.templ_types is None
     return FunctionSymbolCaller(func=self.func, templ_types=templ_types)
-
-
-class TypeFactory:
-  def __init__(self, placeholder_templ_types: List[PlaceholderTemplateType], signature_type: Type):
-    self.placeholder_templ_types = placeholder_templ_types
-    self.signature_type = signature_type
 
 
 class TypeTemplateSymbol(Symbol):
@@ -1696,7 +1705,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
       self.inherit_outer_variables = False  # When there's no parent we can't look
       self.current_func: Optional[ConcreteFunction] = None
       self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
-      self.inbuilt_symbols: Dict[str, Symbol] = {}
+      self.inbuilt_symbols: Set[str] = set()
     else:
       assert inherit_outer_variables is not None
 
@@ -1733,6 +1742,19 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__
 
+  def __setitem__(self, key, value):
+    if isinstance(value, FunctionSymbol) and key in self.underlying_dict:
+      existing = self.underlying_dict[key]
+      assert isinstance(existing, FunctionSymbol)
+      existing.functions += value.functions
+    else:
+      super(SymbolTable, self).__setitem__(key, value)
+
+  def __getitem__(self, key):
+    value = super(SymbolTable, self).__getitem__(key)
+    if isinstance(value, FunctionSymbol): return self.get_overloads(key)
+    else: return value
+
   def apply_type_narrowings_from(self, *other_symbol_tables: SymbolTable):
     """
     For all variable symbols, copy common type of all other_symbol_tables.
@@ -1746,6 +1768,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
       assert all(isinstance(other_symbol, VariableSymbol) for other_symbol in other_symbols)
       if len(other_symbols) == 0:
         continue
+      other_symbols = cast(List[VariableSymbol], other_symbols)
       common_type = get_common_type([other_symbol.narrowed_var_type for other_symbol in other_symbols])
       self[symbol_identifier] = self_symbol.copy_set_narrowed_type(common_type)
 
@@ -1769,12 +1792,33 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     assert not self.has_extern_func(func_identifier)
     self.known_extern_funcs[func_identifier] = concrete_func
 
+  def get_overloads(self, key: str, include_shadowed = False) -> Optional[OverloadSet]:
+    symbols = self._get_all(key)
+
+    if include_shadowed:
+      functions = [sym for sym in symbols if isinstance(sym, FunctionSymbol)]
+    else:
+      functions = list(takewhile(lambda sym: isinstance(sym, FunctionSymbol), symbols))
+
+    functions = cast(List[FunctionSymbol], functions)
+
+    functions = [func_templ for sym in functions for func_templ in sym.functions] # flat map
+
+    return OverloadSet(key, functions)
+
+  def add_overload(self, identifier: str, overload: Union[FunctionTemplate|List[FunctionTemplate]]) -> bool:
+    if not isinstance(overload, List): overload = [overload]
+
+    symbol = self.underlying_dict.setdefault(identifier, FunctionSymbol())
+    if not isinstance(symbol, FunctionSymbol): return False
+    symbol.functions += overload
+    return True
+
   @property
-  def free_symbol(self) -> FunctionSymbol:
+  def free_overloads(self) -> OverloadSet:
     assert 'free' in self
-    free_symbol = self['free']
-    assert isinstance(free_symbol, FunctionSymbol)
-    return free_symbol
+    return self.get_overloads('free')
+
 
 
 class DebugValueIrPatcher:
@@ -2019,7 +2063,7 @@ def make_ir_size(size: int) -> ir.values.Value:
   return ir.Constant(LLVM_SIZE_TYPE, size)
 
 
-def make_func_call_ir(func: FunctionSymbol,
+def make_func_call_ir(func: OverloadSet,
                       templ_types: List[Type],
                       func_args: List[TypedValue],
                       context: CodegenContext) -> TypedValue:

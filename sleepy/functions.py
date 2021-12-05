@@ -4,7 +4,7 @@ from llvmlite import ir
 
 from sleepy.ast import StatementAst, TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree
 from sleepy.grammar import TreePosition
-from sleepy.symbols import SymbolTable, Type, CodegenContext, FunctionSymbol, ConcreteFunction, FunctionTemplate, \
+from sleepy.symbols import SymbolTable, Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
   VariableSymbol, PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType
 from sleepy.builtin_symbols import SLEEPY_BOOL
 
@@ -76,26 +76,29 @@ class FunctionDeclarationAst(StatementAst):
       return_type = SLEEPY_UNIT
     else:
       return_type = self.return_type.make_type(symbol_table=func_symbol_table)
+
     if return_type is None:
       self.raise_error('Need to specify return type of function %r' % self.identifier)
+
     if self.identifier in symbol_table:
       func_symbol = symbol_table[self.identifier]
-      if not isinstance(func_symbol, FunctionSymbol):
+      if not isinstance(func_symbol, OverloadSet):
         self.raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier)
-    else:
-      func_symbol = FunctionSymbol(identifier=self.identifier)
-      symbol_table[self.identifier] = func_symbol
-      func_symbol_table[self.identifier] = func_symbol
-    if func_symbol in {symbol_table.inbuilt_symbols.get(name) for name in {'assert', 'unchecked_assert'}}:
+      if not func_symbol.is_undefined_for_arg_types(placeholder_templ_types=placeholder_templ_types,
+                                                    arg_types=arg_types):
+        self.raise_error(
+          'Cannot override definition of function %r with signature [%s](%s), already declared:\n%s' % (  # noqa
+            self.identifier,
+            ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
+            ', '.join(
+              ['%s%s' % ('mutates ' if mutates else '', typ) for mutates, typ in zip(self.arg_mutates, arg_types)]),
+            # noqa
+            func_symbol.make_signature_list_str()))
+
+    if self.identifier in {'assert', 'unchecked_assert'}:
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
         self.raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier)
-    if not func_symbol.is_undefined_for_arg_types(placeholder_templ_types=placeholder_templ_types, arg_types=arg_types):
-      self.raise_error(
-        'Cannot override definition of function %r with signature [%s](%s), already declared:\n%s' % (  # noqa
-          self.identifier,
-          ', '.join([templ_type.identifier for templ_type in placeholder_templ_types]),
-          ', '.join(['%s%s' % ('mutates 'if mutates else '', typ) for mutates, typ in zip(self.arg_mutates, arg_types)]),  # noqa
-          func_symbol.make_signature_list_str()))
+
     if self.is_inline and self.is_extern:
       self.raise_error('Extern function %r cannot be inlined' % self.identifier)
 
@@ -103,7 +106,7 @@ class FunctionDeclarationAst(StatementAst):
       placeholder_template_types=placeholder_templ_types,
       return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types, arg_type_narrowings=arg_types,
       arg_mutates=self.arg_mutates, ast=self, captured_symbol_table=func_symbol_table, captured_context=context)
-    func_symbol.add_signature(signature)
+    symbol_table.add_overload(self.identifier, signature)
 
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
 
