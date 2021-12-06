@@ -20,7 +20,7 @@ class BuiltinOperationFunctionTemplate(FunctionTemplate):
                arg_types: List[Type],
                arg_type_narrowings: List[Type],
                arg_mutates: List[bool],
-               instruction: Callable[..., Optional[ir.values.Value]],
+               instruction: Callable[..., Optional[ir.Value]],
                emits_ir: bool):
     super().__init__(
       placeholder_template_types=placeholder_template_types, return_type=return_type, arg_identifiers=arg_identifiers,
@@ -267,7 +267,7 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
     _make_builtin_operator_functions(symbol_table, context.emits_ir)
 
 
-Instructions: Dict[Tuple[BuiltinBinaryOps, Type], Callable[[CodegenContext, ir.values.Value, ir.values.Value], ir.values.Value]] = concat_dicts([  # noqa
+Instructions: Dict[Tuple[BuiltinBinaryOps, Type], Callable[[CodegenContext, ir.Value, ir.Value], ir.Value]] = concat_dicts([  # noqa
   {(BuiltinBinaryOps.Addition, Int): IRBuilder.add for Int in INT_TYPES},
   {(BuiltinBinaryOps.Subtraction, Int): IRBuilder.sub for Int in INT_TYPES},
   {(BuiltinBinaryOps.Multiplication, Int): IRBuilder.mul for Int in INT_TYPES},
@@ -288,7 +288,7 @@ Instructions: Dict[Tuple[BuiltinBinaryOps, Type], Callable[[CodegenContext, ir.v
     (op, T): lambda builder, lhs, rhs, op=op: builder.fcmp_ordered(op.value, lhs, rhs)
     for op in Simple_Comparison_Ops for T in FLOAT_TYPES}
   ])
-BINARY_OP_DECL: List[Tuple[BuiltinBinaryOps, List[Tuple[Callable[..., ir.values.Value], List[Type], Type]]]] = (
+BINARY_OP_DECL: List[Tuple[BuiltinBinaryOps, List[Tuple[Callable[..., ir.Value], List[Type], Type]]]] = (
   # simple arithmetic on all arithmetic types
   [
     (operator, [(Instructions[(operator, arith_t)], [arith_t, arith_t], arith_t) for arith_t in SLEEPY_NUMERICAL_TYPES])
@@ -344,7 +344,7 @@ def _make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
       symbol_table.add_overload(operator.value, signature)
 
 
-def _make_func_signature(instruction: Callable[..., ir.values.Value],
+def _make_func_signature(instruction: Callable[..., ir.Value],
                          op_placeholder_templ_types: Union[Tuple[PlaceholderTemplateType], List[PlaceholderTemplateType]],  # noqa
                          op_arg_types: List[Type], op_return_type: Type, emits_ir: bool) -> FunctionTemplate:
   assert len(op_arg_types) in {1, 2}

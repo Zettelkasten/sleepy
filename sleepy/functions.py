@@ -119,7 +119,7 @@ class FunctionDeclarationAst(DeclarationAst):
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
 
   def build_body_ir(self, parent_symbol_table: SymbolTable, concrete_func: ConcreteFunction,
-                    body_context: CodegenContext, ir_func_args: Optional[List[ir.values.Value]] = None):
+                    body_context: CodegenContext, ir_func_args: Optional[List[ir.Value]] = None):
     assert not self.is_extern
 
     template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_templ_types]
@@ -198,7 +198,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
     return self.ast.is_inline
 
   def make_inline_func_call_ir(self, func_args: List[TypedValue],
-                               caller_context: CodegenContext) -> Optional[ir.values.Value]:
+                               caller_context: CodegenContext) -> Optional[ir.Value]:
     assert len(func_args) == len(self.arg_identifiers)
     assert caller_context.emits_ir
     assert not caller_context.is_terminated

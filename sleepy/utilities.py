@@ -15,8 +15,8 @@ def concat_dicts(dicts: List[Dict[T, U]]) -> Dict[T, U]:
   return result
 
 
-def truncate_ir_value(from_type: ir.Type, to_type: ir.Type, ir_val: ir.values.Value,
-                      context: CodegenContext, name: str) -> ir.values.Value:
+def truncate_ir_value(from_type: ir.Type, to_type: ir.Type, ir_val: ir.Value,
+                      context: CodegenContext, name: str) -> ir.Value:
   # Note: if the size of to_type is strictly smaller than from_type, we need to truncate the value
   # There is no LLVM instruction for this, so we alloca memory and reinterpret a pointer on this
   ptr = context.alloca_at_entry(from_type, name='%s_from_ptr' % name)

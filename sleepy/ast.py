@@ -12,7 +12,8 @@ from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
 from sleepy.symbols import OverloadSet, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, try_infer_template_arguments, Symbol, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, ReferenceType, \
+  PlaceholderTemplateType, try_infer_template_arguments, Symbol, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, \
+  ReferenceType, \
   PartialIdentifiedStructType, StructIdentity, SLEEPY_NEVER, determine_kind, SymbolKind
 
 
@@ -450,7 +451,8 @@ class StructDeclarationAst(DeclarationAst):
       # Struct members might reference this struct itself (indirectly).
       # We temporarily add a placeholder to the symbol table so it is defined here.
       struct_identity = StructIdentity(struct_identifier=self.struct_identifier, context=context)
-      partial_struct_type = PartialIdentifiedStructType(identity=struct_identity, template_param_or_arg=placeholder_templ_types)
+      partial_struct_type = PartialIdentifiedStructType(identity=struct_identity,
+                                                        template_param_or_arg=placeholder_templ_types)
       struct_identity.partial_struct_type = partial_struct_type
       struct_symbol_table[self.struct_identifier] = TypeTemplateSymbol(
         template_parameters=placeholder_templ_types, signature_type=partial_struct_type)
@@ -1207,17 +1209,16 @@ class IdentifierTypeAst(TypeAst):
     type_symbol = symbol_table[self.type_identifier]
     if not isinstance(type_symbol, TypeTemplateSymbol):
       raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)), self.pos)
-    templ_type_symbols = [
-      template_type.make_type(symbol_table=symbol_table) for template_type in self.template_parameters]
-    if len(templ_type_symbols) != len(type_symbol.template_parameters):
-      if len(templ_type_symbols) == 0:
+    template_arguments = [t_param.make_type(symbol_table=symbol_table) for t_param in self.template_parameters]
+    if len(template_arguments) != len(type_symbol.template_parameters):
+      if len(template_arguments) == 0:
         raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
           self.type_identifier, type_symbol.template_parameters), self.pos)
       else:
         raise_error(
-          'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
-            self.type_identifier, type_symbol.template_parameters, templ_type_symbols), self.pos)
-    return type_symbol.get_type(template_arguments=templ_type_symbols)
+          'Type %r with template parameters %r cannot be constructed with template arguments %r' % (
+            self.type_identifier, type_symbol.template_parameters, template_arguments), self.pos)
+    return type_symbol.get_type(template_arguments=template_arguments)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return self.template_parameters
@@ -1231,11 +1232,7 @@ class UnionTypeAst(TypeAst):
   IdentifierType -> identifier.
   """
 
-  def __init__(self, pos, variant_types):
-    """
-    :param TreePosition pos:
-    :param list[TypeAst] variant_types:
-    """
+  def __init__(self, pos: TreePosition, variant_types: List[TypeAst]):
     super().__init__(pos)
     self.variant_types = variant_types
 

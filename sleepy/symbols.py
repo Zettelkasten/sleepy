@@ -84,7 +84,8 @@ class Type(ABC):
     # this means saying MyType[][][] is okay currently.
     template_parameters = (
       self.template_param_or_arg
-      if len(self.template_param_or_arg) > 0 and all(not t_param.has_unfilled_template_parameters() for t_param in self.template_param_or_arg)
+      if len(self.template_param_or_arg) > 0 and all(
+        not t_param.has_unfilled_template_parameters() for t_param in self.template_param_or_arg)
       else None)
     return FunctionSymbolCaller(self.constructor, template_parameters=template_parameters)
 
@@ -115,7 +116,8 @@ class UnitType(Type):
   """
 
   def __init__(self):
-    super().__init__(template_param_or_arg=[], ir_type=ir.types.LiteralStructType(()), c_type=ctypes.c_char * 0, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=ir.types.LiteralStructType(()), c_type=ctypes.c_char * 0,
+                     constructor=None)
 
   def __repr__(self) -> str:
     return 'Unit'
@@ -550,26 +552,26 @@ class UnionType(Type):
     return self.possible_type_nums[self.possible_types.index(variant_type)]
 
   @staticmethod
-  def make_tag_ptr(union_ir_alloca: ir.instructions.AllocaInstr,
+  def make_tag_ptr(union_ir_alloca: ir.AllocaInstr,
                    context: CodegenContext,
-                   name: str) -> ir.instructions.Instruction:
+                   name: str) -> ir.Instruction:
     assert context.emits_ir
     tag_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 0))
     return context.builder.gep(union_ir_alloca, tag_gep_indices, name=name)
 
   @staticmethod
-  def make_untagged_union_void_ptr(union_ir_alloca: ir.values.Value,
+  def make_untagged_union_void_ptr(union_ir_alloca: ir.Value,
                                    context: CodegenContext,
-                                   name: str) -> ir.instructions.Instruction:
+                                   name: str) -> ir.Instruction:
     assert context.emits_ir
     untagged_union_gep_indices = (ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), 1))
     return context.builder.gep(union_ir_alloca, untagged_union_gep_indices, name=name)
 
   def make_untagged_union_ptr(self,
-                              union_ir_alloca: ir.instructions.AllocaInstr,
+                              union_ir_alloca: ir.AllocaInstr,
                               variant_type: Type,
                               context: CodegenContext,
-                              name: str) -> ir.instructions.Instruction:
+                              name: str) -> ir.Instruction:
     assert variant_type in self.possible_types
     untagged_union_ptr = self.make_untagged_union_void_ptr(
       union_ir_alloca=union_ir_alloca, context=context, name='%s_raw' % name)
@@ -578,22 +580,18 @@ class UnionType(Type):
       name=name)
 
   @staticmethod
-  def make_extract_tag(union_ir_val: ir.values.Value, context: CodegenContext, name: str) -> ir.values.Value:
+  def make_extract_tag(union_ir_val: ir.Value, context: CodegenContext, name: str) -> ir.Value:
     return context.builder.extract_value(union_ir_val, 0, name=name)
 
   @staticmethod
-  def make_extract_void_val(union_ir_val: ir.values.Value, context: CodegenContext, name: str) -> ir.values.Value:
+  def make_extract_void_val(union_ir_val: ir.Value, context: CodegenContext, name: str) -> ir.Value:
     assert context.emits_ir
     return context.builder.extract_value(union_ir_val, idx=1, name=name)
 
-  def make_extract_val(self, union_ir_val, variant_type, context, name):
-    """
-    :param ir.values.Value union_ir_val:
-    :param Type variant_type:
-    :param CodegenContext context:
-    :param str name:
-    :rtype: ir.values.Value
-    """
+  def make_extract_val(self, union_ir_val: ir.Value,
+                       variant_type: Type,
+                       context: CodegenContext,
+                       name: str) -> ir.Value:
     assert context.emits_ir
     assert variant_type in self.possible_types
     union_ir_alloca = context.alloca_at_entry(self.ir_type, name='%s_ptr' % name)
@@ -628,7 +626,8 @@ class UnionType(Type):
       else:
         next_type_num = max(new_possible_type_nums) + 1 if len(new_possible_type_nums) > 0 else 0
         new_possible_type_nums.append(next_type_num)
-    if self.val_size is None or any(extended_type.has_unfilled_template_parameters() for extended_type in extended_types):
+    if self.val_size is None or any(
+            extended_type.has_unfilled_template_parameters() for extended_type in extended_types):
       new_val_size = None
     else:
       new_val_size = max([self.val_size] + [extended_type.size for extended_type in extended_types])
@@ -660,7 +659,8 @@ class PartialIdentifiedStructType(Type):
   def __init__(self, identity: StructIdentity, template_param_or_arg: List[Type]):
     self.identity = identity
     self.templ_types = template_param_or_arg
-    if identity.context is not None and not any(templ_type.has_unfilled_template_parameters() for templ_type in template_param_or_arg):
+    if identity.context is not None and not any(
+            templ_type.has_unfilled_template_parameters() for templ_type in template_param_or_arg):
       ir_type = identity.context.make_struct_ir_type(identity=self.identity, templ_types=template_param_or_arg)
       c_type = identity.context.make_struct_c_type(identity=self.identity, templ_types=template_param_or_arg)
     else:
@@ -728,7 +728,8 @@ class StructType(Type):
       assert None not in member_c_types
 
       if partial_struct_type is None:
-        partial_struct_type = PartialIdentifiedStructType(identity=self.identity, template_param_or_arg=template_param_or_arg)
+        partial_struct_type = PartialIdentifiedStructType(identity=self.identity,
+                                                          template_param_or_arg=template_param_or_arg)
       ir_type, c_type = partial_struct_type.ir_type, partial_struct_type.c_type
       assert ir_type is not None
       assert c_type is not None
@@ -739,7 +740,8 @@ class StructType(Type):
       else:  # already defined before
         assert ir_type.elements == tuple(member_ir_types)
         # Note that we do not check c_type._fields_ here because ctypes do not properly compare for equality always
-      super().__init__(template_param_or_arg=template_param_or_arg, ir_type=ir_type, c_type=c_type, constructor=constructor)
+      super().__init__(template_param_or_arg=template_param_or_arg, ir_type=ir_type, c_type=c_type,
+                       constructor=constructor)
 
     if partial_struct_type is not None:
       self.member_types = [member_type.replace_types({partial_struct_type: self}) for member_type in self.member_types]
@@ -753,10 +755,9 @@ class StructType(Type):
     return self.member_identifiers.index(member_identifier)
 
   def replace_types(self, replacements: Dict[Type, Type]) -> Type:
-    if self in replacements:
-      return replacements[self]
-    if len(replacements) == 0:
-      return self
+    if self in replacements: return replacements[self]
+    if len(replacements) == 0: return self
+
     new_templ_types = [templ_type.replace_types(replacements) for templ_type in self.template_param_or_arg]
     # in case we have a self-referencing member, first replace all occurrences of ourself with something temporary
     # to avoid infinite recursion.
@@ -769,9 +770,9 @@ class StructType(Type):
     return new_struct
 
   def has_unfilled_template_parameters(self) -> bool:
-    return any(templ_type.has_unfilled_template_parameters() for templ_type in self.template_param_or_arg)
+    return any(param_or_arg.has_unfilled_template_parameters() for param_or_arg in self.template_param_or_arg)
 
-  def make_ir_alloca(self, context: CodegenContext) -> ir.instructions.Instruction:
+  def make_ir_alloca(self, context: CodegenContext) -> ir.Instruction:
     assert context.emits_ir
     return context.alloca_at_entry(self.ir_type, name='self')
 
@@ -779,7 +780,8 @@ class StructType(Type):
     assert context.emits_debug
 
     # register placeholder for self so that members can reference this struct
-    placeholder = DebugValueIrPatcher.make_placeholder(repr(self.identity) + '_'.join(map(str, self.template_param_or_arg)))
+    placeholder = DebugValueIrPatcher.make_placeholder(
+      repr(self.identity) + '_'.join(map(str, self.template_param_or_arg)))
     context.known_di_types[self] = placeholder
 
     di_derived_types = []
@@ -809,17 +811,15 @@ class StructType(Type):
   def __repr__(self) -> str:
     return self.struct_identifier + ('' if len(self.template_param_or_arg) == 0 else str(self.template_param_or_arg))
 
-  def make_extract_member_val_ir(self, member_identifier: str, struct_ir_val: ir.values.Value,
-                                 context: CodegenContext) -> ir.instructions.Instruction:
+  def make_extract_member_val_ir(self, member_identifier: str,
+                                 struct_ir_val: ir.Value,
+                                 context: CodegenContext) -> ir.Instruction:
     return context.builder.extract_value(
       struct_ir_val, self.get_member_num(member_identifier), name='member_%s' % member_identifier)
 
-  def make_store_members_ir(self, member_ir_vals, struct_ir_alloca, context):
-    """
-    :param list[ir.values.Value] member_ir_vals:
-    :param ir.instructions.Instruction struct_ir_alloca:
-    :param CodegenContext context:
-    """
+  def make_store_members_ir(self, member_ir_vals: List[ir.Value],
+                            struct_ir_alloca: ir.Instruction,
+                            context: CodegenContext):
     assert len(member_ir_vals) == len(self.member_identifiers)
     assert context.emits_ir
     for member_num, (member_identifier, ir_func_arg) in enumerate(zip(self.member_identifiers, member_ir_vals)):
@@ -857,6 +857,14 @@ class StructType(Type):
     if not isinstance(other, StructType):
       return False
     return self.identity == other.identity
+
+
+class TemplateParameter:
+  def __init__(self, identifier: str):
+    self.identifier = identifier
+
+  def __repr__(self) -> str:
+    return self.identifier
 
 
 class PlaceholderTemplateType(Type):
@@ -957,7 +965,8 @@ def is_subtype(a: Type, b: Type) -> bool:
     if not a.has_same_symbol_as(possible_b):
       continue
     assert len(a.template_param_or_arg) == len(possible_b.template_param_or_arg)
-    if all(is_subtype(a_templ, b_templ) for a_templ, b_templ in zip(a.template_param_or_arg, possible_b.template_param_or_arg)):
+    if all(is_subtype(a_templ, b_templ) for a_templ, b_templ in
+           zip(a.template_param_or_arg, possible_b.template_param_or_arg)):
       return True
   return False
 
@@ -1095,9 +1104,10 @@ class VariableSymbol:
   """
   A declared variable.
   """
-  def __init__(self, ir_alloca: Optional[ir.instructions.AllocaInstr], var_type: Type):
+
+  def __init__(self, ir_alloca: Optional[ir.AllocaInstr], var_type: Type):
     super().__init__()
-    assert ir_alloca is None or isinstance(ir_alloca, (ir.instructions.AllocaInstr, ir.Argument))
+    assert ir_alloca is None or isinstance(ir_alloca, (ir.AllocaInstr, ir.Argument))
     self.ir_alloca = ir_alloca
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
@@ -1155,7 +1165,7 @@ class VariableSymbol:
     return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r)' % (
       self.ir_alloca, self.declared_var_type, self.narrowed_var_type)
 
-  def as_typed_var(self, ir_val: Optional[ir.instructions.Value]) -> TypedValue:
+  def as_typed_var(self, ir_val: Optional[ir.Value]) -> TypedValue:
     return TypedValue(typ=self.declared_var_type, narrowed_type=self.narrowed_var_type, ir_val=ir_val)
 
 
@@ -1215,8 +1225,8 @@ class ConcreteFunction:
     return (
             'ConcreteFunction(signature=%r, concrete_templ_types=%r, return_type=%r, arg_types=%r, '
             'arg_type_narrowings=%r, arg_mutates=%r)' % (
-      self.signature, self.template_arguments, self.return_type, self.arg_types, self.arg_type_narrowings,
-      self.arg_mutates))
+              self.signature, self.template_arguments, self.return_type, self.arg_types, self.arg_type_narrowings,
+              self.arg_mutates))
 
   @property
   def uncollapsed_arg_types(self) -> List[Type]:
@@ -1261,7 +1271,7 @@ class ConcreteFunction:
   # noinspection PyTypeChecker
   def make_inline_func_call_ir(self,
                                func_args: List[TypedValue],
-                               caller_context: CodegenContext) -> ir.instructions.Instruction:
+                               caller_context: CodegenContext) -> ir.Instruction:
     assert self.is_inline
     assert False, 'not implemented!'
 
@@ -1286,7 +1296,7 @@ class ConcreteBuiltinOperationFunction(ConcreteFunction):
     self.emits_ir = emits_ir
 
   def make_inline_func_call_ir(self, func_args: List[TypedValue],
-                               caller_context: CodegenContext) -> ir.instructions.Instruction:
+                               caller_context: CodegenContext) -> ir.Instruction:
     ir_func_args = [arg.ir_val for arg in func_args]
     assert None not in ir_func_args
     return self.instruction(caller_context.builder, *ir_func_args)
@@ -1305,7 +1315,7 @@ class ConcreteBitcastFunction(ConcreteFunction):
       parameter_mutates=[False] * len(parameter_types))
 
   def make_inline_func_call_ir(self, func_args: List[TypedValue],
-                               caller_context: CodegenContext) -> ir.instructions.Instruction:
+                               caller_context: CodegenContext) -> ir.Instruction:
     assert len(func_args) == 1
     assert func_args[0].ir_val is not None
     return caller_context.builder.bitcast(val=func_args[0].ir_val, typ=self.return_type.ir_type, name="bitcast")
@@ -1506,7 +1516,8 @@ class DestructorFunctionTemplate(FunctionTemplate):
           member_ir_val = self.struct.make_extract_member_val_ir(
             member_identifier, struct_ir_val=self_ir_alloca, context=context)
           # TODO: properly infer templ types, also for struct members
-          assert not (isinstance(signature_member_type, StructType) and len(signature_member_type.template_param_or_arg) > 0), (
+          assert not (isinstance(signature_member_type, StructType) and len(
+            signature_member_type.template_param_or_arg) > 0), (
             'not implemented yet')
           templ_types: List[Type] = []
           if isinstance(concrete_member_type, PointerType):
@@ -1654,6 +1665,7 @@ class TypeTemplateSymbol:
     replacements = dict(zip(self.template_parameters, template_arguments))
     return self.signature_type.replace_types(replacements)
 
+
 class SymbolTableStub:
   def __init__(self):
     self.dict = STUB
@@ -1662,7 +1674,9 @@ class SymbolTableStub:
     self.builtin_symbols = set()
     self.current_scope_identifiers = frozenset()
 
+
 Symbol = Union[OverloadSet, TypeTemplateSymbol, VariableSymbol]
+
 
 class SymbolTable:
   """
@@ -1671,6 +1685,7 @@ class SymbolTable:
   """
 
   Element = Union[FunctionSymbol, TypeTemplateSymbol, VariableSymbol]
+
   def __init__(self, parent: Optional[SymbolTable] = None,
                new_function: Optional[ConcreteFunction] = None,
                inherit_outer_variables: bool = False):
@@ -1793,6 +1808,7 @@ class SymbolTable:
     assert 'free' in self
     return self.get_overloads('free')
 
+
 class SymbolKind(Enum):
   """
   Possible symbol types.
@@ -1801,11 +1817,13 @@ class SymbolKind(Enum):
   TYPE = 'type'
   FUNCTION = 'func'
 
+
 def determine_kind(symbol: Symbol) -> SymbolKind:
   if isinstance(symbol, OverloadSet): return SymbolKind.FUNCTION
   if isinstance(symbol, TypeTemplateSymbol): return SymbolKind.TYPE
   if isinstance(symbol, VariableSymbol): return SymbolKind.VARIABLE
   raise TypeError()
+
 
 class DebugValueIrPatcher:
   def __init__(self):
@@ -1845,7 +1863,7 @@ class CodegenContext:
     self.current_pos = TreePosition(word="", from_pos=0, to_pos=0, file_path=file_path)
     self.current_func: Optional[ConcreteFunction] = None
     self.current_func_inline_return_collect_block: Optional[ir.Block] = None
-    self.current_func_inline_return_ir_alloca: Optional[ir.instructions.AllocaInstr] = None
+    self.current_func_inline_return_ir_alloca: Optional[ir.AllocaInstr] = None
     self.inline_func_call_stack: List[ConcreteFunction] = []
     self.ir_func_malloc: Optional[ir.Function] = None
 
@@ -1959,7 +1977,7 @@ class CodegenContext:
     return new_context
 
   def copy_with_inline_func(self, concrete_func: ConcreteFunction,
-                            return_ir_alloca: ir.instructions.AllocaInstr,
+                            return_ir_alloca: ir.AllocaInstr,
                             return_collect_block: ir.Block) -> CodegenContext:
     assert concrete_func.is_inline
     assert concrete_func not in self.inline_func_call_stack
@@ -1970,21 +1988,21 @@ class CodegenContext:
     new_context.inline_func_call_stack.append(concrete_func)
     return new_context
 
-  def alloca_at_entry(self, ir_type: ir.types.Type, name: str) -> ir.instructions.AllocaInstr:
+  def alloca_at_entry(self, ir_type: ir.types.Type, name: str) -> ir.AllocaInstr:
     """
     Add alloca instruction at entry block of the current function.
     """
     assert self.emits_ir
     entry_block: ir.Block = self.block.function.entry_basic_block
     entry_builder = ir.IRBuilder(entry_block)
-    if len(entry_block.instructions) == 0 or not isinstance(entry_block.instructions[0], ir.instructions.AllocaInstr):
+    if len(entry_block.instructions) == 0 or not isinstance(entry_block.instructions[0], ir.AllocaInstr):
       entry_builder.position_at_start(entry_block)
     else:
       last_alloca_num = 0
       while (last_alloca_num < len(entry_block.instructions) and
-             isinstance(entry_block.instructions[last_alloca_num], ir.instructions.AllocaInstr)):
+             isinstance(entry_block.instructions[last_alloca_num], ir.AllocaInstr)):
         last_alloca_num += 1
-      assert isinstance(entry_block.instructions[last_alloca_num - 1], ir.instructions.AllocaInstr)
+      assert isinstance(entry_block.instructions[last_alloca_num - 1], ir.AllocaInstr)
       entry_builder.position_after(entry_block.instructions[last_alloca_num - 1])
     ir_alloca = entry_builder.alloca(typ=ir_type, name=name)
     if self.builder.block == entry_builder.block:
