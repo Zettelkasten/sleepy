@@ -6,14 +6,14 @@ from itertools import takewhile
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, FrozenSet, Collection
 
 import llvmlite
 from llvmlite import ir
 from llvmlite.binding import ExecutionEngine
 
 from sleepy.grammar import TreePosition, DummyPath
-from sleepy.symbol_table import HierarchicalDict
+from sleepy.symbol_table import HierarchicalDict, STUB
 
 LLVM_POINTER_SIZE = 8
 LLVM_SIZE_TYPE = ir.types.IntType(LLVM_POINTER_SIZE * 8)
@@ -49,7 +49,7 @@ class Type(ABC):
                c_type: Optional[Any],
                constructor: Optional[OverloadSet]):
     """
-    param c_type: may be None if this is non-realizable (e.g. template types / void)
+    :param c_type: may be None if this is non-realizable (e.g. template types / void)
     """
     self.templ_types = templ_types
     self.ir_type = ir_type
@@ -1684,8 +1684,15 @@ class TypeTemplateSymbol(Symbol):
     replacements = dict(zip(self.template_parameters, template_arguments))
     return self.signature_type.replace_types(replacements)
 
+class SymbolTableStub:
+  def __init__(self):
+    self.dict = STUB
+    self.current_func = None
+    self.known_extern_funcs = {}
+    self.inbuilt_symbols = set()
+    self.current_scope_identifiers = frozenset()
 
-class SymbolTable(HierarchicalDict[str, Symbol]):
+class SymbolTable:
   """
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
@@ -1693,28 +1700,22 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
 
   def __init__(self, parent: Optional[SymbolTable] = None,
                new_function: Optional[ConcreteFunction] = None,
-               inherit_outer_variables: bool = None):
-    super().__init__(parent)
+               inherit_outer_variables: bool = False):
+    self.parent = parent = SymbolTableStub() if parent is None else parent
 
-    if parent is None:  # default construction
-      self.inherit_outer_variables = False  # When there's no parent we can't look
-      self.current_func: Optional[ConcreteFunction] = None
-      self.known_extern_funcs: Dict[str, ConcreteFunction] = {}
-      self.inbuilt_symbols: Set[str] = set()
-    else:
-      assert inherit_outer_variables is not None
-
-      self.inherit_outer_variables = inherit_outer_variables
-      self.current_func = parent.current_func if new_function is None else new_function
-      self.known_extern_funcs = parent.known_extern_funcs
-      self.inbuilt_symbols = parent.inbuilt_symbols
+    assert inherit_outer_variables is not None
+    self.dict: HierarchicalDict[str, Symbol] = HierarchicalDict(parent.dict)
+    self.inherit_outer_variables = inherit_outer_variables
+    self.current_func = parent.current_func if new_function is None else new_function
+    self.known_extern_funcs = parent.known_extern_funcs
+    self.inbuilt_symbols = parent.inbuilt_symbols
 
   @property
-  def current_scope_identifiers(self) -> Set[str]:
+  def current_scope_identifiers(self) -> Collection[str]:
     if self.inherit_outer_variables:
-      return self.underlying_dict.keys() | self.parent.current_scope_identifiers
+      return self.dict.underlying_dict.keys() | self.parent.current_scope_identifiers
     else:
-      return set(self.underlying_dict.keys())
+      return self.dict.underlying_dict.keys()
 
   def make_child_scope(self, *,
                        inherit_outer_variables: bool,
@@ -1738,15 +1739,18 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     return 'SymbolTable%r' % self.__dict__
 
   def __setitem__(self, key, value):
-    if isinstance(value, FunctionSymbol) and key in self.underlying_dict:
-      existing = self.underlying_dict[key]
+    if isinstance(value, FunctionSymbol) and key in self.dict.underlying_dict:
+      existing = self.dict.underlying_dict[key]
       assert isinstance(existing, FunctionSymbol)
       existing.functions += value.functions
     else:
-      super(SymbolTable, self).__setitem__(key, value)
+      self.dict[key] = value
+
+  def __contains__(self, item) -> bool:
+    return item in self.dict
 
   def __getitem__(self, key):
-    value = super(SymbolTable, self).__getitem__(key)
+    value = self.dict[key]
     if isinstance(value, FunctionSymbol):
       return self.get_overloads(key)
     else:
@@ -1756,7 +1760,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     """
     For all variable symbols, copy common type of all other_symbol_tables.
     """
-    for symbol_identifier, self_symbol in self.items():
+    for symbol_identifier, self_symbol in self.dict.items():
       if not isinstance(self_symbol, VariableSymbol): continue
       assert all(symbol_identifier in symbol_table for symbol_table in other_symbol_tables)
 
@@ -1773,7 +1777,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     """
     Applies symbol.copy_reset_narrowed_type() for all variable symbols.
     """
-    for symbol_identifier, symbol in self.items():
+    for symbol_identifier, symbol in self.dict.items():
       if isinstance(symbol, VariableSymbol):
         if symbol.declared_var_type != symbol.narrowed_var_type:
           self[symbol_identifier] = symbol.copy_reset_narrowed_type()
@@ -1790,7 +1794,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     self.known_extern_funcs[func_identifier] = concrete_func
 
   def get_overloads(self, key: str, include_shadowed=False) -> Optional[OverloadSet]:
-    symbols = self._get_all(key)
+    symbols = self.dict.get_all(key)
 
     if include_shadowed:
       functions = [sym for sym in symbols if isinstance(sym, FunctionSymbol)]
@@ -1806,7 +1810,7 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
   def add_overload(self, identifier: str, overload: Union[FunctionTemplate | List[FunctionTemplate]]) -> bool:
     if not isinstance(overload, List): overload = [overload]
 
-    symbol = self.underlying_dict.setdefault(identifier, FunctionSymbol())
+    symbol = self.dict.underlying_dict.setdefault(identifier, FunctionSymbol())
     if not isinstance(symbol, FunctionSymbol): return False
     symbol.functions += overload
     return True
