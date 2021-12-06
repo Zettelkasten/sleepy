@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Any, cast
+from typing import List, Optional, Any, Union
 
 from llvmlite import ir
 
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
-from sleepy.errors import SemanticError
+from sleepy.errors import SemanticError, CompilerError
 from sleepy.grammar import TreePosition, DummyPath
 from sleepy.symbols import OverloadSet, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
@@ -19,6 +19,7 @@ from sleepy.symbols import OverloadSet, VariableSymbol, Type, SymbolTable, \
 def raise_error(message: str, pos: TreePosition):
   raise SemanticError(
     program_path=pos.file_path, word=pos.word, from_pos=pos.from_pos, to_pos=pos.to_pos, message=message)
+
 
 class AbstractSyntaxTree(ABC):
   """
@@ -36,7 +37,6 @@ class AbstractSyntaxTree(ABC):
 
   def __repr__(self) -> str:
     return 'AbstractSyntaxTree'
-  
 
   def _resolve_possible_concrete_funcs(self,
                                        func_caller: FunctionSymbolCaller,
@@ -49,10 +49,10 @@ class AbstractSyntaxTree(ABC):
 
     if not func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_types):
       raise_error('Cannot call function %r with arguments of types %r and template parameters %r, '
-                       'only declared for parameter types:\n%s' % (
-                         func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-                         ', '.join([str(templ_type) for templ_type in templ_types]),
-                         func.make_signature_list_str()), self.pos)
+                  'only declared for parameter types:\n%s' % (
+                    func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+                    ', '.join([str(templ_type) for templ_type in templ_types]),
+                    func.make_signature_list_str()), self.pos)
     if not all(called_type.is_realizable() for called_type in calling_types):
       raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
         func.identifier, ', '.join([str(called_type) for called_type in calling_types])), self.pos)
@@ -79,23 +79,23 @@ class AbstractSyntaxTree(ABC):
       possible_infers = [idx for idx, infer in enumerate(infers) if infer is not None]
       if len(possible_infers) == 0:
         raise_error('Cannot infer template types for function %r from arguments of types %r, '
-                         'is declared for parameter types:\n%s\n\nSpecify the template types explicitly.' % (
-                           func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-                           func.make_signature_list_str()), self.pos)
+                    'is declared for parameter types:\n%s\n\nSpecify the template types explicitly.' % (
+                      func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+                      func.make_signature_list_str()), self.pos)
       if len(possible_infers) > 1:
         raise_error('Cannot uniquely infer template types for function %r from arguments of types %r, '
-                         'is declared for parameter types:\n%s' % (
-                           func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-                           func.make_signature_list_str()), self.pos)
+                    'is declared for parameter types:\n%s' % (
+                      func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+                      func.make_signature_list_str()), self.pos)
       assert len(possible_infers) == 1
       expanded_signature_templ_types = infers[possible_infers[0]]
       assert expanded_signature_templ_types is not None
       if signature_templ_types is not None and signature_templ_types != expanded_signature_templ_types:
         raise_error('Cannot uniquely statically infer template types for function %r from arguments of types %r '
-                         'because different expanded union types would require different template types. '
-                         'Function is declared for parameter types:\n%s' % (
-                           func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-                           func.make_signature_list_str()), self.pos)
+                    'because different expanded union types would require different template types. '
+                    'Function is declared for parameter types:\n%s' % (
+                      func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
+                      func.make_signature_list_str()), self.pos)
       signature_templ_types = expanded_signature_templ_types
     assert signature_templ_types is not None
     return signature_templ_types
@@ -114,7 +114,7 @@ class AbstractSyntaxTree(ABC):
     for calling_type, func_arg_expr in zip(calling_types, func_arg_exprs):
       if not calling_type.is_realizable():
         raise_error("Cannot call function %r with argument of unrealizable type" % func.identifier,
-                                  func_arg_expr.pos)
+                    func_arg_expr.pos)
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
       func_caller=func_caller, calling_types=calling_types)
 
@@ -207,6 +207,7 @@ class StatementAst(AbstractSyntaxTree, ABC):
   def __init__(self, pos: TreePosition):
     super().__init__(pos)
 
+  @abstractmethod
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     raise NotImplementedError()
 
@@ -214,23 +215,35 @@ class StatementAst(AbstractSyntaxTree, ABC):
     return 'StatementAst'
 
 
+class DeclarationAst(AbstractSyntaxTree, ABC):
+  @abstractmethod
+  def create_symbol(self, symbol_table: SymbolTable, context: CodegenContext) -> Symbol:
+    raise NotImplementedError()
+
+  @property
+  @abstractmethod
+  def identifier(self) -> str:
+    raise NotImplementedError()
+
+
 class AbstractScopeAst(AbstractSyntaxTree):
   """
   Used to group multiple statements, forming a scope.
   """
-  def __init__(self, pos: TreePosition, stmt_list: List[StatementAst]):
-    """
-    :param TreePosition pos:
-    :param list[StatementAst] stmt_list:
-    """
+  Element = Union[StatementAst, DeclarationAst]
+
+  def __init__(self, pos: TreePosition, stmt_list: List[Element]):
     super().__init__(pos)
     self.stmt_list = stmt_list
 
   def build_scope_ir(self, scope_symbol_table: SymbolTable, scope_context: CodegenContext):
     with scope_context.use_pos(self.pos):
-      for stmt in self.stmt_list:
-        if scope_context.is_terminated:
-          raise_error('Code is unreachable', stmt.pos)
+
+      for declaration in [e for e in self.stmt_list if isinstance(e, DeclarationAst)]:
+        scope_symbol_table[declaration.identifier] = declaration.create_symbol(scope_symbol_table, scope_context)
+
+      for stmt in [e for e in self.stmt_list if isinstance(e, StatementAst)]:
+        if scope_context.is_terminated: raise_error('Code is unreachable', stmt.pos)
         stmt.build_ir(symbol_table=scope_symbol_table, context=scope_context)
 
   def __repr__(self) -> str:
@@ -272,6 +285,7 @@ class TranslationUnitAst:
   """
   Multiple FileAsts.
   """
+
   def __init__(self, file_asts: List[FileAst]):
     self.file_asts = file_asts
 
@@ -282,7 +296,8 @@ class TranslationUnitAst:
 
   def make_module_ir_and_symbol_table(self, module_name: str,
                                       emit_debug: bool,
-                                      main_file_path: Path | DummyPath = DummyPath("module")) -> (str, SymbolTable):  # noqa
+                                      main_file_path: Path | DummyPath = DummyPath("module"),
+                                      implicitly_exported_functions: Set(str) = set()) -> (str, SymbolTable):  # noqa
     assert self.check_pos_validity()
 
     module = ir.Module(name=module_name, context=ir.Context())
@@ -296,9 +311,21 @@ class TranslationUnitAst:
     for ast in self.file_asts:
       ast.build_ir(symbol_table=symbol_table, context=context)
     assert not context.is_terminated
+
+    for identifier in implicitly_exported_functions:
+      if identifier not in symbol_table:
+        raise CompilerError("Function %s is supposed to be exported, but does not exist." % identifier)
+      symbol = symbol_table[identifier]
+      if not isinstance(symbol, OverloadSet): raise CompilerError(
+        "Function %s is supposed to be exported, but is a %s instead" % (identifier, symbol.kind))
+      if not symbol.has_single_concrete_func(): raise CompilerError(
+        "Function %s is supposed to be exported, but is not uniquely identifiable by its name."
+        "Possible overloads are %s" % (identifier, repr(symbol)))
+      symbol.get_single_concrete_func()
+
     context.is_terminated = True
 
-    return context.get_patched_ir() , symbol_table
+    return context.get_patched_ir(), symbol_table
 
   def check_pos_validity(self) -> bool:
     return all(child.check_pos_validity() for child in self.file_asts)
@@ -308,6 +335,7 @@ class ExpressionStatementAst(StatementAst):
   """
   Stmt -> Expr
   """
+
   def __init__(self, pos: TreePosition, expr):
     """
     :param TreePosition pos:
@@ -336,6 +364,7 @@ class ReturnStatementAst(StatementAst):
   """
   Stmt -> return ExprList ;
   """
+
   def __init__(self, pos, return_exprs):
     """
     :param TreePosition pos:
@@ -395,7 +424,7 @@ class ReturnStatementAst(StatementAst):
     return 'ReturnStatementAst(return_exprs=%r)' % self.return_exprs
 
 
-class StructDeclarationAst(StatementAst):
+class StructDeclarationAst(DeclarationAst):
   def __init__(self, pos: TreePosition, struct_identifier: str, templ_identifiers: List[str],
                member_types: List[TypeAst], member_identifiers: List[str],
                member_annotations: List[List[AnnotationAst]]):
@@ -407,13 +436,18 @@ class StructDeclarationAst(StatementAst):
     self.member_identifiers = member_identifiers
     self.member_annotations = member_annotations
 
-  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
+  @property
+  def identifier(self) -> str:
+    return self.struct_identifier
+
+  def create_symbol(self, symbol_table: SymbolTable, context: CodegenContext) -> Symbol:
     with context.use_pos(self.pos):
       if self.struct_identifier in symbol_table.current_scope_identifiers:
         raise_error('Cannot redefine struct with name %r' % self.struct_identifier, self.pos)
 
-      struct_symbol_table = symbol_table.make_child_scope(
-        inherit_outer_variables=False)  # symbol table including placeholder types
+      # symbol table including placeholder types
+      struct_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=False)
+
       placeholder_templ_types = self._collect_placeholder_templ_types(
         self.templ_identifiers, symbol_table=struct_symbol_table)
 
@@ -422,7 +456,7 @@ class StructDeclarationAst(StatementAst):
       struct_identity = StructIdentity(struct_identifier=self.struct_identifier, context=context)
       partial_struct_type = PartialIdentifiedStructType(identity=struct_identity, templ_types=placeholder_templ_types)
       struct_identity.partial_struct_type = partial_struct_type
-      symbol_table[self.struct_identifier] = TypeTemplateSymbol(
+      struct_symbol_table[self.struct_identifier] = TypeTemplateSymbol(
         template_parameters=placeholder_templ_types, signature_type=partial_struct_type)
 
       member_types = [type_ast.make_type(symbol_table=struct_symbol_table) for type_ast in self.member_types]
@@ -432,21 +466,21 @@ class StructDeclarationAst(StatementAst):
 
       # make constructor / destructor
       signature_struct_type.constructor = signature_struct_type.build_constructor(
-        parent_symbol_table=symbol_table, parent_context=context)
-      signature_struct_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
+        parent_symbol_table=struct_symbol_table, parent_context=context)
+      signature_struct_type.build_destructor(parent_symbol_table=struct_symbol_table, parent_context=context)
 
       # assemble to complete type symbol
       struct_type_symbol = TypeTemplateSymbol(
         template_parameters=placeholder_templ_types, signature_type=signature_struct_type)
-      symbol_table[self.struct_identifier] = struct_type_symbol
+      return struct_type_symbol
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
 
   def __repr__(self) -> str:
     return (
-      'StructDeclarationAst(struct_identifier=%r, templ_identifiers=%r, member_identifiers=%r, member_types=%r)' % (
-        self.struct_identifier, self.templ_identifiers, self.member_identifiers, self.member_types))
+            'StructDeclarationAst(struct_identifier=%r, templ_identifiers=%r, member_identifiers=%r, member_types=%r)' % (
+      self.struct_identifier, self.templ_identifiers, self.member_identifiers, self.member_types))
 
 
 class AssignStatementAst(StatementAst):
@@ -527,7 +561,7 @@ class AssignStatementAst(StatementAst):
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
         raise_error('Cannot %s variable collapsing to type %r with new type %r' % (
           'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type),
-                         self.pos)
+                    self.pos)
       assert can_implicit_cast_to(val.narrowed_type, declared_type)
 
       # if we assign to a variable, narrow type to val_type
@@ -558,6 +592,7 @@ class IfStatementAst(StatementAst):
   Stmt -> if Expr Scope
         | if Expr Scope else Scope
   """
+
   def __init__(self, pos, condition_val, true_scope, false_scope):
     """
     :param TreePosition pos:
@@ -633,6 +668,7 @@ class WhileStatementAst(StatementAst):
   """
   Stmt -> while Expr { StmtList }
   """
+
   def __init__(self, pos, condition_val, body_scope):
     """
     :param TreePosition pos:
@@ -688,6 +724,7 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
   """
   Val, SumVal, ProdVal, PrimaryExpr
   """
+
   def __init__(self, pos: TreePosition):
     super().__init__(pos)
 
@@ -721,6 +758,7 @@ class ConstantExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> double | int | char
   """
+
   def __init__(self, pos: TreePosition, constant_val: Any, constant_type: Type):
     super().__init__(pos)
     self.constant_val = constant_val
@@ -751,6 +789,7 @@ class StringLiteralExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> str
   """
+
   def __init__(self, pos, constant_str):
     """
     :param TreePosition pos:
@@ -788,7 +827,8 @@ class StringLiteralExpressionAst(ExpressionAst):
         ir_val = ir.Constant(str_type.ir_type, (
           ir.FormattedConstant(context.ir_func_malloc.function_type.return_type, constant='undef'),
           ir_length, ir_length))
-        completed_string_value = context.builder.insert_value(agg=ir_val, value=ir_start, idx=0, name='str_literal_store_start')
+        completed_string_value = context.builder.insert_value(agg=ir_val, value=ir_start, idx=0,
+                                                              name='str_literal_store_start')
       else:
         completed_string_value = None
       return TypedValue(typ=str_type, ir_val=completed_string_value)
@@ -810,6 +850,7 @@ class IdentifierExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> identifier
   """
+
   def __init__(self, pos, identifier):
     """
     :param TreePosition pos:
@@ -836,7 +877,7 @@ class IdentifierExpressionAst(ExpressionAst):
       raise_error('Cannot capture variable %r from outer scope' % self.identifier, self.pos)
     if symbol.narrowed_var_type == SLEEPY_NEVER:
       raise_error('Cannot use variable %r with narrowed type %r' % (self.identifier, symbol.narrowed_var_type),
-                       self.pos)
+                  self.pos)
     return symbol
 
   def get_func_symbol(self, symbol_table: SymbolTable) -> OverloadSet:
@@ -878,6 +919,7 @@ class CallExpressionAst(ExpressionAst):
   """
   PrimaryExpr -> PrimaryExpr ( ExprList )
   """
+
   def __init__(self, pos: TreePosition, func_expr: ExpressionAst, func_arg_exprs: List[ExpressionAst]):
     super().__init__(pos)
     self.func_expr = func_expr
@@ -1029,6 +1071,7 @@ class MemberExpressionAst(ExpressionAst):
   This is a little magic, because it behaves differently depending on whether a is actually a reference or not.
   Not sure how to make this better.
   """
+
   def __init__(self, pos: TreePosition, parent_val_expr: ExpressionAst, member_identifier: str):
     super().__init__(pos)
     self.parent_val_expr = parent_val_expr
@@ -1107,6 +1150,7 @@ class UnbindExpressionAst(ExpressionAst):
   """
   NegExpr -> ! NegExpr
   """
+
   def __init__(self, pos: TreePosition, arg_expr: ExpressionAst):
     super().__init__(pos)
     self.arg_expr = arg_expr
@@ -1141,6 +1185,7 @@ class TypeAst(AbstractSyntaxTree, ABC):
   These are essentially functions operating on types.
   But these functions need to be executed at compile time, so for now, handle them in special cases everywhere.
   """
+
   def __init__(self, pos):
     """
     :param TreePosition pos:
@@ -1158,6 +1203,7 @@ class IdentifierTypeAst(TypeAst):
   """
   IdentifierType -> identifier.
   """
+
   def __init__(self, pos: TreePosition, type_identifier: str, templ_types: List[TypeAst]):
     super().__init__(pos)
     self.type_identifier = type_identifier
@@ -1192,6 +1238,7 @@ class UnionTypeAst(TypeAst):
   """
   IdentifierType -> identifier.
   """
+
   def __init__(self, pos, variant_types):
     """
     :param TreePosition pos:
@@ -1215,6 +1262,7 @@ class AnnotationAst(AbstractSyntaxTree):
   """
   Annotation.
   """
+
   def __init__(self, pos, identifier):
     """
     :param TreePosition pos:

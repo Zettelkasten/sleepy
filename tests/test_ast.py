@@ -530,7 +530,7 @@ def test_struct_default_constructor():
       x: Int = 0
       y: Int = 0
     }
-    func main() ->  Vec2  {
+    func main() -> Vec2 {
       return Vec2(0, 0)
     }
     """
@@ -643,7 +643,7 @@ def test_if_missing_return_branch():
     }
     """
     with assert_raises(SemanticError):
-      compile_program(engine, program)
+      compile_program(engine, program, main_func_identifier='foo')
 
 
 def test_mutable_val_type_local_var():
@@ -1957,7 +1957,7 @@ def test_char_not_comparable():
     with make_execution_engine() as engine, open(path) as file:
       program = file.read()
       with assert_raises(SemanticError):
-        compile_program(engine, program, add_preamble=False)
+        compile_program(engine, program, add_preamble=False, main_func_identifier='f')
 
         
 def test_template_ternary():
