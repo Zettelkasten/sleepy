@@ -1030,25 +1030,19 @@ def _narrow_type(from_type: Type, narrow_to: Type, narrow_to_complement: bool = 
 
 
 def get_common_type(possible_types: List[Type]) -> Type:
-  if len(possible_types) == 0:
-    return SLEEPY_NEVER
+  if len(possible_types) == 0: return SLEEPY_NEVER
+
   common_type = possible_types[0]
-  for i, other_type in enumerate(possible_types):
-    if i == 0 or other_type in possible_types[:i]:
-      continue
-    if isinstance(common_type, UnionType):
-      if isinstance(other_type, UnionType):
-        common_type = common_type.copy_with_extended_types(
-          extended_types=other_type.possible_types, extended_type_nums=other_type.possible_type_nums)
-      else:
-        common_type = common_type.copy_with_extended_types(extended_types=[other_type])
+  common_type = common_type if isinstance(common_type, UnionType) \
+    else UnionType.from_types(possible_types=[possible_types[0]])
+
+  for other_type in possible_types[1:]:
+    if isinstance(other_type, UnionType):
+      common_type = common_type.copy_with_extended_types(
+        extended_types=other_type.possible_types, extended_type_nums=other_type.possible_type_nums)
     else:
-      if isinstance(other_type, UnionType):
-        common_type = other_type.copy_with_extended_types(extended_types=[common_type])
-      elif common_type == other_type:
-        pass
-      else:
-        common_type = UnionType.from_types(possible_types=[common_type, other_type])
+      common_type = common_type.copy_with_extended_types(extended_types=[other_type])
+
   if isinstance(common_type, UnionType) and len(common_type.possible_types) == 1:
     return common_type.possible_types[0]  # stay as simple as possible
   return common_type
