@@ -14,7 +14,8 @@ def run_example(code_file_name: Optional[str] = None):
   print('\nLoading example from %s.' % code_file_name)
   with make_execution_engine() as engine:
     ast = make_translation_unit_ast(file_path=Path(code_file_name))
-    module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast', emit_debug=False)
+    module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast', emit_debug=False,
+                                                                  implicitly_exported_functions={'main'})
     compile_ir(engine, module_ir)
     assert 'main' in symbol_table, 'Need to declare a main function'
     main_func_symbol = symbol_table['main']

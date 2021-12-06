@@ -16,7 +16,7 @@ def compile_program(engine: ExecutionEngine,
   file_path = DummyPath("test")
   ast = make_translation_unit_ast_from_str(file_path=file_path, program=program, add_preamble=add_preamble)
   module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
-    module_name='test_parse_ast', emit_debug=emit_debug)
+    module_name='test_parse_ast', emit_debug=emit_debug, implicitly_exported_functions={main_func_identifier})
   print('---- module intermediate repr:')
   print(module_ir)
   compile_ir(engine, module_ir)

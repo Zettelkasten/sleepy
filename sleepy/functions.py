@@ -2,15 +2,15 @@ from typing import List, Optional, cast
 
 from llvmlite import ir
 
-from sleepy.ast import StatementAst, TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree, \
-  raise_error
+from sleepy.ast import TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree, \
+  raise_error, DeclarationAst
+from sleepy.builtin_symbols import SLEEPY_BOOL
 from sleepy.grammar import TreePosition
 from sleepy.symbols import SymbolTable, Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
-  VariableSymbol, PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType
-from sleepy.builtin_symbols import SLEEPY_BOOL
+  VariableSymbol, PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType, Symbol, FunctionSymbol
 
 
-class FunctionDeclarationAst(StatementAst):
+class FunctionDeclarationAst(DeclarationAst):
   """
   Stmt -> func identifier ( TypedIdentifierList ) Scope
   """
@@ -33,7 +33,7 @@ class FunctionDeclarationAst(StatementAst):
     assert len(arg_identifiers) == len(arg_types) == len(arg_annotations) == len(arg_mutates)
     assert (return_type is None) == (return_annotation_list is None)
     assert body_scope is None or isinstance(body_scope, AbstractScopeAst)
-    self.identifier = identifier
+    self._identifier = identifier
     self.templ_identifiers = templ_identifiers
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
@@ -42,6 +42,10 @@ class FunctionDeclarationAst(StatementAst):
     self.return_type = return_type
     self.return_annotation_list = return_annotation_list
     self.body_scope = body_scope
+
+  @property
+  def identifier(self) -> str:
+    return self._identifier
 
   @property
   def is_extern(self) -> bool:
@@ -67,7 +71,7 @@ class FunctionDeclarationAst(StatementAst):
             arg_annotation.identifier, ', '.join(self.allowed_arg_annotation_identifiers)), arg_annotation.pos)
     return arg_types
 
-  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
+  def create_symbol(self, symbol_table: SymbolTable, context: CodegenContext) -> Symbol:
     func_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=False)
 
     placeholder_templ_types = self._collect_placeholder_templ_types(
@@ -110,13 +114,9 @@ class FunctionDeclarationAst(StatementAst):
       placeholder_template_types=placeholder_templ_types,
       return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types, arg_type_narrowings=arg_types,
       arg_mutates=self.arg_mutates, ast=self, captured_symbol_table=func_symbol_table, captured_context=context)
-    symbol_table.add_overload(self.identifier, signature)
 
+    return FunctionSymbol([signature])
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
-
-    # Always generate IR for functions without template types
-    if not self.is_inline and len(placeholder_templ_types) == 0:
-      signature.get_concrete_func(concrete_templ_types=[])
 
   def build_body_ir(self, parent_symbol_table: SymbolTable, concrete_func: ConcreteFunction,
                     body_context: CodegenContext, ir_func_args: Optional[List[ir.values.Value]] = None):
@@ -223,6 +223,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
     return return_val
 
   def build_ir(self):
+    assert not self.captured_context.is_terminated
     with self.captured_context.use_pos(self.ast.pos):
       if self.ast.is_extern:
         if self.captured_symbol_table.has_extern_func(self.ast.identifier):

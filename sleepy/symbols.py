@@ -1619,11 +1619,12 @@ class OverloadSet(Symbol):
       self.signatures_by_number_of_templ_args[len(signature.placeholder_templ_types)] = []
     self.signatures_by_number_of_templ_args[len(signature.placeholder_templ_types)].append(signature)
 
+  def has_single_concrete_func(self) -> bool:
+    return len(self.signatures) == 1 and len(self.signatures[0].placeholder_templ_types) == 0
+
   def get_single_concrete_func(self) -> ConcreteFunction:
-    assert len(self.signatures) == 1
-    signature = self.signatures[0]
-    assert len(signature.placeholder_templ_types) == 0
-    return signature.get_concrete_func(concrete_templ_types=[])
+    assert self.has_single_concrete_func()
+    return self.signatures[0].get_concrete_func(concrete_templ_types=[])
 
   @classmethod
   def iter_expanded_possible_arg_types(cls, arg_types: Iterable[Type]) -> Iterable[Iterable[Type]]:
