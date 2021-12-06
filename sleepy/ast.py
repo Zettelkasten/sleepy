@@ -242,23 +242,21 @@ class AbstractScopeAst(AbstractSyntaxTree):
 
 class FileAst(AbstractSyntaxTree):
   def __init__(self, pos: TreePosition,
-               stmt_list: List[StatementAst],
+               scope: AbstractScopeAst,
                imports_ast: ImportsAst):
     super().__init__(pos)
     self.imports_ast = imports_ast
-    self.stmt_list = stmt_list
+    self.scope = scope
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
-      for statement in self.stmt_list:
-        assert not context.is_terminated
-        statement.build_ir(symbol_table=symbol_table, context=context)
+      self.scope.build_scope_ir(symbol_table, context)
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return [cast(AbstractSyntaxTree, self.imports_ast)] + self.stmt_list
+    return [self.imports_ast, self.scope]
 
   def __repr__(self) -> str:
-    return 'TopLevelAst(%s)' % self.stmt_list
+    return 'TopLevelAst(%s)' % self.scope
 
 
 class ImportsAst(AbstractSyntaxTree):
