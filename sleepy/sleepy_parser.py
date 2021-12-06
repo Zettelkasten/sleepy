@@ -14,8 +14,8 @@ from sleepy.builtin_symbols import SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEE
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
   prods_attr_rules={
     Production('S', 'File'): {'ast': 'ast.1'},
-    Production('File', 'SeparatedImportDecl?', 'StmtList'): {
-      'ast': lambda _pos, stmt_list, ast: FileAst(_pos, stmt_list=stmt_list(2), imports_ast=ast(1))
+    Production('File', 'SeparatedImportDecl?', 'BracelessScope'): {
+      'ast': lambda _pos, ast: FileAst(_pos, scope=ast(2), imports_ast=ast(1))
     },
 
     Production('SeparatedImportDecl?'): {'ast': lambda _pos: ImportsAst(pos=_pos, imports=[])},
@@ -38,6 +38,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('separator', 'new_line'): {},
     Production('Scope', '{', 'StmtList', '}'): {
       'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list=stmt_list(2))},
+    Production('BracelessScope', 'StmtList'): {
+      'ast': lambda _pos, stmt_list: AbstractScopeAst(_pos, stmt_list=stmt_list(1))},
 
     Production('SeparatedStmt', 'Stmt', 'separator'): {'ast': 'ast.1'},
     Production('SeparatedStmt', 'If1Stmt'): {'ast': 'ast.1'},
