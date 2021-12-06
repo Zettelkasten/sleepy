@@ -7,8 +7,8 @@ from typing import List, Optional
 import networkx as nx
 
 from sleepy.ast import FileAst, raise_error
-from sleepy.grammar import DummyPath
-from sleepy.parse import make_file_ast
+from sleepy.syntactical_analysis.grammar import DummyPath
+from sleepy.ast_generation import make_file_ast
 
 
 def _process_file(path: Path | DummyPath, dag: nx.DiGraph) -> List[Path]:

@@ -2,8 +2,8 @@ import _setup_test_env  # noqa
 from nose.tools import assert_equal, assert_raises
 
 from sleepy.errors import LexError
-from sleepy.grammar import IGNORED_TOKEN
-from sleepy.lexer import LexerGenerator
+from sleepy.syntactical_analysis.grammar import IGNORED_TOKEN
+from sleepy.syntactical_analysis.lexer import LexerGenerator
 
 
 # noinspection PyPep8Naming

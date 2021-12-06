@@ -2,11 +2,11 @@ import _setup_test_env  # noqa
 from nose.tools import assert_equal, assert_raises
 
 from sleepy.errors import LexError
-from sleepy.grammar import IGNORED_TOKEN
+from sleepy.syntactical_analysis.grammar import IGNORED_TOKEN
 
 
 def test_tokenize_regex():
-  from sleepy.regex import tokenize_regex
+  from sleepy.syntactical_analysis.regex import tokenize_regex
   assert_equal(tokenize_regex('abcd'), (('a', 'a', 'a', 'a'), (0, 1, 2, 3)))
   assert_equal(tokenize_regex('[a-z]*'), (('[', 'a', '-', 'a', ']', '*'), (0, 1, 2, 3, 4, 5)))
   assert_equal(tokenize_regex('\\\\\\?'), ((IGNORED_TOKEN, 'a', IGNORED_TOKEN, 'a'), (0, 1, 2, 3)))
@@ -20,7 +20,7 @@ def test_tokenize_regex():
 
 
 def test_make_regex_nfa_and_dfa():
-  from sleepy.regex import make_regex_nfa
+  from sleepy.syntactical_analysis.regex import make_regex_nfa
   from sleepy.automaton import make_dfa_from_nfa
 
   def test_nfa_dfa_equal(nfa, dfa, word, should_accept):

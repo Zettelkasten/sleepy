@@ -5,7 +5,7 @@ from llvmlite import ir
 from sleepy.ast import TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree, \
   raise_error, DeclarationAst
 from sleepy.builtin_symbols import SLEEPY_BOOL
-from sleepy.grammar import TreePosition
+from sleepy.syntactical_analysis.grammar import TreePosition
 from sleepy.symbols import SymbolTable, Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
   VariableSymbol, PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType, Symbol, FunctionSymbol
 

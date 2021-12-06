@@ -3,7 +3,7 @@ import _setup_test_env  # noqa
 from nose.tools import assert_equal
 
 from llvmlite import ir
-from sleepy.grammar import DummyPath
+from sleepy.syntactical_analysis.grammar import DummyPath
 from sleepy.symbols import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext, ReferenceType, TypedValue, \
   narrow_with_collapsed_type, narrow_type
 
@@ -345,7 +345,7 @@ def test_try_infer_templ_types_struct():
 
 def test_context_use_pos():
   from sleepy.symbols import CodegenContext, make_di_location
-  from sleepy.grammar import TreePosition
+  from sleepy.syntactical_analysis.grammar import TreePosition
   from llvmlite import ir
   module = ir.Module(name='module_name')
   file_path = DummyPath("test")

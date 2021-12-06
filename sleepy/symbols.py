@@ -12,8 +12,8 @@ import llvmlite
 from llvmlite import ir
 from llvmlite.binding import ExecutionEngine
 
-from sleepy.grammar import TreePosition, DummyPath
-from sleepy.symbol_table import HierarchicalDict, STUB
+from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
+from sleepy.hierarchical_dictionary import HierarchicalDict, STUB
 
 LLVM_POINTER_SIZE = 8
 LLVM_SIZE_TYPE = ir.types.IntType(LLVM_POINTER_SIZE * 8)
@@ -2391,7 +2391,7 @@ class TypedValue:
         assert max(possible_from_type.size for possible_from_type in from_type.possible_types) <= to_type.val_size
         ir_from_untagged_union = from_type.make_extract_void_val(
           self.ir_val, context=context, name='%s_from_val' % name)
-        from sleepy.util import truncate_ir_value
+        from sleepy.utilities import truncate_ir_value
         ir_from_untagged_union_truncated = truncate_ir_value(
           from_type=from_type.untagged_union_ir_type, to_type=to_type.untagged_union_ir_type,
           ir_val=ir_from_untagged_union, context=context, name=name)

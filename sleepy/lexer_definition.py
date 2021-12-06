@@ -1,4 +1,4 @@
-from sleepy.lexer import LexerGenerator
+from sleepy.syntactical_analysis.lexer import LexerGenerator
 
 TOKEN_INFO = [
   ('func', 'func', 'KEYWORD'),

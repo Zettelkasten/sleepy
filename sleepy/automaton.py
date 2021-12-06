@@ -1,6 +1,6 @@
-from typing import List, Dict, Set, FrozenSet, Optional, Iterator, Iterable
+from typing import List, Dict, Set, FrozenSet, Optional, Iterable
 
-from sleepy.grammar import EPSILON
+from sleepy.syntactical_analysis.grammar import EPSILON
 
 """
 General placeholder for all unproductive (error) states.

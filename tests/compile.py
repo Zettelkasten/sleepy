@@ -2,9 +2,9 @@ from typing import Callable
 
 from llvmlite.binding import ExecutionEngine
 
-from sleepy.grammar import DummyPath
+from sleepy.syntactical_analysis.grammar import DummyPath
 from sleepy.jit import compile_ir
-from sleepy.parse import make_translation_unit_ast_from_str
+from sleepy.ast_generation import make_translation_unit_ast_from_str
 from sleepy.symbols import OverloadSet
 
 

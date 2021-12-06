@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Optional
 
-from sleepy.grammar import AttributeGrammar, SyntaxTree, get_token_word_from_tokens_pos
+from sleepy.syntactical_analysis.grammar import AttributeGrammar, SyntaxTree, get_token_word_from_tokens_pos
 
 
 class AttributeEvalGenerator:

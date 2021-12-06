@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from sleepy.grammar import get_line_col_from_pos, DummyPath
+from sleepy.syntactical_analysis.grammar import get_line_col_from_pos, DummyPath
 
 
 class CompilerError(Exception):

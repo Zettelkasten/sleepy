@@ -5,11 +5,11 @@ from nose.tools import assert_equal, assert_almost_equal, assert_raises
 
 import _setup_test_env  # noqa
 from sleepy.errors import SemanticError, ParseError
-from sleepy.grammar import DummyPath
+from sleepy.syntactical_analysis.grammar import DummyPath
 from sleepy.jit import make_execution_engine
 from sleepy.symbols import SLEEPY_UNIT
 from tests.compile import compile_program
-from sleepy.parse import make_translation_unit_ast_from_str, make_file_ast_from_str
+from sleepy.ast_generation import make_translation_unit_ast_from_str, make_file_ast_from_str
 
 
 def test_ast_parser():

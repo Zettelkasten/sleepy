@@ -16,7 +16,7 @@ from sleepy.errors import CompilerError
 # noinspection PyUnresolvedReferences
 from sleepy.jit import make_execution_engine, compile_ir, PREAMBLE_BINARIES_PATH
 # noinspection PyUnresolvedReferences
-from sleepy.parse import make_file_ast, make_translation_unit_ast
+from sleepy.ast_generation import make_file_ast, make_translation_unit_ast
 from sleepy.symbols import OverloadSet
 import llvmlite.binding as llvm
 

@@ -5,8 +5,8 @@ from typing import List, Dict, Set, Optional, Tuple
 
 from sleepy.automaton import NonDeterministicAutomaton, make_dfa_from_nfa, DeterministicAutomaton, OTHER_CHAR
 from sleepy.errors import LexError
-from sleepy.grammar import Grammar, Production, EPSILON, IGNORED_TOKEN, get_token_word_from_tokens_pos, DummyPath
-from sleepy.parser import ParserGenerator
+from sleepy.syntactical_analysis.grammar import Grammar, Production, EPSILON, IGNORED_TOKEN, get_token_word_from_tokens_pos, DummyPath
+from sleepy.syntactical_analysis.parser import ParserGenerator
 
 REGEX_LIT_TOKEN = 'a'
 REGEX_SPECIAL_TOKENS = frozenset({'(', ')', '\\', '-', '[', ']', '*', '+', '?', '|', '^', '.'})

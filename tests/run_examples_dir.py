@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Tuple, List, Optional
 
 from sleepy.jit import make_execution_engine, compile_ir
-from sleepy.parse import make_translation_unit_ast
+from sleepy.ast_generation import make_translation_unit_ast
 from sleepy.symbols import OverloadSet
 
 

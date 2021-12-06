@@ -8,7 +8,7 @@ from llvmlite import ir
 
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 from sleepy.errors import SemanticError, CompilerError
-from sleepy.grammar import TreePosition, DummyPath
+from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
 from sleepy.symbols import OverloadSet, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \

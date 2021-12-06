@@ -2,11 +2,11 @@ import _setup_test_env  # noqa
 from nose.tools import assert_equal, assert_raises
 
 from sleepy.errors import ParseError
-from sleepy.lexer import LexerGenerator
-from sleepy.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
-from sleepy.grammar import EPSILON, Production, Grammar, AttributeGrammar, SyntaxTree, \
+from sleepy.syntactical_analysis.lexer import LexerGenerator
+from sleepy.syntactical_analysis.parser import ParserGenerator, make_first1_sets, get_first1_set_for_word
+from sleepy.syntactical_analysis.grammar import EPSILON, Production, Grammar, AttributeGrammar, SyntaxTree, \
   get_token_word_from_tokens_pos, TreePosition, get_line_col_from_pos, DummyPath
-from sleepy.semantic import AttributeEvalGenerator
+from sleepy.syntactical_analysis.semantic import AttributeEvalGenerator
 
 
 # noinspection PyPep8Naming
@@ -343,7 +343,7 @@ def test_ParserGenerator_arithmetic_syn():
 
 # noinspection PyPep8Naming
 def test_ParserGenerator_regex():
-  from sleepy.regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_LIT_ANY_OP, REGEX_CHOICE_OP, \
+  from sleepy.syntactical_analysis.regex import REGEX_PARSER, tokenize_regex, REGEX_LIT_OP, REGEX_LIT_ANY_OP, REGEX_CHOICE_OP, \
     REGEX_LITS_SINGLE_OP, REGEX_LITS_MULTIPLE_OP, REGEX_CONCAT_OP, REGEX_OPTIONAL_OP, REGEX_RANGE_OP, \
     REGEX_RANGE_LITS_OP, REGEX_REPEAT_OP, REGEX_REPEAT_EXISTS_OP, REGEX_INV_RANGE_OP, REGEX_INV_RANGE_LITS_OP, \
     REGEX_LIT_TOKEN

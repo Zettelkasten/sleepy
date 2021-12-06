@@ -4,11 +4,11 @@ from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatem
   StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ImportsAst, \
   UnbindExpressionAst
 
-from sleepy.ast_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
+from sleepy.token_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
   parse_hex_int
 from sleepy.functions import FunctionDeclarationAst
-from sleepy.grammar import AttributeGrammar, Production
-from sleepy.parser import ParserGenerator
+from sleepy.syntactical_analysis.grammar import AttributeGrammar, Production
+from sleepy.syntactical_analysis.parser import ParserGenerator
 from sleepy.builtin_symbols import SLEEPY_DOUBLE, SLEEPY_FLOAT, SLEEPY_INT, SLEEPY_LONG, SLEEPY_CHAR
 
 SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(

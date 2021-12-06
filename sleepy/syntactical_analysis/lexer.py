@@ -5,8 +5,8 @@ from typing import Dict, Tuple, Set, Union, Optional, List
 
 from sleepy.automaton import ERROR_STATE, OTHER_CHAR
 from sleepy.errors import LexError
-from sleepy.grammar import DummyPath
-from sleepy.regex import make_regex_dfa, REGEX_RECOGNIZED_CHARS
+from sleepy.syntactical_analysis.grammar import DummyPath
+from sleepy.syntactical_analysis.regex import make_regex_dfa, REGEX_RECOGNIZED_CHARS
 
 State = Union[int, ERROR_STATE]
 Comp_State = Tuple[State]

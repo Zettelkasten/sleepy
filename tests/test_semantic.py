@@ -1,10 +1,10 @@
 import _setup_test_env  # noqa
 from nose.tools import assert_equal, assert_almost_equal
 
-from sleepy.lexer import LexerGenerator
-from sleepy.parser import ParserGenerator
-from sleepy.grammar import Production, Grammar, AttributeGrammar, IGNORED_TOKEN
-from sleepy.semantic import AttributeEvalGenerator
+from sleepy.syntactical_analysis.lexer import LexerGenerator
+from sleepy.syntactical_analysis.parser import ParserGenerator
+from sleepy.syntactical_analysis.grammar import Production, Grammar, AttributeGrammar, IGNORED_TOKEN
+from sleepy.syntactical_analysis.semantic import AttributeEvalGenerator
 
 
 # noinspection PyPep8Naming

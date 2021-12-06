@@ -6,7 +6,7 @@ from typing import Optional, Dict, List, Set, FrozenSet, Any
 from typing import Tuple
 
 from sleepy.errors import ParseError
-from sleepy.grammar import EPSILON, Production, SyntaxTree, IGNORED_TOKEN, \
+from sleepy.syntactical_analysis.grammar import EPSILON, Production, SyntaxTree, IGNORED_TOKEN, \
   get_token_word_from_tokens_pos, TreePosition, AttributeGrammar, DummyPath
 
 
