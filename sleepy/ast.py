@@ -365,11 +365,7 @@ class ReturnStatementAst(StatementAst):
   Stmt -> return ExprList ;
   """
 
-  def __init__(self, pos, return_exprs):
-    """
-    :param TreePosition pos:
-    :param list[ExpressionAst] return_exprs:
-    """
+  def __init__(self, pos: TreePosition, return_exprs: List[ExpressionAst]):
     super().__init__(pos)
     self.return_exprs = return_exprs
     if len(return_exprs) > 1:
@@ -679,11 +675,7 @@ class WhileStatementAst(StatementAst):
     self.condition_val = condition_val
     self.body_scope = body_scope
 
-  def build_ir(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    """
+  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
       cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
       cond_val = cond_val.copy_collapse(context=context, name='while_cond')
@@ -1263,11 +1255,7 @@ class AnnotationAst(AbstractSyntaxTree):
   Annotation.
   """
 
-  def __init__(self, pos, identifier):
-    """
-    :param TreePosition pos:
-    :param str identifier:
-    """
+  def __init__(self, pos: TreePosition, identifier: str):
     super().__init__(pos)
     self.identifier = identifier
     # TODO: Add type checking for annotation identifiers.

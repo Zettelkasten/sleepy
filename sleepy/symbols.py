@@ -525,10 +525,7 @@ class UnionType(Type):
         'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
         'elements': [di_tag_type, di_untagged_union_type]})
 
-  def is_realizable(self):
-    """
-    :rtype: bool
-    """
+  def is_realizable(self) -> bool:
     return len(self.possible_types) > 0
 
   def replace_types(self, replacements: Dict[Type, Type]) -> Type:
@@ -1590,7 +1587,8 @@ class OverloadSet(Symbol):
     assert all(not arg_type.has_templ_placeholder() for arg_type in arg_types)
     all_expanded_arg_types = self.iter_expanded_possible_arg_types(arg_types)
     return all(
-      self.can_call_with_expanded_arg_types(concrete_templ_types=concrete_templ_types, expanded_arg_types=list(arg_types))
+      self.can_call_with_expanded_arg_types(concrete_templ_types=concrete_templ_types,
+                                            expanded_arg_types=list(arg_types))
       for arg_types in all_expanded_arg_types)
 
   def is_undefined_for_arg_types(self, placeholder_templ_types: List[PlaceholderTemplateType], arg_types: List[Type]):
@@ -1759,14 +1757,14 @@ class SymbolTable(HierarchicalDict[str, Symbol]):
     For all variable symbols, copy common type of all other_symbol_tables.
     """
     for symbol_identifier, self_symbol in self.items():
-      if not isinstance(self_symbol, VariableSymbol):
-        continue
+      if not isinstance(self_symbol, VariableSymbol): continue
       assert all(symbol_identifier in symbol_table for symbol_table in other_symbol_tables)
-      other_symbols = [
-        symbol_table[symbol_identifier] for symbol_table in other_symbol_tables]
+
+      other_symbols = [symbol_table[symbol_identifier] for symbol_table in other_symbol_tables]
+
       assert all(isinstance(other_symbol, VariableSymbol) for other_symbol in other_symbols)
-      if len(other_symbols) == 0:
-        continue
+      if len(other_symbols) == 0: continue
+
       other_symbols = cast(List[VariableSymbol], other_symbols)
       common_type = get_common_type([other_symbol.narrowed_var_type for other_symbol in other_symbols])
       self[symbol_identifier] = self_symbol.copy_set_narrowed_type(common_type)
