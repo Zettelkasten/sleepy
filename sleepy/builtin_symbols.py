@@ -121,7 +121,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     arg_types=[ptr_type], arg_type_narrowings=[ptr_type], arg_mutates=[False],
     instruction=lambda builder, ptr: ptr, emits_ir=context.emits_ir)
   symbol_table.add_overload('load', load_signature)
-  symbol_table.inbuilt_symbols.add('load')
+  symbol_table.builtin_symbols.add('load')
 
   assert 'store' not in symbol_table
   store_signature = BuiltinOperationFunctionTemplate(
@@ -221,48 +221,48 @@ def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
 
 def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   assert 'free' not in symbol_table
-  symbol_table.inbuilt_symbols.add('free')
+  symbol_table.builtin_symbols.add('free')
 
   for func_identifier in ['index', 'size', 'is', '|']:
     assert func_identifier not in symbol_table
-    symbol_table.inbuilt_symbols.add(func_identifier)
+    symbol_table.builtin_symbols.add(func_identifier)
     symbol_table.add_overload(func_identifier, DummyFunctionTemplate())
 
-  for type_identifier, inbuilt_type in SLEEPY_TYPES.items():
+  for type_identifier, builtin_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table
-    symbol_table[type_identifier] = TypeTemplateSymbol.make_concrete_type_symbol(inbuilt_type)
-    if inbuilt_type == SLEEPY_UNIT:
+    symbol_table[type_identifier] = TypeTemplateSymbol.make_concrete_type_symbol(builtin_type)
+    if builtin_type == SLEEPY_UNIT:
       continue
 
     # add destructor
     destructor_signature = BuiltinOperationFunctionTemplate(
-      placeholder_template_types=[], return_type=SLEEPY_UNIT, arg_identifiers=['var'], arg_types=[inbuilt_type],
+      placeholder_template_types=[], return_type=SLEEPY_UNIT, arg_identifiers=['var'], arg_types=[builtin_type],
       arg_type_narrowings=[SLEEPY_NEVER], instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(), emits_ir=context.emits_ir,
       arg_mutates=[False])
     symbol_table.add_overload('free', destructor_signature)
 
   for assert_identifier in ['assert', 'unchecked_assert']:
     assert assert_identifier not in symbol_table
-    symbol_table.inbuilt_symbols.add(assert_identifier)
+    symbol_table.builtin_symbols.add(assert_identifier)
 
   if context.emits_ir:
     context.ir_func_malloc = ir.Function(
       context.module, ir.FunctionType(LLVM_VOID_POINTER_TYPE, [LLVM_SIZE_TYPE]), name='malloc')
 
-  # TODO: currently, some inbuilt free() functions are not inlined.
+  # TODO: currently, some builtin free() functions are not inlined.
   # This means that we need to add debug information to these functions, but they do not have any line numbers.
   # We use this dummy here.
-  inbuilt_pos = TreePosition('', 0, 0)
+  builtin_pos = TreePosition('', 0, 0)
 
-  inbuilt_symbols = {
+  builtin_symbols = {
     'Str': _make_str_symbol, 'Ptr': _make_ptr_symbol, 'RawPtr': _make_raw_ptr_symbol, 'Ref': _make_ref_symbol,
     'bitcast': _make_bitcast_symbol}
-  with context.use_pos(inbuilt_pos):
-    for symbol_identifier, setup_func in inbuilt_symbols.items():
+  with context.use_pos(builtin_pos):
+    for symbol_identifier, setup_func in builtin_symbols.items():
       assert symbol_identifier not in symbol_table
       symbol = setup_func(symbol_table=symbol_table, context=context)
       symbol_table[symbol_identifier] = symbol
-      symbol_table.inbuilt_symbols.add(symbol_identifier)
+      symbol_table.builtin_symbols.add(symbol_identifier)
 
     _make_builtin_operator_functions(symbol_table, context.emits_ir)
 

@@ -16,7 +16,7 @@ color green "\<(Int|Double|Long|Float|Char|Bool|Str|True|False|EmptyStr|ToStr)\>
 color brightyellow "\<(func|extern_func|struct|if|else|return|while)\>"
 color brightmagenta "'([^'\]|(\\["'abfnrtv\\]))'" "'\\(([0-3]?[0-7]{1,2}))'" "'\\x[0-9A-Fa-f]{1,2}'"
 
-# Inbuilt function and annotation names
+# Builtin function and annotation names
 color cyan "\<(print|print_line|flush|print_flush|print_flush_line|or|and|not|allocate_char|allocate_double|deallocate|load|store|assert|unchecked_assert|memcpy|resize|copy|get|set|insert)\>"
 
 color brightcyan "\<(RefType|ValType|Mutable|Const|Inline)\>"

@@ -104,7 +104,7 @@ class FunctionDeclarationAst(DeclarationAst):
 
     if self.identifier in {'assert', 'unchecked_assert'}:
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
-        raise_error('Inbuilt %r must be overloaded with signature(Bool condition, ...)' % self.identifier,
+        raise_error('Builtin %r must be overloaded with signature(Bool condition, ...)' % self.identifier,
                          self.pos)
 
     if self.is_inline and self.is_extern:

@@ -1665,7 +1665,7 @@ class SymbolTableStub:
     self.dict = STUB
     self.current_func = None
     self.known_extern_funcs = {}
-    self.inbuilt_symbols = set()
+    self.builtin_symbols = set()
     self.current_scope_identifiers = frozenset()
 
 Symbol = Union[OverloadSet, TypeTemplateSymbol, VariableSymbol]
@@ -1687,7 +1687,7 @@ class SymbolTable:
     self.inherit_outer_variables = inherit_outer_variables
     self.current_func = parent.current_func if new_function is None else new_function
     self.known_extern_funcs = parent.known_extern_funcs
-    self.inbuilt_symbols = parent.inbuilt_symbols
+    self.builtin_symbols = parent.builtin_symbols
 
   @property
   def current_scope_identifiers(self) -> Collection[str]:
