@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import copy
 import ctypes
-from itertools import takewhile
 from abc import ABC, abstractmethod
 from enum import Enum
+from itertools import takewhile
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, FrozenSet, Collection
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, Collection
 
 import llvmlite
 from llvmlite import ir
@@ -18,24 +18,6 @@ from sleepy.symbol_table import HierarchicalDict, STUB
 LLVM_POINTER_SIZE = 8
 LLVM_SIZE_TYPE = ir.types.IntType(LLVM_POINTER_SIZE * 8)
 LLVM_VOID_POINTER_TYPE = ir.PointerType(ir.types.IntType(8))
-
-
-class Symbol(ABC):
-  """
-  A declared symbol, with an identifier.
-  """
-  kind = None
-
-  def __init__(self):
-    assert self.kind is not None
-
-  class Kind(Enum):
-    """
-    Possible symbol types.
-    """
-    VARIABLE = 'var'
-    TYPE = 'type'
-    FUNCTION = 'func'
 
 
 class Type(ABC):
@@ -1115,12 +1097,10 @@ def make_ir_val_is_type(ir_val: ir.values.Value,
   return cmp_val
 
 
-class VariableSymbol(Symbol):
+class VariableSymbol:
   """
   A declared variable.
   """
-  kind = Symbol.Kind.VARIABLE
-
   def __init__(self, ir_alloca: Optional[ir.instructions.AllocaInstr], var_type: Type):
     super().__init__()
     assert ir_alloca is None or isinstance(ir_alloca, (ir.instructions.AllocaInstr, ir.Argument))
@@ -1543,23 +1523,20 @@ class DestructorFunctionTemplate(FunctionTemplate):
         context.builder.ret(SLEEPY_UNIT.unit_constant())
 
 
-class FunctionSymbol(Symbol):
-  kind = Symbol.Kind.FUNCTION
-
+class FunctionSymbol:
   def __init__(self, functions: Optional[List[FunctionTemplate]] = None):
     super().__init__()
     if functions is None: functions = []
     self.functions = functions
 
 
-class OverloadSet(Symbol):
+class OverloadSet:
   """
   A set of declared overloaded function signatures with the same name.
   Can have one or multiple overloaded signatures accepting different parameter types (FunctionSignature).
   Each of these signatures itself can have a set of concrete implementations,
   where template types have been replaced with concrete types.
   """
-  kind = Symbol.Kind.FUNCTION
 
   def __init__(self, identifier: str, signatures: List[FunctionTemplate]):
     super().__init__()
@@ -1653,13 +1630,12 @@ class FunctionSymbolCaller:
     return FunctionSymbolCaller(func=self.func, templ_types=templ_types)
 
 
-class TypeTemplateSymbol(Symbol):
+class TypeTemplateSymbol:
   """
   A (statically) declared (possibly) template type.
   Can have one or multiple template initializations that yield different concrete types.
   These are initialized lazily.
   """
-  kind = Symbol.Kind.TYPE
 
   def __init__(self, template_parameters: List[PlaceholderTemplateType], signature_type: Type):
     super().__init__()
@@ -1692,19 +1668,22 @@ class SymbolTableStub:
     self.inbuilt_symbols = set()
     self.current_scope_identifiers = frozenset()
 
+Symbol = Union[OverloadSet, TypeTemplateSymbol, VariableSymbol]
+
 class SymbolTable:
   """
   Basically a dict mapping identifier names to symbols.
   Also contains information about the current scope.
   """
 
+  Element = Union[FunctionSymbol, TypeTemplateSymbol, VariableSymbol]
   def __init__(self, parent: Optional[SymbolTable] = None,
                new_function: Optional[ConcreteFunction] = None,
                inherit_outer_variables: bool = False):
     self.parent = parent = SymbolTableStub() if parent is None else parent
 
     assert inherit_outer_variables is not None
-    self.dict: HierarchicalDict[str, Symbol] = HierarchicalDict(parent.dict)
+    self.dict: HierarchicalDict[str, SymbolTable.Element] = HierarchicalDict(parent.dict)
     self.inherit_outer_variables = inherit_outer_variables
     self.current_func = parent.current_func if new_function is None else new_function
     self.known_extern_funcs = parent.known_extern_funcs
@@ -1749,7 +1728,7 @@ class SymbolTable:
   def __contains__(self, item) -> bool:
     return item in self.dict
 
-  def __getitem__(self, key):
+  def __getitem__(self, key: str) -> Symbol:
     value = self.dict[key]
     if isinstance(value, FunctionSymbol):
       return self.get_overloads(key)
@@ -1820,6 +1799,19 @@ class SymbolTable:
     assert 'free' in self
     return self.get_overloads('free')
 
+class SymbolKind(Enum):
+  """
+  Possible symbol types.
+  """
+  VARIABLE = 'var'
+  TYPE = 'type'
+  FUNCTION = 'func'
+
+def determine_kind(symbol: Symbol) -> SymbolKind:
+  if isinstance(symbol, OverloadSet): return SymbolKind.FUNCTION
+  if isinstance(symbol, TypeTemplateSymbol): return SymbolKind.TYPE
+  if isinstance(symbol, VariableSymbol): return SymbolKind.VARIABLE
+  raise TypeError()
 
 class DebugValueIrPatcher:
   def __init__(self):
