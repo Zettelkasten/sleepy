@@ -2331,17 +2331,17 @@ def test_size_template():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func templ_size[T]() -> Long {
+    func template_size[T]() -> Long {
       return size(T)
     }
     func main() -> Int {
-      if templ_size[Bool]() != 1l { return 0 }
-      if templ_size[Int]() != 4l { return 0 }
-      if templ_size[Long]() != 8l { return 0 }
-      if templ_size[Double]() != 8l { return 0 }
+      if template_size[Bool]() != 1l { return 0 }
+      if template_size[Int]() != 4l { return 0 }
+      if template_size[Long]() != 8l { return 0 }
+      if template_size[Double]() != 8l { return 0 }
       struct Vec3[T] { x: T; y: T; z: T; }
-      if templ_size[Vec3[Int]]() != 3l * templ_size[Int]() { return 0 }
-      if templ_size[Vec3[Double]]() != 3l * templ_size[Double]() { return 0 }
+      if template_size[Vec3[Int]]() != 3l * template_size[Int]() { return 0 }
+      if template_size[Vec3[Double]]() != 3l * template_size[Double]() { return 0 }
       return 1
     }
     """

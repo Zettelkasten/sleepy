@@ -12,7 +12,7 @@ from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
 from sleepy.symbols import OverloadSet, VariableSymbol, Type, SymbolTable, \
   TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, try_infer_templ_types, Symbol, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, ReferenceType, \
+  PlaceholderTemplateType, try_infer_template_arguments, Symbol, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, ReferenceType, \
   PartialIdentifiedStructType, StructIdentity, SLEEPY_NEVER, determine_kind, SymbolKind
 
 
@@ -41,13 +41,13 @@ class AbstractSyntaxTree(ABC):
   def _resolve_possible_concrete_funcs(self,
                                        func_caller: FunctionSymbolCaller,
                                        calling_types: List[Type]) -> List[ConcreteFunction]:
-    func, templ_types = func_caller.func, func_caller.templ_types
+    func, templ_types = func_caller.func, func_caller.template_parameters
     if templ_types is None:
       templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
     assert templ_types is not None
-    assert all(not templ_type.has_templ_placeholder() for templ_type in templ_types)
+    assert all(not templ_type.has_unfilled_template_parameters() for templ_type in templ_types)
 
-    if not func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_types):
+    if not func.can_call_with_arg_types(template_arguments=templ_types, arg_types=calling_types):
       raise_error('Cannot call function %r with arguments of types %r and template parameters %r, '
                   'only declared for parameter types:\n%s' % (
                     func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
@@ -57,7 +57,7 @@ class AbstractSyntaxTree(ABC):
       raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
         func.identifier, ', '.join([str(called_type) for called_type in calling_types])), self.pos)
 
-    possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_types)
+    possible_concrete_funcs = func.get_concrete_funcs(template_arguments=templ_types, arg_types=calling_types)
     assert len(possible_concrete_funcs) >= 1
     return possible_concrete_funcs
 
@@ -72,9 +72,9 @@ class AbstractSyntaxTree(ABC):
     signature_templ_types = None
     for expanded_calling_types in func.iter_expanded_possible_arg_types(calling_types):
       infers = [
-        try_infer_templ_types(
+        try_infer_template_arguments(
           calling_types=list(expanded_calling_types), signature_types=signature.arg_types,
-          placeholder_templ_types=signature.placeholder_templ_types)
+          template_parameters=signature.placeholder_templ_types)
         for signature in func.signatures]
       possible_infers = [idx for idx, infer in enumerate(infers) if infer is not None]
       if len(possible_infers) == 0:
@@ -107,7 +107,7 @@ class AbstractSyntaxTree(ABC):
                       context: CodegenContext) -> TypedValue:
     # TODO: func_arg_exprs should be a List[TypedValue]. But then, type narrowing and assert(...) for types wouldn't
     # work right now.
-    func, templ_types = func_caller.func, func_caller.templ_types
+    func, templ_types = func_caller.func, func_caller.template_parameters
     func_args = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in func_arg_exprs]
     collapsed_func_args = [arg.copy_collapse(context=None) for num, arg in enumerate(func_args)]
     calling_types = [arg.narrowed_type for arg in collapsed_func_args]
@@ -133,7 +133,7 @@ class AbstractSyntaxTree(ABC):
 
     if context.emits_ir:
       from sleepy.symbols import make_func_call_ir
-      return_val = make_func_call_ir(func=func, templ_types=templ_types, func_args=func_args, context=context)
+      return_val = make_func_call_ir(func=func, template_arguments=templ_types, func_args=func_args, context=context)
     else:
       return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
       return_val = TypedValue(typ=return_type, ir_val=None)
@@ -169,7 +169,7 @@ class AbstractSyntaxTree(ABC):
     symbol = symbol_table[func_identifier]
     if not isinstance(symbol, OverloadSet):
       raise_error('Cannot call non-function %r' % func_identifier, self.pos)
-    func_caller = FunctionSymbolCaller(func=symbol, templ_types=templ_types)
+    func_caller = FunctionSymbolCaller(func=symbol, template_parameters=templ_types)
     return self.build_func_call(
       func_caller=func_caller, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table, context=context)
 
@@ -450,14 +450,14 @@ class StructDeclarationAst(DeclarationAst):
       # Struct members might reference this struct itself (indirectly).
       # We temporarily add a placeholder to the symbol table so it is defined here.
       struct_identity = StructIdentity(struct_identifier=self.struct_identifier, context=context)
-      partial_struct_type = PartialIdentifiedStructType(identity=struct_identity, templ_types=placeholder_templ_types)
+      partial_struct_type = PartialIdentifiedStructType(identity=struct_identity, template_param_or_arg=placeholder_templ_types)
       struct_identity.partial_struct_type = partial_struct_type
       struct_symbol_table[self.struct_identifier] = TypeTemplateSymbol(
         template_parameters=placeholder_templ_types, signature_type=partial_struct_type)
 
       member_types = [type_ast.make_type(symbol_table=struct_symbol_table) for type_ast in self.member_types]
       signature_struct_type = StructType(
-        identity=struct_identity, templ_types=placeholder_templ_types,
+        identity=struct_identity, template_param_or_arg=placeholder_templ_types,
         member_identifiers=self.member_identifiers, member_types=member_types, partial_struct_type=partial_struct_type)
 
       # make constructor / destructor
@@ -917,7 +917,7 @@ class CallExpressionAst(ExpressionAst):
     self.func_expr = func_expr
     self.func_arg_exprs = func_arg_exprs
 
-  def _maybe_get_specified_templ_types(self, symbol_table: SymbolTable) -> Optional[List[Type]]:
+  def _get_template_arguments_or_none(self, symbol_table: SymbolTable) -> Optional[List[Type]]:
     """
     There is some special logic currently because we do not support functions that operate on types
     and return new functions yet.
@@ -935,7 +935,7 @@ class CallExpressionAst(ExpressionAst):
     return [templ_arg.make_as_type(symbol_table=symbol_table) for templ_arg in templ_arg_exprs]
 
   def make_symbol_kind(self, symbol_table: SymbolTable) -> SymbolKind:
-    concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
+    concrete_templ_types = self._get_template_arguments_or_none(symbol_table=symbol_table)
     func_kind = self.func_expr.make_symbol_kind(symbol_table=symbol_table)
 
     if concrete_templ_types is not None:  # is a templ type specialization, keeps kind.
@@ -1020,32 +1020,32 @@ class CallExpressionAst(ExpressionAst):
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     assert self.make_symbol_kind(symbol_table=symbol_table) == SymbolKind.FUNCTION
-    concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
-    if concrete_templ_types is None:
+    template_arguments = self._get_template_arguments_or_none(symbol_table=symbol_table)
+    if template_arguments is None:
       return self.func_expr.make_as_func_caller(symbol_table=symbol_table)
     else:
       func_caller = self.func_arg_exprs[0].make_as_func_caller(symbol_table=symbol_table)
-      if func_caller.templ_types is not None:
+      if func_caller.template_parameters is not None:
         raise_error('Cannot specify template types multiple times', self.pos)
-      return func_caller.copy_with_templ_types(concrete_templ_types)
+      return func_caller.copy_with_template_arguments(template_arguments)
 
   def make_as_type(self, symbol_table: SymbolTable) -> Type:
     assert self.make_symbol_kind(symbol_table=symbol_table) == SymbolKind.TYPE
     if self._is_type_union_call(symbol_table=symbol_table):
       possible_types = [arg.make_as_type(symbol_table=symbol_table) for arg in self.func_arg_exprs]
       return UnionType.from_types(possible_types)
-    concrete_templ_types = self._maybe_get_specified_templ_types(symbol_table=symbol_table)
-    assert concrete_templ_types is not None
+    template_arguments = self._get_template_arguments_or_none(symbol_table=symbol_table)
+    assert template_arguments is not None
     signature_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
-    if len(concrete_templ_types) != len(signature_type.templ_types):
-      if len(concrete_templ_types) == 0:
+    if len(template_arguments) != len(signature_type.template_param_or_arg):
+      if len(template_arguments) == 0:
         raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
-          signature_type, signature_type.templ_types), self.pos)
+          signature_type, signature_type.template_param_or_arg), self.pos)
       else:
         raise_error(
-          'Type %r with placeholder template parameters %r cannot be constructed with template arguments %r' % (
-            signature_type, signature_type.templ_types, concrete_templ_types), self.pos)
-    replacements = dict(zip(signature_type.templ_types, concrete_templ_types))
+          'Type %r with template parameters %r cannot be constructed with template arguments %r' % (
+            signature_type, signature_type.template_param_or_arg, template_arguments), self.pos)
+    replacements = dict(zip(signature_type.template_param_or_arg, template_arguments))
     return signature_type.replace_types(replacements=replacements)
 
   def children(self) -> List[AbstractSyntaxTree]:
@@ -1196,10 +1196,10 @@ class IdentifierTypeAst(TypeAst):
   IdentifierType -> identifier.
   """
 
-  def __init__(self, pos: TreePosition, type_identifier: str, templ_types: List[TypeAst]):
+  def __init__(self, pos: TreePosition, type_identifier: str, template_parameters: List[TypeAst]):
     super().__init__(pos)
     self.type_identifier = type_identifier
-    self.templ_types = templ_types
+    self.template_parameters = template_parameters
 
   def make_type(self, symbol_table: SymbolTable) -> Type:
     if self.type_identifier not in symbol_table:
@@ -1208,7 +1208,7 @@ class IdentifierTypeAst(TypeAst):
     if not isinstance(type_symbol, TypeTemplateSymbol):
       raise_error('%r is not a type, but a %r' % (self.type_identifier, type(type_symbol)), self.pos)
     templ_type_symbols = [
-      template_type.make_type(symbol_table=symbol_table) for template_type in self.templ_types]
+      template_type.make_type(symbol_table=symbol_table) for template_type in self.template_parameters]
     if len(templ_type_symbols) != len(type_symbol.template_parameters):
       if len(templ_type_symbols) == 0:
         raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
@@ -1220,10 +1220,10 @@ class IdentifierTypeAst(TypeAst):
     return type_symbol.get_type(template_arguments=templ_type_symbols)
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return self.templ_types
+    return self.template_parameters
 
   def __repr__(self) -> str:
-    return 'IdentifierType(type_identifier=%r, template_types=%r)' % (self.type_identifier, self.templ_types)
+    return 'IdentifierType(type_identifier=%r, template_types=%r)' % (self.type_identifier, self.template_parameters)
 
 
 class UnionTypeAst(TypeAst):

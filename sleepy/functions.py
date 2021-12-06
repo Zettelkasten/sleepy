@@ -123,7 +123,7 @@ class FunctionDeclarationAst(DeclarationAst):
     assert not self.is_extern
 
     template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_templ_types]
-    template_arguments = concrete_func.concrete_templ_types
+    template_arguments = concrete_func.template_arguments
 
     body_symbol_table = parent_symbol_table.make_child_scope(
       inherit_outer_variables=False, new_function=concrete_func,

@@ -26,14 +26,14 @@ class Type(ABC):
   """
 
   def __init__(self, *,
-               templ_types: List[Type],
+               template_param_or_arg: List[Type],
                ir_type: Optional[ir.types.Type],
                c_type: Optional[Any],
                constructor: Optional[OverloadSet]):
     """
     :param c_type: may be None if this is non-realizable (e.g. template types / void)
     """
-    self.templ_types = templ_types
+    self.template_param_or_arg = template_param_or_arg
     self.ir_type = ir_type
     self.c_type = c_type
     self._constructor: Optional[OverloadSet] = constructor
@@ -53,7 +53,7 @@ class Type(ABC):
       return replacements[self]
     return self
 
-  def has_templ_placeholder(self) -> bool:
+  def has_unfilled_template_parameters(self) -> bool:
     return False
 
   @abstractmethod
@@ -82,11 +82,11 @@ class Type(ABC):
     assert self.constructor is not None
     # TODO: We do not currently keep track if the user specifies template types anywhere.
     # this means saying MyType[][][] is okay currently.
-    templ_types = (
-      self.templ_types
-      if len(self.templ_types) > 0 and all(not templ_type.has_templ_placeholder() for templ_type in self.templ_types)
+    template_parameters = (
+      self.template_param_or_arg
+      if len(self.template_param_or_arg) > 0 and all(not t_param.has_unfilled_template_parameters() for t_param in self.template_param_or_arg)
       else None)
-    return FunctionSymbolCaller(self.constructor, templ_types=templ_types)
+    return FunctionSymbolCaller(self.constructor, template_parameters=template_parameters)
 
   @constructor.setter
   def constructor(self, new_constructor: OverloadSet):
@@ -115,7 +115,7 @@ class UnitType(Type):
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=ir.types.LiteralStructType(()), c_type=ctypes.c_char * 0, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=ir.types.LiteralStructType(()), c_type=ctypes.c_char * 0, constructor=None)
 
   def __repr__(self) -> str:
     return 'Unit'
@@ -150,7 +150,7 @@ class DoubleType(Type):
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=ir.DoubleType(), c_type=ctypes.c_double, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=ir.DoubleType(), c_type=ctypes.c_double, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -180,7 +180,7 @@ class FloatType(Type):
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=ir.FloatType(), c_type=ctypes.c_float, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=ir.FloatType(), c_type=ctypes.c_float, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -210,7 +210,7 @@ class BoolType(Type):
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=ir.IntType(bits=1), c_type=ctypes.c_bool, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=ir.IntType(bits=1), c_type=ctypes.c_bool, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -240,7 +240,7 @@ class IntType(Type):
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=ir.IntType(bits=32), c_type=ctypes.c_int32, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=ir.IntType(bits=32), c_type=ctypes.c_int32, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -270,7 +270,7 @@ class LongType(Type):
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=ir.IntType(bits=64), c_type=ctypes.c_int64, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=ir.IntType(bits=64), c_type=ctypes.c_int64, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -300,7 +300,7 @@ class CharType(Type):
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=ir.IntType(bits=8), c_type=ctypes.c_uint8, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=ir.IntType(bits=8), c_type=ctypes.c_uint8, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -331,7 +331,7 @@ class PointerType(Type):
 
   def __init__(self, pointee_type: Type, constructor: Optional[OverloadSet] = None):
     super().__init__(
-      templ_types=[pointee_type], ir_type=ir.PointerType(pointee_type.ir_type),
+      template_param_or_arg=[pointee_type], ir_type=ir.PointerType(pointee_type.ir_type),
       c_type=ctypes.POINTER(pointee_type.c_type), constructor=constructor)
     self.pointee_type = pointee_type
 
@@ -371,7 +371,7 @@ class RawPointerType(Type):
   """
 
   def __init__(self):
-    super().__init__(templ_types=[], ir_type=LLVM_VOID_POINTER_TYPE, c_type=ctypes.c_void_p, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=LLVM_VOID_POINTER_TYPE, c_type=ctypes.c_void_p, constructor=None)
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -447,7 +447,7 @@ class UnionType(Type):
     self.tag_c_type = ctypes.c_uint8
     self.tag_ir_type = ir.types.IntType(8)
     self.tag_size = 8
-    if any(possible_type.has_templ_placeholder() for possible_type in possible_types):
+    if any(possible_type.has_unfilled_template_parameters() for possible_type in possible_types):
       assert val_size is None
       self.tag_c_type = None
       self.tag_ir_type = None
@@ -464,7 +464,7 @@ class UnionType(Type):
         '%s_CType' % self.identifier, (ctypes.Structure,),
         {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
       ir_type = ir.types.LiteralStructType([self.tag_ir_type, self.untagged_union_ir_type])
-    super().__init__(templ_types=[], ir_type=ir_type, c_type=c_type, constructor=constructor)
+    super().__init__(template_param_or_arg=[], ir_type=ir_type, c_type=c_type, constructor=constructor)
 
   def __repr__(self) -> str:
     if len(self.possible_types) == 0:
@@ -523,7 +523,7 @@ class UnionType(Type):
     for duplicate_index in reversed(duplicate_indices):
       del new_possible_types[duplicate_index]
       del new_possible_type_nums[duplicate_index]
-    if any(possible_type.has_templ_placeholder() for possible_type in new_possible_types):
+    if any(possible_type.has_unfilled_template_parameters() for possible_type in new_possible_types):
       val_size = None
     else:  # default case
       val_size = max([ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types])
@@ -535,8 +535,8 @@ class UnionType(Type):
       possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=val_size,
       constructor=self.constructor)
 
-  def has_templ_placeholder(self) -> bool:
-    return any(possible_type.has_templ_placeholder() for possible_type in self.possible_types)
+  def has_unfilled_template_parameters(self) -> bool:
+    return any(possible_type.has_unfilled_template_parameters() for possible_type in self.possible_types)
 
   def contains(self, contained_type: Type) -> bool:
     if isinstance(contained_type, UnionType):
@@ -628,7 +628,7 @@ class UnionType(Type):
       else:
         next_type_num = max(new_possible_type_nums) + 1 if len(new_possible_type_nums) > 0 else 0
         new_possible_type_nums.append(next_type_num)
-    if self.val_size is None or any(extended_type.has_templ_placeholder() for extended_type in extended_types):
+    if self.val_size is None or any(extended_type.has_unfilled_template_parameters() for extended_type in extended_types):
       new_val_size = None
     else:
       new_val_size = max([self.val_size] + [extended_type.size for extended_type in extended_types])
@@ -639,7 +639,7 @@ class UnionType(Type):
   def from_types(cls, possible_types: List[Type]) -> UnionType:
     possible_types = list(dict.fromkeys(possible_types))  # possibly remove duplicates
     possible_type_nums = list(range(len(possible_types)))
-    if any(possible_type.has_templ_placeholder() for possible_type in possible_types):
+    if any(possible_type.has_unfilled_template_parameters() for possible_type in possible_types):
       val_size = None
     else:  # default case, no template
       val_size = max((ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
@@ -657,15 +657,15 @@ class PartialIdentifiedStructType(Type):
   A struct while it is being declared. Needed for self-referencing struct members.
   """
 
-  def __init__(self, identity: StructIdentity, templ_types: List[Type]):
+  def __init__(self, identity: StructIdentity, template_param_or_arg: List[Type]):
     self.identity = identity
-    self.templ_types = templ_types
-    if identity.context is not None and not any(templ_type.has_templ_placeholder() for templ_type in templ_types):
-      ir_type = identity.context.make_struct_ir_type(identity=self.identity, templ_types=templ_types)
-      c_type = identity.context.make_struct_c_type(identity=self.identity, templ_types=templ_types)
+    self.templ_types = template_param_or_arg
+    if identity.context is not None and not any(templ_type.has_unfilled_template_parameters() for templ_type in template_param_or_arg):
+      ir_type = identity.context.make_struct_ir_type(identity=self.identity, templ_types=template_param_or_arg)
+      c_type = identity.context.make_struct_c_type(identity=self.identity, templ_types=template_param_or_arg)
     else:
       ir_type, c_type = None, None
-    super().__init__(templ_types=[], ir_type=ir_type, c_type=c_type, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=ir_type, c_type=c_type, constructor=None)
 
   @property
   def struct_identifier(self) -> str:
@@ -705,7 +705,7 @@ class StructType(Type):
 
   def __init__(self,
                identity: StructIdentity,
-               templ_types: List[Type],
+               template_param_or_arg: List[Type],
                member_identifiers: List[str],
                member_types: List[Type],
                partial_struct_type: Optional[PartialIdentifiedStructType] = None,
@@ -717,8 +717,8 @@ class StructType(Type):
     self._constructor: Optional[OverloadSet] = None
     assert partial_struct_type is None or partial_struct_type.identity == self.identity
 
-    if any(templ_type.has_templ_placeholder() for templ_type in templ_types):
-      super().__init__(templ_types=templ_types, ir_type=None, c_type=None, constructor=constructor)
+    if any(t.has_unfilled_template_parameters() for t in template_param_or_arg):
+      super().__init__(template_param_or_arg=template_param_or_arg, ir_type=None, c_type=None, constructor=constructor)
     else:
       member_ir_types = [member_type.ir_type for member_type in member_types]
       member_c_types = [
@@ -728,7 +728,7 @@ class StructType(Type):
       assert None not in member_c_types
 
       if partial_struct_type is None:
-        partial_struct_type = PartialIdentifiedStructType(identity=self.identity, templ_types=templ_types)
+        partial_struct_type = PartialIdentifiedStructType(identity=self.identity, template_param_or_arg=template_param_or_arg)
       ir_type, c_type = partial_struct_type.ir_type, partial_struct_type.c_type
       assert ir_type is not None
       assert c_type is not None
@@ -739,7 +739,7 @@ class StructType(Type):
       else:  # already defined before
         assert ir_type.elements == tuple(member_ir_types)
         # Note that we do not check c_type._fields_ here because ctypes do not properly compare for equality always
-      super().__init__(templ_types=templ_types, ir_type=ir_type, c_type=c_type, constructor=constructor)
+      super().__init__(template_param_or_arg=template_param_or_arg, ir_type=ir_type, c_type=c_type, constructor=constructor)
 
     if partial_struct_type is not None:
       self.member_types = [member_type.replace_types({partial_struct_type: self}) for member_type in self.member_types]
@@ -757,19 +757,19 @@ class StructType(Type):
       return replacements[self]
     if len(replacements) == 0:
       return self
-    new_templ_types = [templ_type.replace_types(replacements) for templ_type in self.templ_types]
+    new_templ_types = [templ_type.replace_types(replacements) for templ_type in self.template_param_or_arg]
     # in case we have a self-referencing member, first replace all occurrences of ourself with something temporary
     # to avoid infinite recursion.
-    partial_self_replaced = PartialIdentifiedStructType(identity=self.identity, templ_types=new_templ_types)
+    partial_self_replaced = PartialIdentifiedStructType(identity=self.identity, template_param_or_arg=new_templ_types)
     replacements = {**replacements, self: partial_self_replaced}
     new_member_types = [member_type.replace_types(replacements) for member_type in self.member_types]
     new_struct = StructType(
-      identity=self.identity, templ_types=new_templ_types, member_identifiers=self.member_identifiers,
+      identity=self.identity, template_param_or_arg=new_templ_types, member_identifiers=self.member_identifiers,
       member_types=new_member_types, partial_struct_type=partial_self_replaced, constructor=self.constructor)
     return new_struct
 
-  def has_templ_placeholder(self) -> bool:
-    return any(templ_type.has_templ_placeholder() for templ_type in self.templ_types)
+  def has_unfilled_template_parameters(self) -> bool:
+    return any(templ_type.has_unfilled_template_parameters() for templ_type in self.template_param_or_arg)
 
   def make_ir_alloca(self, context: CodegenContext) -> ir.instructions.Instruction:
     assert context.emits_ir
@@ -779,7 +779,7 @@ class StructType(Type):
     assert context.emits_debug
 
     # register placeholder for self so that members can reference this struct
-    placeholder = DebugValueIrPatcher.make_placeholder(repr(self.identity) + '_'.join(map(str, self.templ_types)))
+    placeholder = DebugValueIrPatcher.make_placeholder(repr(self.identity) + '_'.join(map(str, self.template_param_or_arg)))
     context.known_di_types[self] = placeholder
 
     di_derived_types = []
@@ -801,13 +801,13 @@ class StructType(Type):
   def __eq__(self, other) -> bool:
     if not isinstance(other, StructType):
       return False
-    return self.identity == other.identity and self.templ_types == other.templ_types
+    return self.identity == other.identity and self.template_param_or_arg == other.template_param_or_arg
 
   def __hash__(self) -> int:
-    return hash((self.__class__, self.identity) + tuple(self.templ_types))
+    return hash((self.__class__, self.identity) + tuple(self.template_param_or_arg))
 
   def __repr__(self) -> str:
-    return self.struct_identifier + ('' if len(self.templ_types) == 0 else str(self.templ_types))
+    return self.struct_identifier + ('' if len(self.template_param_or_arg) == 0 else str(self.template_param_or_arg))
 
   def make_extract_member_val_ir(self, member_identifier: str, struct_ir_val: ir.values.Value,
                                  context: CodegenContext) -> ir.instructions.Instruction:
@@ -831,7 +831,7 @@ class StructType(Type):
     assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
     placeholder_templ_types = [
-      templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
+      templ_type for templ_type in self.template_param_or_arg if isinstance(templ_type, PlaceholderTemplateType)]
     signature = ConstructorFunctionTemplate(
       placeholder_templ_types=placeholder_templ_types, struct=self,
       captured_symbol_table=parent_symbol_table, captured_context=parent_context)
@@ -841,7 +841,7 @@ class StructType(Type):
     assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
     placeholder_template_types = [
-      templ_type for templ_type in self.templ_types if isinstance(templ_type, PlaceholderTemplateType)]
+      templ_type for templ_type in self.template_param_or_arg if isinstance(templ_type, PlaceholderTemplateType)]
     # TODO: Narrow type to something more meaningful then SLEEPY_NEVER
     # E.g. make a copy of the never union type and give that a name ("Freed" or sth)
     signature_ = DestructorFunctionTemplate(
@@ -865,7 +865,7 @@ class PlaceholderTemplateType(Type):
   """
 
   def __init__(self, identifier: str):
-    super().__init__(templ_types=[], ir_type=None, c_type=None, constructor=None)
+    super().__init__(template_param_or_arg=[], ir_type=None, c_type=None, constructor=None)
     self.identifier = identifier
 
   def _make_di_type(self, context: CodegenContext):
@@ -874,7 +874,7 @@ class PlaceholderTemplateType(Type):
   def __repr__(self) -> str:
     return self.identifier
 
-  def has_templ_placeholder(self) -> bool:
+  def has_unfilled_template_parameters(self) -> bool:
     return True
 
   def children(self) -> List[Type]:
@@ -956,8 +956,8 @@ def is_subtype(a: Type, b: Type) -> bool:
     assert not isinstance(possible_b, UnionType)
     if not a.has_same_symbol_as(possible_b):
       continue
-    assert len(a.templ_types) == len(possible_b.templ_types)
-    if all(is_subtype(a_templ, b_templ) for a_templ, b_templ in zip(a.templ_types, possible_b.templ_types)):
+    assert len(a.template_param_or_arg) == len(possible_b.template_param_or_arg)
+    if all(is_subtype(a_templ, b_templ) for a_templ, b_templ in zip(a.template_param_or_arg, possible_b.template_param_or_arg)):
       return True
   return False
 
@@ -1177,13 +1177,13 @@ class ConcreteFunction:
     assert (
             len(signature.arg_identifiers) == len(parameter_types) == len(narrowed_parameter_types) == len(
       parameter_mutates))
-    assert all(not templ_type.has_templ_placeholder() for templ_type in template_arguments)
-    assert not return_type.has_templ_placeholder()
-    assert all(not arg_type.has_templ_placeholder() for arg_type in parameter_types)
-    assert all(not arg_type.has_templ_placeholder() for arg_type in narrowed_parameter_types)
+    assert all(not templ_type.has_unfilled_template_parameters() for templ_type in template_arguments)
+    assert not return_type.has_unfilled_template_parameters()
+    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in parameter_types)
+    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in narrowed_parameter_types)
     self.signature = signature
     self.ir_func = ir_func
-    self.concrete_templ_types = template_arguments
+    self.template_arguments = template_arguments
     self.return_type = return_type
     self.arg_types = parameter_types
     self.arg_type_narrowings = narrowed_parameter_types
@@ -1221,8 +1221,8 @@ class ConcreteFunction:
     return (
             'ConcreteFunction(signature=%r, concrete_templ_types=%r, return_type=%r, arg_types=%r, '
             'arg_type_narrowings=%r, arg_mutates=%r)' % (
-              self.signature, self.concrete_templ_types, self.return_type, self.arg_types, self.arg_type_narrowings,
-              self.arg_mutates))
+      self.signature, self.template_arguments, self.return_type, self.arg_types, self.arg_type_narrowings,
+      self.arg_mutates))
 
   @property
   def uncollapsed_arg_types(self) -> List[Type]:
@@ -1379,15 +1379,15 @@ class FunctionTemplate:
 
   def can_call_with_expanded_arg_types(self, concrete_templ_types: List[Type], expanded_arg_types: List[Type]):
     assert all(not isinstance(arg_type, UnionType) for arg_type in expanded_arg_types)
-    assert all(not templ_type.has_templ_placeholder() for templ_type in concrete_templ_types)
-    assert all(not arg_type.has_templ_placeholder() for arg_type in expanded_arg_types)
+    assert all(not templ_type.has_unfilled_template_parameters() for templ_type in concrete_templ_types)
+    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in expanded_arg_types)
     if len(concrete_templ_types) != len(self.placeholder_templ_types):
       return False
     if len(expanded_arg_types) != len(self.arg_types):
       return False
     replacements = dict(zip(self.placeholder_templ_types, concrete_templ_types))
     concrete_arg_types = [arg_type.replace_types(replacements=replacements) for arg_type in self.arg_types]
-    assert all(not arg_type.has_templ_placeholder() for arg_type in concrete_arg_types)
+    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in concrete_arg_types)
     return all(
       can_implicit_cast_to(call_type, arg_type) for call_type, arg_type in zip(expanded_arg_types, concrete_arg_types))
 
@@ -1401,8 +1401,8 @@ class FunctionTemplate:
     # convert own template variables to calling template variables s.t. we can try to unify them
     templ_to_templ_replacements = dict(zip(self.placeholder_templ_types, placeholder_templ_types))
     own_arg_types = [arg_type.replace_types(templ_to_templ_replacements) for arg_type in self.arg_types]
-    inferred_templ_types = try_infer_templ_types(
-      calling_types=expanded_arg_types, signature_types=own_arg_types, placeholder_templ_types=placeholder_templ_types)
+    inferred_templ_types = try_infer_template_arguments(
+      calling_types=expanded_arg_types, signature_types=own_arg_types, template_parameters=placeholder_templ_types)
     return inferred_templ_types is None
 
   def __repr__(self) -> str:
@@ -1512,13 +1512,13 @@ class DestructorFunctionTemplate(FunctionTemplate):
           member_ir_val = self.struct.make_extract_member_val_ir(
             member_identifier, struct_ir_val=self_ir_alloca, context=context)
           # TODO: properly infer templ types, also for struct members
-          assert not (isinstance(signature_member_type, StructType) and len(signature_member_type.templ_types) > 0), (
+          assert not (isinstance(signature_member_type, StructType) and len(signature_member_type.template_param_or_arg) > 0), (
             'not implemented yet')
           templ_types: List[Type] = []
           if isinstance(concrete_member_type, PointerType):
             templ_types = [concrete_member_type.pointee_type]
           make_func_call_ir(
-            func=self.captured_symbol_table.free_overloads, templ_types=templ_types,
+            func=self.captured_symbol_table.free_overloads, template_arguments=templ_types,
             func_args=[TypedValue(typ=signature_member_type, ir_val=member_ir_val)], context=context)
         context.builder.ret(SLEEPY_UNIT.unit_constant())
 
@@ -1527,7 +1527,7 @@ class FunctionSymbol:
   def __init__(self, functions: Optional[List[FunctionTemplate]] = None):
     super().__init__()
     if functions is None: functions = []
-    self.functions = functions
+    self.functions: List[FunctionTemplate] = functions
 
 
 class OverloadSet:
@@ -1550,21 +1550,21 @@ class OverloadSet:
 
   def can_call_with_expanded_arg_types(self, concrete_templ_types: List[Type], expanded_arg_types: List[Type]) -> bool:
     assert all(not isinstance(arg_type, UnionType) for arg_type in expanded_arg_types)
-    assert all(not templ_type.has_templ_placeholder() for templ_type in concrete_templ_types)
-    assert all(not arg_type.has_templ_placeholder() for arg_type in expanded_arg_types)
+    assert all(not templ_type.has_unfilled_template_parameters() for templ_type in concrete_templ_types)
+    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in expanded_arg_types)
     signatures = self.signatures_by_number_of_templ_args.get(len(concrete_templ_types), [])
     return any(
       signature.can_call_with_expanded_arg_types(
         concrete_templ_types=concrete_templ_types, expanded_arg_types=expanded_arg_types)
       for signature in signatures)
 
-  def can_call_with_arg_types(self, concrete_templ_types: List[Type],
+  def can_call_with_arg_types(self, template_arguments: List[Type],
                               arg_types: Union[List[Type], Tuple[Type]]) -> bool:
-    assert all(not templ_type.has_templ_placeholder() for templ_type in concrete_templ_types)
-    assert all(not arg_type.has_templ_placeholder() for arg_type in arg_types)
+    assert all(not templ_type.has_unfilled_template_parameters() for templ_type in template_arguments)
+    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in arg_types)
     all_expanded_arg_types = self.iter_expanded_possible_arg_types(arg_types)
     return all(
-      self.can_call_with_expanded_arg_types(concrete_templ_types=concrete_templ_types,
+      self.can_call_with_expanded_arg_types(concrete_templ_types=template_arguments,
                                             expanded_arg_types=list(arg_types))
       for arg_types in all_expanded_arg_types)
 
@@ -1575,14 +1575,14 @@ class OverloadSet:
         placeholder_templ_types=placeholder_templ_types, expanded_arg_types=list(expanded_arg_types))
       for signature in signatures for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types))
 
-  def get_concrete_funcs(self, templ_types: List[Type], arg_types: List[Type]) -> List[ConcreteFunction]:
-    signatures = self.signatures_by_number_of_templ_args.get(len(templ_types), [])
+  def get_concrete_funcs(self, template_arguments: List[Type], arg_types: List[Type]) -> List[ConcreteFunction]:
+    signatures = self.signatures_by_number_of_templ_args.get(len(template_arguments), [])
     possible_concrete_funcs = []
     for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types):
       for signature in signatures:
-        if signature.can_call_with_expanded_arg_types(concrete_templ_types=templ_types,
+        if signature.can_call_with_expanded_arg_types(concrete_templ_types=template_arguments,
                                                       expanded_arg_types=expanded_arg_types):  # noqa
-          concrete_func = signature.get_concrete_func(concrete_templ_types=templ_types)
+          concrete_func = signature.get_concrete_func(concrete_templ_types=template_arguments)
           if concrete_func not in possible_concrete_funcs:
             possible_concrete_funcs.append(concrete_func)
     return possible_concrete_funcs
@@ -1616,18 +1616,18 @@ class OverloadSet:
 
 class FunctionSymbolCaller:
   """
-  A FunctionSymbol plus template types it is called with.
+  A FunctionSymbol with the template arguments it is called with.
   """
 
-  def __init__(self, func: OverloadSet, templ_types: Optional[List[Type]] = None):
-    if templ_types is not None:
-      assert all(not templ_type.has_templ_placeholder() for templ_type in templ_types)
+  def __init__(self, func: OverloadSet, template_parameters: Optional[List[Type]] = None):
+    if template_parameters is not None:
+      assert all(not t_arg.has_unfilled_template_parameters() for t_arg in template_parameters)
     self.func = func
-    self.templ_types = templ_types
+    self.template_parameters = template_parameters
 
-  def copy_with_templ_types(self, templ_types: List[Type]) -> FunctionSymbolCaller:
-    assert self.templ_types is None
-    return FunctionSymbolCaller(func=self.func, templ_types=templ_types)
+  def copy_with_template_arguments(self, template_arguments: List[Type]) -> FunctionSymbolCaller:
+    assert self.template_parameters is None
+    return FunctionSymbolCaller(func=self.func, template_parameters=template_arguments)
 
 
 class TypeTemplateSymbol:
@@ -1782,7 +1782,7 @@ class SymbolTable:
 
     functions = cast(List[FunctionSymbol], functions)
 
-    functions = [func_templ for sym in functions for func_templ in sym.functions]  # flat map
+    functions = [f for sym in functions for f in sym.functions]  # flat map
 
     return OverloadSet(key, functions)
 
@@ -2009,7 +2009,7 @@ class CodegenContext:
     else:
       ir_func_name = '_'.join(
         [identifier]
-        + [str(arg_type) for arg_type in concrete_function.concrete_templ_types + concrete_function.arg_types])
+        + [str(arg_type) for arg_type in concrete_function.template_arguments + concrete_function.arg_types])
       return self.module.get_unique_name(ir_func_name)
 
   @staticmethod
@@ -2057,7 +2057,7 @@ def make_ir_size(size: int) -> ir.values.Value:
 
 
 def make_func_call_ir(func: OverloadSet,
-                      templ_types: List[Type],
+                      template_arguments: List[Type],
                       func_args: List[TypedValue],
                       context: CodegenContext) -> TypedValue:
   assert not context.emits_debug or context.builder.debug_metadata is not None
@@ -2097,8 +2097,8 @@ def make_func_call_ir(func: OverloadSet,
 
   calling_collapsed_args = [arg.copy_collapse(context=context) for arg in func_args]
   calling_arg_types = [arg.narrowed_type for arg in calling_collapsed_args]
-  assert func.can_call_with_arg_types(concrete_templ_types=templ_types, arg_types=calling_arg_types)
-  possible_concrete_funcs = func.get_concrete_funcs(templ_types=templ_types, arg_types=calling_arg_types)
+  assert func.can_call_with_arg_types(template_arguments=template_arguments, arg_types=calling_arg_types)
+  possible_concrete_funcs = func.get_concrete_funcs(template_arguments=template_arguments, arg_types=calling_arg_types)
   from functools import partial
   return make_union_switch_ir(
     case_funcs={
@@ -2218,24 +2218,24 @@ def make_di_location(pos: TreePosition, context: CodegenContext):
     'DILocation', {'line': line, 'column': col, 'scope': context.current_di_scope})
 
 
-def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type],
-                          placeholder_templ_types: List[PlaceholderTemplateType]) -> Optional[List[Type]]:
+def try_infer_template_arguments(calling_types: List[Type], signature_types: List[Type],
+                                 template_parameters: List[PlaceholderTemplateType]) -> Optional[List[Type]]:
   """
   Implements unification.
   Mostly symmetric, however uses can_implicit_cast_to(calling_type, signature_type) only in this direction.
   """
   if len(calling_types) != len(signature_types):
     return None
-  templ_type_replacements: Dict[PlaceholderTemplateType, Type] = {}
+  template_parameter_replacements: Dict[PlaceholderTemplateType, Type] = {}
 
   def check_deep_type_contains(in_type: Type, contains: Type) -> bool:
     return any(
       can_implicit_cast_to(child, contains) or check_deep_type_contains(child, contains=contains)
-      for child in in_type.templ_types)
+      for child in in_type.template_param_or_arg)
 
   def infer_type(calling_type: Type, signature_type: Type) -> bool:
-    calling_type = calling_type.replace_types(templ_type_replacements)
-    signature_type = signature_type.replace_types(templ_type_replacements)
+    calling_type = calling_type.replace_types(template_parameter_replacements)
+    signature_type = signature_type.replace_types(template_parameter_replacements)
     if isinstance(calling_type, UnionType) and len(calling_type.possible_types) == 1:
       calling_type = calling_type.possible_types[0]
     if isinstance(signature_type, UnionType) and len(signature_type.possible_types) == 1:
@@ -2244,22 +2244,22 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
     if can_implicit_cast_to(calling_type, signature_type):
       return True
     if calling_type.has_same_symbol_as(signature_type):
-      assert len(calling_type.templ_types) == len(signature_type.templ_types)
+      assert len(calling_type.template_param_or_arg) == len(signature_type.template_param_or_arg)
       return all(
         infer_type(calling_type=call_type, signature_type=sig_type)
-        for call_type, sig_type in zip(calling_type.templ_types, signature_type.templ_types))
-    if signature_type in placeholder_templ_types or calling_type in placeholder_templ_types:  # template variable.
-      if signature_type in placeholder_templ_types:
+        for call_type, sig_type in zip(calling_type.template_param_or_arg, signature_type.template_param_or_arg))
+    if signature_type in template_parameters or calling_type in template_parameters:  # template variable.
+      if signature_type in template_parameters:
         template_type, other_type = signature_type, calling_type
       else:
-        assert calling_type in placeholder_templ_types
+        assert calling_type in template_parameters
         template_type, other_type = calling_type, signature_type
       assert isinstance(template_type, PlaceholderTemplateType)
       if check_deep_type_contains(other_type, contains=template_type):  # recursively contains itself
         return False
-      if template_type not in templ_type_replacements:
-        templ_type_replacements[template_type] = other_type
-      assert templ_type_replacements[template_type] == other_type
+      if template_type not in template_parameter_replacements:
+        template_parameter_replacements[template_type] = other_type
+      assert template_parameter_replacements[template_type] == other_type
       return True
     return False
 
@@ -2267,9 +2267,9 @@ def try_infer_templ_types(calling_types: List[Type], signature_types: List[Type]
     possible = infer_type(calling_type=calling_type_, signature_type=signature_type_)
     if not possible:
       return None
-  if any(templ_type not in templ_type_replacements for templ_type in placeholder_templ_types):
+  if any(template_parameter not in template_parameter_replacements for template_parameter in template_parameters):
     return None
-  return [templ_type_replacements[templ_type] for templ_type in placeholder_templ_types]
+  return [template_parameter_replacements[template_parameter] for template_parameter in template_parameters]
 
 
 def min_max_ref_depth(typ: Type) -> (int, int):

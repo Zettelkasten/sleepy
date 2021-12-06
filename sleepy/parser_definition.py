@@ -264,7 +264,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': 'ast.1'},
     Production('IdentifierType', 'identifier', 'TemplateTypeList'): {
       'ast': lambda _pos, identifier, type_list: IdentifierTypeAst(
-        _pos, type_identifier=identifier(1), templ_types=type_list(2))},
+        _pos, type_identifier=identifier(1), template_parameters=type_list(2))},
     Production('TemplateTypeList'): {
       'type_list': []},
     Production('TemplateTypeList', '[', 'TemplateTypeList+', ']'): {
