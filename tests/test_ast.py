@@ -2696,3 +2696,16 @@ def test_use_type_before_declaration_toplevel():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 42)
+
+
+def test_mutual_recursive_functions():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+      func main() -> Int { return f(50) }
+      
+      func f(c: Int) -> Int { if c > 10 { return c } else { return g(c + 1) } }
+      func g(c: Int) -> Int { if c > 10 { return c } else { return f(c + 1) } }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 50)
