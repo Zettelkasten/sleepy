@@ -2643,3 +2643,56 @@ def test_unit_in_union():
       }
     """
     compile_program(engine, program, add_preamble=False)
+
+def test_use_function_before_declaration_function_scope():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+      func main() -> Int {
+        return f()
+        func f() -> Int { return 42 }
+      }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 42)
+
+def test_use_function_before_declaration_toplevel():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+      func main() -> Int { return f() }
+      
+      func f() -> Int { return 42 }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 42)
+
+
+def test_use_type_before_declaration_function_scope():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+      func main() -> Int {
+        s = S(42)
+        return s.i
+        
+        struct S { i: Int }
+      }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 42)
+
+
+def test_use_type_before_declaration_toplevel():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+      func main() -> Int {
+        s = S(42)
+        return s.i
+      }
+
+      struct S { i: Int }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(), 42)
