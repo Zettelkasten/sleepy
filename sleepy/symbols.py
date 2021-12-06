@@ -1330,10 +1330,12 @@ class FunctionTemplate:
   Given template arguments, this builds a concrete function implementation on demand.
   """
 
-  def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
-               arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type],
-               arg_mutates: List[bool], base: FunctionTemplate = None):
-    super().__init__()
+  def __init__(self, placeholder_template_types: List[PlaceholderTemplateType],
+               return_type: Type,
+               arg_identifiers: List[str],
+               arg_types: List[Type],
+               arg_type_narrowings: List[Type],
+               arg_mutates: List[bool]):
     assert isinstance(return_type, Type)
     assert len(arg_identifiers) == len(arg_types) == len(arg_type_narrowings) == len(arg_mutates)
     assert all(isinstance(templ_type, PlaceholderTemplateType) for templ_type in placeholder_template_types)
@@ -1343,12 +1345,7 @@ class FunctionTemplate:
     self.arg_types = arg_types
     self.arg_type_narrowings = arg_type_narrowings
     self.arg_mutates = arg_mutates
-    if base is not None:
-      assert base.arg_identifiers == self.arg_identifiers
-      # we share the initialized_templ_funcs here, so that we do not create a ConcreteFunction multiple times
-      self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = base.initialized_templ_funcs
-    else:
-      self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
+    self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
 
   def to_signature_str(self) -> str:
     templ_args = '' if len(self.placeholder_templ_types) == 0 else '[%s]' % (
