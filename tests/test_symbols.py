@@ -4,7 +4,7 @@ from nose.tools import assert_equal
 
 from llvmlite import ir
 from sleepy.syntactical_analysis.grammar import DummyPath
-from sleepy.symbols import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext, ReferenceType, TypedValue, \
+from sleepy.types import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext, ReferenceType, TypedValue, \
   narrow_with_collapsed_type, narrow_type
 
 
@@ -16,7 +16,7 @@ def make_test_context(emits_ir: bool = True) -> CodegenContext:
 
 # noinspection PyPep8Naming
 def test_can_implicit_cast_to():
-  from sleepy.symbols import can_implicit_cast_to, ReferenceType, UnionType, StructType, PlaceholderTemplateType
+  from sleepy.types import can_implicit_cast_to, ReferenceType, UnionType, StructType, PlaceholderTemplateType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_DOUBLE
   context = make_test_context()
   assert_equal(can_implicit_cast_to(SLEEPY_INT, SLEEPY_DOUBLE), False)
@@ -55,7 +55,7 @@ def test_can_implicit_cast_to():
 
 
 def test_narrow_type():
-  from sleepy.symbols import narrow_type, UnionType
+  from sleepy.types import narrow_type, UnionType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL
   assert_equal(narrow_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_INT)
   assert_equal(narrow_type(UnionType([SLEEPY_INT], [0], 4), SLEEPY_INT), UnionType([SLEEPY_INT], [0], 4))
@@ -73,7 +73,7 @@ def test_narrow_type():
 
 # noinspection PyPep8Naming
 def test_narrow_type_templates():
-  from sleepy.symbols import narrow_type, UnionType, PlaceholderTemplateType, StructType
+  from sleepy.types import narrow_type, UnionType, PlaceholderTemplateType, StructType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL
   context = make_test_context()
   Int, Bool = SLEEPY_INT, SLEEPY_BOOL
@@ -100,7 +100,7 @@ def test_narrow_type_templates():
 
 # noinspection PyPep8Naming
 def test_narrow_type_references():
-  from sleepy.symbols import narrow_type, UnionType, ReferenceType
+  from sleepy.types import narrow_type, UnionType, ReferenceType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL
   Int, Bool = SLEEPY_INT, SLEEPY_BOOL
   Ref = ReferenceType
@@ -127,7 +127,7 @@ def test_narrow_type_references():
 
 
 def test_exclude_type():
-  from sleepy.symbols import exclude_type, UnionType, ReferenceType
+  from sleepy.types import exclude_type, UnionType, ReferenceType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE
   assert_equal(exclude_type(SLEEPY_INT, SLEEPY_NEVER), SLEEPY_INT)
   assert_equal(exclude_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_NEVER)
@@ -151,7 +151,7 @@ def test_exclude_type():
 
 
 def test_get_common_type():
-  from sleepy.symbols import get_common_type, UnionType
+  from sleepy.types import get_common_type, UnionType
   from sleepy.builtin_symbols import SLEEPY_INT
   from sleepy.builtin_symbols import SLEEPY_BOOL
   from sleepy.builtin_symbols import SLEEPY_DOUBLE
@@ -197,7 +197,7 @@ def test_narrow_with_collapsed_type():
 
 # noinspection PyPep8Naming
 def test_try_infer_templ_types_simple():
-  from sleepy.symbols import try_infer_template_arguments, PlaceholderTemplateType
+  from sleepy.types import try_infer_template_arguments, PlaceholderTemplateType
   from sleepy.builtin_symbols import SLEEPY_INT
   from sleepy.builtin_symbols import SLEEPY_DOUBLE
   T = PlaceholderTemplateType('T')
@@ -238,7 +238,7 @@ def test_try_infer_templ_types_simple():
 
 # noinspection PyPep8Naming
 def test_try_infer_template_arguments_ptr():
-  from sleepy.symbols import try_infer_template_arguments, PlaceholderTemplateType, PointerType
+  from sleepy.types import try_infer_template_arguments, PlaceholderTemplateType, PointerType
   from sleepy.builtin_symbols import SLEEPY_CHAR
   from sleepy.builtin_symbols import SLEEPY_INT
   T = PlaceholderTemplateType('T')
@@ -254,7 +254,7 @@ def test_try_infer_template_arguments_ptr():
 
 
 def test_try_infer_templ_types_union():
-  from sleepy.symbols import try_infer_template_arguments
+  from sleepy.types import try_infer_template_arguments
   from sleepy.builtin_symbols import SLEEPY_CHAR
   from sleepy.builtin_symbols import SLEEPY_INT
   assert_equal(
@@ -281,7 +281,7 @@ def test_try_infer_templ_types_union():
 
 # noinspection PyPep8Naming
 def test_try_infer_templ_types_struct():
-  from sleepy.symbols import try_infer_template_arguments, PlaceholderTemplateType, StructType
+  from sleepy.types import try_infer_template_arguments, PlaceholderTemplateType, StructType
   from sleepy.builtin_symbols import SLEEPY_CHAR, SLEEPY_INT
   context = make_test_context()
   T = PlaceholderTemplateType('T')
@@ -344,7 +344,7 @@ def test_try_infer_templ_types_struct():
 
 
 def test_context_use_pos():
-  from sleepy.symbols import CodegenContext, make_di_location
+  from sleepy.types import CodegenContext, make_di_location
   from sleepy.syntactical_analysis.grammar import TreePosition
   from llvmlite import ir
   module = ir.Module(name='module_name')
@@ -364,7 +364,7 @@ def test_context_use_pos():
 
 
 def test_bind_and_unbind():
-  from sleepy.symbols import TypedValue, ReferenceType
+  from sleepy.types import TypedValue, ReferenceType
   from sleepy.builtin_symbols import SLEEPY_INT
   context = make_test_context(emits_ir=False)
 
@@ -387,7 +387,7 @@ def test_bind_and_unbind():
 
 # noinspection PyPep8Naming
 def test_struct_self_referencing():
-  from sleepy.symbols import StructType, PlaceholderTemplateType, PartialIdentifiedStructType, ReferenceType
+  from sleepy.types import StructType, PlaceholderTemplateType, PartialIdentifiedStructType, ReferenceType
   from sleepy.builtin_symbols import SLEEPY_INT
   context = make_test_context()
 

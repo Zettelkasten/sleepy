@@ -7,7 +7,7 @@ import _setup_test_env  # noqa
 from sleepy.errors import SemanticError, ParseError
 from sleepy.syntactical_analysis.grammar import DummyPath
 from sleepy.jit import make_execution_engine
-from sleepy.symbols import SLEEPY_UNIT
+from sleepy.types import SLEEPY_UNIT
 from tests.compile import compile_program
 from sleepy.ast_generation import make_translation_unit_ast_from_str, make_file_ast_from_str
 

@@ -8,13 +8,13 @@ from llvmlite import ir
 
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 from sleepy.errors import SemanticError, CompilerError
+from sleepy.struct_type import build_constructor, build_destructor
 from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
-from sleepy.symbols import OverloadSet, VariableSymbol, Type, SymbolTable, \
-  TypeTemplateSymbol, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
+from sleepy.types import OverloadSet, Type, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, try_infer_template_arguments, Symbol, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, \
-  ReferenceType, \
-  PartialIdentifiedStructType, StructIdentity, SLEEPY_NEVER, determine_kind, SymbolKind
+  PlaceholderTemplateType, try_infer_template_arguments, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, \
+  ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType
+from sleepy.symbols import VariableSymbol, TypeTemplateSymbol, SymbolTable, Symbol, determine_kind, SymbolKind
 
 
 def raise_error(message: str, pos: TreePosition):
@@ -133,7 +133,7 @@ class AbstractSyntaxTree(ABC):
             func.identifier, concrete_func.signature.to_signature_str(), arg_identifier), self.pos)
 
     if context.emits_ir:
-      from sleepy.symbols import make_func_call_ir
+      from sleepy.types import make_func_call_ir
       return_val = make_func_call_ir(func=func, template_arguments=templ_types, func_args=func_args, context=context)
     else:
       return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
@@ -419,66 +419,6 @@ class ReturnStatementAst(StatementAst):
 
   def __repr__(self) -> str:
     return 'ReturnStatementAst(return_exprs=%r)' % self.return_exprs
-
-
-class StructDeclarationAst(DeclarationAst):
-  def __init__(self, pos: TreePosition, struct_identifier: str, templ_identifiers: List[str],
-               member_types: List[TypeAst], member_identifiers: List[str],
-               member_annotations: List[List[AnnotationAst]]):
-    super().__init__(pos)
-    assert len(member_types) == len(member_identifiers) == len(member_annotations)
-    self.struct_identifier = struct_identifier
-    self.templ_identifiers = templ_identifiers
-    self.member_types = member_types
-    self.member_identifiers = member_identifiers
-    self.member_annotations = member_annotations
-
-  @property
-  def identifier(self) -> str:
-    return self.struct_identifier
-
-  def create_symbol(self, symbol_table: SymbolTable, context: CodegenContext) -> Symbol:
-    with context.use_pos(self.pos):
-      if self.struct_identifier in symbol_table.current_scope_identifiers:
-        raise_error('Cannot redefine struct with name %r' % self.struct_identifier, self.pos)
-
-      # symbol table including placeholder types
-      struct_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=False)
-
-      placeholder_templ_types = self._collect_placeholder_templ_types(
-        self.templ_identifiers, symbol_table=struct_symbol_table)
-
-      # Struct members might reference this struct itself (indirectly).
-      # We temporarily add a placeholder to the symbol table so it is defined here.
-      struct_identity = StructIdentity(struct_identifier=self.struct_identifier, context=context)
-      partial_struct_type = PartialIdentifiedStructType(identity=struct_identity,
-                                                        template_param_or_arg=placeholder_templ_types)
-      struct_identity.partial_struct_type = partial_struct_type
-      struct_symbol_table[self.struct_identifier] = TypeTemplateSymbol(
-        template_parameters=placeholder_templ_types, signature_type=partial_struct_type)
-
-      member_types = [type_ast.make_type(symbol_table=struct_symbol_table) for type_ast in self.member_types]
-      signature_struct_type = StructType(
-        identity=struct_identity, template_param_or_arg=placeholder_templ_types,
-        member_identifiers=self.member_identifiers, member_types=member_types, partial_struct_type=partial_struct_type)
-
-      # make constructor / destructor
-      signature_struct_type.constructor = signature_struct_type.build_constructor(
-        parent_symbol_table=struct_symbol_table, parent_context=context)
-      signature_struct_type.build_destructor(parent_symbol_table=struct_symbol_table, parent_context=context)
-
-      # assemble to complete type symbol
-      struct_type_symbol = TypeTemplateSymbol(
-        template_parameters=placeholder_templ_types, signature_type=signature_struct_type)
-      return struct_type_symbol
-
-  def children(self) -> List[AbstractSyntaxTree]:
-    return []
-
-  def __repr__(self) -> str:
-    return (
-            'StructDeclarationAst(struct_identifier=%r, templ_identifiers=%r, member_identifiers=%r, member_types=%r)' % (
-      self.struct_identifier, self.templ_identifiers, self.member_identifiers, self.member_types))
 
 
 class AssignStatementAst(StatementAst):
@@ -807,7 +747,7 @@ class StringLiteralExpressionAst(ExpressionAst):
       if context.emits_ir:
         str_val = tuple(self.constant_str.encode())
         assert context.ir_func_malloc is not None
-        from sleepy.symbols import LLVM_SIZE_TYPE
+        from sleepy.types import LLVM_SIZE_TYPE
         ir_start_raw = context.builder.call(
           context.ir_func_malloc, args=[ir.Constant(LLVM_SIZE_TYPE, len(str_val))], name='str_literal_start_raw')
         str_ir_type = ir.ArrayType(SLEEPY_CHAR.ir_type, len(str_val))
@@ -995,7 +935,7 @@ class CallExpressionAst(ExpressionAst):
         if len(self.func_arg_exprs) != 1:
           raise_error('Must call size(type: Type) with exactly one argument', self.pos)
         size_of_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
-        from sleepy.symbols import LLVM_SIZE_TYPE
+        from sleepy.types import LLVM_SIZE_TYPE
         ir_val = ir.Constant(LLVM_SIZE_TYPE, size_of_type.size) if context.emits_ir else None
         return TypedValue(typ=SLEEPY_LONG, ir_val=ir_val)
       if self._is_is_call(symbol_table=symbol_table):
@@ -1117,7 +1057,7 @@ class MemberExpressionAst(ExpressionAst):
           return TypedValue(typ=member_type, ir_val=ir_val)
 
       from functools import partial
-      from sleepy.symbols import make_union_switch_ir
+      from sleepy.types import make_union_switch_ir
       collapsed_arg_val = arg_val.copy_collapse(context=context, name='struct')
       collapsed_type = collapsed_arg_val.narrowed_type
       possible_types = collapsed_type.possible_types if isinstance(collapsed_type, UnionType) else {collapsed_type}
@@ -1301,3 +1241,64 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast: ExpressionAst,
         return
       arg_ast = cond_expr_ast.func_arg_exprs[0]
       make_narrow_type_from_valid_cond_ast(cond_expr_ast=arg_ast, cond_holds=not cond_holds, symbol_table=symbol_table)
+
+
+class StructDeclarationAst(DeclarationAst):
+  def __init__(self, pos: TreePosition, struct_identifier: str, templ_identifiers: List[str],
+               member_types: List[TypeAst], member_identifiers: List[str],
+               member_annotations: List[List[AnnotationAst]]):
+    super().__init__(pos)
+    assert len(member_types) == len(member_identifiers) == len(member_annotations)
+    self.struct_identifier = struct_identifier
+    self.templ_identifiers = templ_identifiers
+    self.member_types = member_types
+    self.member_identifiers = member_identifiers
+    self.member_annotations = member_annotations
+
+  @property
+  def identifier(self) -> str:
+    return self.struct_identifier
+
+  def create_symbol(self, symbol_table: SymbolTable, context: CodegenContext) -> Symbol:
+    with context.use_pos(self.pos):
+      if self.struct_identifier in symbol_table.current_scope_identifiers:
+        raise_error('Cannot redefine struct with name %r' % self.struct_identifier, self.pos)
+
+      # symbol table including placeholder types
+      struct_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=False)
+
+      placeholder_templ_types = self._collect_placeholder_templ_types(
+        self.templ_identifiers, symbol_table=struct_symbol_table)
+
+      # Struct members might reference this struct itself (indirectly).
+      # We temporarily add a placeholder to the symbol table so it is defined here.
+      struct_identity = StructIdentity(struct_identifier=self.struct_identifier, context=context)
+      partial_struct_type = PartialIdentifiedStructType(identity=struct_identity,
+                                                        template_param_or_arg=placeholder_templ_types)
+      struct_identity.partial_struct_type = partial_struct_type
+      struct_symbol_table[self.struct_identifier] = TypeTemplateSymbol(
+        template_parameters=placeholder_templ_types, signature_type=partial_struct_type)
+
+      member_types = [type_ast.make_type(symbol_table=struct_symbol_table) for type_ast in self.member_types]
+      signature_struct_type = StructType(
+        identity=struct_identity, template_param_or_arg=placeholder_templ_types,
+        member_identifiers=self.member_identifiers, member_types=member_types, partial_struct_type=partial_struct_type)
+
+      # make constructor / destructor
+      signature_struct_type.constructor = build_constructor(struct_type=signature_struct_type,
+                                                            parent_symbol_table=struct_symbol_table,
+                                                            parent_context=context)
+      build_destructor(struct_type=signature_struct_type, parent_symbol_table=struct_symbol_table, parent_context=context)
+
+      # assemble to complete type symbol
+      struct_type_symbol = TypeTemplateSymbol(
+        template_parameters=placeholder_templ_types, signature_type=signature_struct_type)
+      return struct_type_symbol
+
+  def children(self) -> List[AbstractSyntaxTree]:
+    return []
+
+  def __repr__(self) -> str:
+    return (
+            'StructDeclarationAst(struct_identifier=%r, templ_identifiers=%r, member_identifiers=%r, member_types=%r)' % (
+      self.struct_identifier, self.templ_identifiers, self.member_identifiers, self.member_types))

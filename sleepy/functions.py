@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List, Optional, cast
 
 from llvmlite import ir
@@ -6,8 +8,9 @@ from sleepy.ast import TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatement
   raise_error, DeclarationAst
 from sleepy.builtin_symbols import SLEEPY_BOOL
 from sleepy.syntactical_analysis.grammar import TreePosition
-from sleepy.symbols import SymbolTable, Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
-  VariableSymbol, PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType, Symbol, FunctionSymbol
+from sleepy.types import Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
+  PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType
+from sleepy.symbols import VariableSymbol, FunctionSymbol, SymbolTable, Symbol
 
 
 class FunctionDeclarationAst(DeclarationAst):
@@ -298,4 +301,3 @@ class DeclaredFunctionTemplate(FunctionTemplate):
     self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     concrete_function.build_ir()
     return concrete_function
-

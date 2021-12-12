@@ -4,7 +4,7 @@ from typing import Tuple, List, Optional
 
 from sleepy.jit import make_execution_engine, compile_ir
 from sleepy.ast_generation import make_translation_unit_ast
-from sleepy.symbols import OverloadSet
+from sleepy.types import OverloadSet
 
 
 def run_example(code_file_name: Optional[str] = None):

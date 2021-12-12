@@ -5,11 +5,13 @@ from llvmlite import ir
 from llvmlite.ir import IRBuilder
 
 from sleepy.syntactical_analysis.grammar import TreePosition
-from sleepy.symbols import FunctionTemplate, PlaceholderTemplateType, Type, ConcreteFunction, \
+from sleepy.types import FunctionTemplate, PlaceholderTemplateType, Type, ConcreteFunction, \
   ConcreteBuiltinOperationFunction, ConcreteBitcastFunction, DoubleType, FloatType, BoolType, \
-  IntType, LongType, CharType, RawPointerType, PointerType, SymbolTable, CodegenContext, OverloadSet, \
-  LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, TypeTemplateSymbol, StructType, SLEEPY_UNIT, SLEEPY_NEVER, \
-  ReferenceType, StructIdentity, FunctionSymbol, DummyFunctionTemplate
+  IntType, LongType, CharType, RawPointerType, PointerType, CodegenContext, OverloadSet, \
+  LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, StructType, SLEEPY_UNIT, SLEEPY_NEVER, \
+  ReferenceType, StructIdentity, DummyFunctionTemplate
+from sleepy.struct_type import build_destructor, build_constructor
+from sleepy.symbols import FunctionSymbol, TypeTemplateSymbol, SymbolTable
 from sleepy.utilities import concat_dicts
 
 
@@ -104,10 +106,10 @@ def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   str_type = StructType(
     identity=str_identity, member_identifiers=['start', 'length', 'alloc_length'], template_param_or_arg=[],
     member_types=[SLEEPY_CHAR_PTR, SLEEPY_INT, SLEEPY_INT])
-  constructor_symbol = str_type.build_constructor(parent_symbol_table=symbol_table, parent_context=context)
+  constructor_symbol = build_constructor(struct_type=str_type, parent_symbol_table=symbol_table, parent_context=context)
   str_type.constructor = constructor_symbol
   struct_symbol = TypeTemplateSymbol.make_concrete_type_symbol(str_type)
-  str_type.build_destructor(parent_symbol_table=symbol_table, parent_context=context)
+  build_destructor(struct_type=str_type, parent_symbol_table=symbol_table, parent_context=context)
   return struct_symbol
 
 

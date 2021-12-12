@@ -1,8 +1,8 @@
-from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, StructDeclarationAst, \
-  ReturnStatementAst, AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
+from sleepy.ast import FileAst, AbstractScopeAst, annotate_ast, ExpressionStatementAst, ReturnStatementAst, \
+  AssignStatementAst, IdentifierExpressionAst, MemberExpressionAst, \
   IfStatementAst, WhileStatementAst, ConstantExpressionAst, \
   StringLiteralExpressionAst, CallExpressionAst, AnnotationAst, UnionTypeAst, IdentifierTypeAst, ImportsAst, \
-  UnbindExpressionAst
+  UnbindExpressionAst, StructDeclarationAst
 
 from sleepy.token_value_parsing import parse_assign_op, parse_long, parse_double, parse_float, parse_char, parse_string, \
   parse_hex_int

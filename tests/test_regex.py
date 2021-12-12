@@ -21,7 +21,7 @@ def test_tokenize_regex():
 
 def test_make_regex_nfa_and_dfa():
   from sleepy.syntactical_analysis.regex import make_regex_nfa
-  from sleepy.automaton import make_dfa_from_nfa
+  from sleepy.syntactical_analysis.automaton import make_dfa_from_nfa
 
   def test_nfa_dfa_equal(nfa, dfa, word, should_accept):
     """

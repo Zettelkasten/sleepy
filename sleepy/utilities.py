@@ -2,7 +2,7 @@ from typing import TypeVar, List, Dict
 
 from llvmlite import ir
 
-from sleepy.symbols import CodegenContext
+from sleepy.types import CodegenContext
 
 T = TypeVar('T')
 U = TypeVar('U')

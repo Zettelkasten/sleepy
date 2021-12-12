@@ -5,7 +5,7 @@ from llvmlite.binding import ExecutionEngine
 from sleepy.syntactical_analysis.grammar import DummyPath
 from sleepy.jit import compile_ir
 from sleepy.ast_generation import make_translation_unit_ast_from_str
-from sleepy.symbols import OverloadSet
+from sleepy.types import OverloadSet
 
 
 def compile_program(engine: ExecutionEngine,
