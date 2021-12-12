@@ -1,7 +1,7 @@
 from typing import Tuple, List
 
 from sleepy.syntactical_analysis.lexer import LexerGenerator
-from sleepy.sleepy_lexer import WHITESPACE_REGEX, COMMENT_REGEX, TOKEN_INFO
+from sleepy.lexer_definition import WHITESPACE_REGEX, COMMENT_REGEX, TOKEN_INFO
 
 from sleepy.parser_definition import SLEEPY_PARSER
 
