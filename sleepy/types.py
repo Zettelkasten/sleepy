@@ -1335,27 +1335,6 @@ class OverloadSet(MutableSet[FunctionTemplate]):
   where template types have been replaced with concrete types.
   """
 
-  def add(self, signature: FunctionTemplate):
-    assert self.is_undefined_for_arg_types(placeholder_templ_types=signature.placeholder_templ_types,
-                                           arg_types=signature.arg_types)
-    self.signatures_by_number_of_templ_args.setdefault(len(signature.placeholder_templ_types), []).append(signature)
-
-  def discard(self, value: FunctionTemplate):
-    lst = self.signatures_by_number_of_templ_args.get(len(value.placeholder_templ_types))
-    if lst is not None: lst.remove(value)
-
-  def __contains__(self, x: object) -> bool:
-    return isinstance(x, FunctionTemplate) and any(x in fs for fs in self.signatures_by_number_of_templ_args.values())
-
-  def __len__(self) -> int:
-    return sum(len(fs) for fs in self.signatures_by_number_of_templ_args.values())
-
-  def __iter__(self) -> Iterator[FunctionTemplate]:
-    return self.signatures.__iter__()
-
-  def _from_iterable(self, iterable: Iterable[FunctionTemplate]) -> OverloadSet:
-    return OverloadSet(identifier=self.identifier, signatures=iterable)
-
   def __init__(self, identifier: str, signatures: Iterable[FunctionTemplate]):
     self.identifier = identifier
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionTemplate]] = {}
@@ -1422,6 +1401,33 @@ class OverloadSet(MutableSet[FunctionTemplate]):
 
   def make_signature_list_str(self) -> str:
     return '\n'.join([' - ' + signature.to_signature_str() for signature in self.signatures])
+  
+  ##
+  ## MutableSet implementation
+  ##
+  
+  def add(self, signature: FunctionTemplate):
+    assert self.is_undefined_for_arg_types(placeholder_templ_types=signature.placeholder_templ_types,
+                                           arg_types=signature.arg_types)
+    self.signatures_by_number_of_templ_args.setdefault(len(signature.placeholder_templ_types), []).append(signature)
+
+  def discard(self, value: FunctionTemplate):
+    lst = self.signatures_by_number_of_templ_args.get(len(value.placeholder_templ_types))
+    if lst is not None: lst.remove(value)
+
+  def __contains__(self, x: object) -> bool:
+    return isinstance(x, FunctionTemplate) and any(x in fs for fs in self.signatures_by_number_of_templ_args.values())
+
+  def __len__(self) -> int:
+    return sum(len(fs) for fs in self.signatures_by_number_of_templ_args.values())
+
+  def __iter__(self) -> Iterator[FunctionTemplate]:
+    return self.signatures.__iter__()
+
+  # is used by the MutableSet mixin
+  def _from_iterable(self, iterable: Iterable[FunctionTemplate]) -> OverloadSet:
+    return OverloadSet(identifier=self.identifier, signatures=iterable)
+
 
 
 class FunctionSymbolCaller:
