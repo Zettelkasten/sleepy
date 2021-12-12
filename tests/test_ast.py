@@ -17,7 +17,7 @@ def test_ast_parser():
   program1 = 'hello_world(123)'
   make_translation_unit_ast_from_str(file_path=dummy, program=program1, add_preamble=False)
   program2 = """# This function will just return 4.
-func do_stuff(val: Double) ->  Int  {
+func do_stuff(val: Double) -> Int  {
   return 4
 }
 do_stuff(7.5)
@@ -25,7 +25,7 @@ do_stuff(7.5)
   make_translation_unit_ast_from_str(file_path=dummy, program=program2, add_preamble=False)
   program3 = """
   # Compute 0 + 1 + ... + n
-  func sum_all(n: Int) ->  Int  {
+  func sum_all(n: Int) -> Int  {
     if n <= 0 { return 0 }
     else { return sum_all(n-1) + n }
   }
@@ -39,7 +39,7 @@ def test_simple_arithmetic():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Double  {
+    func main() -> Double  {
       return 4.0 + 3.0
     }
     """
@@ -48,7 +48,7 @@ def test_simple_arithmetic():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func test() ->  Int  {
+    func test() -> Int  {
       return 2 * 4 - 3
     }
     """
@@ -57,7 +57,7 @@ def test_simple_arithmetic():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func sub(a: Double, b: Double) ->  Double  {
+    func sub(a: Double, b: Double) -> Double  {
       return a - b
     }
     """
@@ -68,7 +68,7 @@ def test_simple_arithmetic():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func divide(a: Int, b: Int) ->  Int  {
+    func divide(a: Int, b: Int) -> Int  {
       return a / b
     }
     """
@@ -117,7 +117,7 @@ def test_lerp():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func lerp(x1: Double, x2: Double, time: Double) ->  Double  {
+    func lerp(x1: Double, x2: Double, time: Double) -> Double  {
       diff = x2 - x1
       return x1 + diff * time
     }
@@ -132,10 +132,10 @@ def test_call_other_func():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func square(x: Double) ->  Double  {
+    func square(x: Double) -> Double  {
       return x * x
     }
-    func dist_squared(x1: Double, x2: Double, y1: Double, y2: Double) ->  Double  {
+    func dist_squared(x1: Double, x2: Double, y1: Double, y2: Double) -> Double  {
       return square(x1 - y1) + square(x2 - y2)
     }
     """
@@ -151,8 +151,8 @@ def test_global_var():
     # language=Sleepy
     program = """
     PI = 3.1415  # declare a global variable
-    func cube(x: Double) ->  Double  { return x * x * x }
-    func ball_volume(radius: Double) ->  Double  {
+    func cube(x: Double) -> Double  { return x * x * x }
+    func ball_volume(radius: Double) -> Double  {
       return 4/3 * PI * cube(radius)
     }
     """
@@ -165,7 +165,7 @@ def test_simple_mutable_assign():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(x: Int) ->  Int  {
+    func main(x: Int) -> Int  {
       x = x + 1
       x = x + 1
       return x
@@ -181,12 +181,12 @@ def test_nested_func_call():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func ball_volume(radius: Double) ->  Double  {
-      func cube(x: Double) ->  Double  { return x * x * x }
+    func ball_volume(radius: Double) -> Double  {
+      func cube(x: Double) -> Double  { return x * x * x }
       return 4.0/3.0 * 3.1415 * cube(radius)
     }
     # Compute relative volume difference of two balls.
-    func main(radius1: Double, radius2: Double) ->  Double  {
+    func main(radius1: Double, radius2: Double) -> Double  {
       volume1 = ball_volume(radius1)
       volume2 = ball_volume(radius2)
       return volume1 / volume2
@@ -205,7 +205,7 @@ def test_simple_if():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func branch(cond: Bool, true_val: Double, false_val: Double) ->  Double  {
+    func branch(cond: Bool, true_val: Double, false_val: Double) -> Double  {
       if cond {
         return true_val
       } else {
@@ -222,7 +222,7 @@ def test_simple_if_max():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func max(a: Double, b: Double) ->  Double  {
+    func max(a: Double, b: Double) -> Double  {
       if a < b {
         return b
       } else {
@@ -240,7 +240,7 @@ def test_simple_if_max():
 def test_simple_if_abs():
   with make_execution_engine() as engine:
     # language=Sleepy
-    program = """ func abs(x: Double) ->  Double  { if x < 0.0 { return -x } else { return x } } """
+    program = """ func abs(x: Double) -> Double  { if x < 0.0 { return -x } else { return x } } """
     abs_ = compile_program(engine, program, main_func_identifier='abs', add_preamble=False)
     assert_equal(abs_(3.1415), 3.1415)
     assert_equal(abs_(0.0), 0.0)
@@ -251,7 +251,7 @@ def test_if_assign():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(mode: Int, x: Double, y: Double) ->  Double  {
+    func main(mode: Int, x: Double, y: Double) -> Double  {
       res = 0.0
       if mode == 0 {  # addition
         res = x + y
@@ -275,7 +275,7 @@ def test_simple_simple_recursion_factorial():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func fac(x: Int) ->  Int  {
+    func fac(x: Int) -> Int  {
       if x <= 1 {
         return x
       } else {
@@ -300,7 +300,7 @@ def test_simple_simple_recursion_fibonacci():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func fibonacci(n: Int) ->  Int  {
+    func fibonacci(n: Int) -> Int  {
       # crashes if n <= 0 or if n is not integer :)
       if or(n == 1, n == 2) {
         return 1
@@ -318,7 +318,7 @@ def test_simple_simple_iterative_fibonacci():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func fibonacci(n: Int) ->  Int  {
+    func fibonacci(n: Int) -> Int  {
       prev_fib = 0
       current_fib = 1
       i = 2
@@ -341,8 +341,8 @@ def test_extern_func():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    extern_func cos(x: Double) ->  Double
-    func main(x: Double) ->  Double  {
+    extern_func cos(x: Double) -> Double
+    func main(x: Double) -> Double  {
       return cos(x)
     }
     """
@@ -356,11 +356,11 @@ def test_extern_func_inside_inline_func():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    @Inline func foo_sqrt(x: Double) ->  Double  {
-      extern_func sqrt(x: Double) ->  Double
+    @Inline func foo_sqrt(x: Double) -> Double  {
+      extern_func sqrt(x: Double) -> Double
       return sqrt(x)
     }
-    func main(x: Double) ->  Double  {
+    func main(x: Double) -> Double  {
       return foo_sqrt(x)
     }
     """
@@ -373,7 +373,7 @@ def test_extern_func_simple_alloc():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Double  {
+    func main() -> Double  {
       arr = allocate[Double](3)
       store(arr, 42.0)
       res = load(arr)
@@ -414,7 +414,7 @@ def test_wrong_return_type_should_not_be_void():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Double  {
+    func main() -> Double  {
       return
     }
     """
@@ -426,7 +426,7 @@ def test_wrong_return_type_not_matching():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Double  {
+    func main() -> Double  {
       return True()
     }
     """
@@ -463,9 +463,9 @@ def test_redefine_variable_with_function():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Int  {
+    func main() -> Int  {
       val = 5
-      func val() ->  Int  { return 4 }
+      func val() -> Int  { return 4 }
       return val()
     }
     """
@@ -477,7 +477,7 @@ def test_shadow_func_name_with_var():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Int  {
+    func main() -> Int  {
       main = 4  # should work!
       return main
     }
@@ -490,9 +490,9 @@ def test_shadow_var_name_with_var_of_different_type():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Int  {
+    func main() -> Int  {
       value: Int = 5
-      func inner() ->  Bool  {
+      func inner() -> Bool  {
         value: Bool = True()
         return value
       }
@@ -511,7 +511,7 @@ def test_operator_assign():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(x: Int) ->  Int  {
+    func main(x: Int) -> Int  {
       x += 2
       x *= -1
       x += x
@@ -545,7 +545,7 @@ def test_struct_member_access():
     # language=Sleepy
     program = """
     struct Vec3 { x: Double= 1.0; y: Double= 2.0; z: Double= 3.0; }
-    func main() ->  Double  {
+    func main() -> Double  {
       my_vec: Vec3 = Vec3(1.0, 2.0, 3.0)
       middle = my_vec.y
       return middle
@@ -567,13 +567,13 @@ def test_struct_with_struct_member():
       first: Vec2 = Vec2(0.0, 0.0);
       second: Vec2 = Vec2(0.0, 0.0);
     }
-    func mat_sum(mat: Mat22) ->  Double  {
-      func vec_sum(vec: Vec2) ->  Double  {
+    func mat_sum(mat: Mat22) -> Double  {
+      func vec_sum(vec: Vec2) -> Double  {
         return vec.x + vec.y
       }
       return vec_sum(mat.first) + vec_sum(mat.second)
     }
-    func main() ->  Double  {
+    func main() -> Double  {
       mat: Mat22 = Mat22(Vec2(1.0, 2.0), Vec2(3.0, 4.0))
       assert(mat.first.x == 1.0)
       return mat_sum(mat)
@@ -636,7 +636,7 @@ def test_if_missing_return_branch():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func foo(x: Int) ->  Int  {
+    func foo(x: Int) -> Int  {
       if x == 0 { return 42 }
       if x == -1 { return -1 }
       # missing return here.
@@ -651,7 +651,7 @@ def test_mutable_val_type_local_var():
     # language=Sleepy
     program = """
     struct Box { mem: Int = 123; }
-    func main() ->  Int  {
+    func main() -> Int  {
       x: Box = Box(42)
       x.mem = 17
       return x.mem
@@ -873,14 +873,14 @@ def test_overload_func():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func to_int(b: Bool) ->  Int  {
+    func to_int(b: Bool) -> Int  {
       if b { return 1 }
       else { return 0 }
     }
-    func to_int(i: Int) ->  Int  {
+    func to_int(i: Int) -> Int  {
       return i
     }
-    func main(a: Bool, b: Int) ->  Int  {
+    func main(a: Bool, b: Int) -> Int  {
       return to_int(a) + to_int(b) * 2
     }
     """
@@ -894,14 +894,14 @@ def test_const_add_vs_assign_add():
     # language=Sleepy
     program = """
     struct Vec2 { x: Double = 0.0; y: Double = 0.0; }
-    func add(a: Vec2, b: Vec2) ->  Vec2  {
+    func add(a: Vec2, b: Vec2) -> Vec2  {
       return Vec2(a.x + b.x, a.y + b.y)
     }
     func assign_add(mutates a: Vec2, b: Vec2)  {
       a.x = a.x + b.x
       a.y = a.y + b.y
     }
-    func main() ->  Double  {
+    func main() -> Double  {
       v1 = Vec2(5.0, 7.0)
       v2 = Vec2(0.0, 3.0)
       v3 = add(v1, v2)  # should be (5.0, 10.0)
@@ -922,7 +922,7 @@ def test_counter_is_empty():
     func increase(mutates c: Counter)  {
       c.value = c.value + 1
     }
-    func is_empty(c: Counter) ->  Bool  {
+    func is_empty(c: Counter) -> Bool  {
       return c.value == 0
     }
     func increase_if_empty(mutates c: Counter)  {
@@ -930,7 +930,7 @@ def test_counter_is_empty():
         increase(c)
       }
     }
-    func main() ->  Int  {
+    func main() -> Int  {
       c = Counter(0)
       increase(c)
       increase_if_empty(c)  # should not do anything
@@ -948,7 +948,7 @@ def test_if_inside_while():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Int  {
+    func main() -> Int  {
       x = 5
       while False() {
         if True() { x = 7 } else { x = 5 }
@@ -964,7 +964,7 @@ def test_if_inside_while2():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(x: Int) ->  Int  {
+    func main(x: Int) -> Int  {
       while x <= 5 {
         if x <= 2 { x += 1 }
         else { x += 2 }
@@ -1004,13 +1004,13 @@ def test_func_operator():
     # language=Sleepy
     program = """
     # use + as logical or, * as logical and.
-    func +(a: Bool, b: Bool) ->  Bool  {
+    func +(a: Bool, b: Bool) -> Bool  {
       return or(a, b)
     }
-    func *(a: Bool, b: Bool) ->  Bool  {
+    func *(a: Bool, b: Bool) -> Bool  {
       return and(a, b)
     }
-    func main(a: Bool, b: Bool, c: Bool) ->  Bool  {
+    func main(a: Bool, b: Bool, c: Bool) -> Bool  {
       return a + b * c
     }
     """
@@ -1029,10 +1029,10 @@ def test_overload_func_twice():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func +(a: Bool, b: Bool) ->  Bool  {
+    func +(a: Bool, b: Bool) -> Bool  {
       return or(a, b)
     }
-    func +(left: Bool, right: Bool) ->  Bool  { return True() }  # not allowed!
+    func +(left: Bool, right: Bool) -> Bool  { return True() }  # not allowed!
     func main()  { }
     """
     with assert_raises(SemanticError):
@@ -1045,10 +1045,10 @@ def test_overload_with_different_structs():
     program = """
     struct Vec2 { x: Double = 0.0; y: Double = 0.0; }
     struct Vec3 { x: Double = 0.0; y: Double = 0.0; z: Double = 0.0; }
-    func +(left: Vec2, right: Vec2) ->  Vec2  {
+    func +(left: Vec2, right: Vec2) -> Vec2  {
       return Vec2(left.x + right.x, left.y + right.y)
     }
-    func +(left: Vec3, right: Vec3) ->  Vec3  {
+    func +(left: Vec3, right: Vec3) -> Vec3  {
       return Vec3(left.x + right.x, left.y + right.y, left.z + right.z)
     }
     func main()  {
@@ -1066,7 +1066,7 @@ def test_index_operator():
     func index(ptr: Ptr[Double], pos: Int) -> Ref[Double] {
       return !load(ptr + pos)
     }
-    func main(val: Double) ->  Double  {
+    func main(val: Double) -> Double  {
       ptr = allocate[Double](8)
       ptr[0] = val
       loaded = ptr[0]
@@ -1084,7 +1084,7 @@ def test_index_operator_syntax():
     func (ptr: Ptr[Double])[pos: Int] -> Ref[Double] {
       return !load(ptr + pos)
     }
-    func main(val: Double) ->  Double  {
+    func main(val: Double) -> Double  {
       ptr = allocate[Double](8)
       ptr[0] = val
       loaded = ptr[0]
@@ -1124,10 +1124,10 @@ def test_func_inline():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    @Inline func important() ->  Int  {
+    @Inline func important() -> Int  {
       return 42
     }
-    func main() ->  Int  {
+    func main() -> Int  {
       what: Int = important()
       return what + 5
     }
@@ -1140,7 +1140,7 @@ def test_func_inline_with_branching():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    @Inline func ternary(cond: Bool, if_true: Int, if_false: Int) ->  Int  {
+    @Inline func ternary(cond: Bool, if_true: Int, if_false: Int) -> Int  {
       if cond {
         return if_true
       } else {
@@ -1148,7 +1148,7 @@ def test_func_inline_with_branching():
       }
     }
     # wrapper around ternary because we cannot inline main
-    func main(cond: Bool, if_true: Int, if_false: Int) ->  Int  {
+    func main(cond: Bool, if_true: Int, if_false: Int) -> Int  {
       return ternary(cond, if_true, if_false)
     }
     """
@@ -1161,11 +1161,11 @@ def test_func_inline_nested():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    @Inline func sum(a: Int, b: Int) ->  Int  { return a + b }
-    @Inline func ternary(cond: Bool, if_true: Int, if_false: Int) ->  Int  {
+    @Inline func sum(a: Int, b: Int) -> Int  { return a + b }
+    @Inline func ternary(cond: Bool, if_true: Int, if_false: Int) -> Int  {
       if cond { return if_true } else { return if_false }
     }
-    func main(cond: Bool, if_true: Int, if_false: Int) ->  Int  {
+    func main(cond: Bool, if_true: Int, if_false: Int) -> Int  {
       return sum(ternary(cond, if_true, if_false), 42)
     }
     """
@@ -1178,8 +1178,8 @@ def test_func_inline_sequence():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    @Inline func sum(a: Int, b: Int) ->  Int  { return a + b }
-    func main(a: Int, b: Int) ->  Int  {
+    @Inline func sum(a: Int, b: Int) -> Int  { return a + b }
+    func main(a: Int, b: Int) -> Int  {
       c = sum(a, b)
       d = sum(c, b)
       return d
@@ -1210,11 +1210,11 @@ def test_func_inline_own_symbol_table():
     # language=Sleepy
     program = """
     # compute a + (a + 5)
-    @Inline func foo(a: Int) ->  Int  {
+    @Inline func foo(a: Int) -> Int  {
       b: Int = a + 5
       return a + b
     }
-    func main(x: Int) ->  Int  {
+    func main(x: Int) -> Int  {
       c: Int = foo(x)
       b: Double = 2.0
       return c
@@ -1228,7 +1228,7 @@ def test_func_inline_recursive():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    @Inline func foo(a: Int) ->  Int  {
+    @Inline func foo(a: Int) -> Int  {
       return 2 * foo(a)
     }
     func main(x: Int)  {
@@ -1243,8 +1243,8 @@ def test_func_inline_recursive_indirect():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    @Inline func foo(a: Int) ->  Int  {
-      @Inline func bar(b: Int) ->  Int  {
+    @Inline func foo(a: Int) -> Int  {
+      @Inline func bar(b: Int) -> Int  {
         return foo(b) + 3
       }
       return 2 * bar(a)
@@ -1261,7 +1261,7 @@ def test_if_scope():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(case: Bool) ->  Bool  {
+    func main(case: Bool) -> Bool  {
       result: Bool = False()
       if case {
         bar: Bool = True()
@@ -1282,7 +1282,7 @@ def test_if_scope_leak_var():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(case: Bool) ->  Int  {
+    func main(case: Bool) -> Int  {
       if case {
         fav_num: Int = 123456
       }
@@ -1315,7 +1315,7 @@ def test_scope_capture_var():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Int  {
+    func main() -> Int  {
       x: Int = 100
       func inner()  {
           a = x  # <- should raise error, variable captures not implemented yet
@@ -1336,11 +1336,11 @@ def test_union():
     # language=Sleepy
     program = """
     struct MathError { }
-    func safe_sqrt(x: Double) ->  Double|MathError  {
+    func safe_sqrt(x: Double) -> Double|MathError  {
       if x < 0.0 {
         return MathError()
       }
-      extern_func sqrt(x: Double) ->  Double
+      extern_func sqrt(x: Double) -> Double
       return sqrt(x)
     }
     func main()  {
@@ -1358,13 +1358,13 @@ def test_union_is_operator():
     program = """
     struct Foo { lol: Int = 1; }  # 1
     struct Bar { fav: Int = 42; }  # 2
-    func main_foo() ->  Int  {
+    func main_foo() -> Int  {
       value: Foo|Bar = Foo(0)
       if value is Foo { return 1 }
       if value is Bar { return 2 }
       return 0
     }
-    func main_bar() ->  Int  {
+    func main_bar() -> Int  {
       value: Bar|Foo  = Bar(-123)
       if value is Foo { return 1 }
       if value is Bar { return 2 }
@@ -1381,7 +1381,7 @@ def test_union_is_operator_simple():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Bool  {
+    func main() -> Bool  {
       test: Int|Double = 42
       test = 1.234
       return test is Double  # should be True().
@@ -1395,7 +1395,7 @@ def test_union_is_operator_if_cond():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Bool  {
+    func main() -> Bool  {
       test: Int|Bool = 42
       if test is Bool {
         return True()
@@ -1412,9 +1412,9 @@ def test_union_scope_assertions():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(x: Double, y: Double) ->  Double  {
+    func main(x: Double, y: Double) -> Double  {
       struct MathError { }
-      func safe_div(x: Double, y: Double) ->  Double|MathError  {
+      func safe_div(x: Double, y: Double) -> Double|MathError  {
         eps = 0.0000001
         if and(-eps <= y, y <= eps) {
           return MathError()
@@ -1465,9 +1465,9 @@ def test_assign_to_union2():
     # language=Sleepy
     program = """
     struct MathError { }
-    func safe_sqrt(x: Double) ->  Double|MathError  {
+    func safe_sqrt(x: Double) -> Double|MathError  {
       if x < 0.0 { return MathError() }
-      extern_func sqrt(x: Double) ->  Double
+      extern_func sqrt(x: Double) -> Double
       return sqrt(x)
     }
     func main()  {
@@ -1498,12 +1498,12 @@ def test_call_union_arg():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func accepts_both(thing: Int|Bool) ->  Bool  {
+    func accepts_both(thing: Int|Bool) -> Bool  {
       if thing is Int { return thing >= 0 }
       if thing is Bool { return thing }
       return 0 == 1  # never happens...
     }
-    func main(a: Int) ->  Bool  {
+    func main(a: Int) -> Bool  {
       thing: Int|Bool = a
       return accepts_both(thing)
     }
@@ -1517,14 +1517,14 @@ def test_call_multiple_concrete_funcs_with_union_arg():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func const() ->  Bool|Int  {
+    func const() -> Bool|Int  {
       # here declared separately such that the compiler does not know that it will actually always be an Int
       # in the future, we will probably add assertions so that the compiler does know that, but this will do for now.
       return 1 == 1
     }
-    func is_int(x: Int) ->  Bool  { return 0 == 0 }  # avoid needing preamble
-    func is_int(x: Bool) ->  Bool  { return 1 == 0 }
-    func main() ->  Bool  {
+    func is_int(x: Int) -> Bool  { return 0 == 0 }  # avoid needing preamble
+    func is_int(x: Bool) -> Bool  { return 1 == 0 }
+    func main() -> Bool  {
       alpha: Bool|Int = const()
       return is_int(alpha)
     }
@@ -1537,7 +1537,7 @@ def test_call_multiple_concrete_void_funcs_with_union_arg():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func const() ->  Bool|Int  {
+    func const() -> Bool|Int  {
       # here declared separately such that the compiler does not know that it will actually always be an Int
       # in the future, we will probably add assertions so that the compiler does know that, but this will do for now.
       return 1 == 1
@@ -1577,7 +1577,7 @@ def test_union_folding():
     # language=Sleepy
     program = """
     struct None { }
-    func main() ->  Double  {
+    func main() -> Double  {
       a: None|Bool|Double = 42.0
       x: Double|(None|Bool) = a
       return x
@@ -1592,8 +1592,8 @@ def test_is_operator_incremental():
     # language=Sleepy
     program = """
     struct None { }
-    func make_val() ->  None|Bool|Double  { return 42.0 }
-    func main() ->  Bool  {
+    func make_val() -> None|Bool|Double  { return 42.0 }
+    func main() -> Bool  {
       a: None|Bool|Double = make_val()
       if a is None {
         if a is Bool {
@@ -1636,7 +1636,7 @@ def test_union_if_else_type_narrowing():
     func is_int(b: Int) -> Int { return 0 }
     func is_bool(b: Bool) -> Int { return 1 }
     func is_double(b: Double) -> Int { return 2 }
-    func make_val() ->  Int|Bool|Double  { return 42.0 }
+    func make_val() -> Int|Bool|Double  { return 42.0 }
     func main() -> Int {
       val = make_val()
       if val is Int {
@@ -1661,12 +1661,12 @@ def test_union_if_without_else_type_narrowing():
     # language=Sleepy
     program = """
     struct Unbounded { }
-    func normalized_from_index(index: Int|Unbounded, length: Int) ->  Int  {
+    func normalized_from_index(index: Int|Unbounded, length: Int) -> Int  {
       if index is Unbounded { index = 0 }
       if index < 0 { index += length }
       return index
     }
-    func main(unbounded: Bool, index: Int, length: Int) ->  Int  {
+    func main(unbounded: Bool, index: Int, length: Int) -> Int  {
       slice: Int|Unbounded = index
       if unbounded { slice = Unbounded() }
       return normalized_from_index(slice, length)
@@ -1683,8 +1683,8 @@ def test_union_if_terminated_branch_type_narrowing():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func make_val() ->  Int|Double  { return 42.0 }
-    func main() ->  Double  {
+    func make_val() -> Int|Double  { return 42.0 }
+    func main() -> Double  {
       val = make_val()
       if val is Int {
         return 17.5
@@ -1748,7 +1748,7 @@ def test_while_cond_type_narrowing():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(initial_value: Int) ->  Bool  {
+    func main(initial_value: Int) -> Bool  {
       value: Int|Bool = initial_value
       while value is Int {
         value -= 1
@@ -1768,7 +1768,7 @@ def test_while_cond_type_narrowing_error():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(initial_value: Int) ->  Bool  {
+    func main(initial_value: Int) -> Bool  {
       value: Int|Bool = initial_value
       while value is Int {
         value -= 1
@@ -1786,10 +1786,10 @@ def test_assert_type_narrowing():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func black_box() ->  Int|Char  {
+    func black_box() -> Int|Char  {
       return 12
     }
-    func main() ->  Int  {
+    func main() -> Int  {
       my_thing : Int|Char = black_box()
       assert(my_thing is Int)
       return my_thing
@@ -1806,7 +1806,7 @@ def test_assert_type_narrowing_not():
     func black_box() -> Int|Char {
       return 12
     }
-    func main() ->  Int  {
+    func main() -> Int  {
       my_thing : Int|Char = black_box()
       assert(not(my_thing is Char))
       return my_thing
@@ -1823,11 +1823,11 @@ def test_unchecked_assert_type_narrowing():
     struct S {
       val: Ptr[Double] = 0.0
     }
-    func cast_to_s(ptr: S|Ptr[Double]) ->  S  {
+    func cast_to_s(ptr: S|Ptr[Double]) -> S  {
       unchecked_assert(ptr is S)
       return ptr
     }
-    func main(val: Double) ->  Double  {
+    func main(val: Double) -> Double  {
       ptr: Ptr[Double] = allocate[Double](2)
       store(ptr, val)
       s: S = cast_to_s(ptr)
@@ -1843,7 +1843,7 @@ def test_string_literal():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(reps: Int) ->  Int  {
+    func main(reps: Int) -> Int  {
       base = "test"
       out = ""
       while reps > 0 {
@@ -1861,7 +1861,7 @@ def test_hex_int_literal():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Int  {
+    func main() -> Int  {
       return 0x02A
     }
     """
@@ -1873,7 +1873,7 @@ def test_float_literal():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main() ->  Float  {
+    func main() -> Float  {
       return 0.5f
     }
     """
@@ -1930,7 +1930,7 @@ def test_bitwise_or():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(a: Int, b: Int) ->  Int  {
+    func main(a: Int, b: Int) -> Int  {
       return bitwise_or(a, b)
     }
     """
@@ -1942,7 +1942,7 @@ def test_mod():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func mod_(a: Int, b: Int) ->  Int  {
+    func mod_(a: Int, b: Int) -> Int  {
       return mod(a, b)
     }
     """
@@ -2499,7 +2499,7 @@ def test_mutates_struct_member():
     func inc_val(mutates of: Foo)  {
       of.value += 1
     }
-    func main() ->  Int  {
+    func main() -> Int  {
       my_foo = Foo(0)
       my_foo.value = 4
       inc_val(my_foo)  # now my_foo.value should be 5.
