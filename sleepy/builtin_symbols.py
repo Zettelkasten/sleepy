@@ -11,7 +11,7 @@ from sleepy.types import FunctionTemplate, PlaceholderTemplateType, Type, Concre
   LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, StructType, SLEEPY_UNIT, SLEEPY_NEVER, \
   ReferenceType, StructIdentity, DummyFunctionTemplate
 from sleepy.struct_type import build_destructor, build_constructor
-from sleepy.symbols import FunctionSymbol, TypeTemplateSymbol, SymbolTable
+from sleepy.symbols import TypeTemplateSymbol, SymbolTable
 from sleepy.utilities import concat_dicts
 
 
@@ -185,7 +185,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   symbol_table.add_overload('RawPtr', from_specific_signature)
   # RawPtr(Int) -> RawPtr
 
-  from_int_signatures: List[FunctionTemplate] = [
+  from_int_signatures: Set[FunctionTemplate] = {
     BuiltinOperationFunctionTemplate(
       placeholder_template_types=[], return_type=SLEEPY_RAW_PTR, arg_identifiers=['int'], arg_types=[int_type],
       arg_type_narrowings=[int_type], arg_mutates=[False],
@@ -193,11 +193,11 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
       emits_ir=context.emits_ir)
 
     for int_type in INT_TYPES
-  ]
+  }
 
   symbol_table.add_overload('int_to_ptr', from_int_signatures)
 
-  SLEEPY_RAW_PTR.constructor = OverloadSet(identifier='RawPtr', signatures=from_int_signatures + [from_specific_signature])
+  SLEEPY_RAW_PTR.constructor = OverloadSet(identifier='RawPtr', signatures=from_int_signatures | {from_specific_signature})
 
   raw_ptr_symbol = TypeTemplateSymbol.make_concrete_type_symbol(SLEEPY_RAW_PTR)
   return raw_ptr_symbol
@@ -211,14 +211,14 @@ def _make_ref_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   return TypeTemplateSymbol(template_parameters=[pointee_type], signature_type=ref_type)
 
 
-def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> FunctionSymbol:
+def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> OverloadSet:
   del symbol_table  # only to keep API consistent
   del context
   to_type, from_type = PlaceholderTemplateType('T'), PlaceholderTemplateType('U')
   bitcast_signature = BitcastFunctionTemplate(
     placeholder_template_types=[to_type, from_type], return_type=to_type,
     arg_identifiers=['from'], arg_types=[from_type], arg_type_narrowings=[to_type])
-  return FunctionSymbol([bitcast_signature])
+  return OverloadSet('bitcast', [bitcast_signature])
 
 
 def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):

@@ -7,7 +7,7 @@ from typing import List, Optional, Any, Union
 from llvmlite import ir
 
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
-from sleepy.errors import SemanticError, CompilerError
+from sleepy.errors import CompilerError, raise_error
 from sleepy.struct_type import build_constructor, build_destructor
 from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
 from sleepy.types import OverloadSet, Type, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
@@ -15,11 +15,6 @@ from sleepy.types import OverloadSet, Type, StructType, ConcreteFunction, UnionT
   PlaceholderTemplateType, try_infer_template_arguments, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, \
   ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType
 from sleepy.symbols import VariableSymbol, TypeTemplateSymbol, SymbolTable, Symbol, determine_kind, SymbolKind
-
-
-def raise_error(message: str, pos: TreePosition):
-  raise SemanticError(
-    program_path=pos.file_path, word=pos.word, from_pos=pos.from_pos, to_pos=pos.to_pos, message=message)
 
 
 class AbstractSyntaxTree(ABC):

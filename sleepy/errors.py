@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from sleepy.syntactical_analysis.grammar import get_line_col_from_pos, DummyPath
+from sleepy.syntactical_analysis.grammar import get_line_col_from_pos, DummyPath, TreePosition
 
 
 class CompilerError(Exception):
@@ -66,3 +66,8 @@ class SemanticError(CompilerError):
     super().__init__(make_error_message(
       program_path=program_path, word=word, from_pos=from_pos, error_name='Semantic error',
       message=message, to_pos=to_pos))
+
+
+def raise_error(message: str, pos: TreePosition):
+  raise SemanticError(
+    program_path=pos.file_path, word=pos.word, from_pos=pos.from_pos, to_pos=pos.to_pos, message=message)

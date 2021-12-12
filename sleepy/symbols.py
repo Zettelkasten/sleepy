@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import functools
 from enum import Enum
 from itertools import takewhile
-from typing import Optional, List, Dict, Tuple, Union, Collection, Iterable, cast
+from typing import Optional, List, Dict, Tuple, Union, Collection, Iterable, cast, Set
 
 from llvmlite import ir
-from multimethod import multimethod
 
 from sleepy.hierarchical_dictionary import HierarchicalDict, STUB
 from sleepy.types import Type, narrow_type, narrow_with_collapsed_type, exclude_type, exclude_with_collapsed_type, \
@@ -82,13 +82,6 @@ class VariableSymbol:
     return TypedValue(typ=self.declared_var_type, narrowed_type=self.narrowed_var_type, ir_val=ir_val)
 
 
-class FunctionSymbol:
-  def __init__(self, functions: Optional[List[FunctionTemplate]] = None):
-    super().__init__()
-    if functions is None: functions = []
-    self.functions: List[FunctionTemplate] = functions
-
-
 class TypeTemplateSymbol:
   """
   A (statically) declared (possibly) template type.
@@ -138,15 +131,17 @@ class SymbolTable:
   Also contains information about the current scope.
   """
 
-  Element = Union[FunctionSymbol, TypeTemplateSymbol, VariableSymbol]
-
   def __init__(self, parent: Optional[SymbolTable] = None,
                new_function: Optional[ConcreteFunction] = None,
-               inherit_outer_variables: bool = False):
+               inherit_outer_variables: bool = False,
+               new_symbols: Optional[Dict[str, Symbol]] = None):
     self.parent = parent = SymbolTableStub() if parent is None else parent
 
-    assert inherit_outer_variables is not None
-    self.dict: HierarchicalDict[str, SymbolTable.Element] = HierarchicalDict(parent.dict)
+    if new_symbols is not None:
+      assert all(symbol_declaration_check(
+        name, symbol, self.parent, inherit_outer_variables) for name, symbol in new_symbols.items())
+
+    self.dict: HierarchicalDict[str, Symbol] = HierarchicalDict(parent.dict, new_symbols)
     self.inherit_outer_variables = inherit_outer_variables
     self.current_func = parent.current_func if new_function is None else new_function
     self.known_extern_funcs = parent.known_extern_funcs
@@ -162,11 +157,15 @@ class SymbolTable:
   def make_child_scope(self, *,
                        inherit_outer_variables: bool,
                        type_substitutions: Optional[Iterable[Tuple[str, Type]]] = None,
-                       new_function: Optional[ConcreteFunction] = None) -> SymbolTable:
+                       new_function: Optional[ConcreteFunction] = None,
+                       new_symbols: Optional[Dict[str, Symbol]] = None) -> SymbolTable:
     if type_substitutions is None:
       type_substitutions = []
 
-    new_table = SymbolTable(parent=self, inherit_outer_variables=inherit_outer_variables, new_function=new_function)
+    new_table = SymbolTable(parent=self,
+                            inherit_outer_variables=inherit_outer_variables,
+                            new_function=new_function,
+                            new_symbols=new_symbols)
     # shadow placeholder types with their concrete substitutions
     for name, t in type_substitutions:
       existing_symbol = new_table[name]
@@ -180,11 +179,12 @@ class SymbolTable:
   def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__
 
-  def __setitem__(self, key, value):
-    if isinstance(value, FunctionSymbol) and key in self.dict.underlying_dict:
+  def __setitem__(self, key: str, value: Symbol):
+    assert isinstance(value, (VariableSymbol, OverloadSet, TypeTemplateSymbol))
+    if isinstance(value, OverloadSet) and key in self.dict.underlying_dict:
       existing = self.dict.underlying_dict[key]
-      assert isinstance(existing, FunctionSymbol)
-      existing.functions += value.functions
+      assert isinstance(existing, OverloadSet)
+      existing |= value
     else:
       self.dict[key] = value
 
@@ -193,7 +193,7 @@ class SymbolTable:
 
   def __getitem__(self, key: str) -> Symbol:
     value = self.dict[key]
-    if isinstance(value, FunctionSymbol):
+    if isinstance(value, OverloadSet):
       return self.get_overloads(key)
     else:
       return value
@@ -235,32 +235,47 @@ class SymbolTable:
     assert not self.has_extern_func(func_identifier)
     self.known_extern_funcs[func_identifier] = concrete_func
 
-  def get_overloads(self, key: str, include_shadowed=False) -> Optional[OverloadSet]:
+  def get_overloads(self, key: str, include_shadowed=False) -> OverloadSet:
     symbols = self.dict.get_all(key)
 
     if include_shadowed:
-      functions = [sym for sym in symbols if isinstance(sym, FunctionSymbol)]
+      functions = [sym for sym in symbols if isinstance(sym, OverloadSet)]
     else:
-      functions = list(takewhile(lambda sym: isinstance(sym, FunctionSymbol), symbols))
+      functions = list(takewhile(lambda sym: isinstance(sym, OverloadSet), symbols))
 
-    functions = cast(List[FunctionSymbol], functions)
+    functions = cast(List[OverloadSet], functions)
+    assert all(s.identifier == key for s in functions)
 
-    functions = [f for sym in functions for f in sym.functions]  # flat map
+    return functools.reduce(lambda l, r: l | r, functions)
 
-    return OverloadSet(key, functions)
+  def add_overload(self, identifier: str, overload: Union[FunctionTemplate | Set[FunctionTemplate]]) -> bool:
+    if not isinstance(overload, Set): overload = {overload}
 
-  def add_overload(self, identifier: str, overload: Union[FunctionTemplate | List[FunctionTemplate]]) -> bool:
-    if not isinstance(overload, List): overload = [overload]
+    symbol = self.dict.underlying_dict.setdefault(identifier, OverloadSet(identifier, []))
+    if not isinstance(symbol, OverloadSet): return False
+    symbol |= overload
 
-    symbol = self.dict.underlying_dict.setdefault(identifier, FunctionSymbol())
-    if not isinstance(symbol, FunctionSymbol): return False
-    symbol.functions += overload
     return True
 
   @property
   def free_overloads(self) -> OverloadSet:
     assert 'free' in self
     return self.get_overloads('free')
+
+
+def symbol_declaration_check(name: str,
+                             symbol: Symbol,
+                             table: SymbolTable,
+                             inherit_outer_variables: bool):
+  if isinstance(symbol, VariableSymbol):
+    # must be unique in current scope
+    return not inherit_outer_variables or name not in table.current_scope_identifiers
+  elif isinstance(symbol, TypeTemplateSymbol):
+    # must be unique in current and containing scopes
+    return name not in table
+  elif isinstance(symbol, OverloadSet):
+    # may be overloads TODO check feasibility of overloads
+    return True
 
 
 class SymbolKind(Enum):

@@ -5,12 +5,13 @@ from typing import List, Optional, cast
 from llvmlite import ir
 
 from sleepy.ast import TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree, \
-  raise_error, DeclarationAst
+  DeclarationAst
+from sleepy.errors import raise_error
 from sleepy.builtin_symbols import SLEEPY_BOOL
 from sleepy.syntactical_analysis.grammar import TreePosition
 from sleepy.types import Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
   PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType
-from sleepy.symbols import VariableSymbol, FunctionSymbol, SymbolTable, Symbol
+from sleepy.symbols import VariableSymbol, SymbolTable, Symbol
 
 
 class FunctionDeclarationAst(DeclarationAst):
@@ -118,7 +119,7 @@ class FunctionDeclarationAst(DeclarationAst):
       return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types, arg_type_narrowings=arg_types,
       arg_mutates=self.arg_mutates, ast=self, captured_symbol_table=func_symbol_table, captured_context=context)
 
-    return FunctionSymbol([signature])
+    return OverloadSet(self.identifier, [signature])
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
 
   def build_body_ir(self, parent_symbol_table: SymbolTable, concrete_func: ConcreteFunction,
@@ -128,16 +129,18 @@ class FunctionDeclarationAst(DeclarationAst):
     template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_templ_types]
     template_arguments = concrete_func.template_arguments
 
+    # argument variable symbols
+    # if arg is of type T, we create a local variable of type Ref[T]
+    argument_symbols = dict(
+      (arg_identifier, VariableSymbol(None, ReferenceType(arg_type)))
+      for arg_identifier, arg_type in zip(concrete_func.arg_identifiers, concrete_func.arg_types)
+    )
+
     body_symbol_table = parent_symbol_table.make_child_scope(
       inherit_outer_variables=False, new_function=concrete_func,
-      type_substitutions=zip(template_parameter_names, template_arguments))
+      type_substitutions=zip(template_parameter_names, template_arguments),
+      new_symbols=argument_symbols)
 
-    # add arguments as variables
-    for arg_identifier, arg_type in zip(concrete_func.arg_identifiers, concrete_func.arg_types):
-      # if arg is of type T, we create a local variable of type Ref[T]
-      var_symbol = VariableSymbol(None, ReferenceType(arg_type))
-      assert arg_identifier not in body_symbol_table.current_scope_identifiers
-      body_symbol_table[arg_identifier] = var_symbol
     # set function argument values
     if body_context.emits_ir:
       assert ir_func_args is not None

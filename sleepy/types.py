@@ -4,7 +4,7 @@ import copy
 import ctypes
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, Iterator, MutableSet
 
 import llvmlite
 from llvmlite import ir
@@ -1327,7 +1327,7 @@ class DummyFunctionTemplate(FunctionTemplate):
     raise NotImplementedError()
 
 
-class OverloadSet:
+class OverloadSet(MutableSet[FunctionTemplate]):
   """
   A set of declared overloaded function signatures with the same name.
   Can have one or multiple overloaded signatures accepting different parameter types (FunctionSignature).
@@ -1335,11 +1335,31 @@ class OverloadSet:
   where template types have been replaced with concrete types.
   """
 
-  def __init__(self, identifier: str, signatures: List[FunctionTemplate]):
-    super().__init__()
+  def add(self, signature: FunctionTemplate):
+    assert self.is_undefined_for_arg_types(placeholder_templ_types=signature.placeholder_templ_types,
+                                           arg_types=signature.arg_types)
+    self.signatures_by_number_of_templ_args.setdefault(len(signature.placeholder_templ_types), []).append(signature)
+
+  def discard(self, value: FunctionTemplate):
+    lst = self.signatures_by_number_of_templ_args.get(len(value.placeholder_templ_types))
+    if lst is not None: lst.remove(value)
+
+  def __contains__(self, x: object) -> bool:
+    return isinstance(x, FunctionTemplate) and any(x in fs for fs in self.signatures_by_number_of_templ_args.values())
+
+  def __len__(self) -> int:
+    return sum(len(fs) for fs in self.signatures_by_number_of_templ_args.values())
+
+  def __iter__(self) -> Iterator[FunctionTemplate]:
+    return self.signatures.__iter__()
+
+  def _from_iterable(self, iterable: Iterable[FunctionTemplate]) -> OverloadSet:
+    return OverloadSet(identifier=self.identifier, signatures=iterable)
+
+  def __init__(self, identifier: str, signatures: Iterable[FunctionTemplate]):
     self.identifier = identifier
     self.signatures_by_number_of_templ_args: Dict[int, List[FunctionTemplate]] = {}
-    for s in signatures: self._add_signature(s)
+    for s in signatures: self.add(s)
 
   @property
   def signatures(self) -> List[FunctionTemplate]:
@@ -1384,13 +1404,6 @@ class OverloadSet:
             possible_concrete_funcs.append(concrete_func)
     return possible_concrete_funcs
 
-  def _add_signature(self, signature: FunctionTemplate):
-    assert self.is_undefined_for_arg_types(
-      placeholder_templ_types=signature.placeholder_templ_types, arg_types=signature.arg_types)
-    if len(signature.placeholder_templ_types) not in self.signatures_by_number_of_templ_args:
-      self.signatures_by_number_of_templ_args[len(signature.placeholder_templ_types)] = []
-    self.signatures_by_number_of_templ_args[len(signature.placeholder_templ_types)].append(signature)
-
   def has_single_concrete_func(self) -> bool:
     return len(self.signatures) == 1 and len(self.signatures[0].placeholder_templ_types) == 0
 
@@ -1405,7 +1418,7 @@ class OverloadSet:
       arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type] for arg_type in arg_types])
 
   def __repr__(self) -> str:
-    return 'FunctionSymbol(identifier=%r, signatures=%r)' % (self.identifier, self.signatures)
+    return 'OverloadSet(identifier=%r, signatures=%r)' % (self.identifier, self.signatures)
 
   def make_signature_list_str(self) -> str:
     return '\n'.join([' - ' + signature.to_signature_str() for signature in self.signatures])
@@ -1659,8 +1672,7 @@ class UsePosRuntimeContext:
       self.context.builder.debug_metadata = make_di_location(self.pos, context=self.context)
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    if self.context.is_terminated:
-      return
+    if self.context.is_terminated: return
     self.context.current_pos = self.prev_pos
     if self.context.emits_debug:
       self.context.builder.debug_metadata = self.prev_debug_metadata
