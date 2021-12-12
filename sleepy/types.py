@@ -1390,8 +1390,8 @@ class OverloadSet(MutableSet[FunctionTemplate]):
     assert self.has_single_concrete_func()
     return self.signatures[0].get_concrete_func(concrete_templ_types=[])
 
-  @classmethod
-  def iter_expanded_possible_arg_types(cls, arg_types: Iterable[Type]) -> Iterable[Iterable[Type]]:
+  @staticmethod
+  def iter_expanded_possible_arg_types(arg_types: Iterable[Type]) -> Iterable[Iterable[Type]]:
     import itertools
     return itertools.product(*[
       arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type] for arg_type in arg_types])

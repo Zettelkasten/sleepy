@@ -4,3 +4,4 @@ numpy
 llvmlite~=0.36.0
 
 networkx~=2.6.3
+multimethod~=1.6
