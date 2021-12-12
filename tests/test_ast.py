@@ -85,7 +85,7 @@ def test_empty_func():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
     }
     """
     nothing = compile_program(engine, program, add_preamble=False)
@@ -95,7 +95,7 @@ def test_empty_func_with_preamble():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
     }
     """
     nothing = compile_program(engine, program, add_preamble=True)
@@ -106,7 +106,7 @@ def test_empty_func_with_arg():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(x: Int)  {
+    func main(x: Int) {
     }
     """
     nothing = compile_program(engine, program, add_preamble=False)
@@ -389,7 +389,7 @@ def test_types_simple():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
       my_int: Int = 3
       my_double: Double = 4.0
     }
@@ -402,7 +402,7 @@ def test_wrong_return_type_should_be_void():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
       return 6
     }
     """
@@ -438,9 +438,9 @@ def test_redefine_variable_with_different_type():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
       a = 3.0
-      a = True()  # should fail.
+      a = True() # should fail.
     }
     """
     with assert_raises(SemanticError):
@@ -451,7 +451,7 @@ def test_define_variable_with_wrong_type():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
       a: Bool = 3.0  # should fail.
     }
     """
@@ -820,7 +820,7 @@ def test_struct_free():
       y: Double = 0.0
       z: Double = 0.0
     }
-    func main(x: Double, y: Double, z: Double)  {
+    func main(x: Double, y: Double, z: Double) {
       left = 10000
       while left > 0 {
         !v = !new(Vec3(x, y, z))
@@ -848,7 +848,7 @@ def test_struct_free_nested():
       y: Vec3 = Vec3(0.0, 0.0, 0.0)
       z: Vec3 = Vec3(0.0, 0.0, 0.0)
     }
-    func main()  {
+    func main() {
       mat = Mat3x3(Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 0.0))
       mat.x.y = 42.0
       free(mat)
@@ -897,16 +897,16 @@ def test_const_add_vs_assign_add():
     func add(a: Vec2, b: Vec2) -> Vec2  {
       return Vec2(a.x + b.x, a.y + b.y)
     }
-    func assign_add(mutates a: Vec2, b: Vec2)  {
+    func assign_add(mutates a: Vec2, b: Vec2) {
       a.x = a.x + b.x
       a.y = a.y + b.y
     }
     func main() -> Double  {
       v1 = Vec2(5.0, 7.0)
       v2 = Vec2(0.0, 3.0)
-      v3 = add(v1, v2)  # should be (5.0, 10.0)
-      assign_add(v2, v3)  # v2 = (5.0, 13.0)
-      v4 = add(v1, v2)  # should be (10.0, 20.0)
+      v3 = add(v1, v2) # should be (5.0, 10.0)
+      assign_add(v2, v3) # v2 = (5.0, 13.0)
+      v4 = add(v1, v2) # should be (10.0, 20.0)
       return v4.x + v4.y
     }
     """
@@ -919,13 +919,13 @@ def test_counter_is_empty():
     # language=Sleepy
     program = """
     struct Counter { value: Int = 0; }
-    func increase(mutates c: Counter)  {
+    func increase(mutates c: Counter) {
       c.value = c.value + 1
     }
     func is_empty(c: Counter) -> Bool  {
       return c.value == 0
     }
-    func increase_if_empty(mutates c: Counter)  {
+    func increase_if_empty(mutates c: Counter) {
       if is_empty(c) {
         increase(c)
       }
@@ -933,9 +933,9 @@ def test_counter_is_empty():
     func main() -> Int  {
       c = Counter(0)
       increase(c)
-      increase_if_empty(c)  # should not do anything
+      increase_if_empty(c) # should not do anything
       c.value = c.value - 1
-      increase_if_empty(c)  # should increase
+      increase_if_empty(c) # should increase
       increase(c)
       return c.value
     }
@@ -980,8 +980,8 @@ def test_assign_unit():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func nothing()  { }
-    func main()  {
+    func nothing() { }
+    func main() {
       x = nothing()
     }
     """
@@ -992,9 +992,9 @@ def test_return_unit_expression():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func nothing()  { }
-    func main()  {
-      return nothing()  # should work
+    func nothing() { }
+    func main() {
+      return nothing() # should work
     }
     """
     compile_program(engine, program, add_preamble=False)
@@ -1033,7 +1033,7 @@ def test_overload_func_twice():
       return or(a, b)
     }
     func +(left: Bool, right: Bool) -> Bool  { return True() }  # not allowed!
-    func main()  { }
+    func main() { }
     """
     with assert_raises(SemanticError):
       compile_program(engine, program)
@@ -1051,7 +1051,7 @@ def test_overload_with_different_structs():
     func +(left: Vec3, right: Vec3) -> Vec3  {
       return Vec3(left.x + right.x, left.y + right.y, left.z + right.z)
     }
-    func main()  {
+    func main() {
       res1 = Vec2(0.0, 0.0) + Vec2(1.0, 3.0)
       res2 = Vec3(0.0, 0.0, 0.4) + Vec3(1.0, 3.0, -3.4)
     }
@@ -1194,8 +1194,8 @@ def test_func_inline_void():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    @Inline func nothing()  { }
-    func main()  {
+    @Inline func nothing() { }
+    func main() {
       nothing()
       nothing()
       nothing()
@@ -1231,7 +1231,7 @@ def test_func_inline_recursive():
     @Inline func foo(a: Int) -> Int  {
       return 2 * foo(a)
     }
-    func main(x: Int)  {
+    func main(x: Int) {
       foo(x)
     }
     """
@@ -1249,7 +1249,7 @@ def test_func_inline_recursive_indirect():
       }
       return 2 * bar(a)
     }
-    func main(x: Int)  {
+    func main(x: Int) {
       foo(x)
     }
     """
@@ -1297,7 +1297,7 @@ def test_scope_declare_variable_multiple_times():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main(case: Bool)  {
+    func main(case: Bool) {
       if case {
         fav_num: Int = 123456
       } else {
@@ -1317,7 +1317,7 @@ def test_scope_capture_var():
     program = """
     func main() -> Int  {
       x: Int = 100
-      func inner()  {
+      func inner() {
           a = x  # <- should raise error, variable captures not implemented yet
           print_line(a)
           x = 2
@@ -1343,7 +1343,7 @@ def test_union():
       extern_func sqrt(x: Double) -> Double
       return sqrt(x)
     }
-    func main()  {
+    func main() {
       a = safe_sqrt(-123.0)
       b = safe_sqrt(1.0)
     }
@@ -1452,7 +1452,7 @@ def test_assign_to_union():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
       sth: Double|Int = 42
     }
     """
@@ -1470,10 +1470,10 @@ def test_assign_to_union2():
       extern_func sqrt(x: Double) -> Double
       return sqrt(x)
     }
-    func main()  {
+    func main() {
       a = safe_sqrt(-123.0)
       a = 5.0
-      a: Double|MathError = MathError()  # can also explicitly specify type again
+      a: Double|MathError = MathError() # can also explicitly specify type again
     }
     """
     main = compile_program(engine, program)
@@ -1542,8 +1542,8 @@ def test_call_multiple_concrete_void_funcs_with_union_arg():
       # in the future, we will probably add assertions so that the compiler does know that, but this will do for now.
       return 1 == 1
     }
-    func cool_func(x: Int)  { }
-    func cool_func(x: Bool)  { }
+    func cool_func(x: Int) { }
+    func cool_func(x: Bool) { }
     func main() -> Int {
       alpha: Bool|Int = const()
       cool_func(alpha)
@@ -1885,7 +1885,7 @@ def test_unreachable_code():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
       return
       i = 1
     }
@@ -1898,7 +1898,7 @@ def test_unreachable_code2():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
       return
       if 1 == 2 {
         x = 2
@@ -1916,7 +1916,7 @@ def test_unreachable_code_after_free():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func main()  {
+    func main() {
       x = "hello"
       free(x)
       y = x + " world"  # should fail.
@@ -2152,7 +2152,7 @@ def test_template_explicit_types_multiple_times():
       return x
     }
     func main(a: Int) -> Int {
-      b = noop[Int][Double](a)  # <- thats one too much!
+      b = noop[Int][Double](a) # <- thats one too much!
       return b
     }
     """
@@ -2168,7 +2168,7 @@ def test_template_explicit_types_mismatch():
       return x
     }
     func main(a: Int) -> Int {
-      b = noop[Double](a)  # <- can't call a Double version with an Int!
+      b = noop[Double](a) # <- can't call a Double version with an Int!
       return b
     }
     """
@@ -2188,7 +2188,7 @@ def test_template_explicit_types_needed():
     }
     """
     main = compile_program(engine, program, add_preamble=False)
-    main()  # just check that it runs
+    main() # just check that it runs
 
 
 def test_template_explicit_types_struct_needed():
@@ -2201,7 +2201,7 @@ def test_template_explicit_types_struct_needed():
     }
     """
     main = compile_program(engine, program, add_preamble=False)
-    main()  # just check that it runs
+    main() # just check that it runs
 
 
 def test_template_meta_programming():
@@ -2450,7 +2450,7 @@ def test_arg_mutates_called_with_non_referenceable():
     program = """
     func increment(mutates x: Int) { x += 1 }
     func main() {
-      increment(5)  # doesn't work, 5 has no address.
+      increment(5) # doesn't work, 5 has no address.
     }
     """
     with assert_raises(SemanticError):
@@ -2496,13 +2496,13 @@ def test_mutates_struct_member():
     struct Foo {
       value: Int = 0
     }
-    func inc_val(mutates of: Foo)  {
+    func inc_val(mutates of: Foo) {
       of.value += 1
     }
     func main() -> Int  {
       my_foo = Foo(0)
       my_foo.value = 4
-      inc_val(my_foo)  # now my_foo.value should be 5.
+      inc_val(my_foo) # now my_foo.value should be 5.
       return my_foo.value
     }
     """
@@ -2514,7 +2514,7 @@ def test_mutates_called_with_ref():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func inc_val(mutates i: Int)  { i += 1 }
+    func inc_val(mutates i: Int) { i += 1 }
     func main(my_int: Int) -> Int {
       !my_int_ref: Ref[Int] = !my_int
       inc_val(my_int_ref)
@@ -2529,7 +2529,7 @@ def test_mutates_called_with_ref_ref():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func inc_val(mutates i: Int)  { i += 1 }
+    func inc_val(mutates i: Int) { i += 1 }
     func main(my_int: Int) -> Int {
       !my_int_ref: Ref[Int] = !my_int
       !!my_int_ref_ref: Ref[Ref[Int]] = !!my_int_ref
@@ -2586,7 +2586,7 @@ def test_operator_precedence():
       a5 = (!index(!foo.x))[]  # here I have to use brackets
     }
     """
-    compile_program(engine, program, add_preamble=False)  # just check that it compiles
+    compile_program(engine, program, add_preamble=False) # just check that it compiles
 
 
 def test_syntax_non_ascii_comment():
