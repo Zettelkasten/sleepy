@@ -122,39 +122,35 @@ class FunctionDeclarationAst(DeclarationAst):
     return OverloadSet(self.identifier, [signature])
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
 
-  def build_body_ir(self, parent_symbol_table: SymbolTable, concrete_func: ConcreteFunction,
-                    body_context: CodegenContext, ir_func_args: Optional[List[ir.Value]] = None):
+  def build_body_ir(self, parent_symbol_table: SymbolTable,
+                    concrete_func: ConcreteFunction,
+                    body_context: CodegenContext,
+                    ir_func_args: Optional[List[ir.Value]] = None):
+    if not body_context.emits_ir or ir_func_args is None: return
     assert not self.is_extern
 
     template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_templ_types]
     template_arguments = concrete_func.template_arguments
 
-    # argument variable symbols
-    # if arg is of type T, we create a local variable of type Ref[T]
-    argument_symbols = dict(
-      (arg_identifier, VariableSymbol(None, ReferenceType(arg_type)))
-      for arg_identifier, arg_type in zip(concrete_func.arg_identifiers, concrete_func.arg_types)
-    )
+    argument_symbols = {}
+    for identifier, ir_value, mutates, typ in zip(concrete_func.arg_identifiers,
+                                                  ir_func_args,
+                                                  concrete_func.arg_mutates,
+                                                  concrete_func.arg_types):
+      if mutates:
+        argument_symbols[identifier] = VariableSymbol.make_ref_to_variable(ir_value, ReferenceType(typ),
+                                                                           identifier, body_context)
+      else:
+        ir_value.name = identifier
+        symbol = VariableSymbol.make_new_variable(ReferenceType(typ), identifier, body_context)
+        body_context.builder.store(ir_value, symbol.ir_alloca)
+        argument_symbols[identifier] = symbol
 
     body_symbol_table = parent_symbol_table.make_child_scope(
       inherit_outer_variables=False, new_function=concrete_func,
       type_substitutions=zip(template_parameter_names, template_arguments),
       new_symbols=argument_symbols)
 
-    # set function argument values
-    if body_context.emits_ir:
-      assert ir_func_args is not None
-      assert len(ir_func_args) == len(concrete_func.arg_identifiers)
-      for arg_identifier, ir_arg, arg_mutates in zip(concrete_func.arg_identifiers, ir_func_args, concrete_func.arg_mutates):  # noqa
-        arg_symbol = body_symbol_table[arg_identifier]
-        assert isinstance(arg_symbol, VariableSymbol)
-        if arg_mutates:
-          arg_symbol.build_ir_alloca(context=body_context, identifier=arg_identifier, initial_ir_alloca=ir_arg)
-        else:  # not arg_mutates, default case
-          ir_arg.name = arg_identifier
-          arg_symbol.build_ir_alloca(context=body_context, identifier=arg_identifier)
-          assert arg_symbol.ir_alloca is not None
-          body_context.builder.store(ir_arg, arg_symbol.ir_alloca)
     # build function body
     self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
     # maybe add implicit return

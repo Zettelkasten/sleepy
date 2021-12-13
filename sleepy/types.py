@@ -1079,13 +1079,17 @@ class ConcreteFunction:
   An actual function implementation.
   """
 
-  def __init__(self, signature: FunctionTemplate, ir_func: Optional[ir.Function], template_arguments: List[Type],
-               return_type: Type, parameter_types: List[Type], narrowed_parameter_types: List[Type],
+  def __init__(self,
+               signature: FunctionTemplate,
+               ir_func: Optional[ir.Function],
+               template_arguments: List[Type],
+               return_type: Type,
+               parameter_types: List[Type],
+               narrowed_parameter_types: List[Type],
                parameter_mutates: List[bool]):
     assert ir_func is None or isinstance(ir_func, ir.Function)
-    assert (
-            len(signature.arg_identifiers) == len(parameter_types) == len(narrowed_parameter_types) == len(
-      parameter_mutates))
+    assert (len(signature.arg_identifiers) == len(parameter_types)
+            == len(narrowed_parameter_types) == len(parameter_mutates))
     assert all(not templ_type.has_unfilled_template_parameters() for templ_type in template_arguments)
     assert not return_type.has_unfilled_template_parameters()
     assert all(not arg_type.has_unfilled_template_parameters() for arg_type in parameter_types)

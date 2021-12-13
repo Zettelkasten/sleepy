@@ -19,12 +19,44 @@ class VariableSymbol:
   A declared variable.
   """
 
-  def __init__(self, ir_alloca: Optional[ir.AllocaInstr], var_type: Type):
-    super().__init__()
-    assert ir_alloca is None or isinstance(ir_alloca, (ir.AllocaInstr, ir.Argument))
+  def __init__(self, ir_alloca: ir.AllocaInstr, var_type: Type):
+    assert isinstance(ir_alloca, (ir.AllocaInstr, ir.Argument))
     self.ir_alloca = ir_alloca
     self.declared_var_type = var_type
     self.narrowed_var_type = var_type
+
+  @staticmethod
+  def make_new_variable(variable_type: ReferenceType,
+                        identifier: str,
+                        context: CodegenContext) -> VariableSymbol:
+    pointee_type = variable_type.pointee_type
+    ir_alloca = context.alloca_at_entry(pointee_type.ir_type, name='%s_ptr' % identifier)
+
+    new_variable = VariableSymbol(ir_alloca, variable_type)
+    new_variable._make_debug_info(context, identifier)
+    return new_variable
+
+  @staticmethod
+  def make_ref_to_variable(initial_ir_alloca: ir.Value,
+                           variable_type: ReferenceType,
+                           identifier: str,
+                           context: CodegenContext) -> VariableSymbol:
+    initial_ir_alloca.name = '%s_ref' % identifier
+
+    new_variable = VariableSymbol(initial_ir_alloca, variable_type)
+    new_variable._make_debug_info(context, identifier)
+    return new_variable
+
+  def _make_debug_info(self, context: CodegenContext, identifier: str):
+    if not context.emits_debug: return
+    assert context.di_declare_func is not None
+    di_local_var = context.module.add_debug_info(
+      'DILocalVariable', {
+        'name': identifier, 'scope': context.current_di_scope, 'file': context.current_di_file,
+        'line': context.current_pos.get_from_line(), 'type': self.declared_var_type.make_di_type(context=context)})
+    di_expression = context.module.add_debug_info('DIExpression', {})
+    assert context.builder.debug_metadata is not None
+    context.builder.call(context.di_declare_func, args=[self.ir_alloca, di_local_var, di_expression])
 
   def copy_set_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)
@@ -52,28 +84,6 @@ class VariableSymbol:
   def copy_exclude_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
     return self.copy_set_narrowed_type(exclude_with_collapsed_type(
       from_type=self.narrowed_var_type, collapsed_type=collapsed_type))
-
-  def build_ir_alloca(self, context: CodegenContext, identifier: str,
-                      initial_ir_alloca: Optional[ir.values.Value] = None):
-    assert self.ir_alloca is None
-    assert isinstance(self.declared_var_type, ReferenceType)
-    var_type = self.declared_var_type.pointee_type
-    if not context.emits_ir:
-      return
-    if initial_ir_alloca is not None:
-      self.ir_alloca = initial_ir_alloca
-      initial_ir_alloca.name = '%s_ref' % identifier
-    else:  # default case
-      self.ir_alloca = context.alloca_at_entry(var_type.ir_type, name='%s_ptr' % identifier)
-    if context.emits_debug:
-      assert context.di_declare_func is not None
-      di_local_var = context.module.add_debug_info(
-        'DILocalVariable', {
-          'name': identifier, 'scope': context.current_di_scope, 'file': context.current_di_file,
-          'line': context.current_pos.get_from_line(), 'type': var_type.make_di_type(context=context)})
-      di_expression = context.module.add_debug_info('DIExpression', {})
-      assert context.builder.debug_metadata is not None
-      context.builder.call(context.di_declare_func, args=[self.ir_alloca, di_local_var, di_expression])
 
   def __repr__(self) -> str:
     return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r)' % (
@@ -191,7 +201,7 @@ class SymbolTable:
 
   @multimethod
   def __setitem__(self, key: str, value: Symbol):
-      self.dict[key] = value
+    self.dict[key] = value
 
   def __contains__(self, item) -> bool:
     return item in self.dict

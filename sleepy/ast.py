@@ -13,7 +13,7 @@ from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
 from sleepy.types import OverloadSet, Type, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
   PlaceholderTemplateType, try_infer_template_arguments, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, \
-  ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType
+  ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType, make_func_call_ir
 from sleepy.symbols import VariableSymbol, TypeTemplateSymbol, SymbolTable, Symbol, determine_kind, SymbolKind
 
 
@@ -39,7 +39,7 @@ class AbstractSyntaxTree(ABC):
                                        calling_types: List[Type]) -> List[ConcreteFunction]:
     func, templ_types = func_caller.func, func_caller.template_parameters
     if templ_types is None:
-      templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
+      templ_types = self._infer_template_arguments(func=func, calling_types=calling_types)
     assert templ_types is not None
     assert all(not templ_type.has_unfilled_template_parameters() for templ_type in templ_types)
 
@@ -57,7 +57,7 @@ class AbstractSyntaxTree(ABC):
     assert len(possible_concrete_funcs) >= 1
     return possible_concrete_funcs
 
-  def _infer_templ_args(self, func: OverloadSet, calling_types: List[Type]) -> List[Type]:
+  def _infer_template_arguments(self, func: OverloadSet, calling_types: List[Type]) -> List[Type]:
     # TODO: We currently require that the template types must be statically determinable.
     # e.g. assume that our function takes a union argument.
     # If we have overloaded signatures each with template arguments, it can happen that you should use different
@@ -97,59 +97,59 @@ class AbstractSyntaxTree(ABC):
     return signature_templ_types
 
   def build_func_call(self,
-                      func_caller: FunctionSymbolCaller,
-                      func_arg_exprs: List[ExpressionAst],
+                      caller: FunctionSymbolCaller,
+                      arg_expressions: List[ExpressionAst],
                       symbol_table: SymbolTable,
                       context: CodegenContext) -> TypedValue:
     # TODO: func_arg_exprs should be a List[TypedValue]. But then, type narrowing and assert(...) for types wouldn't
     # work right now.
-    func, templ_types = func_caller.func, func_caller.template_parameters
-    func_args = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in func_arg_exprs]
-    collapsed_func_args = [arg.copy_collapse(context=None) for num, arg in enumerate(func_args)]
-    calling_types = [arg.narrowed_type for arg in collapsed_func_args]
-    for calling_type, func_arg_expr in zip(calling_types, func_arg_exprs):
+    overloads, template_arguments = caller.func, caller.template_parameters
+    arg_values = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in arg_expressions]
+    collapsed_argument_values = [arg.copy_collapse(context=None) for num, arg in enumerate(arg_values)]
+    calling_types = [arg.narrowed_type for arg in collapsed_argument_values]
+    for calling_type, arg_expression in zip(calling_types, arg_expressions):
       if not calling_type.is_realizable():
-        raise_error("Cannot call function %r with argument of unrealizable type" % func.identifier,
-                    func_arg_expr.pos)
+        raise_error("Cannot call function %r with argument of unrealizable type" % overloads.identifier,
+                    arg_expression.pos)
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
-      func_caller=func_caller, calling_types=calling_types)
+      func_caller=caller, calling_types=calling_types)
 
-    if templ_types is None:
-      templ_types = self._infer_templ_args(func=func, calling_types=calling_types)
-    assert templ_types is not None
+    if template_arguments is None:
+      template_arguments = self._infer_template_arguments(func=overloads, calling_types=calling_types)
+    assert template_arguments is not None
 
     for concrete_func in possible_concrete_funcs:
       if concrete_func in context.inline_func_call_stack:
         raise_error('An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
           ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func), self.pos)
-      for arg_identifier, arg_mutates, arg in zip(concrete_func.arg_identifiers, concrete_func.arg_mutates, func_args):
+      for arg_identifier, arg_mutates, arg in zip(concrete_func.arg_identifiers, concrete_func.arg_mutates, arg_values):
         if arg_mutates and not arg.is_referenceable():
           raise_error('Cannot call function %s%s mutating parameter %r with non-referencable argument' % (
-            func.identifier, concrete_func.signature.to_signature_str(), arg_identifier), self.pos)
+            overloads.identifier, concrete_func.signature.to_signature_str(), arg_identifier), self.pos)
 
     if context.emits_ir:
-      from sleepy.types import make_func_call_ir
-      return_val = make_func_call_ir(func=func, template_arguments=templ_types, func_args=func_args, context=context)
+      return_val = make_func_call_ir(func=overloads, template_arguments=template_arguments,
+                                     func_args=arg_values, context=context)
     else:
       return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
       return_val = TypedValue(typ=return_type, ir_val=None)
 
     # apply type narrowings
-    for arg_num, func_arg_expr in enumerate(func_arg_exprs):
-      original_unbound_arg_type = func_args[arg_num].narrowed_type
-      original_bound_arg_type = collapsed_func_args[arg_num].narrowed_type
+    for arg_num, arg_expression in enumerate(arg_expressions):
+      original_unbound_arg_type = arg_values[arg_num].narrowed_type
+      original_bound_arg_type = collapsed_argument_values[arg_num].narrowed_type
       narrowed_arg_types = [concrete_func.arg_type_narrowings[arg_num] for concrete_func in possible_concrete_funcs]
       narrowed_arg_type = get_common_type(narrowed_arg_types)
       bound_narrowed_arg_type = original_unbound_arg_type.replace_types({original_bound_arg_type: narrowed_arg_type})
-      if isinstance(func_arg_expr, IdentifierExpressionAst):
-        var_symbol = symbol_table[func_arg_expr.identifier]
+      if isinstance(arg_expression, IdentifierExpressionAst):
+        var_symbol = symbol_table[arg_expression.identifier]
         assert isinstance(var_symbol, VariableSymbol)
-        symbol_table[func_arg_expr.identifier] = var_symbol.copy_narrow_type(bound_narrowed_arg_type)
+        symbol_table[arg_expression.identifier] = var_symbol.copy_narrow_type(bound_narrowed_arg_type)
 
     # special handling of 'assert' call
-    if func.identifier in {'assert', 'unchecked_assert'}:
-      assert len(func_arg_exprs) >= 1
-      condition_expr = func_arg_exprs[0]
+    if overloads.identifier in {'assert', 'unchecked_assert'}:
+      assert len(arg_expressions) >= 1
+      condition_expr = arg_expressions[0]
       make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
 
     return return_val
@@ -167,7 +167,7 @@ class AbstractSyntaxTree(ABC):
       raise_error('Cannot call non-function %r' % func_identifier, self.pos)
     func_caller = FunctionSymbolCaller(func=symbol, template_parameters=templ_types)
     return self.build_func_call(
-      func_caller=func_caller, func_arg_exprs=func_arg_exprs, symbol_table=symbol_table, context=context)
+      caller=func_caller, arg_expressions=func_arg_exprs, symbol_table=symbol_table, context=context)
 
   @abstractmethod
   def children(self) -> List[AbstractSyntaxTree]:
@@ -341,11 +341,7 @@ class ExpressionStatementAst(StatementAst):
     assert isinstance(expr, ExpressionAst)
     self.expr = expr
 
-  def build_ir(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    """
+  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
       self.expr.make_as_val(symbol_table=symbol_table, context=context)
 
@@ -473,8 +469,7 @@ class AssignStatementAst(StatementAst):
         # variables are always (implicitly) references
         declared_type = ReferenceType(val.type if stated_type is None else stated_type)  # Ref[A|B]
         # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
-        symbol = VariableSymbol(None, var_type=declared_type)
-        symbol.build_ir_alloca(context=context, identifier=var_identifier)
+        symbol = VariableSymbol.make_new_variable(declared_type, var_identifier, context)
         symbol_table[var_identifier] = symbol
 
       # check that declared type matches assigned type
@@ -780,11 +775,7 @@ class IdentifierExpressionAst(ExpressionAst):
   PrimaryExpr -> identifier
   """
 
-  def __init__(self, pos, identifier):
-    """
-    :param TreePosition pos:
-    :param str identifier:
-    """
+  def __init__(self, pos: TreePosition, identifier: str):
     super().__init__(pos)
     self.identifier = identifier
 
@@ -953,7 +944,7 @@ class CallExpressionAst(ExpressionAst):
       # default case
       func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
       return self.build_func_call(
-        func_caller=func_caller, func_arg_exprs=self.func_arg_exprs, symbol_table=symbol_table, context=context)
+        caller=func_caller, arg_expressions=self.func_arg_exprs, symbol_table=symbol_table, context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     assert self.make_symbol_kind(symbol_table=symbol_table) == SymbolKind.FUNCTION
@@ -1283,7 +1274,8 @@ class StructDeclarationAst(DeclarationAst):
       signature_struct_type.constructor = build_constructor(struct_type=signature_struct_type,
                                                             parent_symbol_table=struct_symbol_table,
                                                             parent_context=context)
-      build_destructor(struct_type=signature_struct_type, parent_symbol_table=struct_symbol_table, parent_context=context)
+      build_destructor(struct_type=signature_struct_type, parent_symbol_table=struct_symbol_table,
+                       parent_context=context)
 
       # assemble to complete type symbol
       struct_type_symbol = TypeTemplateSymbol(
