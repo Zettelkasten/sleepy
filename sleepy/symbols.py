@@ -5,7 +5,6 @@ from enum import Enum
 from itertools import takewhile
 from typing import Optional, List, Dict, Tuple, Union, Collection, Iterable, cast, Set
 
-from multimethod import multimethod
 from llvmlite import ir
 
 from sleepy.hierarchical_dictionary import HierarchicalDict, STUB
@@ -190,18 +189,13 @@ class SymbolTable:
   def __repr__(self) -> str:
     return 'SymbolTable%r' % self.__dict__
 
-  @multimethod
-  def __setitem__(self, key: str, value: OverloadSet):
-    if key in self.dict.underlying_dict:
+  def __setitem__(self, key: str, value: Symbol):
+    if key in self.dict.underlying_dict and isinstance(value, OverloadSet):
       existing = self.dict.underlying_dict[key]
       assert isinstance(existing, OverloadSet)
       existing |= value
     else:
       self.dict[key] = value
-
-  @multimethod
-  def __setitem__(self, key: str, value: Symbol):
-    self.dict[key] = value
 
   def __contains__(self, item) -> bool:
     return item in self.dict
