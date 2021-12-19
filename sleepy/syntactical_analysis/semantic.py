@@ -21,7 +21,7 @@ class AttributeEvalGenerator:
   def eval_attrs(self, root_tree: SyntaxTree,
                  word: str,
                  tokens: List[str],
-                 tokens_pos: List[str]) -> Dict[Union[str, Any]]:
+                 tokens_pos: List[str]) -> Dict[str, Any]:
     """
     :param root_tree: parse tree of start symbol.
     :param tokens_pos: start index of word for each token
