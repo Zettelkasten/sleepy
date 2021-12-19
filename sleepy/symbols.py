@@ -18,11 +18,11 @@ class VariableSymbol:
   A declared variable.
   """
 
-  def __init__(self, ir_alloca: ir.AllocaInstr, var_type: Type):
+  def __init__(self, ir_alloca: ir.AllocaInstr, variable_type: Type):
     assert isinstance(ir_alloca, (ir.AllocaInstr, ir.Argument))
     self.ir_alloca = ir_alloca
-    self.declared_var_type = var_type
-    self.narrowed_var_type = var_type
+    self.declared_var_type = variable_type
+    self.narrowed_var_type = variable_type
 
   @staticmethod
   def make_new_variable(variable_type: ReferenceType,
@@ -57,6 +57,10 @@ class VariableSymbol:
     assert context.builder.debug_metadata is not None
     context.builder.call(context.di_declare_func, args=[self.ir_alloca, di_local_var, di_expression])
 
+  @property
+  def typed_value(self) -> TypedValue:
+    return TypedValue(typ=self.declared_var_type, narrowed_type=self.narrowed_var_type, ir_val=self.ir_alloca)
+
   def copy_set_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)
     # explicitly apply narrowing from declared type here: always stay compatible to the base type
@@ -87,9 +91,6 @@ class VariableSymbol:
   def __repr__(self) -> str:
     return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r)' % (
       self.ir_alloca, self.declared_var_type, self.narrowed_var_type)
-
-  def as_typed_var(self, ir_val: Optional[ir.Value]) -> TypedValue:
-    return TypedValue(typ=self.declared_var_type, narrowed_type=self.narrowed_var_type, ir_val=ir_val)
 
 
 class TypeTemplateSymbol:
