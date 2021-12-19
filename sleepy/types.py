@@ -13,7 +13,7 @@ from llvmlite.binding import ExecutionEngine
 from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
 
 LLVM_POINTER_SIZE = 8
-LLVM_SIZE_TYPE = ir.types.IntType(LLVM_POINTER_SIZE * 8)
+LLVM_SIZE_TYPE = ir.IntType(LLVM_POINTER_SIZE * 8)
 LLVM_VOID_POINTER_TYPE = ir.PointerType(ir.types.IntType(8))
 
 
@@ -769,10 +769,6 @@ class StructType(Type):
   def has_unfilled_template_parameters(self) -> bool:
     return any(param_or_arg.has_unfilled_template_parameters() for param_or_arg in self.template_param_or_arg)
 
-  def make_ir_alloca(self, context: CodegenContext) -> ir.Instruction:
-    assert context.emits_ir
-    return context.alloca_at_entry(self.ir_type, name='self')
-
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
 
@@ -1486,7 +1482,6 @@ class CodegenContext:
 
     # use dummy just to set file_path
     self.current_pos = TreePosition(word="", from_pos=0, to_pos=0, file_path=file_path)
-    self.current_func: Optional[ConcreteFunction] = None
     self.current_func_inline_return_collect_block: Optional[ir.Block] = None
     self.current_func_inline_return_ir_alloca: Optional[ir.AllocaInstr] = None
     self.inline_func_call_stack: List[ConcreteFunction] = []
@@ -1571,19 +1566,19 @@ class CodegenContext:
       self.builder, self.emits_ir, self.is_terminated)
 
   def copy_with_new_callstack_frame(self) -> CodegenContext:
-    new = copy.copy(self)
-    new.inline_func_call_stack = self.inline_func_call_stack.copy()
+    new_context = copy.copy(self)
+    new_context.inline_func_call_stack = self.inline_func_call_stack.copy()
     assert all(inline_func.is_inline for inline_func in self.inline_func_call_stack)
-    return new
+    return new_context
 
   def copy_with_builder(self, new_builder: Optional[ir.IRBuilder]) -> CodegenContext:
-    new = self.copy_with_new_callstack_frame()
-    new.builder = new_builder
+    new_context = self.copy_with_new_callstack_frame()
+    new_context.builder = new_builder
 
     if new_builder is not None:
-      new.builder.debug_metadata = self.builder.debug_metadata
+      new_context.builder.debug_metadata = self.builder.debug_metadata
 
-    return new
+    return new_context
 
   def copy_without_builder(self) -> CodegenContext:
     return self.copy_with_builder(None)
@@ -1591,7 +1586,6 @@ class CodegenContext:
   def copy_with_func(self, concrete_func: ConcreteFunction, builder: Optional[ir.IRBuilder]):
     assert not concrete_func.is_inline
     new_context = self.copy_with_builder(builder)
-    new_context.current_func = concrete_func
     new_context.current_func_inline_return_ir_alloca = None
     new_context.current_func_inline_return_collect_block = None
     if new_context.emits_debug:
@@ -1607,7 +1601,6 @@ class CodegenContext:
     assert concrete_func.is_inline
     assert concrete_func not in self.inline_func_call_stack
     new_context = self.copy_with_new_callstack_frame()
-    new_context.current_func = concrete_func
     new_context.current_func_inline_return_ir_alloca = return_ir_alloca
     new_context.current_func_inline_return_collect_block = return_collect_block
     new_context.inline_func_call_stack.append(concrete_func)

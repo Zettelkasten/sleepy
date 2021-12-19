@@ -520,7 +520,7 @@ class IfStatementAst(StatementAst):
   def __init__(self, pos: TreePosition,
                condition_val: ExpressionAst,
                true_scope: AbstractScopeAst,
-               false_scope: AbstractScopeAst):
+               false_scope: Optional[AbstractScopeAst]):
     super().__init__(pos)
     self.condition_val = condition_val
     if false_scope is None:

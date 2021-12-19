@@ -71,7 +71,7 @@ class ConstructorFunctionTemplate(FunctionTemplate):
             self.captured_context))
         constructor_block = concrete_function.ir_func.append_basic_block(name='entry')
         context = self.captured_context.copy_with_func(concrete_function, builder=ir.IRBuilder(constructor_block))
-        self_ir_alloca = concrete_struct_type.make_ir_alloca(context=context)
+        self_ir_alloca = context.alloca_at_entry(concrete_struct_type.ir_type, name='self')
 
         for member_identifier, ir_func_arg in zip(self.struct.member_identifiers, concrete_function.ir_func.args):
           ir_func_arg.struct_identifier = member_identifier
