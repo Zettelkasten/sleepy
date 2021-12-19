@@ -42,10 +42,5 @@ def compile_ir(engine: ExecutionEngine, llvm_ir: str) -> llvm.ModuleRef:
   return mod
 
 
-def get_func_address(engine, ir_func):
-  """
-  :param ExecutionEngine engine:
-  :param llvm.ir.Function ir_func:
-  :return:
-  """
+def get_func_address(engine: ExecutionEngine, ir_func: llvm.ir.Function) -> int:
   return engine.get_function_address(ir_func.name)

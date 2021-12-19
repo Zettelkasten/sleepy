@@ -7,14 +7,10 @@ from typing import Tuple
 
 from sleepy.errors import ParseError
 from sleepy.syntactical_analysis.grammar import EPSILON, Production, SyntaxTree, IGNORED_TOKEN, \
-  get_token_word_from_tokens_pos, TreePosition, AttributeGrammar, DummyPath
+  get_token_word_from_tokens_pos, TreePosition, AttributeGrammar, DummyPath, Grammar
 
 
-def make_first1_sets(grammar):
-  """
-  :param grammar.Grammar grammar:
-  :rtype: dict[str, set[str|None]]
-  """
+def make_first1_sets(grammar: Grammar) -> Dict[str, Set[Optional[str]]]:
   # fi(x) = {x} for all terminals, compute non-terminals iteratively
   first1_sets: Dict[str, Set[Optional[str]]] = {
     symbol: {symbol} if symbol in grammar.terminals else set()
@@ -34,12 +30,7 @@ def make_first1_sets(grammar):
   return first1_sets
 
 
-def get_first1_set_for_word(first1_sets, word):
-  """
-  :param dict[str, set[str|None]] first1_sets:
-  :param tuple[str] word:
-  :rtype: set[str|None]
-  """
+def get_first1_set_for_word(first1_sets: Dict[str, Set[Optional[str]]], word: Tuple[str]) -> Set[Optional[str]]:
   assert EPSILON not in word
   first1 = set()
   for pos, right_symbol in enumerate(word):
@@ -54,11 +45,9 @@ def get_first1_set_for_word(first1_sets, word):
 
 
 class _Item:
-  def __init__(self, prod, pointer, la):
+  def __init__(self, prod: Production, pointer: int, la: Optional[str]):
     """
-    :param grammar.Production prod:
-    :param int pointer:
-    :param str|None la: look-ahead, None iff epsilon
+    :param la: look-ahead, None iff epsilon
     """
     assert 0 <= pointer <= len(prod.right)
     self.prod = prod
@@ -111,10 +100,7 @@ class ParserGenerator:
   A general LR(1) grammar parser generator.
   """
 
-  def __init__(self, grammar):
-    """
-    :param Grammar grammar:
-    """
+  def __init__(self, grammar: Grammar):
     self.grammar = grammar
     assert self.grammar.is_start_separated()
     start_prods = self.grammar.get_prods_for(self.grammar.start)

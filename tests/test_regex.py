@@ -2,6 +2,7 @@ import _setup_test_env  # noqa
 from nose.tools import assert_equal, assert_raises
 
 from sleepy.errors import LexError
+from sleepy.syntactical_analysis.automaton import NonDeterministicAutomaton, DeterministicAutomaton
 from sleepy.syntactical_analysis.grammar import IGNORED_TOKEN
 
 
@@ -23,13 +24,10 @@ def test_make_regex_nfa_and_dfa():
   from sleepy.syntactical_analysis.regex import make_regex_nfa
   from sleepy.syntactical_analysis.automaton import make_dfa_from_nfa
 
-  def test_nfa_dfa_equal(nfa, dfa, word, should_accept):
-    """
-    :param NonDeterministicAutomaton nfa:
-    :param DeterministicAutomaton dfa:
-    :param str word:
-    :param bool should_accept:
-    """
+  def test_nfa_dfa_equal(nfa: NonDeterministicAutomaton,
+                         dfa: DeterministicAutomaton,
+                         word: str,
+                         should_accept: bool):
     nfa_accepts = nfa.accepts(word)
     assert_equal(nfa_accepts, should_accept)
     dfa_accepts = dfa.accepts(word)

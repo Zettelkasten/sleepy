@@ -1,3 +1,5 @@
+from typing import Set
+
 import _setup_test_env  # noqa
 from nose.tools import assert_equal, assert_raises
 
@@ -234,10 +236,7 @@ def test_ParserGenerator_arithmetic():
   )
   parser = ParserGenerator(g)
 
-  def evaluate(word):
-    """
-    :param str word:
-    """
+  def evaluate(word: str):
     assert isinstance(word, str)
     tokens = list(word)
     tokens_pos = list(range(len(tokens)))
@@ -349,11 +348,7 @@ def test_ParserGenerator_regex():
     REGEX_LIT_TOKEN
   parser = REGEX_PARSER
 
-  def evaluate(word, target_value):
-    """
-    :param str word:
-    :param set[str] target_value:
-    """
+  def evaluate(word: str, target_value: Set[str]):
     assert isinstance(word, str)
     tokens, tokens_pos = tokenize_regex(word)
     print('word:', word)
@@ -500,10 +495,7 @@ def test_ParserGenerator_parse_tree_epsilon2():
 # noinspection PyPep8Naming
 def test_ParserGenerator_simple_ast():
   class Ast:
-    def __init__(self, pos):
-      """
-      :param TreePosition pos:
-      """
+    def __init__(self, pos: TreePosition):
       self.pos = pos
 
   class ConstantAst(Ast):

@@ -6,20 +6,14 @@ from pathlib import Path
 The empty symbol (!= the empty word).
 Use empty tuple as empty word.
 """
-from typing import Tuple, Any, Dict, Set, Callable, Union, Optional, List
+from typing import Tuple, Any, Dict, Set, Callable, Union, Optional, List, Sequence
 
 EPSILON = None
 
 IGNORED_TOKEN = None
 
 
-def get_token_word_from_tokens_pos(word, tokens_pos, pos):
-  """
-  :param str word:
-  :param tuple[int]|list[int] tokens_pos:
-  :param int pos: index of token
-  :rtype: str
-  """
+def get_token_word_from_tokens_pos(word: str, tokens_pos: Sequence[int], pos: int) -> str:
   assert 0 <= pos < len(tokens_pos)
   from_pos = tokens_pos[pos]
   assert 0 <= from_pos < len(word)
@@ -36,10 +30,10 @@ class Production:
   A production A -> X_1 X_2 ... X_n.
   """
 
-  def __init__(self, left, *right):
+  def __init__(self, left: str, *right: str):
     """
-    :param str left: A
-    :param str right: X_1 ... X_n
+    :param left: A
+    :param right: X_1 ... X_n
     """
     self.left = left
     if isinstance(right, list):
@@ -64,10 +58,9 @@ class Grammar:
   A context free grammar.
   """
 
-  def __init__(self, *prods, start=None):
+  def __init__(self, *prods: Production, start: Optional[str] = None):
     """
-    :param Production prods:
-    :param None|str start: start non-terminal, by default left of first production
+    :param start: start non-terminal, by default left of first production
     """
     if not isinstance(prods, tuple):
       assert isinstance(prods, list)
@@ -83,19 +76,14 @@ class Grammar:
     self.symbols = self.non_terminals + self.terminals
     self._prods_by_left = {left: tuple([p for p in self.prods if p.left == left]) for left in self.non_terminals}
 
-  def get_prods_for(self, left):
+  def get_prods_for(self, left: str) -> Tuple[Production]:
     """
-    :param str left: left-hand non-terminal of production
-    :rtype: tuple[Production]
+    :param left: left-hand non-terminal of production
     """
     assert left in self.non_terminals
     return self._prods_by_left[left]
 
-  def is_start_separated(self):
-    """
-    :rtype: bool
-    :return:
-    """
+  def is_start_separated(self) -> bool:
     return (
       all(len(p.right) == 1 for p in self.get_prods_for(self.start)) and
       all(self.start not in p.right for p in self.prods))

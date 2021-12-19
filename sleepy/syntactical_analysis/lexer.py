@@ -74,11 +74,9 @@ class LexerGenerator:
 
     return ERROR_STATE if is_error else next_state
 
-  def _get_next_possible_chars(self, state):
+  def _get_next_possible_chars(self, state: Tuple[Optional[int]]) -> Set[str]:
     """
-    :param tuple[int|None]|None state:
     :returns: all characters that transition to a productive state
-    :rtype: set[str]
     """
     if state is ERROR_STATE:
       return set()

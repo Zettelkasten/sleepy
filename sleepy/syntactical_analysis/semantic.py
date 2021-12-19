@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 from sleepy.syntactical_analysis.grammar import AttributeGrammar, SyntaxTree, get_token_word_from_tokens_pos
 
@@ -8,10 +8,7 @@ class AttributeEvalGenerator:
   Evaluates l-attributed attributes of a parsed syntax tree:
   All inherited attributes inh.i must only depend on inh.0 or on synthesized syn.j (j < i) attributes on their left.
   """
-  def __init__(self, attr_grammar):
-    """
-    :param AttributeGrammar attr_grammar:
-    """
+  def __init__(self, attr_grammar: AttributeGrammar):
     self.attr_grammar = attr_grammar
 
   @property
@@ -21,14 +18,14 @@ class AttributeEvalGenerator:
     """
     return self.attr_grammar.grammar
 
-  def eval_attrs(self, root_tree, word, tokens, tokens_pos):
+  def eval_attrs(self, root_tree: SyntaxTree,
+                 word: str,
+                 tokens: List[str],
+                 tokens_pos: List[str]) -> Dict[Union[str, Any]]:
     """
-    :param SyntaxTree root_tree: parse tree of start symbol.
-    :param str word:
-    :param list[str] tokens:
-    :param list[int] tokens_pos: start index of word for each token
+    :param root_tree: parse tree of start symbol.
+    :param tokens_pos: start index of word for each token
     :return: evaluated attributes in start symbol
-    :rtype: dict[str, Any]
     """
     assert root_tree.prod.left == self.grammar.start
     assert len(tokens) == len(tokens_pos)

@@ -44,13 +44,11 @@ REGEX_GRAMMAR = Grammar(
 REGEX_PARSER = ParserGenerator(REGEX_GRAMMAR)
 
 
-def tokenize_regex(word, file_path: Path | DummyPath = DummyPath("regex")) -> (Tuple[str], Tuple[int]):
+def tokenize_regex(word: str,
+                   file_path: Path | DummyPath = DummyPath("regex")) -> Tuple[Tuple[str], Tuple[int]]:
   """
-  :param str word:
-  :param Union[Path, DummyPath] file_path:
   :raises: LexError
   :returns: tokens with decomposition
-  :rtype: tuple[tuple[str], tuple[int]]
   """
   escape_next = False
   tokens, tokens_pos = [], []
@@ -75,11 +73,7 @@ def tokenize_regex(word, file_path: Path | DummyPath = DummyPath("regex")) -> (T
   return tuple(tokens), tuple(tokens_pos)
 
 
-def make_regex_nfa(regex):
-  """
-  :param str regex:
-  :rtype: NonDeterministicAutomaton
-  """
+def make_regex_nfa(regex: str) -> NonDeterministicAutomaton:
   tokens, tokens_pos = tokenize_regex(regex)
   analysis = REGEX_PARSER.parse_analysis(regex, tokens, tokens_pos)
 

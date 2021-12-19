@@ -24,9 +24,9 @@ class AbstractSyntaxTree(ABC):
 
   allowed_annotation_identifiers = frozenset()
 
-  def __init__(self, pos):
+  def __init__(self, pos: TreePosition):
     """
-    :param TreePosition pos: position where this AST starts
+    :param pos: position where this AST starts
     """
     self.pos = pos
     self.annotations: List[AnnotationAst] = []
@@ -332,11 +332,7 @@ class ExpressionStatementAst(StatementAst):
   Stmt -> Expr
   """
 
-  def __init__(self, pos: TreePosition, expr):
-    """
-    :param TreePosition pos:
-    :param ExpressionAst expr:
-    """
+  def __init__(self, pos: TreePosition, expr: ExpressionAst):
     super().__init__(pos)
     assert isinstance(expr, ExpressionAst)
     self.expr = expr
@@ -521,24 +517,18 @@ class IfStatementAst(StatementAst):
         | if Expr Scope else Scope
   """
 
-  def __init__(self, pos, condition_val, true_scope, false_scope):
-    """
-    :param TreePosition pos:
-    :param ExpressionAst condition_val:
-    :param AbstractScopeAst true_scope:
-    :param AbstractScopeAst|None false_scope:
-    """
+  def __init__(self, pos: TreePosition,
+               condition_val: ExpressionAst,
+               true_scope: AbstractScopeAst,
+               false_scope: AbstractScopeAst):
     super().__init__(pos)
     self.condition_val = condition_val
     if false_scope is None:
       false_scope = AbstractScopeAst(TreePosition(pos.word, pos.to_pos, pos.to_pos), [])
     self.true_scope, self.false_scope = true_scope, false_scope
 
-  def build_ir(self, symbol_table, context):
-    """
-    :param SymbolTable symbol_table:
-    :param CodegenContext context:
-    """
+  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
+
     with context.use_pos(self.pos):
       cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
       cond_val = cond_val.copy_collapse(context=context, name='if_cond')
@@ -597,12 +587,9 @@ class WhileStatementAst(StatementAst):
   Stmt -> while Expr { StmtList }
   """
 
-  def __init__(self, pos, condition_val, body_scope):
-    """
-    :param TreePosition pos:
-    :param ExpressionAst condition_val:
-    :param AbstractScopeAst body_scope:
-    """
+  def __init__(self, pos: TreePosition,
+               condition_val: ExpressionAst,
+               body_scope: AbstractScopeAst):
     super().__init__(pos)
     self.condition_val = condition_val
     self.body_scope = body_scope
@@ -714,11 +701,7 @@ class StringLiteralExpressionAst(ExpressionAst):
   PrimaryExpr -> str
   """
 
-  def __init__(self, pos, constant_str):
-    """
-    :param TreePosition pos:
-    :param str constant_str:
-    """
+  def __init__(self, pos: TreePosition, constant_str: str):
     super().__init__(pos)
     self.constant_str = constant_str
 
@@ -1106,10 +1089,7 @@ class TypeAst(AbstractSyntaxTree, ABC):
   But these functions need to be executed at compile time, so for now, handle them in special cases everywhere.
   """
 
-  def __init__(self, pos):
-    """
-    :param TreePosition pos:
-    """
+  def __init__(self, pos: TreePosition):
     super().__init__(pos)
 
   def make_type(self, symbol_table: SymbolTable) -> Type:
