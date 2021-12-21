@@ -632,6 +632,26 @@ def test_struct_self_referencing_member():
     main()
 
 
+def test_optional_next_node():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    struct None {}
+    struct Node {
+      next: None|Ref[Node]
+    }
+    
+    func main() {
+      node: None|Node = Node(None())
+      if node is Node {
+        node = node.next
+      }
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    main()  # just check that it executes
+
+
 def test_if_missing_return_branch():
   with make_execution_engine() as engine:
     # language=Sleepy
