@@ -2757,3 +2757,21 @@ def test_mutual_recursive_functions():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(), 50)
+
+
+def test_narrow_struct_member():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+      struct Foo {
+        mem: Int|Double
+      }
+      func unknown() -> Foo { return Foo(5.4) }
+      func main(int: Int) -> Int {
+        a = unknown()
+        a.mem = int
+        return a.mem
+      }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(5), 5)
