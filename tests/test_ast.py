@@ -643,9 +643,7 @@ def test_optional_next_node():
     
     func main() {
       node: None|Node = Node(None())
-      if node is Node {
-        node = node.next
-      }
+      other = node.next
     }
     """
     main = compile_program(engine, program, add_preamble=False)

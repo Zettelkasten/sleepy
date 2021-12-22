@@ -2079,12 +2079,12 @@ class TypedValue:
       assert isinstance(concrete_type, ReferenceType)  # still need to collapse, must be a reference.
       # collapse once.
       new_value = self.copy_set_narrowed_type(concrete_type)
-      new_value = new_value.copy_with_implicit_cast(to_type=concrete_type, context=context, name=name)
+      new_value = new_value.copy_with_implicit_cast(to_type=concrete_type, context=caller_context, name=name)
       new_value.type = concrete_type.pointee_type
       new_value.narrowed_type = concrete_type.pointee_type
-      if context is not None and context.emits_ir:
+      if caller_context is not None and caller_context.emits_ir:
         assert new_value.ir_val is not None
-        new_value.ir_val = context.builder.load(new_value.ir_val, name="%s_unbind" % name)
+        new_value.ir_val = caller_context.builder.load(new_value.ir_val, name="%s_unbind" % name)
       else:
         new_value.ir_val = None
       return new_value.copy_collapse(context=caller_context, name=name)
