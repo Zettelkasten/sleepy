@@ -1064,6 +1064,13 @@ class UnbindExpressionAst(ExpressionAst):
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
       arg_val = self.arg_expr.make_as_val(symbol_table=symbol_table, context=context)
+      if arg_val.num_unbindings + 1 > arg_val.num_possible_unbindings():
+        if arg_val.num_possible_unbindings() == 0:
+          raise_error(
+            'Cannot unbind value of narrowed type %r which is not referencable' % arg_val.narrowed_type, self.pos)
+        else:
+          raise_error('Cannot unbind value of narrowed type %r more than %s times' % (
+            arg_val.narrowed_type, arg_val.num_possible_unbindings()), self.pos)
       return arg_val.copy_unbind()
 
   def make_as_func_caller(self, symbol_table: SymbolTable):

@@ -795,6 +795,36 @@ def test_unbind_operator_union_of_ref_and_non_ref_assign():
     assert_equal(main(6), 6)
 
 
+def test_unbind_operator_not_referencable():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    func main() -> Ref[Int] {
+      return !5  # 5 is not referencable
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program, add_preamble=False)
+
+
+def test_unbind_operator_not_referencable2():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    func unknown() -> Bool { return 1 == 1 }
+    func main() {
+      a = 6.6
+      x: Int|Ref[Double] = 4
+      if unknown() {
+        !x = !a
+      }
+      !!y = !!x  # should fail
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program, add_preamble=False)
+
+
 def test_swap_ref():
   with make_execution_engine() as engine:
     # language=Sleepy
