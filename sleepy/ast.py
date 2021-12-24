@@ -18,6 +18,23 @@ from sleepy.types import OverloadSet, Type, StructType, ConcreteFunction, UnionT
   ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType, make_func_call_ir, CleanupHandlingCG
 
 
+def narrow_types_from_function_call(symbol_table: SymbolTable,
+                                    arg_expressions: List[ExpressionAst],
+                                    arg_values: List[TypedValue],
+                                    collapsed_argument_values: List[TypedValue],
+                                    possible_concrete_funcs: List[ConcreteFunction]):
+  for arg_num, arg_expression in enumerate(arg_expressions):
+    original_unbound_arg_type = arg_values[arg_num].narrowed_type
+    original_bound_arg_type = collapsed_argument_values[arg_num].narrowed_type
+    narrowed_arg_types = [concrete_func.arg_type_narrowings[arg_num] for concrete_func in possible_concrete_funcs]
+    narrowed_arg_type = get_common_type(narrowed_arg_types)
+    bound_narrowed_arg_type = original_unbound_arg_type.replace_types({original_bound_arg_type: narrowed_arg_type})
+    if isinstance(arg_expression, IdentifierExpressionAst):
+      var_symbol = symbol_table[arg_expression.identifier]
+      assert isinstance(var_symbol, VariableSymbol)
+      symbol_table[arg_expression.identifier] = var_symbol.copy_narrow_type(bound_narrowed_arg_type)
+
+
 class AbstractSyntaxTree(ABC):
   """
   Abstract syntax tree of a sleepy program.
@@ -38,7 +55,7 @@ class AbstractSyntaxTree(ABC):
   def _resolve_possible_concrete_funcs(self,
                                        func_caller: FunctionSymbolCaller,
                                        calling_types: List[Type]) -> List[ConcreteFunction]:
-    func, templ_types = func_caller.func, func_caller.template_parameters
+    func, templ_types = func_caller.overload_set, func_caller.template_parameters
     if templ_types is None:
       templ_types = self._infer_template_arguments(func=func, calling_types=calling_types)
     assert templ_types is not None
@@ -97,55 +114,69 @@ class AbstractSyntaxTree(ABC):
     assert signature_templ_types is not None
     return signature_templ_types
 
-  def build_func_call(self,
-                      caller: FunctionSymbolCaller,
-                      arg_expressions: List[ExpressionAst],
-                      symbol_table: SymbolTable,
-                      context: CodegenContext) -> TypedValue:
-    # TODO: func_arg_exprs should be a List[TypedValue]. But then, type narrowing and assert(...) for types wouldn't
-    # work right now.
-    overloads, template_arguments = caller.func, caller.template_parameters
-    arg_values = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in arg_expressions]
-    collapsed_argument_values = [arg.copy_collapse(context=None) for num, arg in enumerate(arg_values)]
+  def make_call_ir(self, caller: FunctionSymbolCaller,
+                   argument_values: List[TypedValue],
+                   possible_concrete_functions: List[ConcreteFunction],
+                   context: CodegenContext) -> TypedValue:
+
+    overloads, template_arguments = caller.overload_set, caller.template_parameters
+    collapsed_argument_values = [arg.copy_collapse(context=None) for num, arg in enumerate(argument_values)]
     calling_types = [arg.narrowed_type for arg in collapsed_argument_values]
-    for calling_type, arg_expression in zip(calling_types, arg_expressions):
-      if not calling_type.is_realizable():
-        raise_error("Cannot call function %r with argument of unrealizable type" % overloads.identifier,
-                    arg_expression.pos)
-    possible_concrete_funcs = self._resolve_possible_concrete_funcs(
-      func_caller=caller, calling_types=calling_types)
+
+    assert all(typ.is_realizable() for typ in calling_types)
 
     if template_arguments is None:
       template_arguments = self._infer_template_arguments(func=overloads, calling_types=calling_types)
     assert template_arguments is not None
 
-    for concrete_func in possible_concrete_funcs:
+    for concrete_func in possible_concrete_functions:
       if concrete_func in context.inline_func_call_stack:
         raise_error('An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
           ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func), self.pos)
-      for arg_identifier, arg_mutates, arg in zip(concrete_func.arg_identifiers, concrete_func.arg_mutates, arg_values):
+      for arg_identifier, arg_mutates, arg in zip(concrete_func.arg_identifiers, concrete_func.arg_mutates,
+                                                  argument_values):
         if arg_mutates and not arg.is_referenceable():
           raise_error('Cannot call function %s%s mutating parameter %r with non-referencable argument' % (
             overloads.identifier, concrete_func.signature.to_signature_str(), arg_identifier), self.pos)
 
     if context.emits_ir:
       return_val = make_func_call_ir(func=overloads, template_arguments=template_arguments,
-                                     func_args=arg_values, context=context)
+                                     func_args=argument_values, context=context)
     else:
-      return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_funcs])
+      return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_functions])
       return_val = TypedValue(typ=return_type, ir_val=None)
 
+    return return_val
+
+  def make_call_ir_with_narrowing(self,
+                                  caller: FunctionSymbolCaller,
+                                  arg_expressions: List[ExpressionAst],
+                                  symbol_table: SymbolTable,
+                                  context: CodegenContext) -> TypedValue:
+
+    overloads, template_arguments = caller.overload_set, caller.template_parameters
+    arg_values = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in arg_expressions]
+    collapsed_argument_values = [arg.copy_collapse(context=None) for num, arg in enumerate(arg_values)]
+    calling_types = [arg.narrowed_type for arg in collapsed_argument_values]
+
+    for calling_type, arg_expression in zip(calling_types, arg_expressions):
+      if not calling_type.is_realizable():
+        raise_error("Cannot call function %r with argument of unrealizable type"
+                    % overloads.identifier, arg_expression.pos)
+
+    possible_concrete_functions = self._resolve_possible_concrete_funcs(func_caller=caller, calling_types=calling_types)
+
+    return_val = self.make_call_ir(caller=caller,
+                                   argument_values=arg_values,
+                                   context=context,
+                                   possible_concrete_functions=possible_concrete_functions)
+
     # apply type narrowings
-    for arg_num, arg_expression in enumerate(arg_expressions):
-      original_unbound_arg_type = arg_values[arg_num].narrowed_type
-      original_bound_arg_type = collapsed_argument_values[arg_num].narrowed_type
-      narrowed_arg_types = [concrete_func.arg_type_narrowings[arg_num] for concrete_func in possible_concrete_funcs]
-      narrowed_arg_type = get_common_type(narrowed_arg_types)
-      bound_narrowed_arg_type = original_unbound_arg_type.replace_types({original_bound_arg_type: narrowed_arg_type})
-      if isinstance(arg_expression, IdentifierExpressionAst):
-        var_symbol = symbol_table[arg_expression.identifier]
-        assert isinstance(var_symbol, VariableSymbol)
-        symbol_table[arg_expression.identifier] = var_symbol.copy_narrow_type(bound_narrowed_arg_type)
+    narrow_types_from_function_call(symbol_table,
+                                    arg_expressions,
+                                    arg_values,
+                                    collapsed_argument_values,
+                                    possible_concrete_functions)
 
     # special handling of 'assert' call
     if overloads.identifier in {'assert', 'unchecked_assert'}:
@@ -155,19 +186,19 @@ class AbstractSyntaxTree(ABC):
 
     return return_val
 
-  def build_func_call_by_identifier(self,
-                                    func_identifier: str,
-                                    templ_types: Optional[List[Type]],
-                                    func_arg_exprs: List[ExpressionAst],
-                                    symbol_table: SymbolTable,
-                                    context: CodegenContext) -> TypedValue:
+  def make_call_ir_by_identifier(self,
+                                 func_identifier: str,
+                                 templ_types: Optional[List[Type]],
+                                 func_arg_exprs: List[ExpressionAst],
+                                 symbol_table: SymbolTable,
+                                 context: CodegenContext) -> TypedValue:
     if func_identifier not in symbol_table:
       raise_error('Function %r called before declared' % func_identifier, self.pos)
     symbol = symbol_table[func_identifier]
     if not isinstance(symbol, OverloadSet):
       raise_error('Cannot call non-function %r' % func_identifier, self.pos)
-    func_caller = FunctionSymbolCaller(func=symbol, template_parameters=templ_types)
-    return self.build_func_call(
+    func_caller = FunctionSymbolCaller(overload_set=symbol, template_parameters=templ_types)
+    return self.make_call_ir_with_narrowing(
       caller=func_caller, arg_expressions=func_arg_exprs, symbol_table=symbol_table, context=context)
 
   @abstractmethod
@@ -241,6 +272,10 @@ class AbstractScopeAst(AbstractSyntaxTree):
   def build_scope_ir(self, scope_symbol_table: SymbolTable, scope_context: CleanupHandlingCG):
     self.create_symbols(scope_symbol_table, scope_context.base)
 
+    # enumerate before building ir because check whether assignment is declaration only works
+    # before variable symbols are added
+    variable_definitions = self._enumerate_variable_definitions(scope_symbol_table)
+
     with scope_context.base.use_pos(self.pos):
       for stmt in [e for e in self.stmt_list if isinstance(e, StatementAst)]:
         if scope_context.base.all_paths_returned: raise_error('Code is unreachable', stmt.pos)
@@ -248,6 +283,18 @@ class AbstractScopeAst(AbstractSyntaxTree):
 
     if not scope_context.base.all_paths_returned:
       scope_context.jump_to_end()
+
+    for defining_ast in reversed(variable_definitions):
+      symbol = scope_symbol_table[defining_ast.get_var_identifier()]
+      assert isinstance(symbol, VariableSymbol)
+
+  def _enumerate_variable_definitions(self, symbol_table: SymbolTable) -> List[AssignStatementAst]:
+    variable_symbols = []
+
+    for stmt in [e for e in self.stmt_list if isinstance(e, AssignStatementAst)]:
+      if stmt.is_declaration(symbol_table): variable_symbols.append(stmt)
+
+    return variable_symbols
 
   def __repr__(self) -> str:
     return 'AbstractScopeAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
@@ -631,7 +678,8 @@ class WhileStatementAst(StatementAst):
         if body_context.base.all_paths_returned:  # all branches return, simply jump to parent cleanup
           body_context.end_block_builder.branch(context.scope.end_block)
         else:  # return or jump back to condition check
-          make_end_block_jump(body_context, continuation=condition_check_block, parent_end_block=context.scope.end_block)
+          make_end_block_jump(body_context, continuation=condition_check_block,
+                              parent_end_block=context.scope.end_block)
 
         context.base.switch_to_block(continue_block)
       else:
@@ -820,7 +868,7 @@ class IdentifierExpressionAst(ExpressionAst):
         typ=symbol.declared_var_type, narrowed_type=symbol.narrowed_var_type, ir_val=symbol.ir_alloca)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
-    return FunctionSymbolCaller(func=self.get_func_symbol(symbol_table=symbol_table))
+    return FunctionSymbolCaller(overload_set=self.get_func_symbol(symbol_table=symbol_table))
 
   def make_as_type(self, symbol_table: SymbolTable) -> Type:
     type_symbol = self.get_symbol(symbol_table=symbol_table)
@@ -943,7 +991,7 @@ class CallExpressionAst(ExpressionAst):
 
       # default case
       func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
-      return self.build_func_call(
+      return self.make_call_ir_with_narrowing(
         caller=func_caller, arg_expressions=self.func_arg_exprs, symbol_table=symbol_table, context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
@@ -1271,7 +1319,8 @@ class StructDeclarationAst(DeclarationAst):
       signature_struct_type.constructor = build_constructor(struct_type=signature_struct_type,
                                                             parent_symbol_table=struct_symbol_table,
                                                             parent_context=context)
-      build_destructor(struct_type=signature_struct_type, parent_symbol_table=struct_symbol_table,
+      build_destructor(struct_type=signature_struct_type,
+                       parent_symbol_table=struct_symbol_table,
                        parent_context=context)
 
       # assemble to complete type symbol

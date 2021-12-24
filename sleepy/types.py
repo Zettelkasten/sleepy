@@ -1435,15 +1435,15 @@ class FunctionSymbolCaller:
   A FunctionSymbol with the template arguments it is called with.
   """
 
-  def __init__(self, func: OverloadSet, template_parameters: Optional[List[Type]] = None):
+  def __init__(self, overload_set: OverloadSet, template_parameters: Optional[List[Type]] = None):
     if template_parameters is not None:
       assert all(not t_arg.has_unfilled_template_parameters() for t_arg in template_parameters)
-    self.func = func
+    self.overload_set = overload_set
     self.template_parameters = template_parameters
 
   def copy_with_template_arguments(self, template_arguments: List[Type]) -> FunctionSymbolCaller:
     assert self.template_parameters is None
-    return FunctionSymbolCaller(func=self.func, template_parameters=template_arguments)
+    return FunctionSymbolCaller(overload_set=self.overload_set, template_parameters=template_arguments)
 
 
 class DebugValueIrPatcher:
