@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import ctypes
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, Iterator, MutableSet
 
@@ -1401,11 +1402,11 @@ class OverloadSet(MutableSet[FunctionTemplate]):
 
   def make_signature_list_str(self) -> str:
     return '\n'.join([' - ' + signature.to_signature_str() for signature in self.signatures])
-  
+
   ##
   ## MutableSet implementation
   ##
-  
+
   def add(self, signature: FunctionTemplate):
     assert self.is_undefined_for_arg_types(placeholder_templ_types=signature.placeholder_templ_types,
                                            arg_types=signature.arg_types)
@@ -1427,7 +1428,6 @@ class OverloadSet(MutableSet[FunctionTemplate]):
   # is used by the MutableSet mixin
   def _from_iterable(self, iterable: Iterable[FunctionTemplate]) -> OverloadSet:
     return OverloadSet(identifier=self.identifier, signatures=iterable)
-
 
 
 class FunctionSymbolCaller:
@@ -1482,8 +1482,6 @@ class CodegenContext:
 
     # use dummy just to set file_path
     self.current_pos = TreePosition(word="", from_pos=0, to_pos=0, file_path=file_path)
-    self.current_func_inline_return_collect_block: Optional[ir.Block] = None
-    self.current_func_inline_return_ir_alloca: Optional[ir.AllocaInstr] = None
     self.inline_func_call_stack: List[ConcreteFunction] = []
     self.ir_func_malloc: Optional[ir.Function] = None
 
@@ -1594,8 +1592,6 @@ class CodegenContext:
   def copy_with_func(self, concrete_func: ConcreteFunction, builder: Optional[ir.IRBuilder]):
     assert not concrete_func.is_inline
     new_context = self.copy_with_builder(builder)
-    new_context.current_func_inline_return_ir_alloca = None
-    new_context.current_func_inline_return_collect_block = None
     if new_context.emits_debug:
       assert concrete_func.di_subprogram is not None
       new_context.current_di_scope = concrete_func.di_subprogram
@@ -1603,16 +1599,36 @@ class CodegenContext:
       new_context.builder.debug_metadata = make_di_location(pos=new_context.current_pos, context=new_context)
     return new_context
 
-  def copy_with_inline_func(self, concrete_func: ConcreteFunction,
-                            return_ir_alloca: ir.AllocaInstr,
-                            return_collect_block: ir.Block) -> CodegenContext:
-    assert concrete_func.is_inline
-    assert concrete_func not in self.inline_func_call_stack
-    new_context = self.copy_with_new_callstack_frame()
-    new_context.current_func_inline_return_ir_alloca = return_ir_alloca
-    new_context.current_func_inline_return_collect_block = return_collect_block
-    new_context.inline_func_call_stack.append(concrete_func)
-    return new_context
+  def copy_with_cleanup_handling_inline_function(self, concrete_function: ConcreteFunction,
+                                                 existing_entry_block: ir.Block,
+                                                 identifier: str) -> CleanupHandlingCG:
+    assert concrete_function.is_inline
+    assert concrete_function not in self.inline_func_call_stack
+    builder = ir.IRBuilder(existing_entry_block)
+    new_context = self.copy_with_builder(builder)
+    new_context.inline_func_call_stack.append(concrete_function)
+    return CleanupHandlingCG(
+      codegen_context=new_context,
+      scope=CGScope(end_block=builder.append_basic_block(f"{identifier}_ending_block"), depth=0),
+      function=CGFunction(
+        return_slot_ir=new_context.alloca_at_entry(concrete_function.return_type.ir_type, f"{identifier}_return_slot"),
+        unroll_count_ir=new_context.alloca_at_entry(ir.IntType(bits=32), f"{identifier}_unroll_count")
+      )
+    )
+
+  def copy_with_cleanup_handling_func(self, concrete_function: ConcreteFunction,
+                                      identifier: str) -> CleanupHandlingCG:
+    entry_block = concrete_function.ir_func.append_basic_block("entry")
+    builder = ir.IRBuilder(entry_block)
+    new_context = self.copy_with_func(concrete_function, builder)
+    return CleanupHandlingCG(
+      codegen_context=new_context,
+      scope=CGScope(end_block=builder.append_basic_block(f"{identifier}_ending_block"), depth=0),
+      function=CGFunction(
+        return_slot_ir=new_context.alloca_at_entry(concrete_function.return_type.ir_type, f"{identifier}_return_slot"),
+        unroll_count_ir=new_context.alloca_at_entry(ir.IntType(bits=32), f"{identifier}_unroll_count")
+      )
+    )
 
   def alloca_at_entry(self, ir_type: ir.types.Type, name: str) -> ir.AllocaInstr:
     """
@@ -1666,6 +1682,62 @@ class CodegenContext:
 
   def get_patched_ir(self) -> str:
     return self.debug_ir_patcher.patch_ir(repr(self.module))
+
+  def switch_to_block(self, block: ir.Block):
+    self.builder.position_at_start(block)
+    self.builder = ir.IRBuilder(block)
+
+
+@dataclass(frozen=True)
+class CGScope:
+  end_block: ir.Block
+  depth: int
+
+  @property
+  def depth_constant(self) -> ir.Constant:
+    return ir.Constant(typ=ir.IntType(bits=32), constant=self.depth)
+
+
+@dataclass(frozen=True)
+class CGFunction:
+  return_slot_ir: ir.AllocaInstr
+  unroll_count_ir: ir.AllocaInstr
+
+
+class CleanupHandlingCG:
+  def __init__(self,
+               codegen_context: CodegenContext,
+               scope: CGScope,
+               function: CGFunction):
+    self.base = codegen_context
+    self.scope = scope
+    self.function = function
+    self.end_block_builder = ir.IRBuilder(self.scope.end_block)
+
+  @property
+  def builder(self) -> ir.IRBuilder:
+    return self.base.builder
+
+  def make_child_scope(self, scope_name: str) -> CleanupHandlingCG:
+    new_block = self.builder.append_basic_block(scope_name)
+    new_end_block = self.base.builder.append_basic_block(scope_name + "_ending_block")
+
+    return CleanupHandlingCG(
+      self.base.copy_with_builder(ir.IRBuilder(new_block)),
+      scope=CGScope(end_block=new_end_block, depth=self.scope.depth + 1),
+      function=self.function
+    )
+
+  def return_with_cleanup(self, value: ir.Value):
+    self.builder.store(value=value, ptr=self.function.return_slot_ir)
+    self.builder.store(value=ir.Constant(typ=ir.IntType(bits=32), constant=0),
+                       ptr=self.function.unroll_count_ir)
+    self.builder.branch(target=self.scope.end_block)
+
+  def jump_to_end(self):
+    self.builder.store(value=ir.Constant(typ=ir.IntType(bits=32), constant=self.scope.depth),
+                       ptr=self.function.unroll_count_ir)
+    self.builder.branch(target=self.scope.end_block)
 
 
 class UsePosRuntimeContext:

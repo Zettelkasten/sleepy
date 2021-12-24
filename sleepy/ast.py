@@ -8,13 +8,14 @@ from llvmlite import ir
 
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 from sleepy.errors import CompilerError, raise_error
+from sleepy.ir_generation import make_end_block_jump, make_end_block_return
 from sleepy.struct_type import build_constructor, build_destructor
+from sleepy.symbols import VariableSymbol, TypeTemplateSymbol, SymbolTable, Symbol, determine_kind, SymbolKind
 from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
 from sleepy.types import OverloadSet, Type, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   make_ir_val_is_type, CodegenContext, get_common_type, \
   PlaceholderTemplateType, try_infer_template_arguments, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, \
-  ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType, make_func_call_ir
-from sleepy.symbols import VariableSymbol, TypeTemplateSymbol, SymbolTable, Symbol, determine_kind, SymbolKind
+  ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType, make_func_call_ir, CleanupHandlingCG
 
 
 class AbstractSyntaxTree(ABC):
@@ -204,7 +205,7 @@ class StatementAst(AbstractSyntaxTree, ABC):
     super().__init__(pos)
 
   @abstractmethod
-  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
+  def build_ir(self, symbol_table: SymbolTable, context: CleanupHandlingCG):
     raise NotImplementedError()
 
   def __repr__(self) -> str:
@@ -232,21 +233,31 @@ class AbstractScopeAst(AbstractSyntaxTree):
     super().__init__(pos)
     self.stmt_list = stmt_list
 
-  def build_scope_ir(self, scope_symbol_table: SymbolTable, scope_context: CodegenContext):
+  def create_symbols(self, scope_symbol_table: SymbolTable, scope_context: CodegenContext):
     with scope_context.use_pos(self.pos):
-
       for declaration in [e for e in self.stmt_list if isinstance(e, DeclarationAst)]:
         scope_symbol_table[declaration.identifier] = declaration.create_symbol(scope_symbol_table, scope_context)
 
+  def build_scope_ir(self, scope_symbol_table: SymbolTable, scope_context: CleanupHandlingCG):
+    self.create_symbols(scope_symbol_table, scope_context.base)
+
+    with scope_context.base.use_pos(self.pos):
       for stmt in [e for e in self.stmt_list if isinstance(e, StatementAst)]:
-        if scope_context.is_terminated: raise_error('Code is unreachable', stmt.pos)
-        stmt.build_ir(symbol_table=scope_symbol_table, context=scope_context)
+        if scope_context.base.is_terminated: raise_error('Code is unreachable', stmt.pos)
+        stmt.build_ir(scope_symbol_table, scope_context)
+
+    if not scope_context.base.is_terminated:
+      scope_context.jump_to_end()
 
   def __repr__(self) -> str:
     return 'AbstractScopeAst(%s)' % ', '.join([repr(stmt) for stmt in self.stmt_list])
 
   def children(self):
     return self.stmt_list
+
+  def check_scope(self, symbol_table: SymbolTable):
+    # TODO
+    pass
 
 
 class FileAst(AbstractSyntaxTree):
@@ -259,7 +270,7 @@ class FileAst(AbstractSyntaxTree):
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
-      self.scope.build_scope_ir(symbol_table, context)
+      self.scope.create_symbols(symbol_table, context)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.imports_ast, self.scope]
@@ -337,9 +348,9 @@ class ExpressionStatementAst(StatementAst):
     assert isinstance(expr, ExpressionAst)
     self.expr = expr
 
-  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
-    with context.use_pos(self.pos):
-      self.expr.make_as_val(symbol_table=symbol_table, context=context)
+  def build_ir(self, symbol_table: SymbolTable, context: CleanupHandlingCG):
+    with context.base.use_pos(self.pos):
+      self.expr.make_as_val(symbol_table=symbol_table, context=context.base)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.expr]
@@ -359,7 +370,9 @@ class ReturnStatementAst(StatementAst):
     if len(return_exprs) > 1:
       raise_error('Returning multiple values not support yet', self.pos)
 
-  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
+  def build_ir(self, symbol_table: SymbolTable, cleanup_context: CleanupHandlingCG):
+    context = cleanup_context.base
+
     with context.use_pos(self.pos):
       if symbol_table.current_func is None:
         raise_error('Can only use return inside a function declaration', self.pos)
@@ -380,25 +393,15 @@ class ReturnStatementAst(StatementAst):
         if context.emits_ir:
           ir_val = return_val.copy_with_implicit_cast(
             to_type=symbol_table.current_func.return_type, context=context, name='return_val_cast').ir_val
-          if symbol_table.current_func.is_inline:
-            assert context.current_func_inline_return_ir_alloca is not None
-            context.builder.store(ir_val, context.current_func_inline_return_ir_alloca)
-          else:
-            assert context.current_func_inline_return_ir_alloca is None
-            context.builder.ret(ir_val)
+          cleanup_context.return_with_cleanup(ir_val)
       else:
         assert len(self.return_exprs) == 0
         if symbol_table.current_func.return_type != SLEEPY_UNIT:
           raise_error('Function declared to return a value of type %r, but implicitly returned %s' % (
             symbol_table.current_func.return_type, SLEEPY_UNIT), self.pos)
         if context.emits_ir and not symbol_table.current_func.is_inline:
-          context.builder.ret(SLEEPY_UNIT.unit_constant())
+          cleanup_context.return_with_cleanup(SLEEPY_UNIT.unit_constant())
 
-      if context.emits_ir and symbol_table.current_func.is_inline:
-        collect_block = context.current_func_inline_return_collect_block
-        assert collect_block is not None
-        context.builder.branch(collect_block)
-        context.builder = ir.IRBuilder(collect_block)
       context.is_terminated = True
 
   def children(self) -> List[AbstractSyntaxTree]:
@@ -443,7 +446,8 @@ class AssignStatementAst(StatementAst):
       raise_error('Cannot assign non-variable %r to a variable' % var_identifier, self.pos)
     return False
 
-  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
+  def build_ir(self, symbol_table: SymbolTable, cleanup_context: CleanupHandlingCG):
+    context = cleanup_context.base
     with context.use_pos(self.pos):
       # example y: A|B = x (where x is of type A)
       if self.declared_var_type is not None:
@@ -527,11 +531,12 @@ class IfStatementAst(StatementAst):
       false_scope = AbstractScopeAst(TreePosition(pos.word, pos.to_pos, pos.to_pos), [])
     self.true_scope, self.false_scope = true_scope, false_scope
 
-  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
+  def build_ir(self, symbol_table: SymbolTable, context: CleanupHandlingCG):
+    base = context.base
 
-    with context.use_pos(self.pos):
-      cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
-      cond_val = cond_val.copy_collapse(context=context, name='if_cond')
+    with base.use_pos(self.pos):
+      cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=base)
+      cond_val = cond_val.copy_collapse(context=base, name='if_cond')
       if not cond_val.narrowed_type == SLEEPY_BOOL:
         raise_error('Cannot use expression of type %r as if-condition' % cond_val.type, self.pos)
 
@@ -540,39 +545,40 @@ class IfStatementAst(StatementAst):
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=true_symbol_table)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=false_symbol_table)
 
-      if context.emits_ir:
+      if base.emits_ir:
         ir_cond = cond_val.ir_val
-        true_block: ir.Block = context.builder.append_basic_block('true_branch')
-        false_block: ir.Block = context.builder.append_basic_block('false_branch')
-        context.builder.cbranch(ir_cond, true_block, false_block)
-        true_context = context.copy_with_builder(ir.IRBuilder(true_block))
-        false_context = context.copy_with_builder(ir.IRBuilder(false_block))
+        true_context = context.make_child_scope(scope_name='true_branch')
+        false_context = context.make_child_scope(scope_name='false_branch')
+        base.builder.cbranch(ir_cond, true_context.builder.block, false_context.builder.block)
       else:
-        true_context, false_context = context.copy_without_builder(), context.copy_without_builder()
+        true_context, false_context = base.copy_without_builder(), base.copy_without_builder()
 
       self.true_scope.build_scope_ir(scope_symbol_table=true_symbol_table, scope_context=true_context)
       self.false_scope.build_scope_ir(scope_symbol_table=false_symbol_table, scope_context=false_context)
 
-      if true_context.is_terminated and false_context.is_terminated:
-        context.is_terminated = True
-        if context.emits_ir:
-          context.builder = None
+      if true_context.base.is_terminated and false_context.base.is_terminated:  # both terminated
+        base.is_terminated = True
+        true_context.end_block_builder.branch(context.scope.end_block)
+        false_context.end_block_builder.branch(context.scope.end_block)
       else:
-        assert not true_context.is_terminated or not false_context.is_terminated
-        if true_context.is_terminated:
+        continue_block: ir.Block = base.builder.append_basic_block('continue_block')
+        if true_context.base.is_terminated:  # only true terminated
           symbol_table.apply_type_narrowings_from(false_symbol_table)
-        elif false_context.is_terminated:
+          true_context.end_block_builder.branch(context.scope.end_block)
+          make_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+
+        elif false_context.base.is_terminated:  # only false terminated
           symbol_table.apply_type_narrowings_from(true_symbol_table)
-        else:  # default case
-          assert not true_context.is_terminated and not false_context.is_terminated
+          make_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+          false_context.end_block_builder.branch(context.scope.end_block)
+
+        else:  # neither terminated
+          assert not true_context.base.is_terminated and not false_context.base.is_terminated
           symbol_table.apply_type_narrowings_from(true_symbol_table, false_symbol_table)
-        if context.emits_ir:
-          continue_block: ir.Block = context.builder.append_basic_block('continue_branch')
-          if not true_context.is_terminated:
-            true_context.builder.branch(continue_block)
-          if not false_context.is_terminated:
-            false_context.builder.branch(continue_block)
-          context.builder = ir.IRBuilder(continue_block)
+          make_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+          make_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+
+        base.switch_to_block(continue_block)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.condition_val, self.true_scope, self.false_scope]
@@ -594,31 +600,42 @@ class WhileStatementAst(StatementAst):
     self.condition_val = condition_val
     self.body_scope = body_scope
 
-  def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
-    with context.use_pos(self.pos):
-      cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
-      cond_val = cond_val.copy_collapse(context=context, name='while_cond')
-      if not cond_val.narrowed_type == SLEEPY_BOOL:
-        raise_error('Cannot use expression of type %r as while-condition' % cond_val.type, self.pos)
+  def _make_condition_ir(self, symbol_table: SymbolTable, context: CodegenContext) -> ir.Value:
+    cond_val = self.condition_val.make_as_val(symbol_table=symbol_table, context=context)
+    cond_val = cond_val.copy_collapse(context=context, name='while_cond')
+    if not cond_val.narrowed_type == SLEEPY_BOOL:
+      raise_error('Cannot use expression of type %r as while-condition' % cond_val.type, self.pos)
+    return cond_val.ir_val
 
+  def build_ir(self, symbol_table: SymbolTable, context: CleanupHandlingCG):
+    base = context.base
+
+    with base.use_pos(self.pos):
       body_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=True)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=body_symbol_table)
 
-      if context.emits_ir:
-        cond_ir = cond_val.ir_val
-        loop_block: ir.Block = context.builder.append_basic_block('while_body')
-        continue_block: ir.Block = context.builder.append_basic_block('continue_branch')
-        context.builder.cbranch(cond_ir, loop_block, continue_block)
-        context.builder = ir.IRBuilder(continue_block)
+      if base.emits_ir:
+        body_context = context.make_child_scope(scope_name='while_body')
+        body_block = body_context.builder.block
+        condition_check_block = context.builder.append_basic_block('condition_check')
+        continue_block = base.builder.append_basic_block('continue_branch')
 
-        body_context = context.copy_with_builder(ir.IRBuilder(loop_block))
+        context.builder.branch(condition_check_block)
+        context.base.switch_to_block(condition_check_block)
+
+        condition_ir = self._make_condition_ir(symbol_table, context=base)
+        context.builder.cbranch(condition_ir, body_block, continue_block)
+
         self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
-        if not body_context.is_terminated:
-          body_cond_ir = self.condition_val.make_as_val(symbol_table=symbol_table, context=body_context).ir_val
-          body_context.builder.cbranch(body_cond_ir, loop_block, continue_block)
+
+        if body_context.base.is_terminated:  # all branches return, simply jump to parent cleanup
+          body_context.end_block_builder.branch(context.scope.end_block)
+        else:  # return or jump back to condition check
+          make_end_block_jump(body_context, continuation=condition_check_block, parent_end_block=context.scope.end_block)
+
+        context.base.switch_to_block(continue_block)
       else:
-        body_context = context.copy_without_builder()
-        self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
+        self.body_scope.check_scope(symbol_table=body_symbol_table)
 
       # TODO: Do a fix-point iteration over the body and wait until the most general type no longer changes.
       symbol_table.reset_narrowed_types()
