@@ -1478,7 +1478,7 @@ class CodegenContext:
     self._module = module
 
     self._emits_debug: bool = emits_debug
-    self.is_terminated: bool = False
+    self.all_paths_returned: bool = False
 
     # use dummy just to set file_path
     self.current_pos = TreePosition(word="", from_pos=0, to_pos=0, file_path=file_path)
@@ -1561,7 +1561,7 @@ class CodegenContext:
 
   def __repr__(self) -> str:
     return 'CodegenContext(builder=%r, emits_ir=%r, is_terminated=%r)' % (
-      self.builder, self.emits_ir, self.is_terminated)
+      self.builder, self.emits_ir, self.all_paths_returned)
 
   def copy_with_new_callstack_frame(self) -> CodegenContext:
     new_context = copy.copy(self)
@@ -1738,7 +1738,7 @@ class UsePosRuntimeContext:
     self.context = context
 
   def __enter__(self):
-    if self.context.is_terminated:
+    if self.context.all_paths_returned:
       return
     self.prev_pos = self.context.current_pos
     self.context.current_pos = self.pos
@@ -1747,7 +1747,7 @@ class UsePosRuntimeContext:
       self.context.builder.debug_metadata = make_di_location(self.pos, context=self.context)
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    if self.context.is_terminated: return
+    if self.context.all_paths_returned: return
     self.context.current_pos = self.prev_pos
     if self.context.emits_debug:
       self.context.builder.debug_metadata = self.prev_debug_metadata
@@ -1896,7 +1896,7 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
   return_vals: List[TypedValue] = []
   for case_func, case_context in zip(case_funcs.values(), case_contexts.values()):
     case_return_val = case_func(caller_context=case_context)  # noqa
-    assert not case_context.is_terminated
+    assert not case_context.all_paths_returned
     return_vals.append(case_return_val)
   assert len(case_funcs) == len(return_vals)
 

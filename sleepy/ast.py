@@ -8,7 +8,7 @@ from llvmlite import ir
 
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 from sleepy.errors import CompilerError, raise_error
-from sleepy.ir_generation import make_end_block_jump, make_end_block_return
+from sleepy.ir_generation import make_end_block_jump
 from sleepy.struct_type import build_constructor, build_destructor
 from sleepy.symbols import VariableSymbol, TypeTemplateSymbol, SymbolTable, Symbol, determine_kind, SymbolKind
 from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
@@ -243,10 +243,10 @@ class AbstractScopeAst(AbstractSyntaxTree):
 
     with scope_context.base.use_pos(self.pos):
       for stmt in [e for e in self.stmt_list if isinstance(e, StatementAst)]:
-        if scope_context.base.is_terminated: raise_error('Code is unreachable', stmt.pos)
+        if scope_context.base.all_paths_returned: raise_error('Code is unreachable', stmt.pos)
         stmt.build_ir(scope_symbol_table, scope_context)
 
-    if not scope_context.base.is_terminated:
+    if not scope_context.base.all_paths_returned:
       scope_context.jump_to_end()
 
   def __repr__(self) -> str:
@@ -317,7 +317,7 @@ class TranslationUnitAst:
     assert context.ir_func_malloc is not None
     for ast in self.file_asts:
       ast.build_ir(symbol_table=symbol_table, context=context)
-    assert not context.is_terminated
+    assert not context.all_paths_returned
 
     for identifier in implicitly_exported_functions:
       if identifier not in symbol_table:
@@ -330,7 +330,7 @@ class TranslationUnitAst:
         "Possible overloads are %s" % (identifier, repr(symbol)))
       symbol.get_single_concrete_func()
 
-    context.is_terminated = True
+    context.all_paths_returned = True
 
     return context.get_patched_ir(), symbol_table
 
@@ -376,7 +376,7 @@ class ReturnStatementAst(StatementAst):
     with context.use_pos(self.pos):
       if symbol_table.current_func is None:
         raise_error('Can only use return inside a function declaration', self.pos)
-      if context.is_terminated:
+      if context.all_paths_returned:
         raise_error('Cannot return from function after having returned already', self.pos)
 
       if len(self.return_exprs) == 1:
@@ -402,7 +402,7 @@ class ReturnStatementAst(StatementAst):
         if context.emits_ir and not symbol_table.current_func.is_inline:
           cleanup_context.return_with_cleanup(SLEEPY_UNIT.unit_constant())
 
-      context.is_terminated = True
+      context.all_paths_returned = True
 
   def children(self) -> List[AbstractSyntaxTree]:
     return self.return_exprs
@@ -556,24 +556,24 @@ class IfStatementAst(StatementAst):
       self.true_scope.build_scope_ir(scope_symbol_table=true_symbol_table, scope_context=true_context)
       self.false_scope.build_scope_ir(scope_symbol_table=false_symbol_table, scope_context=false_context)
 
-      if true_context.base.is_terminated and false_context.base.is_terminated:  # both terminated
-        base.is_terminated = True
+      if true_context.base.all_paths_returned and false_context.base.all_paths_returned:  # both terminated
+        base.all_paths_returned = True
         true_context.end_block_builder.branch(context.scope.end_block)
         false_context.end_block_builder.branch(context.scope.end_block)
       else:
         continue_block: ir.Block = base.builder.append_basic_block('continue_block')
-        if true_context.base.is_terminated:  # only true terminated
+        if true_context.base.all_paths_returned:  # only true terminated
           symbol_table.apply_type_narrowings_from(false_symbol_table)
           true_context.end_block_builder.branch(context.scope.end_block)
           make_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
 
-        elif false_context.base.is_terminated:  # only false terminated
+        elif false_context.base.all_paths_returned:  # only false terminated
           symbol_table.apply_type_narrowings_from(true_symbol_table)
           make_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
           false_context.end_block_builder.branch(context.scope.end_block)
 
         else:  # neither terminated
-          assert not true_context.base.is_terminated and not false_context.base.is_terminated
+          assert not true_context.base.all_paths_returned and not false_context.base.all_paths_returned
           symbol_table.apply_type_narrowings_from(true_symbol_table, false_symbol_table)
           make_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
           make_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
@@ -628,7 +628,7 @@ class WhileStatementAst(StatementAst):
 
         self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
 
-        if body_context.base.is_terminated:  # all branches return, simply jump to parent cleanup
+        if body_context.base.all_paths_returned:  # all branches return, simply jump to parent cleanup
           body_context.end_block_builder.branch(context.scope.end_block)
         else:  # return or jump back to condition check
           make_end_block_jump(body_context, continuation=condition_check_block, parent_end_block=context.scope.end_block)
