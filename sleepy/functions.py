@@ -4,14 +4,15 @@ from typing import List, Optional, cast
 
 from llvmlite import ir
 
-from sleepy.ast import TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree, \
+from sleepy.ast import TypeAst, AnnotationAst, AbstractScopeAst, AbstractSyntaxTree, \
   DeclarationAst
-from sleepy.errors import raise_error
 from sleepy.builtin_symbols import SLEEPY_BOOL
+from sleepy.errors import raise_error
+from sleepy.ir_generation import make_end_block_return
+from sleepy.symbols import VariableSymbol, SymbolTable, Symbol
 from sleepy.syntactical_analysis.grammar import TreePosition
 from sleepy.types import Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
-  PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType
-from sleepy.symbols import VariableSymbol, SymbolTable, Symbol
+  PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType, CleanupHandlingCG
 
 
 class FunctionDeclarationAst(DeclarationAst):
@@ -64,12 +65,12 @@ class FunctionDeclarationAst(DeclarationAst):
     if any(arg_type is None for arg_type in arg_types):
       raise_error('Need to specify all parameter types of function %r' % self.identifier, self.pos)
     all_annotation_list = (
-      self.arg_annotations + ([self.return_annotation_list] if self.return_annotation_list is not None else []))
+            self.arg_annotations + ([self.return_annotation_list] if self.return_annotation_list is not None else []))
     for arg_annotation_list in all_annotation_list:
       for arg_annotation_num, arg_annotation in enumerate(arg_annotation_list):
         if arg_annotation.identifier in arg_annotation_list[:arg_annotation_num]:
           raise_error('Cannot apply annotation with identifier %r twice' % arg_annotation.identifier,
-                                     arg_annotation.pos)
+                      arg_annotation.pos)
         if arg_annotation.identifier not in self.allowed_arg_annotation_identifiers:
           raise_error('Cannot apply annotation with identifier %r, allowed: %r' % (
             arg_annotation.identifier, ', '.join(self.allowed_arg_annotation_identifiers)), arg_annotation.pos)
@@ -93,8 +94,7 @@ class FunctionDeclarationAst(DeclarationAst):
     if self.identifier in symbol_table:
       func_symbol = symbol_table[self.identifier]
       if not isinstance(func_symbol, OverloadSet):
-        raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier,
-                         self.pos)
+        raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier, self.pos)
       if not func_symbol.is_undefined_for_arg_types(placeholder_templ_types=placeholder_templ_types,
                                                     arg_types=arg_types):
         raise_error(
@@ -108,8 +108,7 @@ class FunctionDeclarationAst(DeclarationAst):
 
     if self.identifier in {'assert', 'unchecked_assert'}:
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
-        raise_error('Builtin %r must be overloaded with signature(Bool condition, ...)' % self.identifier,
-                         self.pos)
+        raise_error('Builtin %r must be overloaded with signature(Bool condition, ...)' % self.identifier, self.pos)
 
     if self.is_inline and self.is_extern:
       raise_error('Extern function %r cannot be inlined' % self.identifier, self.pos)
@@ -122,11 +121,15 @@ class FunctionDeclarationAst(DeclarationAst):
     return OverloadSet(self.identifier, [signature])
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
 
+  def check_body(self, symbol_table: SymbolTable):
+    # TODO
+    pass
+
   def build_body_ir(self, parent_symbol_table: SymbolTable,
                     concrete_func: ConcreteFunction,
-                    body_context: CodegenContext,
-                    ir_func_args: Optional[List[ir.Value]] = None):
-    if not body_context.emits_ir or ir_func_args is None: return
+                    body_context: CleanupHandlingCG,
+                    ir_func_args: List[ir.Value]):
+    assert body_context.base.emits_ir
     assert not self.is_extern
 
     template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_templ_types]
@@ -139,11 +142,11 @@ class FunctionDeclarationAst(DeclarationAst):
                                                   concrete_func.arg_types):
       if mutates:
         argument_symbols[identifier] = VariableSymbol.make_ref_to_variable(ir_value, ReferenceType(typ),
-                                                                           identifier, body_context)
+                                                                           identifier, body_context.base)
       else:
         ir_value.name = identifier
-        symbol = VariableSymbol.make_new_variable(ReferenceType(typ), identifier, body_context)
-        body_context.builder.store(ir_value, symbol.ir_alloca)
+        symbol = VariableSymbol.make_new_variable(ReferenceType(typ), identifier, body_context.base)
+        body_context.base.builder.store(ir_value, symbol.ir_alloca)
         argument_symbols[identifier] = symbol
 
     body_symbol_table = parent_symbol_table.make_child_scope(
@@ -153,29 +156,22 @@ class FunctionDeclarationAst(DeclarationAst):
 
     # build function body
     self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
-    # maybe add implicit return
-    if not body_context.is_terminated:
-      return_pos = TreePosition(
-        self.pos.word,
-        self.pos.from_pos if len(self.body_scope.stmt_list) == 0 else self.body_scope.stmt_list[-1].pos.to_pos,
-        self.pos.to_pos)
-      return_ast = ReturnStatementAst(return_pos, [])
-      if concrete_func.return_type != SLEEPY_UNIT:
-        raise_error('Not all branches within function declaration of %r return something' % self.identifier,
-                               return_ast.pos)
-      return_ast.build_ir(symbol_table=body_symbol_table, context=body_context)
-    assert body_context.is_terminated
+
+    if not self.is_inline:
+      make_end_block_return(body_context)
+
+    body_context.base.is_terminated = True
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return cast(List[AbstractSyntaxTree], [el for lst in self.arg_annotations for el in lst])\
+    return cast(List[AbstractSyntaxTree], [el for lst in self.arg_annotations for el in lst]) \
            + self.arg_types + ([self.return_type] if self.return_type else [])
 
   def __repr__(self) -> str:
     return (
-      'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
-      'return_type=%r, %s)' % (
-        self.identifier, self.arg_identifiers, self.arg_types, self.return_type,
-        'extern' if self.is_extern else self.body_scope))
+            'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
+            'return_type=%r, %s)' % (
+              self.identifier, self.arg_identifiers, self.arg_types, self.return_type,
+              'extern' if self.is_extern else self.body_scope))
 
 
 class ConcreteDeclaredFunction(ConcreteFunction):
@@ -205,22 +201,21 @@ class ConcreteDeclaredFunction(ConcreteFunction):
     assert caller_context.emits_ir
     assert not caller_context.is_terminated
 
-    return_val_ir_alloca = caller_context.alloca_at_entry(
-      self.return_type.ir_type, name='return_%s_alloca' % self.ast.identifier)
-
-    collect_block = caller_context.builder.append_basic_block('collect_return_%s_block' % self.ast.identifier)
-    inline_context = caller_context.copy_with_inline_func(
-      self, return_ir_alloca=return_val_ir_alloca, return_collect_block=collect_block)
+    inline_context = caller_context.copy_with_cleanup_handling_inline_function(self,
+                                                                               existing_entry_block=caller_context.block,
+                                                                               identifier=self.ast.identifier)
     self.ast.build_body_ir(
-      parent_symbol_table=self.captured_symbol_table, concrete_func=self, body_context=inline_context,
+      parent_symbol_table=self.captured_symbol_table,
+      concrete_func=self,
+      body_context=inline_context,
       ir_func_args=[arg.ir_val for arg in func_args])
-    assert inline_context.is_terminated
-    assert not collect_block.is_terminated
-    # use the caller_context instead of reusing the inline_context
-    # because the inline_context will be terminated
-    caller_context.builder = ir.IRBuilder(collect_block)
+    assert inline_context.base.is_terminated
 
-    return_val = caller_context.builder.load(return_val_ir_alloca, name='return_%s' % self.ast.identifier)
+    # continue in end_block
+    caller_context.switch_to_block(inline_context.scope.end_block)
+
+    return_val = caller_context.builder.load(inline_context.function.return_slot_ir,
+                                             name='return_%s' % self.ast.identifier)
     assert not caller_context.is_terminated
     return return_val
 
@@ -254,21 +249,18 @@ class ConcreteDeclaredFunction(ConcreteFunction):
       if self.ast.is_extern:
         return
 
-      if self.ast.is_inline:
+      if self.ast.is_inline or not self.captured_context.emits_ir:
         # check symbol tables without emitting ir
-        self.ast.build_body_ir(
-          parent_symbol_table=self.captured_symbol_table, concrete_func=self,
-          body_context=self.captured_context.copy_without_builder())
+        self.ast.check_body(symbol_table=self.captured_symbol_table)
       else:
-        assert not self.is_inline
-        if self.captured_context.emits_ir:
-          body_block = self.ir_func.append_basic_block(name='entry')
-          body_context = self.captured_context.copy_with_func(self, builder=ir.IRBuilder(body_block))
-        else:
-          body_context = self.captured_context.copy_with_func(self, builder=None)  # proceed without emitting ir.
+        body_context = self.captured_context.copy_with_cleanup_handling_func(concrete_function=self,
+                                                                             identifier=self.ast.identifier)
+
         self.ast.build_body_ir(
-          parent_symbol_table=self.captured_symbol_table, concrete_func=self, body_context=body_context,
-          ir_func_args=self.ir_func.args if body_context.emits_ir else None)
+          parent_symbol_table=self.captured_symbol_table,
+          concrete_func=self,
+          body_context=body_context,
+          ir_func_args=self.ir_func.args)
 
 
 class DeclaredFunctionTemplate(FunctionTemplate):
