@@ -157,10 +157,20 @@ class FunctionDeclarationAst(DeclarationAst):
     # build function body
     self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
 
+    if not body_context.base.all_paths_returned and not concrete_func.return_type is SLEEPY_UNIT:
+      self.raise_missing_return_error()
+
     if not self.is_inline:
       make_end_block_return(body_context)
 
-    body_context.base.is_terminated = True
+    body_context.base.all_paths_returned = True
+
+  def raise_missing_return_error(self):
+    return_pos = TreePosition(
+      self.pos.word,
+      self.pos.from_pos if len(self.body_scope.stmt_list) == 0 else self.body_scope.stmt_list[-1].pos.to_pos,
+      self.pos.to_pos)
+    raise_error('Not all branches within function declaration of %r return something' % self.identifier, return_pos)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return cast(List[AbstractSyntaxTree], [el for lst in self.arg_annotations for el in lst]) \
@@ -199,7 +209,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
                                caller_context: CodegenContext) -> Optional[ir.Value]:
     assert len(func_args) == len(self.arg_identifiers)
     assert caller_context.emits_ir
-    assert not caller_context.is_terminated
+    assert not caller_context.all_paths_returned
 
     inline_context = caller_context.copy_with_cleanup_handling_inline_function(self,
                                                                                existing_entry_block=caller_context.block,
@@ -209,18 +219,18 @@ class ConcreteDeclaredFunction(ConcreteFunction):
       concrete_func=self,
       body_context=inline_context,
       ir_func_args=[arg.ir_val for arg in func_args])
-    assert inline_context.base.is_terminated
+    assert inline_context.base.all_paths_returned
 
     # continue in end_block
     caller_context.switch_to_block(inline_context.scope.end_block)
 
     return_val = caller_context.builder.load(inline_context.function.return_slot_ir,
                                              name='return_%s' % self.ast.identifier)
-    assert not caller_context.is_terminated
+    assert not caller_context.all_paths_returned
     return return_val
 
   def build_ir(self):
-    assert not self.captured_context.is_terminated
+    assert not self.captured_context.all_paths_returned
     with self.captured_context.use_pos(self.ast.pos):
       if self.ast.is_extern:
         if self.captured_symbol_table.has_extern_func(self.ast.identifier):

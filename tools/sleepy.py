@@ -112,6 +112,8 @@ def main():
     ir_file_name = _make_file_name(source_file_path, '.ll', allow_exist=True)
     with open(ir_file_name, 'w') as file:
       file.write(str(module_ir))
+    with open("opt_" + str(ir_file_name), 'w') as file:
+      file.write(str(module_ref))
     return
 
   target = llvm.Target.from_default_triple()
