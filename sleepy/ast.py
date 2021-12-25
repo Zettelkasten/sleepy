@@ -879,11 +879,8 @@ class IdentifierExpressionAst(ExpressionAst):
 
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      symbol = self.get_var_symbol(symbol_table=symbol_table)
-      if context.emits_ir:
-        assert symbol.ir_alloca is not None
-      return TypedValue(
-        typ=symbol.declared_var_type, narrowed_type=symbol.narrowed_var_type, ir_val=symbol.ir_alloca)
+      return self.get_var_symbol(symbol_table=symbol_table).typed_value
+
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     return FunctionSymbolCaller(overload_set=self.get_func_symbol(symbol_table=symbol_table))
