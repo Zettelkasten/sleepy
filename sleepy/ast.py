@@ -284,9 +284,25 @@ class AbstractScopeAst(AbstractSyntaxTree):
     if not scope_context.base.all_paths_returned:
       scope_context.jump_to_end()
 
+    # should usually use scope_context.end_block_builder instead of switching to end_block, but function call
+    # generation needs the entire context
+    builder_before = scope_context.builder
+    scope_context.base.switch_to_block(scope_context.scope.end_block)
+
     for defining_ast in reversed(variable_definitions):
       symbol = scope_symbol_table[defining_ast.get_var_identifier()]
       assert isinstance(symbol, VariableSymbol)
+      if isinstance(symbol.narrowed_var_type, StructType):
+        caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=[])
+        # call destructor
+        self.make_call_ir(
+          caller=caller,
+          argument_values=[symbol.typed_value],
+          possible_concrete_functions=self._resolve_possible_concrete_funcs(caller, [symbol.typed_value.type]),
+          context=scope_context.base
+        )
+
+    scope_context.base.builder = builder_before
 
   def _enumerate_variable_definitions(self, symbol_table: SymbolTable) -> List[AssignStatementAst]:
     variable_symbols = []
@@ -464,16 +480,18 @@ class AssignStatementAst(StatementAst):
   """
   allowed_annotation_identifiers = frozenset({})
 
-  def __init__(self, pos: TreePosition, var_target: ExpressionAst, var_val: ExpressionAst,
-               declared_var_type: Optional[TypeAst]):
+  def __init__(self, pos: TreePosition,
+               target_ast: ExpressionAst,
+               source_ast: ExpressionAst,
+               declared_type: Optional[TypeAst]):
     super().__init__(pos)
-    assert isinstance(var_target, ExpressionAst)
-    self.var_target = var_target
-    self.var_val = var_val
-    self.declared_var_type = declared_var_type
+    assert isinstance(target_ast, ExpressionAst)
+    self.target_ast = target_ast
+    self.source_ast = source_ast
+    self.declared_type = declared_type
 
   def get_var_identifier(self) -> Optional[str]:
-    target = self.var_target
+    target = self.target_ast
     while isinstance(target, UnbindExpressionAst):
       target = target.arg_expr
     if isinstance(target, IdentifierExpressionAst):
@@ -497,39 +515,39 @@ class AssignStatementAst(StatementAst):
     context = cleanup_context.base
     with context.use_pos(self.pos):
       # example y: A|B = x (where x is of type A)
-      if self.declared_var_type is not None:
-        stated_type: Optional[Type] = self.declared_var_type.make_type(symbol_table=symbol_table)  # A|B
+      if self.declared_type is not None:
+        stated_type: Optional[Type] = self.declared_type.make_type(symbol_table=symbol_table)  # A|B
       else:
         stated_type: Optional[Type] = None
-      if not self.var_val.make_symbol_kind(symbol_table=symbol_table) == SymbolKind.VARIABLE:
+      if not self.source_ast.make_symbol_kind(symbol_table=symbol_table) == SymbolKind.VARIABLE:
         raise_error('Can only reassign variables', self.pos)
-      val = self.var_val.make_as_val(symbol_table=symbol_table, context=context)
+      source_value = self.source_ast.make_as_val(symbol_table=symbol_table, context=context)
 
-      val = val.copy_collapse(context=context, name='store')
-      if stated_type is not None and not can_implicit_cast_to(val.narrowed_type, stated_type):
+      source_value = source_value.copy_collapse(context=context, name='store')
+      if stated_type is not None and not can_implicit_cast_to(source_value.narrowed_type, stated_type):
         raise_error('Cannot assign variable with stated type %r a value of type %r' % (
-          stated_type, val.narrowed_type), self.pos)
+          stated_type, source_value.narrowed_type), self.pos)
 
       if self.is_declaration(symbol_table=symbol_table):
         var_identifier = self.get_var_identifier()  # y
         assert var_identifier not in symbol_table.current_scope_identifiers
         # variables are always (implicitly) references
-        declared_type = ReferenceType(val.type if stated_type is None else stated_type)  # Ref[A|B]
+        declared_type = ReferenceType(source_value.type if stated_type is None else stated_type)  # Ref[A|B]
         # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
         symbol = VariableSymbol.make_new_variable(declared_type, var_identifier, context)
         symbol_table[var_identifier] = symbol
 
       # check that declared type matches assigned type
-      uncollapsed_target_val = self.var_target.make_as_val(symbol_table=symbol_table, context=context)  # Ref[A|B]
+      uncollapsed_target_val = self.target_ast.make_as_val(symbol_table=symbol_table, context=context)  # Ref[A|B]
       if not uncollapsed_target_val.is_referenceable():
         raise_error('Cannot reassign non-referencable type %s' % uncollapsed_target_val.type, self.pos)
       # narrow the target type to the assigned type s.t. we can unbind properly
       # even if some unions variants are not unbindable
       uncollapsed_target_val = uncollapsed_target_val.copy_set_narrowed_collapsed_type(
-        ReferenceType(val.narrowed_type))  # Ref[A]
+        ReferenceType(source_value.narrowed_type))  # Ref[A]
       if uncollapsed_target_val.narrowed_type == SLEEPY_NEVER:
         raise_error('Cannot assign variable of type %r a value of type %r' % (
-          uncollapsed_target_val.type, val.narrowed_type), self.pos)
+          uncollapsed_target_val.type, source_value.narrowed_type), self.pos)
       target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')  # Ref[A]
       assert isinstance(target_val.type, ReferenceType)
       declared_type = target_val.type.pointee_type  # A
@@ -537,7 +555,7 @@ class AssignStatementAst(StatementAst):
         raise_error('Cannot %s variable collapsing to type %r with new type %r' % (
           'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type),
                     self.pos)
-      assert can_implicit_cast_to(val.narrowed_type, declared_type)
+      assert can_implicit_cast_to(source_value.narrowed_type, declared_type)
 
       # if we assign to a variable, narrow type to val_type
       if (var_identifier := self.get_var_identifier()) is not None:
@@ -549,17 +567,17 @@ class AssignStatementAst(StatementAst):
         symbol_table[var_identifier] = narrowed_symbol
 
       if context.emits_ir:
-        ir_val = val.copy_with_implicit_cast(declared_type, context=context, name='assign_cast').ir_val
+        ir_val = source_value.copy_with_implicit_cast(declared_type, context=context, name='assign_cast').ir_val
         assert ir_val is not None
         assert target_val.ir_val is not None
         context.builder.store(value=ir_val, ptr=target_val.ir_val)
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return [self.var_target, self.var_val, self.declared_var_type]
+    return [self.target_ast, self.source_ast, self.declared_type]
 
   def __repr__(self) -> str:
     return 'AssignStatementAst(var_target=%r, var_val=%r, var_type=%r)' % (
-      self.var_target, self.var_val, self.declared_var_type)
+      self.target_ast, self.source_ast, self.declared_type)
 
 
 class IfStatementAst(StatementAst):

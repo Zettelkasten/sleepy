@@ -106,13 +106,13 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('Stmt', 'return', 'ExprList'): {
       'ast': lambda _pos, val_list: ReturnStatementAst(_pos, return_exprs=val_list(2))},
     Production('Stmt', 'Expr', ':', 'Type', '=', 'Expr'): {
-      'ast': lambda _pos, ast: AssignStatementAst(_pos, var_target=ast(1), var_val=ast(5), declared_var_type=ast(3))},
+      'ast': lambda _pos, ast: AssignStatementAst(_pos, target_ast=ast(1), source_ast=ast(5), declared_type=ast(3))},
     Production('Stmt', 'Expr', '=', 'Expr'): {
-      'ast': lambda _pos, ast: AssignStatementAst(_pos, var_target=ast(1), var_val=ast(3), declared_var_type=None)},
+      'ast': lambda _pos, ast: AssignStatementAst(_pos, target_ast=ast(1), source_ast=ast(3), declared_type=None)},
     Production('Stmt', 'Expr', 'assign_op', 'Expr'): {
       'ast': lambda _pos, ast, op: AssignStatementAst(
-        _pos, var_target=ast(1), var_val=CallExpressionAst(_pos, func_expr=IdentifierExpressionAst(
-          _pos, op(2)), func_arg_exprs=[ast(1), ast(3)]), declared_var_type=None)},
+        _pos, target_ast=ast(1), source_ast=CallExpressionAst(_pos, func_expr=IdentifierExpressionAst(
+          _pos, op(2)), func_arg_exprs=[ast(1), ast(3)]), declared_type=None)},
     Production('Stmt', 'while', 'Expr', 'Scope'): {
       'ast': lambda _pos, ast: WhileStatementAst(_pos, condition_val=ast(2), body_scope=ast(3))},
     Production('Expr', 'Expr', 'cmp_op', 'SumExpr'): {
