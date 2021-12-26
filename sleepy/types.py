@@ -1520,7 +1520,7 @@ class CodegenContext:
 
   @property
   def emits_debug(self) -> bool:
-    return self._emits_debug and self.emits_ir and self.builder.debug_metadata is not None
+    return self._emits_debug and self.emits_ir
 
   @property
   def module(self) -> ir.Module:
