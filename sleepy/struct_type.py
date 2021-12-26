@@ -6,7 +6,7 @@ from llvmlite import ir
 
 from sleepy.symbols import SymbolTable
 from sleepy.types import StructType, CodegenContext, OverloadSet, PlaceholderTemplateType, FunctionTemplate, Type, \
-  ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, make_func_call_ir, TypedValue
+  ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, make_func_call_ir, TypedValue, UnionType
 
 
 def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, parent_context: CodegenContext):
@@ -121,18 +121,29 @@ class DestructorFunctionTemplate(FunctionTemplate):
           member_identifier = self.struct.member_identifiers[member_num]
           signature_member_type = self.struct.member_types[member_num]
           concrete_member_type = concrete_struct_type.member_types[member_num]
+          if isinstance(concrete_member_type, UnionType): continue
+
           member_ir_val = self.struct.make_extract_member_val_ir(
             member_identifier, struct_ir_val=self_ir_alloca, context=context)
-          # TODO: properly infer templ types, also for struct members
-          assert not (isinstance(signature_member_type, StructType) and len(
-            signature_member_type.template_param_or_arg) > 0), (
-            'not implemented yet')
-          templ_types: List[Type] = []
+
+          # # TODO: properly infer templ types, also for struct members
+          # assert not (isinstance(signature_member_type, StructType) and len(
+          #   signature_member_type.template_param_or_arg) > 0), (
+          #   'not implemented yet')
+
+          template_arguments: List[Type] = []
           if isinstance(concrete_member_type, PointerType):
-            templ_types = [concrete_member_type.pointee_type]
+            template_arguments = [concrete_member_type.pointee_type]
+
+          if isinstance(concrete_member_type, StructType):
+            template_arguments = concrete_member_type.template_param_or_arg
+
           make_func_call_ir(
-            func=self.captured_symbol_table.free_overloads, template_arguments=templ_types,
-            func_args=[TypedValue(typ=signature_member_type, ir_val=member_ir_val)], context=context)
+            func=self.captured_symbol_table.free_overloads, template_arguments=template_arguments,
+            func_args=[TypedValue(typ=concrete_member_type,
+                                  ir_val=member_ir_val,
+                                  num_unbindings=concrete_member_type.num_possible_unbindings())],
+            context=context)
         context.builder.ret(SLEEPY_UNIT.unit_constant())
 
 

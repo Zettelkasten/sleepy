@@ -292,17 +292,20 @@ class AbstractScopeAst(AbstractSyntaxTree):
     for defining_ast in reversed(variable_definitions):
       symbol = scope_symbol_table[defining_ast.get_var_identifier()]
       assert isinstance(symbol, VariableSymbol)
-      if isinstance(symbol.narrowed_var_type, StructType):
-        caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=[])
+
+      if (isinstance(symbol.narrowed_var_type, ReferenceType) and
+              isinstance(symbol.narrowed_var_type.pointee_type, StructType)):
+        caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
         # call destructor
         self.make_call_ir(
           caller=caller,
           argument_values=[symbol.typed_value],
-          possible_concrete_functions=self._resolve_possible_concrete_funcs(caller, [symbol.typed_value.type]),
+          possible_concrete_functions=self._resolve_possible_concrete_funcs(caller, [symbol.typed_value.copy_collapse(context=None).narrowed_type]),
           context=scope_context.base
         )
 
     scope_context.base.builder = builder_before
+    scope_context.end_block_builder.position_at_end(scope_context.end_block_builder.block)
 
   def _enumerate_variable_definitions(self, symbol_table: SymbolTable) -> List[AssignStatementAst]:
     variable_symbols = []
@@ -881,7 +884,6 @@ class IdentifierExpressionAst(ExpressionAst):
     with context.use_pos(self.pos):
       return self.get_var_symbol(symbol_table=symbol_table).typed_value
 
-
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
     return FunctionSymbolCaller(overload_set=self.get_func_symbol(symbol_table=symbol_table))
 
@@ -1342,7 +1344,7 @@ class StructDeclarationAst(DeclarationAst):
                                                             parent_symbol_table=struct_symbol_table,
                                                             parent_context=context)
       build_destructor(struct_type=signature_struct_type,
-                       parent_symbol_table=struct_symbol_table,
+                       parent_symbol_table=symbol_table,
                        parent_context=context)
 
       # assemble to complete type symbol

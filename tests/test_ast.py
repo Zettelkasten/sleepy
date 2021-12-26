@@ -2642,6 +2642,7 @@ def test_operator_precedence():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
+    func free[T](self: Ref[T]) { free(self) }
     struct Foo { x: Ref[Int]; y: Int; }
     func index(x: Ref[Int]) -> Ref[Int] { return !x }
     func index(x: Int) -> Int { return 0; }
