@@ -1520,7 +1520,7 @@ class CodegenContext:
 
   @property
   def emits_debug(self) -> bool:
-    return self._emits_debug and self.emits_ir
+    return self._emits_debug and self.emits_ir and self.builder.debug_metadata is not None
 
   @property
   def module(self) -> ir.Module:
@@ -1677,7 +1677,6 @@ class CodegenContext:
 
   def switch_to_block(self, block: ir.Block):
     self.builder.position_at_start(block)
-    self.builder = ir.IRBuilder(block)
 
 
 @dataclass(frozen=True)
