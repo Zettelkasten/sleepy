@@ -6,7 +6,7 @@ from llvmlite import ir
 
 from sleepy.symbols import SymbolTable
 from sleepy.types import StructType, CodegenContext, OverloadSet, PlaceholderTemplateType, FunctionTemplate, Type, \
-  ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, make_func_call_ir, TypedValue, UnionType
+  ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, make_func_call_ir, TypedValue
 
 
 def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, parent_context: CodegenContext):
@@ -119,17 +119,10 @@ class DestructorFunctionTemplate(FunctionTemplate):
         # Free members in reversed order
         for member_num in reversed(range(len(self.struct.member_identifiers))):
           member_identifier = self.struct.member_identifiers[member_num]
-          signature_member_type = self.struct.member_types[member_num]
           concrete_member_type = concrete_struct_type.member_types[member_num]
-          if isinstance(concrete_member_type, UnionType): continue
 
           member_ir_val = self.struct.make_extract_member_val_ir(
             member_identifier, struct_ir_val=self_ir_alloca, context=context)
-
-          # # TODO: properly infer templ types, also for struct members
-          # assert not (isinstance(signature_member_type, StructType) and len(
-          #   signature_member_type.template_param_or_arg) > 0), (
-          #   'not implemented yet')
 
           template_arguments: List[Type] = []
           if isinstance(concrete_member_type, PointerType):

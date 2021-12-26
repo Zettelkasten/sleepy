@@ -1,3 +1,6 @@
+## Default free functions
+@Inline func free[T](self: Ref[T]) { free(self) }
+
 ## Output
 func print(char: Char)  { extern_func print_char(char: Char); print_char(char) }
 func print(double: Double)  { extern_func print_double(d: Double); print_double(double) }

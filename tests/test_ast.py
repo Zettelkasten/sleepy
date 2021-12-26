@@ -2642,7 +2642,6 @@ def test_operator_precedence():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
-    func free[T](self: Ref[T]) { free(self) }
     struct Foo { x: Ref[Int]; y: Int; }
     func index(x: Ref[Int]) -> Ref[Int] { return !x }
     func index(x: Int) -> Int { return 0; }
@@ -2656,7 +2655,7 @@ def test_operator_precedence():
       a5 = (!index(!foo.x))[]  # here I have to use brackets
     }
     """
-    compile_program(engine, program, add_preamble=False) # just check that it compiles
+    compile_program(engine, program, add_preamble=True) # just check that it compiles
 
 
 def test_syntax_non_ascii_comment():
