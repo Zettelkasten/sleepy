@@ -632,6 +632,45 @@ def test_struct_self_referencing_member():
     main()
 
 
+def test_optional_next_node():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    struct None {}
+    struct Node {
+      next: None|Ref[Node]
+    }
+    
+    func main() {
+      node: None|Node = Node(None())
+      other = node.next
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    main()  # just check that it executes
+
+
+def test_optional_next_node_destruct():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    struct None {}
+    struct S { next: Ref[S]|None }
+
+    func destruct(self: None) {}
+
+    func destruct(self: S) {
+      destruct(self.next)
+    }
+
+    func main() {
+      n = None()
+      destruct(S(n))
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+
+
 def test_if_missing_return_branch():
   with make_execution_engine() as engine:
     # language=Sleepy
@@ -775,6 +814,36 @@ def test_unbind_operator_union_of_ref_and_non_ref_assign():
     """
     main = compile_program(engine, program, add_preamble=False)
     assert_equal(main(6), 6)
+
+
+def test_unbind_operator_not_referencable():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    func main() -> Ref[Int] {
+      return !5  # 5 is not referencable
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program, add_preamble=False)
+
+
+def test_unbind_operator_not_referencable2():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    func unknown() -> Bool { return 1 == 1 }
+    func main() {
+      a = 6.6
+      x: Int|Ref[Double] = 4
+      if unknown() {
+        !x = !a
+      }
+      !!y = !!x  # should fail
+    }
+    """
+    with assert_raises(SemanticError):
+      compile_program(engine, program, add_preamble=False)
 
 
 def test_swap_ref():
