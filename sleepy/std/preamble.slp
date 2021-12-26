@@ -221,7 +221,7 @@ func print(str: Str)  {
   }
 }
 func assert(cond: Bool, error: Str)  {
-  if not(cond) {
+  if not cond {
     print_line("Assertion failed!")
     print_line(error)
     extern_func exit(exit_code: Int)

@@ -115,9 +115,23 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           _pos, op(2)), func_arg_exprs=[ast(1), ast(3)]), declared_var_type=None)},
     Production('Stmt', 'while', 'Expr', 'Scope'): {
       'ast': lambda _pos, ast: WhileStatementAst(_pos, condition_val=ast(2), body_scope=ast(3))},
-    Production('Expr', 'Expr', 'CmpOp', 'SumExpr'): {
+    Production('Expr', 'Expr', 'cmp_op', 'SumExpr'): {
       'ast': lambda _pos, ast, op: CallExpressionAst(
         _pos, func_expr=IdentifierExpressionAst(_pos, op(2)), func_arg_exprs=[ast(1), ast(3)])},
+    Production('Expr', 'Expr', 'in', 'SumExpr'): {
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, op(2)), func_arg_exprs=[ast(1), ast(3)])},
+    Production('Expr', 'Expr', 'not', 'in', 'SumExpr'): {
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        pos=_pos, func_expr=IdentifierExpressionAst(_pos, 'not'), func_arg_exprs=[CallExpressionAst(
+          _pos, func_expr=IdentifierExpressionAst(_pos, 'in'), func_arg_exprs=[ast(1), ast(4)])])},
+    Production('Expr', 'Expr', 'is', 'PrimaryExpr'): {
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, op(2)), func_arg_exprs=[ast(1), ast(3)])},
+    Production('Expr', 'Expr', 'is', 'not', 'PrimaryExpr'): {
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        pos=_pos, func_expr=IdentifierExpressionAst(_pos, 'not'), func_arg_exprs=[CallExpressionAst(
+          _pos, func_expr=IdentifierExpressionAst(_pos, 'is'), func_arg_exprs=[ast(1), ast(4)])])},
     Production('Expr', 'SumExpr'): {
       'ast': 'ast.1'},
     Production('SumExpr', 'SumExpr', 'sum_op', 'ProdExpr'): {
@@ -138,6 +152,9 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('NegExpr', 'sum_op', 'NegExpr'): {
       'ast': lambda _pos, ast, op: CallExpressionAst(
         _pos, func_expr=IdentifierExpressionAst(_pos, op(1)), func_arg_exprs=[ast(2)])},
+    Production('NegExpr', 'not', 'NegExpr'): {
+      'ast': lambda _pos, ast, op: CallExpressionAst(
+        _pos, func_expr=IdentifierExpressionAst(_pos, 'not'), func_arg_exprs=[ast(2)])},
     Production('NegExpr', 'unbind_op', 'NegExpr'): {
       'ast': lambda _pos, ast: UnbindExpressionAst(_pos, ast(2))},
     Production('NegExpr', 'PrimaryExpr'): {
@@ -279,7 +296,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': None, 'annotation_list': None},
     Production('ReturnType', '->', 'AnnotationList', 'Type'): {
       'ast': 'ast.3', 'annotation_list': 'annotation_list.2'},
-    Production('Op', 'CmpOp'): {
+    Production('Op', 'cmp_op'): {
       'op': 'op.1'},
     Production('Op', 'sum_op'): {
       'op': 'op.1'},
@@ -287,15 +304,9 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'op': 'op.1'},
     Production('Op', '='): {
       'op': 'op.1'},
-    Production('CmpOp', 'cmp_op'): {
-      'op': 'op.1'},
-    Production('CmpOp', 'is'): {
-      'op': 'op.1'},
-    Production('CmpOp', 'in'): {
+    Production('Op', 'not'): {
       'op': 'op.1'},
     Production('Identifier', 'identifier'): {
-      'identifier': 'identifier.1'},
-    Production('Identifier', 'not'): {
       'identifier': 'identifier.1'}
   },
   syn_attrs={
@@ -306,12 +317,12 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     'is': {'op': lambda value: value},
     'in': {'op': lambda value: value},
     '=': {'op': lambda value: value},
+    'not': {'op': lambda value: value},
     'sum_op': {'op': lambda value: value},
     'prod_op': {'op': lambda value: value},
     '|': {'op': lambda value: value},
     'assign_op': {'op': parse_assign_op},
     'identifier': {'identifier': lambda value: value},
-    'not': {'identifier': lambda value: value},
     'int': {'number': lambda value: int(value)},
     'long': {'number': lambda value: parse_long(value)},
     'double': {'number': lambda value: parse_double(value)},

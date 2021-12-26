@@ -1877,7 +1877,7 @@ def test_assert_type_narrowing_not():
     }
     func main() -> Int  {
       my_thing : Int|Char = black_box()
-      assert(not(my_thing is Char))
+      assert(my_thing is not Char)
       return my_thing
     }
     """
@@ -2344,13 +2344,13 @@ def test_ptr_arithmetic():
       ptr += 10  # = orig + 10
       assert(ptr > orig)
       assert(ptr >= orig)
-      assert(not(ptr < orig))
+      assert(not (ptr < orig))
       ptr += -3  # = orig + 7
       assert(ptr > orig)
       ptr += -7  # = orig
       assert(ptr == orig)
       assert(ptr <= orig)
-      assert(not(ptr > orig))
+      assert(not (ptr > orig))
       magic_ = load(ptr) 
       deallocate(orig)
       return magic_
@@ -2656,6 +2656,31 @@ def test_operator_precedence():
     }
     """
     compile_program(engine, program, add_preamble=False) # just check that it compiles
+
+
+def test_operator_booleans():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    func True() -> Bool { return 1 == 1 }
+    func False() -> Bool { return 1 == 0 }
+    func not(a: Bool) -> Bool {
+      if a { return False() }
+      return True()
+    }
+    func and(a: Bool, b: Bool) -> Bool {
+      if a { if b { return True() } }
+      return False()
+    }
+    func or(a: Bool, b: Bool) -> Bool {
+      return not and(not a, not b)
+    }
+    """
+    f = compile_program(engine, program, add_preamble=False, main_func_identifier='or')
+    assert_equal(f(True, True), True)
+    assert_equal(f(False, True), True)
+    assert_equal(f(True, False), True)
+    assert_equal(f(False, False), False)
 
 
 def test_syntax_non_ascii_comment():
