@@ -47,14 +47,14 @@ class VariableSymbol:
     return new_variable
 
   def _make_debug_info(self, context: CodegenContext, identifier: str):
-    if not context.emits_debug:
-      return
+    if not context.emits_debug: return
     assert context.di_declare_func is not None
     di_local_var = context.module.add_debug_info(
       'DILocalVariable', {
         'name': identifier, 'scope': context.current_di_scope, 'file': context.current_di_file,
         'line': context.current_pos.get_from_line(), 'type': self.declared_var_type.make_di_type(context=context)})
     di_expression = context.module.add_debug_info('DIExpression', {})
+    assert context.builder.debug_metadata is not None
     context.builder.call(context.di_declare_func, args=[self.ir_alloca, di_local_var, di_expression])
 
   @property
