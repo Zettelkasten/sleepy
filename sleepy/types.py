@@ -362,7 +362,7 @@ class PointerType(Type):
     return []
 
   def has_same_symbol_as(self, other: Type) -> bool:
-    return isinstance(other, PointerType)
+    return type(other) is PointerType
 
 
 class RawPointerType(Type):
@@ -420,7 +420,7 @@ class ReferenceType(PointerType):
     return hash((self.__class__, self.pointee_type))
 
   def has_same_symbol_as(self, other: Type) -> bool:
-    return isinstance(other, ReferenceType)
+    return type(other) is ReferenceType
 
   @classmethod
   def wrap(cls, typ: Type, times: int) -> Type:
