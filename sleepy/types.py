@@ -1474,7 +1474,7 @@ class CodegenContext:
                module: ir.Module,
                emits_debug: bool,
                file_path: Path | DummyPath):
-    self.builder = builder
+    self._builder = builder
     self._module = module
 
     self._emits_debug: bool = emits_debug
@@ -1539,8 +1539,19 @@ class CodegenContext:
     return self.builder.block
 
   @property
+  def builder(self) -> ir.IRBuilder:
+    assert self.emits_ir
+    return self._builder
+
+  @builder.setter
+  def builder(self, builder):
+    if self.emits_ir and builder is not None:
+      builder.debug_metadata = self.builder.debug_metadata
+    self._builder = builder
+
+  @property
   def emits_ir(self) -> bool:
-    return self.builder is not None
+    return self._builder is not None
 
   @property
   def current_di_file(self) -> ir.DIValue:
@@ -1575,10 +1586,6 @@ class CodegenContext:
   def copy_with_builder(self, new_builder: Optional[ir.IRBuilder]) -> CodegenContext:
     new_context = self.copy_with_new_callstack_frame()
     new_context.builder = new_builder
-
-    if new_builder is not None:
-      new_context.builder.debug_metadata = self.builder.debug_metadata
-
     return new_context
 
   def copy_without_builder(self) -> CodegenContext:
@@ -1746,6 +1753,7 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
   This is especially useful if the argument type contains unions,
   as then it is only clear at run time which function to actually call.
   """
+  assert not context.emits_debug or context.builder.debug_metadata is not None
   if len(case_funcs) == 1:
     single_case = next(iter(case_funcs.values()))
     single_value = single_case(caller_context=context)  # noqa
@@ -1771,11 +1779,12 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
     dtype=ir.values.BlockAddress)
 
   # Go through all concrete functions, and add one block for each
-  case_contexts = {
+  case_contexts: Dict[Tuple[Type], CodegenContext] = {
     case_arg_types: context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
       name, '_'.join(str(arg_type) for arg_type in case_arg_types)))))
     for case_arg_types in case_funcs.keys()}
   for case_arg_types, case_context in case_contexts.items():
+    assert not case_context.emits_debug or case_context.builder.debug_metadata is not None
     case_block = case_context.block
     case_block_address = ir.values.BlockAddress(context.builder.function, case_block)
     case_distinguishing_args = [case_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
