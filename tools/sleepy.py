@@ -67,7 +67,7 @@ def main():
   main_func_identifier = 'main'
   source_file_path: Path = Path(args.program)
   try:
-    ast = make_translation_unit_ast(source_file_path)
+    ast = make_translation_unit_ast(source_file_path, add_preamble=not args.no_preamble)
     module_ir, symbol_table = ast.make_module_ir_and_symbol_table(
       module_name='default_module', emit_debug=args.debug, main_file_path=source_file_path, implicitly_exported_functions={main_func_identifier})
     if main_func_identifier not in symbol_table:
