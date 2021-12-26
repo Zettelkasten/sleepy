@@ -5,8 +5,10 @@ from typing import List
 from llvmlite import ir
 
 from sleepy.symbols import SymbolTable
+from sleepy.syntactical_analysis.grammar import DUMMY_POS
 from sleepy.types import StructType, CodegenContext, OverloadSet, PlaceholderTemplateType, FunctionTemplate, Type, \
-  ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, make_func_call_ir, TypedValue
+  ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, TypedValue, FunctionSymbolCaller
+from sleepy.ir_generation import make_func_call_ir, make_call_ir
 
 
 def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, parent_context: CodegenContext):
@@ -22,7 +24,8 @@ def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, 
   parent_symbol_table.add_overload('free', signature_)
 
 
-def build_constructor(struct_type: StructType, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> OverloadSet:
+def build_constructor(struct_type: StructType, parent_symbol_table: SymbolTable,
+                      parent_context: CodegenContext) -> OverloadSet:
   assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
   placeholder_templ_types = [
@@ -124,19 +127,24 @@ class DestructorFunctionTemplate(FunctionTemplate):
           member_ir_val = self.struct.make_extract_member_val_ir(
             member_identifier, struct_ir_val=self_ir_alloca, context=context)
 
-          template_arguments: List[Type] = []
-          if isinstance(concrete_member_type, PointerType):
-            template_arguments = [concrete_member_type.pointee_type]
 
-          if isinstance(concrete_member_type, StructType):
-            template_arguments = concrete_member_type.template_param_or_arg
+          make_call_ir(
+            pos=DUMMY_POS,
+            caller=FunctionSymbolCaller(
+              overload_set=self.captured_symbol_table.free_overloads,
+              template_parameters=None),  # infer
+            argument_values=[TypedValue(
+              typ=concrete_member_type,
+              ir_val=member_ir_val,
+              num_unbindings=concrete_member_type.num_possible_unbindings())],
+              context=context
+          )
 
-          make_func_call_ir(
-            func=self.captured_symbol_table.free_overloads, template_arguments=template_arguments,
-            func_args=[TypedValue(typ=concrete_member_type,
-                                  ir_val=member_ir_val,
-                                  num_unbindings=concrete_member_type.num_possible_unbindings())],
-            context=context)
+          # make_func_call_ir(
+          #   func=self.captured_symbol_table.free_overloads, template_arguments=template_arguments,
+          #   func_args=[TypedValue(
+          #     typ=concrete_member_type,
+          #     ir_val=member_ir_val,
+          #     num_unbindings=concrete_member_type.num_possible_unbindings())],
+          #   context=context)
         context.builder.ret(SLEEPY_UNIT.unit_constant())
-
-

@@ -18,11 +18,9 @@ pass_manager.add_cfg_simplification_pass()
 
 
 @contextmanager
-def make_execution_engine():
+def make_execution_engine() -> ExecutionEngine:
   """
   Initialize just-in-time execution engine.
-
-  :rtype: ExecutionEngine
   """
   target = llvm.Target.from_default_triple()
   target_machine = target.create_target_machine()

@@ -3,6 +3,8 @@ import _setup_test_env  # noqa
 from nose.tools import assert_equal
 
 from llvmlite import ir
+
+from sleepy.builtin_symbols import SLEEPY_DOUBLE
 from sleepy.syntactical_analysis.grammar import DummyPath
 from sleepy.types import UnionType, SLEEPY_NEVER, StructIdentity, CodegenContext, ReferenceType, TypedValue, \
   narrow_with_collapsed_type, narrow_type
@@ -22,26 +24,33 @@ def test_can_implicit_cast_to():
   assert_equal(can_implicit_cast_to(SLEEPY_INT, SLEEPY_DOUBLE), False)
   assert_equal(can_implicit_cast_to(SLEEPY_INT, SLEEPY_INT), True)
   assert_equal(can_implicit_cast_to(UnionType([SLEEPY_INT], [0], 8), SLEEPY_INT), True)
-  assert_equal(can_implicit_cast_to(
-    UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_DOUBLE), False)
-  assert_equal(can_implicit_cast_to(
-    SLEEPY_DOUBLE, UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), True)
+  assert_equal(
+    can_implicit_cast_to(
+      UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_DOUBLE), False)
+  assert_equal(
+    can_implicit_cast_to(
+      SLEEPY_DOUBLE, UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), True)
   assert_equal(can_implicit_cast_to(ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_DOUBLE)), False)
   assert_equal(can_implicit_cast_to(ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_INT)), True)
-  assert_equal(can_implicit_cast_to(
-    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
-  assert_equal(can_implicit_cast_to(
-    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
+  assert_equal(
+    can_implicit_cast_to(
+      ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
+  assert_equal(
+    can_implicit_cast_to(
+      ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
   T = PlaceholderTemplateType('T')
   List = StructType(
     identity=StructIdentity('List', context=context), template_param_or_arg=[T], member_identifiers=[], member_types=[])
-  assert_equal(can_implicit_cast_to(
-    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
-  assert_equal(can_implicit_cast_to(
-    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
-  assert_equal(can_implicit_cast_to(
-    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)),
-    UnionType.from_types([ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_DOUBLE)])), False)
+  assert_equal(
+    can_implicit_cast_to(
+      ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
+  assert_equal(
+    can_implicit_cast_to(
+      ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
+  assert_equal(
+    can_implicit_cast_to(
+      ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)),
+      UnionType.from_types([ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_DOUBLE)])), False)
   assert_equal(
     can_implicit_cast_to(
       List.replace_types({T: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)}),
@@ -203,36 +212,44 @@ def test_try_infer_templ_types_simple():
   T = PlaceholderTemplateType('T')
   U = PlaceholderTemplateType('U')
   assert_equal(try_infer_template_arguments(calling_types=[], signature_types=[], template_parameters=[]), [])
-  assert_equal(try_infer_template_arguments(
-    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, SLEEPY_DOUBLE], template_parameters=[]),
+  assert_equal(
+    try_infer_template_arguments(
+      calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, SLEEPY_DOUBLE], template_parameters=[]),
     [])
-  assert_equal(try_infer_template_arguments(
-    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, SLEEPY_DOUBLE],
-    template_parameters=[T]),
+  assert_equal(
+    try_infer_template_arguments(
+      calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, SLEEPY_DOUBLE],
+      template_parameters=[T]),
     None)
-  assert_equal(try_infer_template_arguments(
-    calling_types=[SLEEPY_INT], signature_types=[T],
-    template_parameters=[T]),
+  assert_equal(
+    try_infer_template_arguments(
+      calling_types=[SLEEPY_INT], signature_types=[T],
+      template_parameters=[T]),
     [SLEEPY_INT])
-  assert_equal(try_infer_template_arguments(
-    calling_types=[SLEEPY_INT, SLEEPY_INT], signature_types=[T, T],
-    template_parameters=[T]),
+  assert_equal(
+    try_infer_template_arguments(
+      calling_types=[SLEEPY_INT, SLEEPY_INT], signature_types=[T, T],
+      template_parameters=[T]),
     [SLEEPY_INT])
-  assert_equal(try_infer_template_arguments(
-    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[T, SLEEPY_DOUBLE],
-    template_parameters=[T]),
+  assert_equal(
+    try_infer_template_arguments(
+      calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[T, SLEEPY_DOUBLE],
+      template_parameters=[T]),
     [SLEEPY_INT])
-  assert_equal(try_infer_template_arguments(
-    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, T],
-    template_parameters=[T]),
+  assert_equal(
+    try_infer_template_arguments(
+      calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[SLEEPY_INT, T],
+      template_parameters=[T]),
     [SLEEPY_DOUBLE])
-  assert_equal(try_infer_template_arguments(
-    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[T, U],
-    template_parameters=[T, U]),
+  assert_equal(
+    try_infer_template_arguments(
+      calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[T, U],
+      template_parameters=[T, U]),
     [SLEEPY_INT, SLEEPY_DOUBLE])
-  assert_equal(try_infer_template_arguments(
-    calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[T, U],
-    template_parameters=[U, T]),
+  assert_equal(
+    try_infer_template_arguments(
+      calling_types=[SLEEPY_INT, SLEEPY_DOUBLE], signature_types=[T, U],
+      template_parameters=[U, T]),
     [SLEEPY_DOUBLE, SLEEPY_INT])
 
 
@@ -287,7 +304,10 @@ def test_try_infer_templ_types_struct():
   T = PlaceholderTemplateType('T')
   U = PlaceholderTemplateType('U')
   WrapperT = StructType(
-    StructIdentity('Wrapper', context=context), template_param_or_arg=[T], member_identifiers=['value'], member_types=[T])
+    StructIdentity('Wrapper', context=context),
+    template_param_or_arg=[T],
+    member_identifiers=['value'],
+    member_types=[T])
   WrapperU = WrapperT.replace_types({T: U})
   WrapperInt = WrapperT.replace_types({T: SLEEPY_INT})
   WrapperChar = WrapperT.replace_types({T: SLEEPY_CHAR})
@@ -412,7 +432,11 @@ def test_copy_collapse():
   RefInt = TypedValue(typ=ReferenceType(SLEEPY_INT), num_unbindings=0, ir_val=None)
   Int_RefInt = TypedValue(typ=UnionType.from_types([Int.type, RefInt.type]), num_unbindings=0, ir_val=None)
   RefInt_Int = TypedValue(typ=UnionType.from_types([RefInt.type, Int.type]), num_unbindings=0, ir_val=None)
+  RefInt_Double = TypedValue(typ=UnionType.from_types([RefInt.type, SLEEPY_DOUBLE]), num_unbindings=0, ir_val=None)
   assert_equal(RefInt.copy_collapse(context=None, name='a'), Int)
   assert_equal(Int.copy_collapse(context=None, name='a'), Int)
   assert_equal(RefInt_Int.copy_collapse(context=None, name='a'), Int)
   assert_equal(Int_RefInt.copy_collapse(context=None, name='a'), Int)
+  assert_equal(
+    RefInt_Double.copy_collapse(context=None, name='a'),
+    TypedValue(typ=UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE]), num_unbindings=0, ir_val=None))
