@@ -1562,8 +1562,9 @@ class CodegenContext:
     return self.module.add_debug_info('DIFile', {'filename': file_name, 'directory': file_dir})
 
   def __repr__(self) -> str:
-    return 'CodegenContext(builder=%r, emits_ir=%r, is_terminated=%r)' % (
-      self.builder, self.emits_ir, self.is_terminated)
+    emits_ir = '' if not self.emits_ir else (', emits debug' if self.emits_debug else ', emits ir')
+    return 'CodegenContext(builder=%r%s, is_terminated=%r)' % (
+      self.builder, emits_ir, self.is_terminated)
 
   def copy_with_new_callstack_frame(self) -> CodegenContext:
     new_context = copy.copy(self)
