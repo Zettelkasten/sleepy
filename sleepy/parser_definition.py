@@ -68,8 +68,8 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     },
     Production('Stmt', 'Expr'): {
       'ast': lambda _pos, ast: ExpressionStatementAst(_pos, expr=ast(1))},
-    Production('Stmt', 'func', 'identifier', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType',
-               'Scope'): {  # noqa
+    Production(
+      'Stmt', 'func', 'Identifier', 'TemplateIdentifierList', '(', 'TypedIdentifierList', ')', 'ReturnType', 'Scope'): {
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=identifier(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
@@ -82,7 +82,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           _pos, identifier=op(2), templ_identifiers=identifier_list(3), arg_identifiers=identifier_list(5),
           arg_types=type_list(5), arg_annotations=annotation_list(5), arg_mutates=mutates_list(5), return_type=ast(7),
           return_annotation_list=annotation_list(7), body_scope=ast(8)))},
-    Production('Stmt', 'func', '(', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', ')', '[',
+    Production('Stmt', 'func', '(', 'AnnotationList', 'Mutates?', 'Identifier', ':', 'Type', ')', '[',
                'TypedIdentifierList', ']', 'ReturnType', 'Scope'): {  # noqa
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates, mutates_list, ast: (
         FunctionDeclarationAst(
@@ -90,13 +90,13 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           arg_types=[ast(7)] + type_list(10), arg_annotations=[annotation_list(3)] + annotation_list(10),
           arg_mutates=[mutates(4)] + mutates_list(10),
           return_type=ast(12), return_annotation_list=annotation_list(12), body_scope=ast(13)))},
-    Production('Stmt', 'extern_func', 'identifier', '(', 'TypedIdentifierList', ')', 'ReturnType'): {
+    Production('Stmt', 'extern_func', 'Identifier', '(', 'TypedIdentifierList', ')', 'ReturnType'): {
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list, mutates_list, ast: (
         FunctionDeclarationAst(
           _pos, identifier=identifier(2), templ_identifiers=[], arg_identifiers=identifier_list(4),
           arg_types=type_list(4), arg_annotations=annotation_list(4), arg_mutates=mutates_list(4), return_type=ast(6),
           return_annotation_list=annotation_list(6), body_scope=None))},
-    Production('Stmt', 'struct', 'identifier', 'TemplateIdentifierList', 'StructBody'): {
+    Production('Stmt', 'struct', 'Identifier', 'TemplateIdentifierList', 'StructBody'): {
       'ast': lambda _pos, identifier, identifier_list, type_list, annotation_list: StructDeclarationAst(
         _pos, struct_identifier=identifier(2), templ_identifiers=identifier_list(3),
         member_identifiers=identifier_list(4), member_types=type_list(4), member_annotations=annotation_list(4))},
@@ -115,7 +115,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
           _pos, op(2)), func_arg_exprs=[ast(1), ast(3)]), declared_var_type=None)},
     Production('Stmt', 'while', 'Expr', 'Scope'): {
       'ast': lambda _pos, ast: WhileStatementAst(_pos, condition_val=ast(2), body_scope=ast(3))},
-    Production('Expr', 'Expr', 'cmp_op', 'SumExpr'): {
+    Production('Expr', 'Expr', 'CmpOp', 'SumExpr'): {
       'ast': lambda _pos, ast, op: CallExpressionAst(
         _pos, func_expr=IdentifierExpressionAst(_pos, op(2)), func_arg_exprs=[ast(1), ast(3)])},
     Production('Expr', 'SumExpr'): {
@@ -156,7 +156,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda _pos, string: StringLiteralExpressionAst(_pos, string(1))},
     Production('PrimaryExpr', 'hex_int'): {
       'ast': lambda _pos, number: ConstantExpressionAst(_pos, number(1), SLEEPY_INT)},
-    Production('PrimaryExpr', 'identifier'): {
+    Production('PrimaryExpr', 'Identifier'): {
       'ast': lambda _pos, identifier: IdentifierExpressionAst(_pos, identifier(1))},
     Production('PrimaryExpr', 'PrimaryExpr', '(', 'ExprList', ')'): {
       'ast': lambda _pos, ast, val_list: CallExpressionAst(
@@ -164,7 +164,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('PrimaryExpr', 'PrimaryExpr', '[', 'IndexArgList', ']'): {
       'ast': lambda _pos, ast, val_list: CallExpressionAst(
         _pos, func_expr=IdentifierExpressionAst(_pos, identifier='index'), func_arg_exprs=[ast(1)] + val_list(3))},
-    Production('PrimaryExpr', 'PrimaryExpr', '.', 'identifier'): {
+    Production('PrimaryExpr', 'PrimaryExpr', '.', 'Identifier'): {
       'ast': lambda _pos, ast, identifier: MemberExpressionAst(_pos, ast(1), identifier(3))},
     Production('PrimaryExpr', '(', 'Expr', ')'): {
       'ast': 'ast.2'},
@@ -172,15 +172,15 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'annotation_list': []},
     Production('AnnotationList', 'Annotation', 'AnnotationList'): {
       'annotation_list': lambda ast, annotation_list: [ast(1)] + annotation_list(2)},
-    Production('Annotation', '@', 'identifier'): {
+    Production('Annotation', '@', 'Identifier'): {
       'ast': lambda _pos, identifier: AnnotationAst(_pos, identifier(2))},
     Production('IdentifierList'): {
       'identifier_list': []},
     Production('IdentifierList', 'IdentifierList+'): {
       'identifier_list': 'identifier_list.1'},
-    Production('IdentifierList+', 'identifier'): {
+    Production('IdentifierList+', 'Identifier'): {
       'identifier_list': lambda identifier: [identifier(1)]},
-    Production('IdentifierList+', 'identifier', ',', 'IdentifierList+'): {
+    Production('IdentifierList+', 'Identifier', ',', 'IdentifierList+'): {
       'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(3)},
 
     # for function decls
@@ -189,12 +189,12 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
     Production('TypedIdentifierList', 'TypedIdentifierList+'): {
       'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1',
       'mutates_list': 'mutates_list.1'},
-    Production('TypedIdentifierList+', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', 'OptDefaultInit'): {
+    Production('TypedIdentifierList+', 'AnnotationList', 'Mutates?', 'Identifier', ':', 'Type', 'OptDefaultInit'): {
       'identifier_list': lambda identifier: [identifier(3)],
       'type_list': lambda ast: [ast(5)],
       'annotation_list': lambda annotation_list: [annotation_list(1)],
       'mutates_list': lambda mutates: [mutates(2)]},
-    Production('TypedIdentifierList+', 'AnnotationList', 'Mutates?', 'identifier', ':', 'Type', 'OptDefaultInit', ',',
+    Production('TypedIdentifierList+', 'AnnotationList', 'Mutates?', 'Identifier', ':', 'Type', 'OptDefaultInit', ',',
                'TypedIdentifierList+'): {  # noqa
       'identifier_list': lambda identifier, identifier_list: [identifier(3)] + identifier_list(8),
       'type_list': lambda ast, type_list: [ast(5)] + type_list(8),
@@ -208,11 +208,11 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'identifier_list': [], 'type_list': [], 'annotation_list': []},
     Production('MemberList', 'MemberList+'): {
       'identifier_list': 'identifier_list.1', 'type_list': 'type_list.1', 'annotation_list': 'annotation_list.1'},
-    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit'): {
+    Production('MemberList+', 'AnnotationList', 'Identifier', ':', 'Type', 'OptDefaultInit'): {
       'identifier_list': lambda identifier: [identifier(2)],
       'type_list': lambda ast: [ast(4)],
       'annotation_list': lambda annotation_list: [annotation_list(1)]},
-    Production('MemberList+', 'AnnotationList', 'identifier', ':', 'Type', 'OptDefaultInit', 'separator',
+    Production('MemberList+', 'AnnotationList', 'Identifier', ':', 'Type', 'OptDefaultInit', 'separator',
                'MemberList'): {
       'identifier_list': lambda identifier, identifier_list: [identifier(2)] + identifier_list(7),
       'type_list': lambda ast, type_list: [ast(4)] + type_list(7),
@@ -224,9 +224,9 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'identifier_list': []},
     Production('TemplateIdentifierList', '[', 'TemplateIdentifierList+', ']'): {
       'identifier_list': 'identifier_list.2'},
-    Production('TemplateIdentifierList+', 'identifier'): {
+    Production('TemplateIdentifierList+', 'Identifier'): {
       'identifier_list': lambda identifier: [identifier(1)]},
-    Production('TemplateIdentifierList+', 'identifier', ',', 'TemplateIdentifierList+'): {
+    Production('TemplateIdentifierList+', 'Identifier', ',', 'TemplateIdentifierList+'): {
       'identifier_list': lambda identifier, identifier_list: [identifier(1)] + identifier_list(3)},
     Production('ExprList'): {
       'val_list': []},
@@ -262,7 +262,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': lambda _pos, ast: UnionTypeAst(_pos, [ast(1), ast(3)])},
     Production('Type', 'IdentifierType'): {
       'ast': 'ast.1'},
-    Production('IdentifierType', 'identifier', 'TemplateTypeList'): {
+    Production('IdentifierType', 'Identifier', 'TemplateTypeList'): {
       'ast': lambda _pos, identifier, type_list: IdentifierTypeAst(
         _pos, type_identifier=identifier(1), template_parameters=type_list(2))},
     Production('TemplateTypeList'): {
@@ -279,7 +279,7 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'ast': None, 'annotation_list': None},
     Production('ReturnType', '->', 'AnnotationList', 'Type'): {
       'ast': 'ast.3', 'annotation_list': 'annotation_list.2'},
-    Production('Op', 'cmp_op'): {
+    Production('Op', 'CmpOp'): {
       'op': 'op.1'},
     Production('Op', 'sum_op'): {
       'op': 'op.1'},
@@ -287,18 +287,31 @@ SLEEPY_ATTR_GRAMMAR = AttributeGrammar.from_dict(
       'op': 'op.1'},
     Production('Op', '='): {
       'op': 'op.1'},
+    Production('CmpOp', 'cmp_op'): {
+      'op': 'op.1'},
+    Production('CmpOp', 'is'): {
+      'op': 'op.1'},
+    Production('CmpOp', 'in'): {
+      'op': 'op.1'},
+    Production('Identifier', 'identifier'): {
+      'identifier': 'identifier.1'},
+    Production('Identifier', 'not'): {
+      'identifier': 'identifier.1'}
   },
   syn_attrs={
     'ast', 'asts', 'stmt_list', 'identifier_list', 'type_list', 'val_list', 'identifier', 'annotation_list',
     'mutates_list', 'mutates', 'op', 'number', 'string', 'path', 'paths'},
   terminal_attr_rules={
     'cmp_op': {'op': lambda value: value},
+    'is': {'op': lambda value: value},
+    'in': {'op': lambda value: value},
     '=': {'op': lambda value: value},
     'sum_op': {'op': lambda value: value},
     'prod_op': {'op': lambda value: value},
     '|': {'op': lambda value: value},
     'assign_op': {'op': parse_assign_op},
     'identifier': {'identifier': lambda value: value},
+    'not': {'identifier': lambda value: value},
     'int': {'number': lambda value: int(value)},
     'long': {'number': lambda value: parse_long(value)},
     'double': {'number': lambda value: parse_double(value)},
