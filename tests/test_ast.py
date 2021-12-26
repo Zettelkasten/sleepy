@@ -650,6 +650,27 @@ def test_optional_next_node():
     main()  # just check that it executes
 
 
+def test_optional_next_node_destruct():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    struct None {}
+    struct S { next: Ref[S]|None }
+
+    func destruct(self: None) {}
+
+    func destruct(self: S) {
+      destruct(self.next)
+    }
+
+    func main() {
+      n = None()
+      destruct(S(n))
+    }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+
+
 def test_if_missing_return_branch():
   with make_execution_engine() as engine:
     # language=Sleepy
