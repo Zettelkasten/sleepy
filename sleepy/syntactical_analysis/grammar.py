@@ -550,6 +550,7 @@ class TreePosition:
     to_pos = tokens_pos[to_token_pos] if to_token_pos < len(tokens_pos) else len(word)
     return TreePosition(word, from_pos=from_pos, to_pos=to_pos, file_path=file_path)
 
+DUMMY_POS = TreePosition('', 0, 0)
 
 def get_line_col_from_pos(word: str,
                           error_pos: int,

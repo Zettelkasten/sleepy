@@ -1053,24 +1053,6 @@ def exclude_with_collapsed_type(from_type: Type, collapsed_type: Type):
     from_type=from_type, excluded_type=_uncollapse_type(from_type=from_type, collapsed_type=collapsed_type))
 
 
-def make_ir_val_is_type(ir_val: ir.values.Value,
-                        known_type: Type,
-                        check_type: Type,
-                        context: CodegenContext) -> ir.values.Value:
-  assert context.emits_ir
-  if known_type == check_type:
-    return ir.Constant(ir.IntType(1), True)
-  if not isinstance(known_type, UnionType):
-    return ir.Constant(ir.IntType(1), False)
-  if not known_type.contains(check_type):
-    return ir.Constant(ir.IntType(1), False)
-  assert not isinstance(check_type, UnionType), 'not implemented yet'
-  union_tag = context.builder.extract_value(ir_val, 0, name='tmp_is_val')
-  cmp_val = context.builder.icmp_signed(
-    '==', union_tag, ir.Constant(known_type.tag_ir_type, known_type.get_variant_num(check_type)), name='tmp_is_check')
-  return cmp_val
-
-
 class ConcreteFunction:
   """
   An actual function implementation.
@@ -1760,166 +1742,6 @@ class UsePosRuntimeContext:
       self.context.builder.debug_metadata = self.prev_debug_metadata
 
 
-def make_ir_size(size: int) -> ir.values.Value:
-  return ir.Constant(LLVM_SIZE_TYPE, size)
-
-
-def make_func_call_ir(func: OverloadSet,
-                      template_arguments: List[Type],
-                      func_args: List[TypedValue],
-                      context: CodegenContext) -> TypedValue:
-  assert not context.emits_debug or context.builder.debug_metadata is not None
-
-  def do_call(concrete_func: ConcreteFunction,
-              caller_context: CodegenContext) -> TypedValue:
-    assert caller_context.emits_ir
-    assert not caller_context.emits_debug or caller_context.builder.debug_metadata is not None
-    assert len(concrete_func.arg_types) == len(func_args)
-    assert all(
-      not arg_mutates or arg.is_referenceable() for arg, arg_mutates in zip(func_args, concrete_func.arg_mutates))
-    # mutates arguments are handled here as Ref[T], all others normally as T.
-    collapsed_func_args = [
-      (arg_val.copy_unbind() if mutates else arg_val).copy_collapse(
-        context=caller_context, name='call_arg_%s_collapse' % identifier)
-      for arg_val, identifier, mutates in zip(func_args, concrete_func.arg_identifiers, concrete_func.arg_mutates)]
-    # Note: We first copy with the param_type as narrowed type, because at this point we already checked that
-    # the param actually has the correct param_type.
-    # Then, copy_with_implicit_cast only needs to handle the cases which can actually occur.
-    casted_calling_args = [
-      arg_val.copy_set_narrowed_type(param_type).copy_with_implicit_cast(
-        to_type=param_type, context=caller_context, name='call_arg_%s_cast' % arg_identifier)
-      for arg_identifier, arg_val, param_type in zip(
-        concrete_func.arg_identifiers, collapsed_func_args, concrete_func.uncollapsed_arg_types)]
-    if concrete_func.is_inline:
-      assert concrete_func not in caller_context.inline_func_call_stack
-      return_ir = concrete_func.make_inline_func_call_ir(func_args=casted_calling_args, caller_context=caller_context)
-    else:
-      ir_func = concrete_func.ir_func
-      assert ir_func is not None and len(ir_func.args) == len(casted_calling_args)
-      casted_ir_args = [arg.ir_val for arg in casted_calling_args]
-      assert None not in casted_ir_args
-      return_ir = caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
-
-    assert isinstance(return_ir, ir.values.Value)
-    return TypedValue(typ=concrete_func.return_type, ir_val=return_ir)
-
-  calling_collapsed_args = [arg.copy_collapse(context=context) for arg in func_args]
-  calling_arg_types = [arg.narrowed_type for arg in calling_collapsed_args]
-  assert func.can_call_with_arg_types(template_arguments=template_arguments, arg_types=calling_arg_types)
-  possible_concrete_funcs = func.get_concrete_funcs(template_arguments=template_arguments, arg_types=calling_arg_types)
-  from functools import partial
-  return make_union_switch_ir(
-    case_funcs={
-      tuple(concrete_func.arg_types): partial(do_call, concrete_func) for concrete_func in possible_concrete_funcs},
-    calling_args=calling_collapsed_args, name=func.identifier, context=context)
-
-
-def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext], TypedValue]],
-                         calling_args: List[TypedValue],
-                         name: str,
-                         context: CodegenContext) -> TypedValue:
-  """
-  Given different functions to execute for different argument types,
-  this will generate IR to call the correct function for given `calling_args`.
-  This is especially useful if the argument type contains unions,
-  as then it is only clear at run time which function to actually call.
-  """
-  assert not context.emits_debug or context.builder.debug_metadata is not None
-  if len(case_funcs) == 1:
-    single_case = next(iter(case_funcs.values()))
-    single_value = single_case(caller_context=context)  # noqa
-    return single_value
-
-  import numpy as np
-  import itertools
-  calling_arg_types = [arg.narrowed_type for arg in calling_args]
-  # The arguments which we need to look at to determine which concrete function to call
-  # TODO: This could use a better heuristic, only because something is a union type does not mean that it
-  # distinguishes different concrete funcs.
-  distinguishing_arg_nums = [
-    arg_num for arg_num, calling_arg_type in enumerate(calling_arg_types)
-    if isinstance(calling_arg_type, UnionType)]
-  assert len(distinguishing_arg_nums) >= 1
-  # noinspection PyTypeChecker
-  distinguishing_calling_arg_types: List[UnionType] = [
-    calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
-  assert all(isinstance(calling_arg, UnionType) for calling_arg in distinguishing_calling_arg_types)
-  # To distinguish which concrete func to call, use this table
-  block_addresses_distinguished_mapping = np.ndarray(
-    shape=tuple(max(calling_arg.possible_type_nums) + 1 for calling_arg in distinguishing_calling_arg_types),
-    dtype=ir.values.BlockAddress)
-
-  # Go through all concrete functions, and add one block for each
-  case_contexts: Dict[Tuple[Type], CodegenContext] = {
-    case_arg_types: context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
-      name, '_'.join(str(arg_type) for arg_type in case_arg_types)))))
-    for case_arg_types in case_funcs.keys()}
-  for case_arg_types, case_context in case_contexts.items():
-    assert not case_context.emits_debug or case_context.builder.debug_metadata is not None
-    case_block = case_context.block
-    case_block_address = ir.values.BlockAddress(context.builder.function, case_block)
-    case_distinguishing_args = [case_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
-    case_possible_types_per_arg = [
-      [
-        possible_type
-        for possible_type in (arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type])
-        if possible_type in calling_arg_type.possible_types]
-      for arg_type, calling_arg_type in zip(case_distinguishing_args, distinguishing_calling_arg_types)]
-    assert len(distinguishing_arg_nums) == len(case_possible_types_per_arg)
-
-    # Register the concrete function in the table
-    for expanded_case_types in itertools.product(*case_possible_types_per_arg):
-      assert len(expanded_case_types) == len(distinguishing_calling_arg_types)
-      distinguishing_variant_nums = tuple(
-        calling_arg_type.get_variant_num(concrete_arg_type)
-        for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_case_types))
-      assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
-      block_addresses_distinguished_mapping[distinguishing_variant_nums] = case_block_address
-
-  # Compute the index we have to look at in the table
-  tag_ir_type = ir.types.IntType(8)
-  call_block_index_ir = ir.Constant(tag_ir_type, 0)
-  for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
-    ir_func_arg = calling_args[arg_num].ir_val
-    assert ir_func_arg is not None
-    base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
-    base_ir = ir.Constant(tag_ir_type, base)
-    tag_ir = calling_arg_type.make_extract_tag(
-      ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (name, arg_num))
-    call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
-  call_block_index_ir = context.builder.zext(call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % name)
-
-  # Look it up in the table and call the function
-  ir_block_addresses_type = ir.types.VectorType(
-    LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
-  ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
-    list(block_addresses_distinguished_mapping.flatten())))
-  ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
-  indirect_branch = context.builder.branch_indirect(ir_call_block_target)
-  for case_context in case_contexts.values():
-    indirect_branch.add_destination(case_context.block)
-
-  # Execute the concrete functions
-  collect_block = context.builder.append_basic_block('collect_%s_overload' % name)
-  context.builder = ir.IRBuilder(collect_block)
-  return_vals: List[TypedValue] = []
-  for case_func, case_context in zip(case_funcs.values(), case_contexts.values()):
-    case_return_val = case_func(caller_context=case_context)  # noqa
-    assert not case_context.all_paths_returned
-    return_vals.append(case_return_val)
-  assert len(case_funcs) == len(return_vals)
-
-  common_return_type = get_common_type([return_val.narrowed_type for return_val in return_vals])
-  collect_return_ir_phi = context.builder.phi(
-    common_return_type.ir_type, name="collect_%s_overload_return" % name)
-  for case_return_val, case_context in zip(return_vals, case_contexts.values()):
-    case_return_val_compatible = case_return_val.copy_with_implicit_cast(
-      to_type=common_return_type, context=case_context, name="collect_cast_%s" % name)
-    collect_return_ir_phi.add_incoming(case_return_val_compatible.ir_val, case_context.block)
-    case_context.builder.branch(collect_block)
-  return TypedValue(typ=common_return_type, ir_val=collect_return_ir_phi)
-
-
 def make_di_location(pos: TreePosition, context: CodegenContext):
   assert context.emits_debug
   assert context.current_di_scope is not None
@@ -2053,7 +1875,7 @@ class TypedValue:
       return new
     new.type, new.narrowed_type = to_type, to_type
     new.ir_val = None
-    if self.ir_val is None or not context.emits_ir:
+    if self.ir_val is None or context is None or not context.emits_ir:
       return new
 
     def do_simple_cast(from_simple_type: Type, to_simple_type: Type, ir_val: ir.values.Value) -> ir.values.Value:
@@ -2101,7 +1923,6 @@ class TypedValue:
         assert max(possible_from_type.size for possible_from_type in from_type.possible_types) <= to_type.val_size
         ir_from_untagged_union = from_type.make_extract_void_val(
           self.ir_val, context=context, name='%s_from_val' % name)
-        from sleepy.utilities import truncate_ir_value
         ir_from_untagged_union_truncated = truncate_ir_value(
           from_type=from_type.untagged_union_ir_type, to_type=to_type.untagged_union_ir_type,
           ir_val=ir_from_untagged_union, context=context, name=name)
@@ -2198,3 +2019,119 @@ class TypedValue:
       return False
     return (self.type, self.narrowed_type, self.num_unbindings, self.ir_val) == (
       other.type, other.narrowed_type, other.num_unbindings, other.ir_val)
+
+
+def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext], TypedValue]],
+                         calling_args: List[TypedValue],
+                         name: str,
+                         context: CodegenContext) -> TypedValue:
+  """
+  Given different functions to execute for different argument types,
+  this will generate IR to call the correct function for given `calling_args`.
+  This is especially useful if the argument type contains unions,
+  as then it is only clear at run time which function to actually call.
+  """
+  assert not context.emits_debug or context.builder.debug_metadata is not None
+  if len(case_funcs) == 1:
+    single_case = next(iter(case_funcs.values()))
+    single_value = single_case(caller_context=context)  # noqa
+    return single_value
+
+  import numpy as np
+  import itertools
+  calling_arg_types = [arg.narrowed_type for arg in calling_args]
+  # The arguments which we need to look at to determine which concrete function to call
+  # TODO: This could use a better heuristic, only because something is a union type does not mean that it
+  # distinguishes different concrete funcs.
+  distinguishing_arg_nums = [
+    arg_num for arg_num, calling_arg_type in enumerate(calling_arg_types)
+    if isinstance(calling_arg_type, UnionType)]
+  assert len(distinguishing_arg_nums) >= 1
+  # noinspection PyTypeChecker
+  distinguishing_calling_arg_types: List[UnionType] = [
+    calling_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
+  assert all(isinstance(calling_arg, UnionType) for calling_arg in distinguishing_calling_arg_types)
+  # To distinguish which concrete func to call, use this table
+  block_addresses_distinguished_mapping = np.ndarray(
+    shape=tuple(max(calling_arg.possible_type_nums) + 1 for calling_arg in distinguishing_calling_arg_types),
+    dtype=ir.values.BlockAddress)
+
+  # Go through all concrete functions, and add one block for each
+  case_contexts: Dict[Tuple[Type], CodegenContext] = {
+    case_arg_types: context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
+      name, '_'.join(str(arg_type) for arg_type in case_arg_types)))))
+    for case_arg_types in case_funcs.keys()}
+  for case_arg_types, case_context in case_contexts.items():
+    assert not case_context.emits_debug or case_context.builder.debug_metadata is not None
+    case_block = case_context.block
+    case_block_address = ir.values.BlockAddress(context.builder.function, case_block)
+    case_distinguishing_args = [case_arg_types[arg_num] for arg_num in distinguishing_arg_nums]
+    case_possible_types_per_arg = [
+      [
+        possible_type
+        for possible_type in (arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type])
+        if possible_type in calling_arg_type.possible_types]
+      for arg_type, calling_arg_type in zip(case_distinguishing_args, distinguishing_calling_arg_types)]
+    assert len(distinguishing_arg_nums) == len(case_possible_types_per_arg)
+
+    # Register the concrete function in the table
+    for expanded_case_types in itertools.product(*case_possible_types_per_arg):
+      assert len(expanded_case_types) == len(distinguishing_calling_arg_types)
+      distinguishing_variant_nums = tuple(
+        calling_arg_type.get_variant_num(concrete_arg_type)
+        for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_case_types))
+      assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
+      block_addresses_distinguished_mapping[distinguishing_variant_nums] = case_block_address
+
+  # Compute the index we have to look at in the table
+  tag_ir_type = ir.types.IntType(8)
+  call_block_index_ir = ir.Constant(tag_ir_type, 0)
+  for arg_num, calling_arg_type in zip(distinguishing_arg_nums, distinguishing_calling_arg_types):
+    ir_func_arg = calling_args[arg_num].ir_val
+    assert ir_func_arg is not None
+    base = np.prod(block_addresses_distinguished_mapping.shape[arg_num + 1:], dtype='int32')
+    base_ir = ir.Constant(tag_ir_type, base)
+    tag_ir = calling_arg_type.make_extract_tag(
+      ir_func_arg, context=context, name='call_%s_arg%s_tag_ptr' % (name, arg_num))
+    call_block_index_ir = context.builder.add(call_block_index_ir, context.builder.mul(base_ir, tag_ir))
+  call_block_index_ir = context.builder.zext(call_block_index_ir, LLVM_SIZE_TYPE, name='call_%s_block_index' % name)
+
+  # Look it up in the table and call the function
+  ir_block_addresses_type = ir.types.VectorType(
+    LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
+  ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
+    list(block_addresses_distinguished_mapping.flatten())))
+  ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
+  indirect_branch = context.builder.branch_indirect(ir_call_block_target)
+  for case_context in case_contexts.values():
+    indirect_branch.add_destination(case_context.block)
+
+  # Execute the concrete functions
+  collect_block = context.builder.append_basic_block('collect_%s_overload' % name)
+  context.builder = ir.IRBuilder(collect_block)
+  return_vals: List[TypedValue] = []
+  for case_func, case_context in zip(case_funcs.values(), case_contexts.values()):
+    case_return_val = case_func(caller_context=case_context)  # noqa
+    assert not case_context.all_paths_returned
+    return_vals.append(case_return_val)
+  assert len(case_funcs) == len(return_vals)
+
+  common_return_type = get_common_type([return_val.narrowed_type for return_val in return_vals])
+  collect_return_ir_phi = context.builder.phi(
+    common_return_type.ir_type, name="collect_%s_overload_return" % name)
+  for case_return_val, case_context in zip(return_vals, case_contexts.values()):
+    case_return_val_compatible = case_return_val.copy_with_implicit_cast(
+      to_type=common_return_type, context=case_context, name="collect_cast_%s" % name)
+    collect_return_ir_phi.add_incoming(case_return_val_compatible.ir_val, case_context.block)
+    case_context.builder.branch(collect_block)
+  return TypedValue(typ=common_return_type, ir_val=collect_return_ir_phi)
+
+
+def truncate_ir_value(from_type: ir.Type, to_type: ir.Type, ir_val: ir.Value,
+                      context: CodegenContext, name: str) -> ir.Value:
+  # Note: if the size of to_type is strictly smaller than from_type, we need to truncate the value
+  # There is no LLVM instruction for this, so we alloca memory and reinterpret a pointer on this
+  ptr = context.alloca_at_entry(from_type, name='%s_from_ptr' % name)
+  context.builder.store(value=ir_val, ptr=ptr)
+  truncated_ptr = context.builder.bitcast(val=ptr, typ=ir.PointerType(to_type), name='%s_from_ptr_truncated' % name)
+  return context.builder.load(truncated_ptr, name='%s_from_val_truncated' % name)

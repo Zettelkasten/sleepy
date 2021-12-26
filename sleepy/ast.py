@@ -8,14 +8,15 @@ from llvmlite import ir
 
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 from sleepy.errors import CompilerError, raise_error
-from sleepy.ir_generation import make_end_block_jump
+from sleepy.ir_generation import make_end_block_jump, make_ir_val_is_type, make_call_ir, \
+  resolve_possible_concrete_funcs
 from sleepy.struct_type import build_constructor, build_destructor
 from sleepy.symbols import VariableSymbol, TypeTemplateSymbol, SymbolTable, Symbol, determine_kind, SymbolKind
 from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
 from sleepy.types import OverloadSet, Type, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
-  make_ir_val_is_type, CodegenContext, get_common_type, \
-  PlaceholderTemplateType, try_infer_template_arguments, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, \
-  ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType, make_func_call_ir, CleanupHandlingCG
+  CodegenContext, get_common_type, \
+  PlaceholderTemplateType, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, \
+  ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType, CleanupHandlingCG, make_union_switch_ir
 
 
 def narrow_types_from_function_call(symbol_table: SymbolTable,
@@ -35,6 +36,63 @@ def narrow_types_from_function_call(symbol_table: SymbolTable,
       symbol_table[arg_expression.identifier] = var_symbol.copy_narrow_type(bound_narrowed_arg_type)
 
 
+def make_call_ir_with_narrowing(pos: TreePosition,
+                                caller: FunctionSymbolCaller,
+                                arg_expressions: List[ExpressionAst],
+                                symbol_table: SymbolTable,
+                                context: CodegenContext) -> TypedValue:
+
+  overloads, template_arguments = caller.overload_set, caller.template_parameters
+  arg_values = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in arg_expressions]
+  collapsed_argument_values = [arg.copy_collapse(context=None) for num, arg in enumerate(arg_values)]
+  calling_types = [arg.narrowed_type for arg in collapsed_argument_values]
+
+  for calling_type, arg_expression in zip(calling_types, arg_expressions):
+    if not calling_type.is_realizable():
+      raise_error("Cannot call function %r with argument of unrealizable type"
+                  % overloads.identifier, arg_expression.pos)
+
+  possible_concrete_functions = resolve_possible_concrete_funcs(pos, func_caller=caller, calling_types=calling_types)
+
+  return_val = make_call_ir(
+    pos,
+    caller=caller,
+    argument_values=arg_values,
+    context=context)
+
+  # apply type narrowings
+  narrow_types_from_function_call(symbol_table,
+                                  arg_expressions,
+                                  arg_values,
+                                  collapsed_argument_values,
+                                  possible_concrete_functions)
+
+  # special handling of 'assert' call
+  if overloads.identifier in {'assert', 'unchecked_assert'}:
+    assert len(arg_expressions) >= 1
+    condition_expr = arg_expressions[0]
+    make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
+
+  return return_val
+
+
+def make_call_ir_by_identifier(pos: TreePosition,
+                               func_identifier: str,
+                               templ_types: Optional[List[Type]],
+                               func_arg_exprs: List[ExpressionAst],
+                               symbol_table: SymbolTable,
+                               context: CodegenContext) -> TypedValue:
+  if func_identifier not in symbol_table:
+    raise_error('Function %r called before declared' % func_identifier, pos)
+  symbol = symbol_table[func_identifier]
+  if not isinstance(symbol, OverloadSet):
+    raise_error('Cannot call non-function %r' % func_identifier, pos)
+  func_caller = FunctionSymbolCaller(overload_set=symbol, template_parameters=templ_types)
+  return  make_call_ir_with_narrowing(
+    pos,
+    caller=func_caller, arg_expressions=func_arg_exprs, symbol_table=symbol_table, context=context)
+
+
 class AbstractSyntaxTree(ABC):
   """
   Abstract syntax tree of a sleepy program.
@@ -51,155 +109,6 @@ class AbstractSyntaxTree(ABC):
 
   def __repr__(self) -> str:
     return 'AbstractSyntaxTree'
-
-  def _resolve_possible_concrete_funcs(self,
-                                       func_caller: FunctionSymbolCaller,
-                                       calling_types: List[Type]) -> List[ConcreteFunction]:
-    func, templ_types = func_caller.overload_set, func_caller.template_parameters
-    if templ_types is None:
-      templ_types = self._infer_template_arguments(func=func, calling_types=calling_types)
-    assert templ_types is not None
-    assert all(not templ_type.has_unfilled_template_parameters() for templ_type in templ_types)
-
-    if not func.can_call_with_arg_types(template_arguments=templ_types, arg_types=calling_types):
-      raise_error('Cannot call function %r with arguments of types %r and template parameters %r, '
-                  'only declared for parameter types:\n%s' % (
-                    func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-                    ', '.join([str(templ_type) for templ_type in templ_types]),
-                    func.make_signature_list_str()), self.pos)
-    if not all(called_type.is_realizable() for called_type in calling_types):
-      raise_error('Cannot call function %r with argument of types %r which are unrealizable' % (
-        func.identifier, ', '.join([str(called_type) for called_type in calling_types])), self.pos)
-
-    possible_concrete_funcs = func.get_concrete_funcs(template_arguments=templ_types, arg_types=calling_types)
-    assert len(possible_concrete_funcs) >= 1
-    return possible_concrete_funcs
-
-  def _infer_template_arguments(self, func: OverloadSet, calling_types: List[Type]) -> List[Type]:
-    # TODO: We currently require that the template types must be statically determinable.
-    # e.g. assume that our function takes a union argument.
-    # If we have overloaded signatures each with template arguments, it can happen that you should use different
-    # template arguments depending on which union variant we are called with.
-    # Currently, this would fail. But we could support this if we wanted to.
-    # Note that that would make function calls with inferred template types more than just an auto-evaluated type arg.
-    assert all(calling_type.is_realizable() for calling_type in calling_types)
-    signature_templ_types = None
-    for expanded_calling_types in func.iter_expanded_possible_arg_types(calling_types):
-      infers = [
-        try_infer_template_arguments(
-          calling_types=list(expanded_calling_types), signature_types=signature.arg_types,
-          template_parameters=signature.placeholder_templ_types)
-        for signature in func.signatures]
-      possible_infers = [idx for idx, infer in enumerate(infers) if infer is not None]
-      if len(possible_infers) == 0:
-        raise_error('Cannot infer template types for function %r from arguments of types %r, '
-                    'is declared for parameter types:\n%s\n\nSpecify the template types explicitly.' % (
-                      func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-                      func.make_signature_list_str()), self.pos)
-      if len(possible_infers) > 1:
-        raise_error('Cannot uniquely infer template types for function %r from arguments of types %r, '
-                    'is declared for parameter types:\n%s' % (
-                      func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-                      func.make_signature_list_str()), self.pos)
-      assert len(possible_infers) == 1
-      expanded_signature_templ_types = infers[possible_infers[0]]
-      assert expanded_signature_templ_types is not None
-      if signature_templ_types is not None and signature_templ_types != expanded_signature_templ_types:
-        raise_error('Cannot uniquely statically infer template types for function %r from arguments of types %r '
-                    'because different expanded union types would require different template types. '
-                    'Function is declared for parameter types:\n%s' % (
-                      func.identifier, ', '.join([str(calling_type) for calling_type in calling_types]),
-                      func.make_signature_list_str()), self.pos)
-      signature_templ_types = expanded_signature_templ_types
-    assert signature_templ_types is not None
-    return signature_templ_types
-
-  def make_call_ir(self, caller: FunctionSymbolCaller,
-                   argument_values: List[TypedValue],
-                   possible_concrete_functions: List[ConcreteFunction],
-                   context: CodegenContext) -> TypedValue:
-
-    overloads, template_arguments = caller.overload_set, caller.template_parameters
-    collapsed_argument_values = [arg.copy_collapse(context=None) for num, arg in enumerate(argument_values)]
-    calling_types = [arg.narrowed_type for arg in collapsed_argument_values]
-
-    assert all(typ.is_realizable() for typ in calling_types)
-
-    if template_arguments is None:
-      template_arguments = self._infer_template_arguments(func=overloads, calling_types=calling_types)
-    assert template_arguments is not None
-
-    for concrete_func in possible_concrete_functions:
-      if concrete_func in context.inline_func_call_stack:
-        raise_error('An inlined function can not call itself (indirectly), but got inline call stack: %s -> %s' % (
-          ' -> '.join(str(inline_func) for inline_func in context.inline_func_call_stack), concrete_func), self.pos)
-      for arg_identifier, arg_mutates, arg in zip(concrete_func.arg_identifiers, concrete_func.arg_mutates,
-                                                  argument_values):
-        if arg_mutates and not arg.is_referenceable():
-          raise_error('Cannot call function %s%s mutating parameter %r with non-referencable argument' % (
-            overloads.identifier, concrete_func.signature.to_signature_str(), arg_identifier), self.pos)
-
-    if context.emits_ir:
-      return_val = make_func_call_ir(func=overloads, template_arguments=template_arguments,
-                                     func_args=argument_values, context=context)
-    else:
-      return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_functions])
-      return_val = TypedValue(typ=return_type, ir_val=None)
-
-    return return_val
-
-  def make_call_ir_with_narrowing(self,
-                                  caller: FunctionSymbolCaller,
-                                  arg_expressions: List[ExpressionAst],
-                                  symbol_table: SymbolTable,
-                                  context: CodegenContext) -> TypedValue:
-
-    overloads, template_arguments = caller.overload_set, caller.template_parameters
-    arg_values = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in arg_expressions]
-    collapsed_argument_values = [arg.copy_collapse(context=None) for num, arg in enumerate(arg_values)]
-    calling_types = [arg.narrowed_type for arg in collapsed_argument_values]
-
-    for calling_type, arg_expression in zip(calling_types, arg_expressions):
-      if not calling_type.is_realizable():
-        raise_error("Cannot call function %r with argument of unrealizable type"
-                    % overloads.identifier, arg_expression.pos)
-
-    possible_concrete_functions = self._resolve_possible_concrete_funcs(func_caller=caller, calling_types=calling_types)
-
-    return_val = self.make_call_ir(caller=caller,
-                                   argument_values=arg_values,
-                                   context=context,
-                                   possible_concrete_functions=possible_concrete_functions)
-
-    # apply type narrowings
-    narrow_types_from_function_call(symbol_table,
-                                    arg_expressions,
-                                    arg_values,
-                                    collapsed_argument_values,
-                                    possible_concrete_functions)
-
-    # special handling of 'assert' call
-    if overloads.identifier in {'assert', 'unchecked_assert'}:
-      assert len(arg_expressions) >= 1
-      condition_expr = arg_expressions[0]
-      make_narrow_type_from_valid_cond_ast(condition_expr, cond_holds=True, symbol_table=symbol_table)
-
-    return return_val
-
-  def make_call_ir_by_identifier(self,
-                                 func_identifier: str,
-                                 templ_types: Optional[List[Type]],
-                                 func_arg_exprs: List[ExpressionAst],
-                                 symbol_table: SymbolTable,
-                                 context: CodegenContext) -> TypedValue:
-    if func_identifier not in symbol_table:
-      raise_error('Function %r called before declared' % func_identifier, self.pos)
-    symbol = symbol_table[func_identifier]
-    if not isinstance(symbol, OverloadSet):
-      raise_error('Cannot call non-function %r' % func_identifier, self.pos)
-    func_caller = FunctionSymbolCaller(overload_set=symbol, template_parameters=templ_types)
-    return self.make_call_ir_with_narrowing(
-      caller=func_caller, arg_expressions=func_arg_exprs, symbol_table=symbol_table, context=context)
 
   @abstractmethod
   def children(self) -> List[AbstractSyntaxTree]:
@@ -297,10 +206,10 @@ class AbstractScopeAst(AbstractSyntaxTree):
               isinstance(symbol.narrowed_var_type.pointee_type, StructType)):
         caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
         # call destructor
-        self.make_call_ir(
+        make_call_ir(
+          self.pos,
           caller=caller,
           argument_values=[symbol.typed_value],
-          possible_concrete_functions=self._resolve_possible_concrete_funcs(caller, [symbol.typed_value.copy_collapse(context=None).narrowed_type]),
           context=scope_context.base
         )
 
@@ -1008,7 +917,8 @@ class CallExpressionAst(ExpressionAst):
 
       # default case
       func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
-      return self.make_call_ir_with_narrowing(
+      return make_call_ir_with_narrowing(
+        self.pos,
         caller=func_caller, arg_expressions=self.func_arg_exprs, symbol_table=symbol_table, context=context)
 
   def make_as_func_caller(self, symbol_table: SymbolTable) -> FunctionSymbolCaller:
@@ -1108,7 +1018,6 @@ class MemberExpressionAst(ExpressionAst):
           return TypedValue(typ=member_type, ir_val=ir_val)
 
       from functools import partial
-      from sleepy.types import make_union_switch_ir
       collapsed_arg_val = arg_val.copy_collapse(context=context, name='struct')
       collapsed_type = collapsed_arg_val.narrowed_type
       possible_types = collapsed_type.possible_types if isinstance(collapsed_type, UnionType) else {collapsed_type}

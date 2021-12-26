@@ -4,7 +4,7 @@ from typing import List, Callable, Optional, Dict, Set, Union, Tuple
 from llvmlite import ir
 from llvmlite.ir import IRBuilder
 
-from sleepy.syntactical_analysis.grammar import TreePosition
+from sleepy.syntactical_analysis.grammar import TreePosition, DUMMY_POS
 from sleepy.types import FunctionTemplate, PlaceholderTemplateType, Type, ConcreteFunction, \
   ConcreteBuiltinOperationFunction, ConcreteBitcastFunction, DoubleType, FloatType, BoolType, \
   IntType, LongType, CharType, RawPointerType, PointerType, CodegenContext, OverloadSet, \
@@ -254,12 +254,10 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   # TODO: currently, some builtin free() functions are not inlined.
   # This means that we need to add debug information to these functions, but they do not have any line numbers.
   # We use this dummy here.
-  builtin_pos = TreePosition('', 0, 0)
-
   builtin_symbols = {
     'Str': _make_str_symbol, 'Ptr': _make_ptr_symbol, 'RawPtr': _make_raw_ptr_symbol, 'Ref': _make_ref_symbol,
     'bitcast': _make_bitcast_symbol}
-  with context.use_pos(builtin_pos):
+  with context.use_pos(DUMMY_POS):
     for symbol_identifier, setup_func in builtin_symbols.items():
       assert symbol_identifier not in symbol_table
       symbol = setup_func(symbol_table=symbol_table, context=context)

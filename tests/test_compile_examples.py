@@ -15,7 +15,7 @@ def _test_compile_example(code_file_name):
   import subprocess
   sleepy_path = Path(__file__).parent.joinpath("../tools/sleepy.py").resolve()
 
-  subprocess.run([str(sleepy_path), code_file_name]).check_returncode()
+  subprocess.run([str(sleepy_path), code_file_name, "-O3"]).check_returncode()
   subprocess.run([exec_file_name])
 
 
