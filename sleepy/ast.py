@@ -8,7 +8,7 @@ from llvmlite import ir
 
 from sleepy.builtin_symbols import SLEEPY_BOOL, SLEEPY_LONG, SLEEPY_CHAR, SLEEPY_CHAR_PTR, build_initial_ir
 from sleepy.errors import CompilerError, raise_error
-from sleepy.ir_generation import make_end_block_jump, make_ir_val_is_type, make_call_ir, \
+from sleepy.ir_generation import make_ir_end_block_jump, make_ir_val_is_type, make_call_ir, \
   resolve_possible_concrete_funcs
 from sleepy.struct_type import build_constructor, build_destructor
 from sleepy.symbols import VariableSymbol, TypeTemplateSymbol, SymbolTable, Symbol, determine_kind, SymbolKind
@@ -542,18 +542,18 @@ class IfStatementAst(StatementAst):
         if true_context.base.all_paths_returned:  # only true terminated
           symbol_table.apply_type_narrowings_from(false_symbol_table)
           true_context.end_block_builder.branch(context.scope.end_block)
-          make_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+          make_ir_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
 
         elif false_context.base.all_paths_returned:  # only false terminated
           symbol_table.apply_type_narrowings_from(true_symbol_table)
-          make_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+          make_ir_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
           false_context.end_block_builder.branch(context.scope.end_block)
 
         else:  # neither terminated
           assert not true_context.base.all_paths_returned and not false_context.base.all_paths_returned
           symbol_table.apply_type_narrowings_from(true_symbol_table, false_symbol_table)
-          make_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
-          make_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+          make_ir_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+          make_ir_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
 
         base.switch_to_block(continue_block)
 
@@ -608,8 +608,8 @@ class WhileStatementAst(StatementAst):
         if body_context.base.all_paths_returned:  # all branches return, simply jump to parent cleanup
           body_context.end_block_builder.branch(context.scope.end_block)
         else:  # return or jump back to condition check
-          make_end_block_jump(body_context, continuation=condition_check_block,
-                              parent_end_block=context.scope.end_block)
+          make_ir_end_block_jump(body_context, continuation=condition_check_block,
+                                 parent_end_block=context.scope.end_block)
 
         context.base.switch_to_block(continue_block)
       else:

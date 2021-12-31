@@ -8,7 +8,7 @@ from sleepy.ast import TypeAst, AnnotationAst, AbstractScopeAst, AbstractSyntaxT
   DeclarationAst
 from sleepy.builtin_symbols import SLEEPY_BOOL
 from sleepy.errors import raise_error
-from sleepy.ir_generation import make_end_block_return
+from sleepy.ir_generation import make_ir_end_block_return
 from sleepy.symbols import VariableSymbol, SymbolTable, Symbol
 from sleepy.syntactical_analysis.grammar import TreePosition
 from sleepy.types import Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
@@ -161,7 +161,7 @@ class FunctionDeclarationAst(DeclarationAst):
       self.raise_missing_return_error()
 
     if not self.is_inline:
-      make_end_block_return(body_context)
+      make_ir_end_block_return(body_context)
 
     body_context.base.all_paths_returned = True
 
