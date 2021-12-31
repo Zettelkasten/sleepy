@@ -2494,7 +2494,6 @@ def test_narrowing_on_unrelated_union_func_call():
     assert_equal(main(50), 50)
 
 
-
 def test_arg_mutates():
   with make_execution_engine() as engine:
     # language=Sleepy

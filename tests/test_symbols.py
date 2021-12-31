@@ -407,12 +407,20 @@ def test_struct_self_referencing():
 
 # noinspection PyPep8Naming
 def test_copy_collapse():
-  from sleepy.builtin_symbols import SLEEPY_INT
+  from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_DOUBLE
   Int = TypedValue(typ=SLEEPY_INT, num_unbindings=0, ir_val=None)
   RefInt = TypedValue(typ=ReferenceType(SLEEPY_INT), num_unbindings=0, ir_val=None)
   Int_RefInt = TypedValue(typ=UnionType.from_types([Int.type, RefInt.type]), num_unbindings=0, ir_val=None)
   RefInt_Int = TypedValue(typ=UnionType.from_types([RefInt.type, Int.type]), num_unbindings=0, ir_val=None)
+  RefInt_Double = TypedValue(typ=UnionType.from_types([RefInt.type, SLEEPY_DOUBLE]), num_unbindings=0, ir_val=None)
   assert_equal(RefInt.copy_collapse(context=None, name='a'), Int)
   assert_equal(Int.copy_collapse(context=None, name='a'), Int)
   assert_equal(RefInt_Int.copy_collapse(context=None, name='a'), Int)
   assert_equal(Int_RefInt.copy_collapse(context=None, name='a'), Int)
+
+
+def test_union_replace_types():
+  from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_CHAR, SLEEPY_DOUBLE
+  union = UnionType.from_types(possible_types=[SLEEPY_DOUBLE])
+  replaced_union = union.replace_types({SLEEPY_DOUBLE: UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR])})
+  assert_equal(replaced_union, UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR], val_size=union.val_size))
