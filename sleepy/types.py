@@ -520,14 +520,22 @@ class UnionType(Type):
       return replacements[self]
     if len(self.possible_types) == 0:
       return self
-    new_possible_types = [possible_type.replace_types(replacements) for possible_type in self.possible_types]
-    new_possible_type_nums = self.possible_type_nums.copy()
-    duplicate_indices = [
-      index for index, possible_type in enumerate(new_possible_types)
-      if possible_type in new_possible_types[:index]]
-    for duplicate_index in reversed(duplicate_indices):
-      del new_possible_types[duplicate_index]
-      del new_possible_type_nums[duplicate_index]
+    replaced_possible_types = [possible_type.replace_types(replacements) for possible_type in self.possible_types]
+    new_possible_types: List[Type] = []
+    new_possible_type_nums: List[int] = []
+    for replaced_type in replaced_possible_types:
+      possible_replaced_types = (
+        replaced_type.possible_types if isinstance(replaced_type, UnionType) else [replaced_type])
+      for possible_type in possible_replaced_types:
+        if possible_type in new_possible_types:
+          continue
+        if possible_type in self.possible_types:  # keep type nums as before
+          new_possible_type_num = self.get_variant_num(possible_type)
+        else:
+          new_possible_type_num = max(new_possible_type_nums, default=-1) + 1
+        new_possible_types.append(possible_type)
+        new_possible_type_nums.append(new_possible_type_num)
+    assert len(new_possible_types) == len(new_possible_type_nums)
     if any(possible_type.has_unfilled_template_parameters() for possible_type in new_possible_types):
       val_size = None
     else:  # default case
