@@ -638,12 +638,10 @@ class UnionType(Type):
       possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=new_val_size)
 
   @classmethod
-  def from_types(cls, possible_types: List[Type]) -> UnionType:
+  def from_types(cls, possible_types: List[Type], val_size: Optional[int] = None) -> UnionType:
     possible_types = list(dict.fromkeys(possible_types))  # possibly remove duplicates
     possible_type_nums = list(range(len(possible_types)))
-    if any(possible_type.has_unfilled_template_parameters() for possible_type in possible_types):
-      val_size = None
-    else:  # default case, no template
+    if val_size is None and not any(typ.has_unfilled_template_parameters() for typ in possible_types):
       val_size = max((ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
 
