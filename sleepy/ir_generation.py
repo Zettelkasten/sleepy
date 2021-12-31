@@ -11,14 +11,14 @@ from sleepy.types import CleanupHandlingCG, Type, CodegenContext, UnionType, LLV
   ConcreteFunction, make_union_switch_ir, try_infer_template_arguments, FunctionSymbolCaller, get_common_type
 
 
-def make_end_block_jump(context: CleanupHandlingCG, continuation: ir.Block, parent_end_block: ir.Block):
+def make_ir_end_block_jump(context: CleanupHandlingCG, continuation: ir.Block, parent_end_block: ir.Block):
   assert context.scope.depth != 0
   builder = context.end_block_builder
   target_depth_reached = builder.icmp_unsigned('==', builder.load(context.function.unroll_count_ir),
                         ir.Constant(typ=ir.IntType(bits=64), constant=context.scope.depth))
   builder.cbranch(target_depth_reached, continuation, parent_end_block)
 
-def make_end_block_return(context: CleanupHandlingCG):
+def make_ir_end_block_return(context: CleanupHandlingCG):
   context.end_block_builder.ret(context.end_block_builder.load(context.function.return_slot_ir))
 
 
@@ -84,7 +84,7 @@ def infer_template_arguments(pos: TreePosition, func: OverloadSet, calling_types
   return signature_templ_types
 
 
-def make_func_call_ir(func: OverloadSet,
+def make_ir_func_call(func: OverloadSet,
                       template_arguments: List[Type],
                       func_args: List[TypedValue],
                       context: CodegenContext) -> TypedValue:
@@ -161,7 +161,7 @@ def make_call_ir(pos: TreePosition,
           overloads.identifier, concrete_func.signature.to_signature_str(), arg_identifier), pos)
 
   if context.emits_ir:
-    return_val = make_func_call_ir(func=overloads, template_arguments=template_arguments,
+    return_val = make_ir_func_call(func=overloads, template_arguments=template_arguments,
                                    func_args=argument_values, context=context)
   else:
     return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_functions])

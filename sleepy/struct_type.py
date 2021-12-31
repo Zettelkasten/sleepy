@@ -8,7 +8,7 @@ from sleepy.symbols import SymbolTable
 from sleepy.syntactical_analysis.grammar import DUMMY_POS
 from sleepy.types import StructType, CodegenContext, OverloadSet, PlaceholderTemplateType, FunctionTemplate, Type, \
   ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, TypedValue, FunctionSymbolCaller
-from sleepy.ir_generation import make_func_call_ir, make_call_ir
+from sleepy.ir_generation import make_ir_func_call, make_call_ir
 
 
 def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, parent_context: CodegenContext):
