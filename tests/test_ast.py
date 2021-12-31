@@ -2479,6 +2479,22 @@ def test_narrowing_with_shadowing():
     compile_program(engine, program, add_preamble=True)
 
 
+def test_narrowing_on_unrelated_union_func_call():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+      func noop(x: Int|Double) { }
+      func main(a: Int) -> Int {
+        x: Int|Double = a
+        noop(x)
+        return x
+      }
+    """
+    main = compile_program(engine, program, add_preamble=False)
+    assert_equal(main(50), 50)
+
+
+
 def test_arg_mutates():
   with make_execution_engine() as engine:
     # language=Sleepy
