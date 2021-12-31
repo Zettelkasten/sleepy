@@ -107,6 +107,10 @@ class Type(ABC):
       return 1 + self.pointee_type.num_possible_unbindings()
     return 0
 
+  def simple_types(self) -> List[Type]:
+    return [self]
+
+
 
 class UnitType(Type):
   """
@@ -648,6 +652,8 @@ class UnionType(Type):
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, UnionType)
 
+  def simple_types(self) -> List[Type]:
+    return self.possible_types
 
 class PartialIdentifiedStructType(Type):
   """
@@ -1822,6 +1828,22 @@ SLEEPY_UNIT = UnitType()
 SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
 
 
+def collapse_type(typ: Type, unbindings: int) -> Type:
+  min_ref_depth, max_ref_depth = min_max_ref_depth(typ)
+  assert 0 <= unbindings <= min_ref_depth <= max_ref_depth
+  # If possible, do not split up unions if not necessary
+  if unbindings == min_ref_depth == max_ref_depth: return typ
+
+  possible_types = typ.simple_types()
+
+  collapsed_possible_types = [
+    possible_t.pointee_type if isinstance(possible_t, ReferenceType) else possible_t
+    for possible_t in possible_types
+  ]
+
+  return collapse_type(typ=get_common_type(collapsed_possible_types), unbindings=unbindings)
+
+
 class TypedValue:
   """
   A value an expression returns.
@@ -1875,7 +1897,7 @@ class TypedValue:
       return new
     new.type, new.narrowed_type = to_type, to_type
     new.ir_val = None
-    if self.ir_val is None or context is None or not context.emits_ir:
+    if self.ir_val is None or not context.emits_ir:
       return new
 
     def do_simple_cast(from_simple_type: Type, to_simple_type: Type, ir_val: ir.values.Value) -> ir.values.Value:
@@ -1963,12 +1985,17 @@ class TypedValue:
   def num_possible_unbindings(self) -> int:
     return self.narrowed_type.num_possible_unbindings()
 
-  def copy_collapse(self, context: Optional[CodegenContext], name: str = 'val') -> TypedValue:
+  def collapsed_type(self):
+    return collapse_type(self.narrowed_type, self.num_unbindings)
+
+  def copy_collapse(self, context: CodegenContext, name: str = 'val') -> TypedValue:
     min_ref_depth, max_ref_depth = min_max_ref_depth(self.narrowed_type)
     assert 0 <= self.num_unbindings <= min_ref_depth <= max_ref_depth
     # If possible, do not split up unions if not necessary
     if self.num_unbindings == min_ref_depth == max_ref_depth:
       return self
+
+    assert context is not None
 
     # Otherwise, handle each union member individually
 
