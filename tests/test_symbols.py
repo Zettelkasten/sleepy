@@ -442,3 +442,9 @@ def test_copy_collapse():
     RefInt_Double.collapsed_type(),
     UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE]))
 
+
+def test_union_replace_types():
+  from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_CHAR
+  union = UnionType.from_types(possible_types=[SLEEPY_DOUBLE])
+  replaced_union = union.replace_types({SLEEPY_DOUBLE: UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR])})
+  assert_equal(replaced_union, UnionType.from_types([SLEEPY_INT, SLEEPY_CHAR], val_size=union.val_size))
