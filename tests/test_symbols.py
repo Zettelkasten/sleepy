@@ -433,10 +433,12 @@ def test_copy_collapse():
   Int_RefInt = TypedValue(typ=UnionType.from_types([Int.type, RefInt.type]), num_unbindings=0, ir_val=None)
   RefInt_Int = TypedValue(typ=UnionType.from_types([RefInt.type, Int.type]), num_unbindings=0, ir_val=None)
   RefInt_Double = TypedValue(typ=UnionType.from_types([RefInt.type, SLEEPY_DOUBLE]), num_unbindings=0, ir_val=None)
-  assert_equal(RefInt.copy_collapse(context=None, name='a'), Int)
-  assert_equal(Int.copy_collapse(context=None, name='a'), Int)
-  assert_equal(RefInt_Int.copy_collapse(context=None, name='a'), Int)
-  assert_equal(Int_RefInt.copy_collapse(context=None, name='a'), Int)
+
+  assert_equal(RefInt.collapsed_type(), Int.type)
+  assert_equal(Int.collapsed_type(), Int.type)
+  assert_equal(RefInt_Int.collapsed_type(), Int.type)
+  assert_equal(Int_RefInt.collapsed_type(), Int.type)
   assert_equal(
-    RefInt_Double.copy_collapse(context=None, name='a'),
-    TypedValue(typ=UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE]), num_unbindings=0, ir_val=None))
+    RefInt_Double.collapsed_type(),
+    UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE]))
+

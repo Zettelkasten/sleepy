@@ -140,8 +140,7 @@ def make_call_ir(pos: TreePosition,
                  context: CodegenContext) -> TypedValue:
 
   overloads, template_arguments = caller.overload_set, caller.template_parameters
-  collapsed_argument_values = [arg.copy_collapse(context=None) for num, arg in enumerate(argument_values)]
-  calling_types = [arg.narrowed_type for arg in collapsed_argument_values]
+  calling_types = [arg.collapsed_type() for num, arg in enumerate(argument_values)]
 
   assert all(typ.is_realizable() for typ in calling_types)
 

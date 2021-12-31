@@ -22,11 +22,12 @@ from sleepy.types import OverloadSet, Type, StructType, ConcreteFunction, UnionT
 def narrow_types_from_function_call(symbol_table: SymbolTable,
                                     arg_expressions: List[ExpressionAst],
                                     arg_values: List[TypedValue],
-                                    collapsed_argument_values: List[TypedValue],
+                                    collapsed_calling_types: List[Type],
                                     possible_concrete_funcs: List[ConcreteFunction]):
   for arg_num, arg_expression in enumerate(arg_expressions):
     original_unbound_arg_type = arg_values[arg_num].narrowed_type
-    original_bound_arg_type = collapsed_argument_values[arg_num].narrowed_type
+    original_bound_arg_type = collapsed_calling_types[arg_num]
+
     narrowed_arg_types = [concrete_func.arg_type_narrowings[arg_num] for concrete_func in possible_concrete_funcs]
     narrowed_arg_type = get_common_type(narrowed_arg_types)
     bound_narrowed_arg_type = original_unbound_arg_type.replace_types({original_bound_arg_type: narrowed_arg_type})
@@ -44,8 +45,7 @@ def make_call_ir_with_narrowing(pos: TreePosition,
 
   overloads, template_arguments = caller.overload_set, caller.template_parameters
   arg_values = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in arg_expressions]
-  collapsed_argument_values = [arg.copy_collapse(context=None) for num, arg in enumerate(arg_values)]
-  calling_types = [arg.narrowed_type for arg in collapsed_argument_values]
+  calling_types = [arg.collapsed_type() for arg in arg_values]
 
   for calling_type, arg_expression in zip(calling_types, arg_expressions):
     if not calling_type.is_realizable():
@@ -64,7 +64,7 @@ def make_call_ir_with_narrowing(pos: TreePosition,
   narrow_types_from_function_call(symbol_table,
                                   arg_expressions,
                                   arg_values,
-                                  collapsed_argument_values,
+                                  calling_types,
                                   possible_concrete_functions)
 
   # special handling of 'assert' call
