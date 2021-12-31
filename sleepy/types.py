@@ -440,6 +440,7 @@ class UnionType(Type):
                constructor: Optional[OverloadSet] = None):
     assert len(possible_types) == len(possible_type_nums)
     assert len(set(possible_types)) == len(possible_types)
+    assert all(not isinstance(possible_type, UnionType) for possible_type in possible_types)
     self.possible_types = possible_types
     self.possible_type_nums = possible_type_nums
     self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
