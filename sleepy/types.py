@@ -44,7 +44,7 @@ class Type(ABC):
     return ctypes.sizeof(self.c_type)
 
   def is_realizable(self) -> bool:
-    return True
+    return all(templ_type.is_realizable() for templ_type in self.template_param_or_arg)
 
   def replace_types(self, replacements: Dict[Type, Type]) -> Type:
     if self in replacements:
@@ -513,7 +513,7 @@ class UnionType(Type):
         'elements': [di_tag_type, di_untagged_union_type]})
 
   def is_realizable(self) -> bool:
-    return len(self.possible_types) > 0
+    return len(self.possible_types) > 0 and all(possible_type.is_realizable() for possible_type in self.possible_types)
 
   def replace_types(self, replacements: Dict[Type, Type]) -> Type:
     if self in replacements:
