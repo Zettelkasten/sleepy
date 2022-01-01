@@ -1427,14 +1427,16 @@ def test_union_is_operator():
     program = """
     struct Foo { lol: Int = 1; }  # 1
     struct Bar { fav: Int = 42; }  # 2
-    func main_foo() -> Int  {
-      value: Foo|Bar = Foo(0)
+    func main_foo() -> Int {
+      func inner() -> Foo|Bar { return Foo(0) }
+      value: Foo|Bar = inner()
       if value is Foo { return 1 }
       if value is Bar { return 2 }
       return 0
     }
-    func main_bar() -> Int  {
-      value: Bar|Foo  = Bar(-123)
+    func main_bar() -> Int {
+      func inner() -> Foo|Bar { return Bar(-123) }
+      value: Bar|Foo = inner()
       if value is Foo { return 1 }
       if value is Bar { return 2 }
       return 0
