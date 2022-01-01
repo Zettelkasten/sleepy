@@ -986,13 +986,10 @@ def _narrow_type(from_type: Type, narrow_to: Type, narrow_to_complement: bool = 
   for possible_to_type in possible_to_types:
     assert not isinstance(possible_to_type, UnionType)
     for possible_from_type in all_possible_from_types:
-      if not is_subtype(possible_to_type, possible_from_type):
-        continue
-      if isinstance(possible_to_type, ReferenceType):
+      if isinstance(possible_to_type, ReferenceType) and isinstance(possible_from_type, ReferenceType):
         # references are special: we can always implicitly cast between them, so just be as concrete as possible.
-        assert isinstance(possible_from_type, ReferenceType)
         new_possible_ref_pointee_types[possible_from_type].append(possible_to_type.pointee_type)
-      else:
+      elif is_subtype(possible_to_type, possible_from_type):  # default case
         new_possible_from_types.add(possible_from_type)
 
   if narrow_to_complement:
@@ -1018,6 +1015,9 @@ def _narrow_type(from_type: Type, narrow_to: Type, narrow_to_complement: bool = 
       ref: ReferenceType(_narrow_type(ref.pointee_type, get_common_type(possible_types), narrow_to_complement))
       for ref, possible_types in new_possible_ref_pointee_types.items()
       if len(possible_types) > 0}
+    ref_replacements = {
+      ref: ref_replacement if ref_replacement.is_realizable() else SLEEPY_NEVER
+      for ref, ref_replacement in ref_replacements.items()}
     narrowed_type = narrowed_type.replace_types(ref_replacements)
   return narrowed_type
 

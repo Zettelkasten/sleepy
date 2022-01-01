@@ -125,14 +125,18 @@ def test_narrow_type_references():
   assert_equal(
     narrow_type(Ref(UnionType([Int, Bool], [0, 1], 8)), UnionType([Ref(Int), Ref(Bool)], [0, 1], 8)),
     Ref(UnionType([Int, Bool], [0, 1], 8)))
-  # narrow(Ref[A]|Ref[B], Ref[A|B]) = never
+  # narrow(Ref[A]|Ref[B], Ref[A|B]) = Ref[A]|Ref[B]
   assert_equal(
     narrow_type(UnionType.from_types([Ref(Int), Ref(Bool)]), Ref(UnionType.from_types([Int, Bool]))),
-    UnionType([], [], 8))
+    UnionType.from_types([Ref(Int), Ref(Bool)]))
   # narrow(Ref[0:A|1:B]|Ref[A], Ref[A]) = Ref[0:A]|Ref[A]
   assert_equal(
     narrow_type(UnionType.from_types([Ref(UnionType.from_types([Int, Bool])), Ref(Int)]), Ref(Int)),
     UnionType.from_types([Ref(UnionType.from_types([Int])), Ref(Int)]))
+  # narrow(Ref[0:A], Ref[0:A|1:B]) = Ref[0:A]
+  assert_equal(
+    narrow_type(Ref(UnionType.from_types([Int])), Ref(UnionType.from_types([Int, Bool]))),
+    Ref(UnionType.from_types([Int])))
 
 
 def test_exclude_type():
