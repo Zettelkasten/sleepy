@@ -1873,7 +1873,7 @@ class TypedValue:
   def __post_init__(self):
     assert (self.narrowed_type == SLEEPY_NEVER
             or isinstance(self.type, ReferenceType) == isinstance(self.narrowed_type, ReferenceType))
-    # assert self.num_unbindings <= self.num_possible_unbindings() TODO fix copy_with_implicit_cast and re-enable this
+    assert self.num_unbindings <= self.num_possible_unbindings()
 
   def is_referenceable(self) -> bool:
     return self.narrowed_type.is_referenceable()
@@ -1968,7 +1968,8 @@ class TypedValue:
         new_ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
       else:
         new_ir_val = do_simple_cast(from_simple_type=from_type, to_simple_type=to_type, ir_val=self.ir_val)
-    return dataclasses.replace(self, type=to_type, narrowed_type=to_type, ir_val=new_ir_val)
+    # TODO the semantics of num_unbindings are unclear here
+    return TypedValue(type=to_type, narrowed_type=to_type, ir_val=new_ir_val, num_unbindings=0)
 
   def __repr__(self):
     attrs = ['type']
