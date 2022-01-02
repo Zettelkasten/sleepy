@@ -45,13 +45,14 @@ REGEX_PARSER = ParserGenerator(REGEX_GRAMMAR)
 
 
 def tokenize_regex(word: str,
-                   file_path: Path | DummyPath = DummyPath("regex")) -> Tuple[Tuple[str], Tuple[int]]:
+                   file_path: Path | DummyPath = DummyPath("regex")) -> Tuple[Tuple[Optional[str]], Tuple[int]]:
   """
   :raises: LexError
   :returns: tokens with decomposition
   """
   escape_next = False
-  tokens, tokens_pos = [], []
+  tokens: List[Optional[str]] = []
+  tokens_pos: List[int] = []
   for pos, c in enumerate(word):
     if escape_next:
       if c not in REGEX_SPECIAL_TOKENS:
