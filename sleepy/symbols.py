@@ -59,7 +59,7 @@ class VariableSymbol:
 
   @property
   def typed_value(self) -> TypedValue:
-    return TypedValue(typ=self.declared_var_type, narrowed_type=self.narrowed_var_type, ir_val=self.ir_alloca)
+    return TypedValue.create(typ=self.declared_var_type, narrowed_type=self.narrowed_var_type, ir_val=self.ir_alloca)
 
   def copy_set_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
     new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)

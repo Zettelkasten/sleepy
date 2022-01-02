@@ -388,7 +388,7 @@ def test_bind_and_unbind():
   from sleepy.builtin_symbols import SLEEPY_INT
   context = make_test_context(emits_ir=False)
 
-  ref_int = TypedValue(typ=ReferenceType(SLEEPY_INT), ir_val=None, num_unbindings=0)
+  ref_int = TypedValue.create(typ=ReferenceType(SLEEPY_INT), ir_val=None, num_unbindings=0)
   assert ref_int.num_possible_unbindings() == 1
   int = ref_int.copy_collapse(context=context, name='bind')
   assert int.type == SLEEPY_INT
@@ -428,11 +428,11 @@ def test_struct_self_referencing():
 # noinspection PyPep8Naming
 def test_copy_collapse():
   from sleepy.builtin_symbols import SLEEPY_INT
-  Int = TypedValue(typ=SLEEPY_INT, num_unbindings=0, ir_val=None)
-  RefInt = TypedValue(typ=ReferenceType(SLEEPY_INT), num_unbindings=0, ir_val=None)
-  Int_RefInt = TypedValue(typ=UnionType.from_types([Int.type, RefInt.type]), num_unbindings=0, ir_val=None)
-  RefInt_Int = TypedValue(typ=UnionType.from_types([RefInt.type, Int.type]), num_unbindings=0, ir_val=None)
-  RefInt_Double = TypedValue(typ=UnionType.from_types([RefInt.type, SLEEPY_DOUBLE]), num_unbindings=0, ir_val=None)
+  Int = TypedValue.create(typ=SLEEPY_INT, num_unbindings=0, ir_val=None)
+  RefInt = TypedValue.create(typ=ReferenceType(SLEEPY_INT), num_unbindings=0, ir_val=None)
+  Int_RefInt = TypedValue.create(typ=UnionType.from_types([Int.type, RefInt.type]), num_unbindings=0, ir_val=None)
+  RefInt_Int = TypedValue.create(typ=UnionType.from_types([RefInt.type, Int.type]), num_unbindings=0, ir_val=None)
+  RefInt_Double = TypedValue.create(typ=UnionType.from_types([RefInt.type, SLEEPY_DOUBLE]), num_unbindings=0, ir_val=None)
 
   assert_equal(RefInt.collapsed_type(), Int.type)
   assert_equal(Int.collapsed_type(), Int.type)

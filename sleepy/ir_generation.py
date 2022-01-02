@@ -121,7 +121,7 @@ def make_ir_func_call(func: OverloadSet,
       return_ir = caller_context.builder.call(ir_func, casted_ir_args, name='call_%s' % func.identifier)
 
     assert isinstance(return_ir, ir.values.Value)
-    return TypedValue(typ=concrete_func.return_type, ir_val=return_ir)
+    return TypedValue.create(typ=concrete_func.return_type, ir_val=return_ir)
 
   calling_collapsed_args = [arg.copy_collapse(context=context) for arg in func_args]
   calling_arg_types = [arg.narrowed_type for arg in calling_collapsed_args]
@@ -164,7 +164,7 @@ def make_call_ir(pos: TreePosition,
                                    func_args=argument_values, context=context)
   else:
     return_type = get_common_type([concrete_func.return_type for concrete_func in possible_concrete_functions])
-    return_val = TypedValue(typ=return_type, ir_val=None)
+    return_val = TypedValue.create(typ=return_type, ir_val=None)
 
   return return_val
 

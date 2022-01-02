@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import ctypes
+import dataclasses
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -109,7 +110,6 @@ class Type(ABC):
 
   def simple_types(self) -> List[Type]:
     return [self]
-
 
 
 class UnitType(Type):
@@ -942,8 +942,9 @@ def is_subtype(a: Type, b: Type) -> bool:
     if not a.has_same_symbol_as(possible_b):
       continue
     assert len(a.template_param_or_arg) == len(possible_b.template_param_or_arg)
-    if all(is_subtype(a_templ, b_templ) for a_templ, b_templ in
-           zip(a.template_param_or_arg, possible_b.template_param_or_arg)):
+    if all(
+            is_subtype(a_templ, b_templ) for a_templ, b_templ in
+            zip(a.template_param_or_arg, possible_b.template_param_or_arg)):
       return True
   return False
 
@@ -1844,6 +1845,7 @@ def collapse_type(typ: Type, unbindings: int) -> Type:
   return collapse_type(typ=get_common_type(collapsed_possible_types), unbindings=unbindings)
 
 
+@dataclass(frozen=True, eq=False)
 class TypedValue:
   """
   A value an expression returns.
@@ -1855,35 +1857,34 @@ class TypedValue:
   If num_unbindings > 0, this prevents this behavior and gives access to the reference-like type itself.
   """
 
-  def __init__(self, *,
-               typ: Type,
-               narrowed_type: Type = None,
-               num_unbindings: int = 0,
-               ir_val: Optional[ir.values.Value]):
-    if narrowed_type is None:
-      narrowed_type = typ
-    assert narrowed_type == SLEEPY_NEVER or (isinstance(typ, ReferenceType) == isinstance(narrowed_type, ReferenceType))
-    self.type = typ
-    self.narrowed_type = narrowed_type
-    assert num_unbindings <= self.num_possible_unbindings()
-    self.num_unbindings = num_unbindings
-    self.ir_val = ir_val
+  type: Type
+  narrowed_type: Type
+  num_unbindings: int
+  ir_val: Optional[ir.values.Value]
+
+  @staticmethod
+  def create(typ: Type,
+             narrowed_type: Optional[Type] = None,
+             num_unbindings: int = 0,
+             ir_val: Optional[ir.Value] = None) -> TypedValue:
+    if narrowed_type is None: narrowed_type = typ
+    return TypedValue(typ, narrowed_type, num_unbindings, ir_val)
+
+  def __post_init__(self):
+    assert (self.narrowed_type == SLEEPY_NEVER
+            or isinstance(self.type, ReferenceType) == isinstance(self.narrowed_type, ReferenceType))
+    # assert self.num_unbindings <= self.num_possible_unbindings() TODO fix copy_with_implicit_cast and re-enable this
 
   def is_referenceable(self) -> bool:
     return self.narrowed_type.is_referenceable()
 
-  def copy(self) -> TypedValue:
-    return copy.copy(self)
-
   def copy_set_narrowed_type(self, narrow_to_type: Type) -> TypedValue:
-    new = self.copy()
-    new.narrowed_type = narrow_type(from_type=self.type, narrow_to=narrow_to_type)
-    return new
+    return dataclasses.replace(self, narrowed_type=narrow_type(from_type=self.type, narrow_to=narrow_to_type))
 
   def copy_set_narrowed_collapsed_type(self, collapsed_type: Type) -> TypedValue:
-    new = self.copy()
-    new.narrowed_type = narrow_with_collapsed_type(from_type=self.type, collapsed_type=collapsed_type)
-    return new
+    return dataclasses.replace(
+      self,
+      narrowed_type=narrow_with_collapsed_type(from_type=self.type, collapsed_type=collapsed_type))
 
   def copy_with_implicit_cast(self, to_type: Type, context: CodegenContext, name: str) -> TypedValue:
     """
@@ -1892,13 +1893,10 @@ class TypedValue:
     """
     from_type = self.narrowed_type
     assert can_implicit_cast_to(from_type, to_type)
-    new = self.copy()
-    if from_type == to_type:
-      return new
-    new.type, new.narrowed_type = to_type, to_type
-    new.ir_val = None
+    if from_type == to_type: return self
+
     if self.ir_val is None or not context.emits_ir:
-      return new
+      return dataclasses.replace(self, type=to_type, narrowed_type=to_type)
 
     def do_simple_cast(from_simple_type: Type, to_simple_type: Type, ir_val: ir.values.Value) -> ir.values.Value:
       assert not isinstance(from_simple_type, UnionType)
@@ -1962,17 +1960,15 @@ class TypedValue:
         context.builder.store(
           self.ir_val,
           to_type.make_untagged_union_ptr(to_ir_alloca, from_type, context=context, name='%s_val_ptr' % name))
-      new.ir_val = context.builder.load(to_ir_alloca, name=name)
+      new_ir_val = context.builder.load(to_ir_alloca, name=name)
     else:
       assert not isinstance(to_type, UnionType)
       if isinstance(from_type, UnionType):
         assert all(possible_from_type == to_type for possible_from_type in from_type.possible_types)
-        new.ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
+        new_ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
       else:
-        new.ir_val = do_simple_cast(from_simple_type=from_type, to_simple_type=to_type, ir_val=self.ir_val)
-
-    assert new.num_unbindings <= new.num_possible_unbindings()
-    return new
+        new_ir_val = do_simple_cast(from_simple_type=from_type, to_simple_type=to_type, ir_val=self.ir_val)
+    return dataclasses.replace(self, type=to_type, narrowed_type=to_type, ir_val=new_ir_val)
 
   def __repr__(self):
     attrs = ['type']
@@ -2011,23 +2007,26 @@ class TypedValue:
       # collapse once.
       new_value = self.copy_set_narrowed_type(concrete_type)
       new_value = new_value.copy_with_implicit_cast(to_type=concrete_type, context=caller_context, name=name)
-      new_value.type = concrete_type.pointee_type
-      new_value.narrowed_type = concrete_type.pointee_type
+
       if caller_context is not None and caller_context.emits_ir:
         assert new_value.ir_val is not None
-        new_value.ir_val = caller_context.builder.load(new_value.ir_val, name="%s_unbind" % name)
+        new_ir_val = caller_context.builder.load(new_value.ir_val, name="%s_unbind" % name)
       else:
-        new_value.ir_val = None
+        new_ir_val = None
+
+      new_value = dataclasses.replace(
+        new_value,
+        type=concrete_type.pointee_type,
+        narrowed_type=concrete_type.pointee_type,
+        ir_val=new_ir_val)
+
       return new_value.copy_collapse(context=caller_context, name=name)
 
     possible_types = (
       self.narrowed_type.possible_types if isinstance(self.narrowed_type, UnionType) else {self.narrowed_type})
     if context is None or not context.emits_ir:
-      new = self.copy()
-      new.type = get_common_type([do_collapse(typ, caller_context=context).narrowed_type for typ in possible_types])
-      new.narrowed_type = new.type
-      new.ir_val = None
-      return new
+      new_type = get_common_type([do_collapse(typ, caller_context=context).narrowed_type for typ in possible_types])
+      return dataclasses.replace(self, type=new_type, narrowed_type=new_type, ir_val=None)
     from functools import partial
     return make_union_switch_ir(
       case_funcs={(typ,): partial(do_collapse, typ) for typ in possible_types},
@@ -2039,9 +2038,7 @@ class TypedValue:
 
   def copy_unbind(self) -> TypedValue:
     assert self.num_unbindings + 1 <= self.num_possible_unbindings()
-    new = self.copy()
-    new.num_unbindings += 1
-    return new
+    return dataclasses.replace(self, num_unbindings=self.num_unbindings + 1)
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, TypedValue):
@@ -2087,8 +2084,11 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
 
   # Go through all concrete functions, and add one block for each
   case_contexts: Dict[Tuple[Type], CodegenContext] = {
-    case_arg_types: context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
-      name, '_'.join(str(arg_type) for arg_type in case_arg_types)))))
+    case_arg_types: context.copy_with_builder(
+      ir.IRBuilder(
+        context.builder.append_basic_block(
+          "call_%s_%s" % (
+            name, '_'.join(str(arg_type) for arg_type in case_arg_types)))))
     for case_arg_types in case_funcs.keys()}
   for case_arg_types, case_context in case_contexts.items():
     assert not case_context.emits_debug or case_context.builder.debug_metadata is not None
@@ -2128,8 +2128,9 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
   # Look it up in the table and call the function
   ir_block_addresses_type = ir.types.VectorType(
     LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
-  ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
-    list(block_addresses_distinguished_mapping.flatten())))
+  ir_block_addresses = ir.values.Constant(
+    ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
+      list(block_addresses_distinguished_mapping.flatten())))
   ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
   indirect_branch = context.builder.branch_indirect(ir_call_block_target)
   for case_context in case_contexts.values():
@@ -2153,7 +2154,7 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
       to_type=common_return_type, context=case_context, name="collect_cast_%s" % name)
     collect_return_ir_phi.add_incoming(case_return_val_compatible.ir_val, case_context.block)
     case_context.builder.branch(collect_block)
-  return TypedValue(typ=common_return_type, ir_val=collect_return_ir_phi)
+  return TypedValue.create(typ=common_return_type, ir_val=collect_return_ir_phi)
 
 
 def truncate_ir_value(from_type: ir.Type, to_type: ir.Type, ir_val: ir.Value,

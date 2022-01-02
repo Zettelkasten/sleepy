@@ -4,14 +4,14 @@ from typing import List, Callable, Optional, Dict, Set, Union, Tuple
 from llvmlite import ir
 from llvmlite.ir import IRBuilder
 
-from sleepy.syntactical_analysis.grammar import TreePosition, DUMMY_POS
+from sleepy.struct_type import build_destructor, build_constructor
+from sleepy.symbols import TypeTemplateSymbol, SymbolTable
+from sleepy.syntactical_analysis.grammar import DUMMY_POS
 from sleepy.types import FunctionTemplate, PlaceholderTemplateType, Type, ConcreteFunction, \
   ConcreteBuiltinOperationFunction, ConcreteBitcastFunction, DoubleType, FloatType, BoolType, \
   IntType, LongType, CharType, RawPointerType, PointerType, CodegenContext, OverloadSet, \
   LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, StructType, SLEEPY_UNIT, SLEEPY_NEVER, \
   ReferenceType, StructIdentity, DummyFunctionTemplate
-from sleepy.struct_type import build_destructor, build_constructor
-from sleepy.symbols import TypeTemplateSymbol, SymbolTable
 from sleepy.utilities import concat_dicts
 
 

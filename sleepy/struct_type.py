@@ -4,11 +4,11 @@ from typing import List
 
 from llvmlite import ir
 
+from sleepy.ir_generation import make_call_ir
 from sleepy.symbols import SymbolTable
 from sleepy.syntactical_analysis.grammar import DUMMY_POS
 from sleepy.types import StructType, CodegenContext, OverloadSet, PlaceholderTemplateType, FunctionTemplate, Type, \
-  ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, TypedValue, FunctionSymbolCaller
-from sleepy.ir_generation import make_ir_func_call, make_call_ir
+  ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, TypedValue, FunctionSymbolCaller
 
 
 def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, parent_context: CodegenContext):
@@ -133,7 +133,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
             caller=FunctionSymbolCaller(
               overload_set=self.captured_symbol_table.free_overloads,
               template_parameters=None),  # infer
-            argument_values=[TypedValue(
+            argument_values=[TypedValue.create(
               typ=concrete_member_type,
               ir_val=member_ir_val,
               num_unbindings=concrete_member_type.num_possible_unbindings())],

@@ -676,7 +676,7 @@ class ConstantExpressionAst(ExpressionAst):
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
       ir_val = ir.Constant(self.constant_type.ir_type, self.constant_val) if context.emits_ir else None
-      return TypedValue(typ=self.constant_type, ir_val=ir_val)
+      return TypedValue.create(typ=self.constant_type, ir_val=ir_val)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     raise_error('Cannot use constant expression as function', self.pos)
@@ -733,7 +733,7 @@ class StringLiteralExpressionAst(ExpressionAst):
                                                               name='str_literal_store_start')
       else:
         completed_string_value = None
-      return TypedValue(typ=str_type, ir_val=completed_string_value)
+      return TypedValue.create(typ=str_type, ir_val=completed_string_value)
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
     raise_error('Cannot use string literal as function', self.pos)
@@ -897,7 +897,7 @@ class CallExpressionAst(ExpressionAst):
         size_of_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
         from sleepy.types import LLVM_SIZE_TYPE
         ir_val = ir.Constant(LLVM_SIZE_TYPE, size_of_type.size) if context.emits_ir else None
-        return TypedValue(typ=SLEEPY_LONG, ir_val=ir_val)
+        return TypedValue.create(typ=SLEEPY_LONG, ir_val=ir_val)
       if self._is_is_call(symbol_table=symbol_table):
         if len(self.func_arg_exprs) != 2:
           raise_error('Operator "is" must be used between exactly two arguments', self.pos)
@@ -913,7 +913,7 @@ class CallExpressionAst(ExpressionAst):
           ir_val = make_ir_val_is_type(check_value.ir_val, check_value.narrowed_type, check_type, context=context)
         else:
           ir_val = None
-        return TypedValue(typ=SLEEPY_BOOL, ir_val=ir_val)
+        return TypedValue.create(typ=SLEEPY_BOOL, ir_val=ir_val)
 
       # default case
       func_caller = self._make_func_expr_as_func_caller(symbol_table=symbol_table)
@@ -1005,7 +1005,7 @@ class MemberExpressionAst(ExpressionAst):
               parent_ptr, gep_indices, name='member_ptr_%s' % self.member_identifier)
           else:
             self_ptr = None
-          return TypedValue(typ=ReferenceType(member_type), ir_val=self_ptr)
+          return TypedValue.create(typ=ReferenceType(member_type), ir_val=self_ptr)
         else:
           assert arg_val.num_possible_unbindings() == 0
           if context.emits_ir:
@@ -1015,7 +1015,7 @@ class MemberExpressionAst(ExpressionAst):
               self.member_identifier, struct_ir_val=arg_val.ir_val, context=caller_context)
           else:
             ir_val = None
-          return TypedValue(typ=member_type, ir_val=ir_val)
+          return TypedValue.create(typ=member_type, ir_val=ir_val)
 
       from functools import partial
       collapsed_arg_val = arg_val.copy_collapse(context=context, name='struct')
