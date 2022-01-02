@@ -2736,7 +2736,7 @@ def test_unit_in_union():
         }
       }
     """
-    compile_program(engine, program, add_preamble=False)
+    compile_program(engine, program, add_preamble=True)
 
 def test_use_function_before_declaration_function_scope():
   with make_execution_engine() as engine:

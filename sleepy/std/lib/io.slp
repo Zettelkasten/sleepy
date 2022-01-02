@@ -31,7 +31,6 @@ func close(file: File | IOError) -> IOSuccess | IOError {
   if fclose(file.ptr) != 0 {
     return IOError("Cannot close: " + file.name)
   }
-  free(file.name);  free(file.mode)
   return IOSuccess()
 }
 

@@ -6,12 +6,16 @@ from llvmlite import ir
 
 from sleepy.ir_generation import make_call_ir
 from sleepy.symbols import SymbolTable
-from sleepy.syntactical_analysis.grammar import DUMMY_POS
+from sleepy.syntactical_analysis.grammar import DUMMY_POS, TreePosition
 from sleepy.types import StructType, CodegenContext, OverloadSet, PlaceholderTemplateType, FunctionTemplate, Type, \
   ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, TypedValue, FunctionSymbolCaller
 
 
-def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, parent_context: CodegenContext):
+def build_destructor(struct_type: StructType,
+                     parent_symbol_table: SymbolTable,
+                     parent_context: CodegenContext,
+                     struct_code_position: TreePosition,
+                     custom_destruct: bool):
   assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
   placeholder_template_types = [
@@ -19,8 +23,12 @@ def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, 
   # TODO: Narrow type to something more meaningful then SLEEPY_NEVER
   # E.g. make a copy of the never union type and give that a name ("Freed" or sth)
   signature_ = DestructorFunctionTemplate(
-    placeholder_templ_types=placeholder_template_types, struct=struct_type,
-    captured_symbol_table=parent_symbol_table, captured_context=parent_context)
+    placeholder_templ_types=placeholder_template_types,
+    struct=struct_type,
+    captured_symbol_table=parent_symbol_table,
+    captured_context=parent_context,
+    struct_code_position=struct_code_position,
+    custom_destruct=custom_destruct)
   parent_symbol_table.add_overload('free', signature_)
 
 
@@ -86,13 +94,17 @@ class DestructorFunctionTemplate(FunctionTemplate):
   def __init__(self, placeholder_templ_types: List[PlaceholderTemplateType],
                struct: StructType,
                captured_symbol_table: SymbolTable,
-               captured_context: CodegenContext):
+               captured_context: CodegenContext,
+               struct_code_position: TreePosition,
+               custom_destruct: bool):
     super().__init__(
       placeholder_template_types=placeholder_templ_types, return_type=SLEEPY_UNIT, arg_types=[struct],
       arg_identifiers=['self'], arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False])
     self.struct = struct
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
+    self.struct_code_position = struct_code_position
+    self.custom_destruct = custom_destruct
 
   def _get_concrete_function(self, concrete_template_arguments: List[Type],
                              concrete_parameter_types: List[Type],
@@ -111,6 +123,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
       assert len(concrete_function.arg_types) == 1
       concrete_struct_type = concrete_function.arg_types[0]
       assert isinstance(concrete_struct_type, StructType)
+
       if self.captured_context.emits_ir:
         concrete_function.make_ir_func(identifier='free', extern=False, context=self.captured_context)
         destructor_block = concrete_function.ir_func.append_basic_block(name='entry')
@@ -119,6 +132,22 @@ class DestructorFunctionTemplate(FunctionTemplate):
         assert len(concrete_function.ir_func.args) == 1
         self_ir_alloca = concrete_function.ir_func.args[0]
         self_ir_alloca.struct_identifier = 'self_ptr'
+
+        # call custom destruct
+        if self.custom_destruct:
+          destruct_overloads = self.captured_symbol_table.get_overloads('destruct')
+          make_call_ir(
+            pos=self.struct_code_position,
+            caller=FunctionSymbolCaller(
+              overload_set=destruct_overloads,
+              template_parameters=None
+            ),
+            argument_values=[TypedValue.create(
+              typ=self.struct,
+              ir_val=self_ir_alloca
+            )],
+            context=context)
+
         # Free members in reversed order
         for member_num in reversed(range(len(self.struct.member_identifiers))):
           member_identifier = self.struct.member_identifiers[member_num]

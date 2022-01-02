@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+from dataclasses import dataclass
 from enum import Enum
 from itertools import takewhile
 from typing import Optional, List, Dict, Tuple, Union, Collection, Iterable, cast, Set
@@ -13,16 +14,18 @@ from sleepy.types import Type, narrow_type, narrow_with_collapsed_type, exclude_
   get_common_type, OverloadSet
 
 
+@dataclass(frozen=True, eq=False)
 class VariableSymbol:
   """
   A declared variable.
   """
 
-  def __init__(self, ir_alloca: ir.AllocaInstr, variable_type: Type):
-    assert isinstance(ir_alloca, (ir.AllocaInstr, ir.Argument))
-    self.ir_alloca = ir_alloca
-    self.declared_var_type = variable_type
-    self.narrowed_var_type = variable_type
+  typed_value: TypedValue
+
+  @staticmethod
+  def make(ir_alloca: ir.Value, variable_type: Type) -> VariableSymbol:
+    return VariableSymbol(TypedValue.create(typ=variable_type, ir_val=ir_alloca))
+
 
   @staticmethod
   def make_new_variable(variable_type: ReferenceType,
@@ -31,7 +34,7 @@ class VariableSymbol:
     pointee_type = variable_type.pointee_type
     ir_alloca = context.alloca_at_entry(pointee_type.ir_type, name='%s_ptr' % identifier)
 
-    new_variable = VariableSymbol(ir_alloca, variable_type)
+    new_variable = VariableSymbol.make(ir_alloca, variable_type)
     new_variable._make_debug_info(context, identifier)
     return new_variable
 
@@ -42,9 +45,21 @@ class VariableSymbol:
                            context: CodegenContext) -> VariableSymbol:
     initial_ir_alloca.name = '%s_ref' % identifier
 
-    new_variable = VariableSymbol(initial_ir_alloca, variable_type)
+    new_variable = VariableSymbol.make(initial_ir_alloca, variable_type)
     new_variable._make_debug_info(context, identifier)
     return new_variable
+
+  @property
+  def declared_var_type(self) -> Type:
+    return self.typed_value.type
+
+  @property
+  def narrowed_var_type(self) -> Type:
+    return self.typed_value.narrowed_type
+
+  @property
+  def ir_alloca(self) -> ir.Value:
+    return self.typed_value.ir_val
 
   def _make_debug_info(self, context: CodegenContext, identifier: str):
     if not context.emits_debug: return
@@ -57,15 +72,8 @@ class VariableSymbol:
     assert context.builder.debug_metadata is not None
     context.builder.call(context.di_declare_func, args=[self.ir_alloca, di_local_var, di_expression])
 
-  @property
-  def typed_value(self) -> TypedValue:
-    return TypedValue.create(typ=self.declared_var_type, narrowed_type=self.narrowed_var_type, ir_val=self.ir_alloca)
-
   def copy_set_narrowed_type(self, new_narrow_type: Type) -> VariableSymbol:
-    new_var_symbol = VariableSymbol(self.ir_alloca, self.declared_var_type)
-    # explicitly apply narrowing from declared type here: always stay compatible to the base type
-    new_var_symbol.narrowed_var_type = narrow_type(from_type=self.declared_var_type, narrow_to=new_narrow_type)
-    return new_var_symbol
+    return VariableSymbol(self.typed_value.copy_set_narrowed_type(new_narrow_type))
 
   def copy_narrow_type(self, narrow_to: Type) -> VariableSymbol:
     return self.copy_set_narrowed_type(new_narrow_type=narrow_type(self.narrowed_var_type, narrow_to))
@@ -256,7 +264,7 @@ class SymbolTable:
     functions = cast(List[OverloadSet], functions)
     assert all(s.identifier == key for s in functions)
 
-    return functools.reduce(lambda l, r: l | r, functions)
+    return functools.reduce(lambda l, r: l | r, functions, OverloadSet(identifier=key, signatures=[]))
 
   def add_overload(self, identifier: str, overload: Union[FunctionTemplate | Set[FunctionTemplate]]) -> bool:
     if not isinstance(overload, Set): overload = {overload}

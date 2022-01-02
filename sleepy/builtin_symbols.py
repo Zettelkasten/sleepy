@@ -109,7 +109,11 @@ def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   constructor_symbol = build_constructor(struct_type=str_type, parent_symbol_table=symbol_table, parent_context=context)
   str_type.constructor = constructor_symbol
   struct_symbol = TypeTemplateSymbol.make_concrete_type_symbol(str_type)
-  build_destructor(struct_type=str_type, parent_symbol_table=symbol_table, parent_context=context)
+  build_destructor(struct_type=str_type,
+                   parent_symbol_table=symbol_table,
+                   parent_context=context,
+                   struct_code_position=DUMMY_POS,
+                   custom_destruct=True)
   return struct_symbol
 
 

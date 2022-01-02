@@ -4,9 +4,11 @@ import copy
 import ctypes
 import dataclasses
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, Iterator, MutableSet
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, Iterator, MutableSet, \
+  ClassVar
 
 import llvmlite
 from llvmlite import ir
@@ -1673,13 +1675,52 @@ class CodegenContext:
     return self.debug_ir_patcher.patch_ir(repr(self.module))
 
   def switch_to_block(self, block: ir.Block):
-    self.builder.position_at_start(block)
+    self.builder.position_at_end(block)
 
+
+class FlagState(Enum):
+  UNSET = 0
+  UNKNOWN = 1
+
+@dataclass
+class IrDestructionFlag:
+  ir_type: ClassVar[ir.IntType] = ir.IntType(bits=1)
+
+  name: str
+  value: TypedValue
+  _flag_alloca: ir.AllocaInstr
+  _statically_known_value: Union[bool, FlagState] = field(default=FlagState.UNSET)
+
+  def __init__(self, value: TypedValue, value_name: str, context: CodegenContext):
+    self._flag_alloca = context.alloca_at_entry(
+      ir_type=IrDestructionFlag.ir_type,
+      name=f"{value_name}_destruction_flag")
+    self.name = value_name
+    self.value = value
+
+  @property
+  def statically_known_value(self) -> Union[bool, FlagState]:
+    return self._statically_known_value
+
+  def load_flag(self, context: CodegenContext) -> ir.LoadInstr:
+    return context.builder.load(self._flag_alloca, name=f"{self._flag_alloca.name}_loaded")
+
+  def set_flag(self, context: CodegenContext, value: bool) -> ir.StoreInstr:
+    if self._statically_known_value == FlagState.UNSET:
+      self._statically_known_value = value
+    elif self._statically_known_value != value:
+      self._statically_known_value = FlagState.UNKNOWN
+
+    return context.builder.store(
+      ptr=self._flag_alloca,
+      value=ir.Constant(typ=IrDestructionFlag.ir_type, constant=value))
 
 @dataclass(frozen=True)
 class CGScope:
   end_block: ir.Block
   depth: int
+  # maps from values to be destroyed to the flag
+  to_be_destroyed: Dict[str, IrDestructionFlag] = field(default_factory=dict)
 
   @property
   def depth_constant(self) -> ir.Constant:
@@ -1860,7 +1901,7 @@ class TypedValue:
   type: Type
   narrowed_type: Type
   num_unbindings: int
-  ir_val: Optional[ir.values.Value]
+  ir_val: Optional[ir.Value]
 
   @staticmethod
   def create(typ: Type,
@@ -2040,12 +2081,6 @@ class TypedValue:
   def copy_unbind(self) -> TypedValue:
     assert self.num_unbindings + 1 <= self.num_possible_unbindings()
     return dataclasses.replace(self, num_unbindings=self.num_unbindings + 1)
-
-  def __eq__(self, other) -> bool:
-    if not isinstance(other, TypedValue):
-      return False
-    return (self.type, self.narrowed_type, self.num_unbindings, self.ir_val) == (
-      other.type, other.narrowed_type, other.num_unbindings, other.ir_val)
 
 
 def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext], TypedValue]],

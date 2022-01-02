@@ -1,5 +1,6 @@
 ## Default free functions
 @Inline func free[T](self: Ref[T]) { free(self) }
+@Inline func free(self: Unit) {}
 
 ## Output
 func print(char: Char)  { extern_func print_char(char: Char); print_char(char) }
@@ -115,10 +116,12 @@ extern_func cos(x: Double) ->  Double
 #   Int length = 0
 #   Int alloc_length = 8
 # }
-func cleanup(str: Str) {
-  str.length = 0;
-  str.alloc_length = 0;
-  deallocate(str.start);
+
+func destruct(self: Str) {
+  if self.alloc_length == 0 { return }
+  self.length = 0
+  self.alloc_length = 0
+  deallocate(self.start)
 }
 
 func EmptyStr(alloc_length: Int) ->  Str  {

@@ -13,5 +13,4 @@ func main()  {
   hello = Hello();
   world = "World";
   print_line(hello + ", " + world + '!');
-  free(hello);  # actually we need to free all intermediate values too, but blargh!
 }

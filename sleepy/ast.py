@@ -16,7 +16,8 @@ from sleepy.syntactical_analysis.grammar import TreePosition, DummyPath
 from sleepy.types import OverloadSet, Type, StructType, ConcreteFunction, UnionType, can_implicit_cast_to, \
   CodegenContext, get_common_type, \
   PlaceholderTemplateType, FunctionSymbolCaller, SLEEPY_UNIT, TypedValue, \
-  ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType, CleanupHandlingCG, make_union_switch_ir
+  ReferenceType, SLEEPY_NEVER, StructIdentity, PartialIdentifiedStructType, CleanupHandlingCG, make_union_switch_ir, \
+  IrDestructionFlag, FlagState
 
 
 def narrow_types_from_function_call(symbol_table: SymbolTable,
@@ -42,15 +43,15 @@ def make_call_ir_with_narrowing(pos: TreePosition,
                                 arg_expressions: List[ExpressionAst],
                                 symbol_table: SymbolTable,
                                 context: CodegenContext) -> TypedValue:
-
   overloads, template_arguments = caller.overload_set, caller.template_parameters
   arg_values = [arg_expr.make_as_val(symbol_table=symbol_table, context=context) for arg_expr in arg_expressions]
   calling_types = [arg.collapsed_type() for arg in arg_values]
 
   for calling_type, arg_expression in zip(calling_types, arg_expressions):
     if not calling_type.is_realizable():
-      raise_error("Cannot call function %r with argument of unrealizable type"
-                  % overloads.identifier, arg_expression.pos)
+      raise_error(
+        "Cannot call function %r with argument of unrealizable type"
+        % overloads.identifier, arg_expression.pos)
 
   possible_concrete_functions = resolve_possible_concrete_funcs(pos, func_caller=caller, calling_types=calling_types)
 
@@ -61,11 +62,12 @@ def make_call_ir_with_narrowing(pos: TreePosition,
     context=context)
 
   # apply type narrowings
-  narrow_types_from_function_call(symbol_table,
-                                  arg_expressions,
-                                  arg_values,
-                                  calling_types,
-                                  possible_concrete_functions)
+  narrow_types_from_function_call(
+    symbol_table,
+    arg_expressions,
+    arg_values,
+    calling_types,
+    possible_concrete_functions)
 
   # special handling of 'assert' call
   if overloads.identifier in {'assert', 'unchecked_assert'}:
@@ -88,7 +90,7 @@ def make_call_ir_by_identifier(pos: TreePosition,
   if not isinstance(symbol, OverloadSet):
     raise_error('Cannot call non-function %r' % func_identifier, pos)
   func_caller = FunctionSymbolCaller(overload_set=symbol, template_parameters=templ_types)
-  return  make_call_ir_with_narrowing(
+  return make_call_ir_with_narrowing(
     pos,
     caller=func_caller, arg_expressions=func_arg_exprs, symbol_table=symbol_table, context=context)
 
@@ -183,7 +185,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
 
     # enumerate before building ir because check whether assignment is declaration only works
     # before variable symbols are added
-    variable_definitions = self._enumerate_variable_definitions(scope_symbol_table)
+    # variable_definitions = self._enumerate_variable_definitions(scope_symbol_table)
 
     with scope_context.base.use_pos(self.pos):
       for stmt in [e for e in self.stmt_list if isinstance(e, StatementAst)]:
@@ -198,23 +200,50 @@ class AbstractScopeAst(AbstractSyntaxTree):
     builder_before = scope_context.builder
     scope_context.base.switch_to_block(scope_context.scope.end_block)
 
-    for defining_ast in reversed(variable_definitions):
-      symbol = scope_symbol_table[defining_ast.get_var_identifier()]
-      assert isinstance(symbol, VariableSymbol)
+    tb_destroyed = scope_context.scope.to_be_destroyed.items()
 
-      if (isinstance(symbol.narrowed_var_type, ReferenceType) and
-              isinstance(symbol.narrowed_var_type.pointee_type, StructType)):
-        caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
-        # call destructor
-        make_call_ir(
-          self.pos,
-          caller=caller,
-          argument_values=[symbol.typed_value],
-          context=scope_context.base
-        )
+    definitely_destroy = [(val, flag) for val, flag in tb_destroyed if
+                          flag.statically_known_value in {True, FlagState.UNSET}]
+
+    maybe_destroy = [(val, flag) for val, flag in tb_destroyed if flag.statically_known_value == FlagState.UNKNOWN]
+
+    all_paths_returned_before = scope_context.base.all_paths_returned
+    scope_context.base.all_paths_returned = False
+    for name, destruction_flag in definitely_destroy:
+      caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
+      make_call_ir(
+        self.pos,
+        caller=caller,
+        argument_values=[destruction_flag.value],
+        context=scope_context.base
+      )
+
+    if not maybe_destroy:
+      scope_context.end_block_builder.position_at_end(scope_context.builder.block)
+      scope_context.base.builder = builder_before
+      scope_context.base.all_paths_returned = all_paths_returned_before
+      return
+
+    continuation_block = scope_context.builder.append_basic_block('end_block_continuation')
+
+    for name, destruction_flag in maybe_destroy:
+      call_destruct_block = scope_context.builder.append_basic_block(name=f"{destruction_flag.name}_destruct_block")
+
+      flag_value = destruction_flag.load_flag(scope_context.base)
+      scope_context.builder.cbranch(cond=flag_value, truebr=call_destruct_block, falsebr=continuation_block)
+      scope_context.base.switch_to_block(call_destruct_block)
+
+      caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
+      make_call_ir(
+        self.pos,
+        caller=caller,
+        argument_values=[destruction_flag.value],
+        context=scope_context.base
+      )
 
     scope_context.base.builder = builder_before
-    scope_context.end_block_builder.position_at_end(scope_context.end_block_builder.block)
+    scope_context.end_block_builder.position_at_end(continuation_block)
+    scope_context.base.all_paths_returned = all_paths_returned_before
 
   def _enumerate_variable_definitions(self, symbol_table: SymbolTable) -> List[AssignStatementAst]:
     variable_symbols = []
@@ -345,6 +374,15 @@ class ReturnStatementAst(StatementAst):
     if len(return_exprs) > 1:
       raise_error('Returning multiple values not support yet', self.pos)
 
+  @staticmethod
+  def _set_destruction_flag(return_expression: ExpressionAst,
+                            context: CleanupHandlingCG):
+    identifier = return_expression.expression_identifier()
+    if identifier is None: return
+    destruct_flag = context.scope.to_be_destroyed.get(identifier)
+    if destruct_flag is None: return
+    destruct_flag.set_flag(context.base, value=False)
+
   def build_ir(self, symbol_table: SymbolTable, cleanup_context: CleanupHandlingCG):
     context = cleanup_context.base
 
@@ -362,18 +400,25 @@ class ReturnStatementAst(StatementAst):
         if not can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type):
           can_implicit_cast_to(return_val.narrowed_type, symbol_table.current_func.return_type)
 
-          raise_error('Function declared to return type %r, but return value is of type %r' % (
-            symbol_table.current_func.return_type, return_val.narrowed_type), self.pos)
+          raise_error(
+            'Function declared to return type %r, but return value is of type %r' % (
+              symbol_table.current_func.return_type, return_val.narrowed_type), self.pos)
 
         if context.emits_ir:
           ir_val = return_val.copy_with_implicit_cast(
-            to_type=symbol_table.current_func.return_type, context=context, name='return_val_cast').ir_val
+            to_type=symbol_table.current_func.return_type,
+            context=context,
+            name='return_val_cast').ir_val
+
+          ReturnStatementAst._set_destruction_flag(return_expr, cleanup_context)
+
           cleanup_context.return_with_cleanup(ir_val)
       else:
         assert len(self.return_exprs) == 0
         if symbol_table.current_func.return_type != SLEEPY_UNIT:
-          raise_error('Function declared to return a value of type %r, but implicitly returned %s' % (
-            symbol_table.current_func.return_type, SLEEPY_UNIT), self.pos)
+          raise_error(
+            'Function declared to return a value of type %r, but implicitly returned %s' % (
+              symbol_table.current_func.return_type, SLEEPY_UNIT), self.pos)
         if context.emits_ir and not symbol_table.current_func.is_inline:
           cleanup_context.return_with_cleanup(SLEEPY_UNIT.unit_constant())
 
@@ -402,17 +447,8 @@ class AssignStatementAst(StatementAst):
     self.source_ast = source_ast
     self.declared_type = declared_type
 
-  def get_var_identifier(self) -> Optional[str]:
-    target = self.target_ast
-    while isinstance(target, UnbindExpressionAst):
-      target = target.arg_expr
-    if isinstance(target, IdentifierExpressionAst):
-      return target.identifier
-    else:
-      return None
-
   def is_declaration(self, symbol_table: SymbolTable) -> bool:
-    var_identifier = self.get_var_identifier()
+    var_identifier = self.target_ast.expression_identifier()
     if var_identifier is None:
       return False
     if var_identifier not in symbol_table.current_scope_identifiers:
@@ -437,17 +473,22 @@ class AssignStatementAst(StatementAst):
 
       source_value = source_value.copy_collapse(context=context, name='store')
       if stated_type is not None and not can_implicit_cast_to(source_value.narrowed_type, stated_type):
-        raise_error('Cannot assign variable with stated type %r a value of type %r' % (
-          stated_type, source_value.narrowed_type), self.pos)
+        raise_error(
+          'Cannot assign variable with stated type %r a value of type %r' % (
+            stated_type, source_value.narrowed_type), self.pos)
 
       if self.is_declaration(symbol_table=symbol_table):
-        var_identifier = self.get_var_identifier()  # y
+        var_identifier = self.target_ast.expression_identifier()  # y
         assert var_identifier not in symbol_table.current_scope_identifiers
         # variables are always (implicitly) references
         declared_type = ReferenceType(source_value.type if stated_type is None else stated_type)  # Ref[A|B]
         # declare new variable, override entry in symbol_table (maybe it was defined in an outer scope before).
         symbol = VariableSymbol.make_new_variable(declared_type, var_identifier, context)
         symbol_table[var_identifier] = symbol
+        cleanup_context.scope.to_be_destroyed[var_identifier] = IrDestructionFlag(
+          value_name=var_identifier,
+          context=context,
+          value=symbol.typed_value)
 
       # check that declared type matches assigned type
       uncollapsed_target_val = self.target_ast.make_as_val(symbol_table=symbol_table, context=context)  # Ref[A|B]
@@ -458,19 +499,21 @@ class AssignStatementAst(StatementAst):
       uncollapsed_target_val = uncollapsed_target_val.copy_set_narrowed_collapsed_type(
         ReferenceType(source_value.narrowed_type))  # Ref[A]
       if uncollapsed_target_val.narrowed_type == SLEEPY_NEVER:
-        raise_error('Cannot assign variable of type %r a value of type %r' % (
-          uncollapsed_target_val.type, source_value.narrowed_type), self.pos)
+        raise_error(
+          'Cannot assign variable of type %r a value of type %r' % (
+            uncollapsed_target_val.type, source_value.narrowed_type), self.pos)
       target_val = uncollapsed_target_val.copy_collapse_as_mutates(context=context, name='assign_val')  # Ref[A]
       assert isinstance(target_val.type, ReferenceType)
       declared_type = target_val.type.pointee_type  # A
       if stated_type is not None and not can_implicit_cast_to(stated_type, declared_type):
-        raise_error('Cannot %s variable collapsing to type %r with new type %r' % (
-          'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type),
-                    self.pos)
+        raise_error(
+          'Cannot %s variable collapsing to type %r with new type %r' % (
+            'declare' if self.is_declaration(symbol_table=symbol_table) else 'redefine', declared_type, stated_type),
+          self.pos)
       assert can_implicit_cast_to(source_value.narrowed_type, declared_type)
 
       # if we assign to a variable, narrow type to val_type
-      if (var_identifier := self.get_var_identifier()) is not None:
+      if (var_identifier := self.target_ast.expression_identifier()) is not None:
         assert var_identifier in symbol_table
         symbol = symbol_table[var_identifier]
         assert isinstance(symbol, VariableSymbol)
@@ -608,8 +651,9 @@ class WhileStatementAst(StatementAst):
         if body_context.base.all_paths_returned:  # all branches return, simply jump to parent cleanup
           body_context.end_block_builder.branch(context.scope.end_block)
         else:  # return or jump back to condition check
-          make_ir_end_block_jump(body_context, continuation=condition_check_block,
-                                 parent_end_block=context.scope.end_block)
+          make_ir_end_block_jump(
+            body_context, continuation=condition_check_block,
+            parent_end_block=context.scope.end_block)
 
         context.base.switch_to_block(continue_block)
       else:
@@ -655,6 +699,9 @@ class ExpressionAst(AbstractSyntaxTree, ABC):
   @abstractmethod
   def make_as_type(self, symbol_table: SymbolTable) -> Type:
     raise NotImplementedError()
+
+  def expression_identifier(self) -> Optional[str]:
+    return None
 
   def __repr__(self) -> str:
     return 'ExpressionAst'
@@ -726,11 +773,13 @@ class StringLiteralExpressionAst(ExpressionAst):
         length_ir_type = str_type.member_types[1].ir_type
         ir_length = ir.Constant(length_ir_type, len(str_val))
 
-        ir_val = ir.Constant(str_type.ir_type, (
-          ir.FormattedConstant(context.ir_func_malloc.function_type.return_type, constant='undef'),
-          ir_length, ir_length))
-        completed_string_value = context.builder.insert_value(agg=ir_val, value=ir_start, idx=0,
-                                                              name='str_literal_store_start')
+        ir_val = ir.Constant(
+          str_type.ir_type, (
+            ir.FormattedConstant(context.ir_func_malloc.function_type.return_type, constant='undef'),
+            ir_length, ir_length))
+        completed_string_value = context.builder.insert_value(
+          agg=ir_val, value=ir_start, idx=0,
+          name='str_literal_store_start')
       else:
         completed_string_value = None
       return TypedValue.create(typ=str_type, ir_val=completed_string_value)
@@ -774,8 +823,9 @@ class IdentifierExpressionAst(ExpressionAst):
       # TODO add variable captures
       raise_error('Cannot capture variable %r from outer scope' % self.identifier, self.pos)
     if symbol.narrowed_var_type == SLEEPY_NEVER:
-      raise_error('Cannot use variable %r with narrowed type %r' % (self.identifier, symbol.narrowed_var_type),
-                  self.pos)
+      raise_error(
+        'Cannot use variable %r with narrowed type %r' % (self.identifier, symbol.narrowed_var_type),
+        self.pos)
     return symbol
 
   def get_func_symbol(self, symbol_table: SymbolTable) -> OverloadSet:
@@ -804,6 +854,9 @@ class IdentifierExpressionAst(ExpressionAst):
 
   def children(self) -> List[AbstractSyntaxTree]:
     return []
+
+  def expression_identifier(self) -> Optional[str]:
+    return self.identifier
 
   def __repr__(self) -> str:
     return 'IdentifierExpressionAst(var_identifier=%r)' % self.identifier
@@ -868,8 +921,9 @@ class CallExpressionAst(ExpressionAst):
         raise_error('Cannot call constructor of type %r because it does not exist' % called_type, self.pos)
       return called_type.constructor_caller
     else:
-      raise_error('Cannot call an expression of kind %r' % (
-        self.func_expr.make_symbol_kind(symbol_table=symbol_table)), self.pos)
+      raise_error(
+        'Cannot call an expression of kind %r' % (
+          self.func_expr.make_symbol_kind(symbol_table=symbol_table)), self.pos)
 
   def _is_special_call(self, builtin_func_identifier: str, symbol_table: SymbolTable):
     return isinstance(self.func_expr, IdentifierExpressionAst) \
@@ -942,8 +996,9 @@ class CallExpressionAst(ExpressionAst):
     signature_type = self.func_arg_exprs[0].make_as_type(symbol_table=symbol_table)
     if len(template_arguments) != len(signature_type.template_param_or_arg):
       if len(template_arguments) == 0:
-        raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
-          signature_type, signature_type.template_param_or_arg), self.pos)
+        raise_error(
+          'Type %r needs to be constructed with template arguments for template parameters %r' % (
+            signature_type, signature_type.template_param_or_arg), self.pos)
       else:
         raise_error(
           'Type %r with template parameters %r cannot be constructed with template arguments %r' % (
@@ -987,8 +1042,9 @@ class MemberExpressionAst(ExpressionAst):
             'Cannot access a member variable %r of the non-struct type %r' % (self.member_identifier, struct_type),
             self.pos)
         if self.member_identifier not in struct_type.member_identifiers:
-          raise_error('Struct type %r has no member variable %r, only available: %r' % (
-            struct_type, self.member_identifier, ', '.join(struct_type.member_identifiers)), self.pos)
+          raise_error(
+            'Struct type %r has no member variable %r, only available: %r' % (
+              struct_type, self.member_identifier, ', '.join(struct_type.member_identifiers)), self.pos)
         member_num = struct_type.get_member_num(self.member_identifier)
         member_type = struct_type.member_types[member_num]
 
@@ -1060,8 +1116,9 @@ class UnbindExpressionAst(ExpressionAst):
           raise_error(
             'Cannot unbind value of narrowed type %r which is not referencable' % arg_val.narrowed_type, self.pos)
         else:
-          raise_error('Cannot unbind value of narrowed type %r more than %s times' % (
-            arg_val.narrowed_type, arg_val.num_possible_unbindings()), self.pos)
+          raise_error(
+            'Cannot unbind value of narrowed type %r more than %s times' % (
+              arg_val.narrowed_type, arg_val.num_possible_unbindings()), self.pos)
       return arg_val.copy_unbind()
 
   def make_as_func_caller(self, symbol_table: SymbolTable):
@@ -1072,6 +1129,9 @@ class UnbindExpressionAst(ExpressionAst):
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.arg_expr]
+
+  def expression_identifier(self) -> Optional[str]:
+    return self.arg_expr.expression_identifier()
 
   def __repr__(self) -> str:
     return 'UnbindExpressionAst(arg_expr=%r)' % self.arg_expr
@@ -1116,8 +1176,9 @@ class IdentifierTypeAst(TypeAst):
     template_arguments = [t_param.make_type(symbol_table=symbol_table) for t_param in self.template_parameters]
     if len(template_arguments) != len(type_symbol.template_parameters):
       if len(template_arguments) == 0:
-        raise_error('Type %r needs to be constructed with template arguments for template parameters %r' % (
-          self.type_identifier, type_symbol.template_parameters), self.pos)
+        raise_error(
+          'Type %r needs to be constructed with template arguments for template parameters %r' % (
+            self.type_identifier, type_symbol.template_parameters), self.pos)
       else:
         raise_error(
           'Type %r with template parameters %r cannot be constructed with template arguments %r' % (
@@ -1172,8 +1233,9 @@ def annotate_ast(ast: AbstractSyntaxTree, annotation_list: List[AnnotationAst]) 
   assert len(ast.annotations) == 0
   for annotation in annotation_list:
     if annotation.identifier not in ast.allowed_annotation_identifiers:
-      raise_error('Annotations with name %r not allowed here, only allowed: %s' % (
-        annotation.identifier, ', '.join(ast.allowed_annotation_identifiers)), annotation.pos)
+      raise_error(
+        'Annotations with name %r not allowed here, only allowed: %s' % (
+          annotation.identifier, ', '.join(ast.allowed_annotation_identifiers)), annotation.pos)
     if any(annotation.identifier == other.identifier for other in ast.annotations):
       raise_error('Cannot add annotation with name %r multiple times' % annotation.identifier, annotation.pos)
     ast.annotations.append(annotation)
@@ -1208,6 +1270,8 @@ def make_narrow_type_from_valid_cond_ast(cond_expr_ast: ExpressionAst,
 
 
 class StructDeclarationAst(DeclarationAst):
+  allowed_annotation_identifiers = frozenset(["destructible"])
+
   def __init__(self, pos: TreePosition, struct_identifier: str, templ_identifiers: List[str],
                member_types: List[TypeAst], member_identifiers: List[str],
                member_annotations: List[List[AnnotationAst]]):
@@ -1223,6 +1287,10 @@ class StructDeclarationAst(DeclarationAst):
   def identifier(self) -> str:
     return self.struct_identifier
 
+  @property
+  def _marked_custom_destruct(self) -> bool:
+    return any(ann.identifier.casefold() == 'destructible' for ann in self.annotations)
+
   def create_symbol(self, symbol_table: SymbolTable, context: CodegenContext) -> Symbol:
     with context.use_pos(self.pos):
       if self.struct_identifier in symbol_table.current_scope_identifiers:
@@ -1237,8 +1305,9 @@ class StructDeclarationAst(DeclarationAst):
       # Struct members might reference this struct itself (indirectly).
       # We temporarily add a placeholder to the symbol table so it is defined here.
       struct_identity = StructIdentity(struct_identifier=self.struct_identifier, context=context)
-      partial_struct_type = PartialIdentifiedStructType(identity=struct_identity,
-                                                        template_param_or_arg=placeholder_templ_types)
+      partial_struct_type = PartialIdentifiedStructType(
+        identity=struct_identity,
+        template_param_or_arg=placeholder_templ_types)
       struct_identity.partial_struct_type = partial_struct_type
       struct_symbol_table[self.struct_identifier] = TypeTemplateSymbol(
         template_parameters=placeholder_templ_types, signature_type=partial_struct_type)
@@ -1249,12 +1318,16 @@ class StructDeclarationAst(DeclarationAst):
         member_identifiers=self.member_identifiers, member_types=member_types, partial_struct_type=partial_struct_type)
 
       # make constructor / destructor
-      signature_struct_type.constructor = build_constructor(struct_type=signature_struct_type,
-                                                            parent_symbol_table=struct_symbol_table,
-                                                            parent_context=context)
-      build_destructor(struct_type=signature_struct_type,
-                       parent_symbol_table=symbol_table,
-                       parent_context=context)
+      signature_struct_type.constructor = build_constructor(
+        struct_type=signature_struct_type,
+        parent_symbol_table=struct_symbol_table,
+        parent_context=context)
+      build_destructor(
+        struct_type=signature_struct_type,
+        parent_symbol_table=symbol_table,
+        parent_context=context,
+        struct_code_position=self.pos,
+        custom_destruct=self._marked_custom_destruct)
 
       # assemble to complete type symbol
       struct_type_symbol = TypeTemplateSymbol(
