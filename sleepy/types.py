@@ -1970,6 +1970,8 @@ class TypedValue:
         new.ir_val = from_type.make_extract_val(self.ir_val, to_type, context=context, name=name)
       else:
         new.ir_val = do_simple_cast(from_simple_type=from_type, to_simple_type=to_type, ir_val=self.ir_val)
+
+    assert new.num_unbindings <= new.num_possible_unbindings()
     return new
 
   def __repr__(self):
