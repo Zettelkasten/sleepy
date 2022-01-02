@@ -113,7 +113,7 @@ def _make_str_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
                    parent_symbol_table=symbol_table,
                    parent_context=context,
                    struct_code_position=DUMMY_POS,
-                   custom_destruct=True)
+                   custom_destruct=False)
   return struct_symbol
 
 
