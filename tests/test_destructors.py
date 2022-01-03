@@ -38,3 +38,22 @@ def test_side_effect_in_destruct():
     """
     main = compile_program(engine, program, main_func_identifier='main', add_preamble=True)
     assert_equal(main(), True)
+
+def test_destructible_templated_struct():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    @destructible
+    struct S[T] { value: T; b: Ref[Bool] }
+    func destruct[T](self: S[T]) { self.b = True() }
+
+    func main() -> Bool {
+      s_destructed = False()
+      if True() {
+        s = S(12, !s_destructed)
+      }
+      return s_destructed
+    }
+    """
+    main = compile_program(engine, program, main_func_identifier='main', add_preamble=True)
+    assert_equal(main(), True)

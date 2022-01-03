@@ -132,6 +132,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
         assert len(concrete_function.ir_func.args) == 1
         self_ir_alloca = concrete_function.ir_func.args[0]
         self_ir_alloca.struct_identifier = 'self_ptr'
+        self_type = concrete_function.arg_types[0]
 
         # call custom destruct
         if self.custom_destruct:
@@ -143,7 +144,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
               template_parameters=None
             ),
             argument_values=[TypedValue.create(
-              typ=self.struct,
+              typ=self_type,
               ir_val=self_ir_alloca
             )],
             context=context)
