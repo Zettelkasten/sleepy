@@ -193,7 +193,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
         stmt.build_ir(scope_symbol_table, scope_context)
 
     if not scope_context.base.all_paths_returned:
-      scope_context.jump_to_end()
+      scope_context.jump_to_end_block()
 
     # should usually use scope_context.end_block_builder instead of switching to end_block, but function call
     # generation needs the entire context

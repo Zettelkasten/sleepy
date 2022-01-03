@@ -1763,7 +1763,7 @@ class CleanupHandlingCG:
                        ptr=self.function.unroll_count_ir)
     self.builder.branch(target=self.scope.end_block)
 
-  def jump_to_end(self):
+  def jump_to_end_block(self):
     self.builder.store(value=ir.Constant(typ=ir.IntType(bits=32), constant=self.scope.depth),
                        ptr=self.function.unroll_count_ir)
     self.builder.branch(target=self.scope.end_block)
