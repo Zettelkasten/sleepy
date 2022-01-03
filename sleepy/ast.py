@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List, Optional, Any, Union
@@ -183,10 +184,6 @@ class AbstractScopeAst(AbstractSyntaxTree):
   def build_scope_ir(self, scope_symbol_table: SymbolTable, scope_context: CleanupHandlingCG):
     self.create_symbols(scope_symbol_table, scope_context.base)
 
-    # enumerate before building ir because check whether assignment is declaration only works
-    # before variable symbols are added
-    # variable_definitions = self._enumerate_variable_definitions(scope_symbol_table)
-
     with scope_context.base.use_pos(self.pos):
       for stmt in [e for e in self.stmt_list if isinstance(e, StatementAst)]:
         if scope_context.base.all_paths_returned: raise_error('Code is unreachable', stmt.pos)
@@ -195,10 +192,6 @@ class AbstractScopeAst(AbstractSyntaxTree):
     if not scope_context.base.all_paths_returned:
       scope_context.jump_to_end_block()
 
-    # should usually use scope_context.end_block_builder instead of switching to end_block, but function call
-    # generation needs the entire context
-    builder_before = scope_context.builder
-    scope_context.base.switch_to_block(scope_context.scope.end_block)
 
     tb_destroyed = scope_context.scope.to_be_destroyed.items()
 
@@ -209,6 +202,9 @@ class AbstractScopeAst(AbstractSyntaxTree):
 
     all_paths_returned_before = scope_context.base.all_paths_returned
     scope_context.base.all_paths_returned = False
+    scope_context.base.switch_to_block(scope_context.scope.end_block)
+    regular_block = scope_context.base.block
+
     for name, destruction_flag in definitely_destroy:
       caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
       make_call_ir(
@@ -219,9 +215,9 @@ class AbstractScopeAst(AbstractSyntaxTree):
       )
 
     if not maybe_destroy:
-      scope_context.end_block_builder.position_at_end(scope_context.builder.block)
-      scope_context.base.builder = builder_before
       scope_context.base.all_paths_returned = all_paths_returned_before
+      scope_context.scope = dataclasses.replace(scope_context.scope, end_block=scope_context.builder.block)
+      scope_context.base.switch_to_block(regular_block)
       return
 
     continuation_block = scope_context.builder.append_basic_block('end_block_continuation')
@@ -231,6 +227,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
 
       flag_value = destruction_flag.load_flag(scope_context.base)
       scope_context.builder.cbranch(cond=flag_value, truebr=call_destruct_block, falsebr=continuation_block)
+
       scope_context.base.switch_to_block(call_destruct_block)
 
       caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
@@ -241,9 +238,9 @@ class AbstractScopeAst(AbstractSyntaxTree):
         context=scope_context.base
       )
 
-    scope_context.base.builder = builder_before
-    scope_context.end_block_builder.position_at_end(continuation_block)
+    scope_context.scope = dataclasses.replace(scope_context.scope, end_block=continuation_block)
     scope_context.base.all_paths_returned = all_paths_returned_before
+    scope_context.base.switch_to_block(regular_block)
 
   def _enumerate_variable_definitions(self, symbol_table: SymbolTable) -> List[AssignStatementAst]:
     variable_symbols = []
@@ -576,29 +573,31 @@ class IfStatementAst(StatementAst):
       self.true_scope.build_scope_ir(scope_symbol_table=true_symbol_table, scope_context=true_context)
       self.false_scope.build_scope_ir(scope_symbol_table=false_symbol_table, scope_context=false_context)
 
-      if true_context.base.all_paths_returned and false_context.base.all_paths_returned:  # both terminated
-        base.all_paths_returned = True
-        true_context.end_block_builder.branch(context.scope.end_block)
-        false_context.end_block_builder.branch(context.scope.end_block)
-      else:
-        continue_block: ir.Block = base.builder.append_basic_block('continue_block')
-        if true_context.base.all_paths_returned:  # only true terminated
-          symbol_table.apply_type_narrowings_from(false_symbol_table)
-          true_context.end_block_builder.branch(context.scope.end_block)
-          make_ir_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+      with true_context.goto_end_block(), false_context.goto_end_block():
 
-        elif false_context.base.all_paths_returned:  # only false terminated
-          symbol_table.apply_type_narrowings_from(true_symbol_table)
-          make_ir_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
-          false_context.end_block_builder.branch(context.scope.end_block)
+        if true_context.base.all_paths_returned and false_context.base.all_paths_returned:  # both terminated
+          base.all_paths_returned = True
+          true_context.builder.branch(context.scope.end_block)
+          false_context.builder.branch(context.scope.end_block)
+        else:
+          continue_block: ir.Block = base.builder.append_basic_block('continue_block')
+          if true_context.base.all_paths_returned:  # only true terminated
+            symbol_table.apply_type_narrowings_from(false_symbol_table)
+            true_context.builder.branch(context.scope.end_block)
+            make_ir_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
 
-        else:  # neither terminated
-          assert not true_context.base.all_paths_returned and not false_context.base.all_paths_returned
-          symbol_table.apply_type_narrowings_from(true_symbol_table, false_symbol_table)
-          make_ir_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
-          make_ir_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+          elif false_context.base.all_paths_returned:  # only false terminated
+            symbol_table.apply_type_narrowings_from(true_symbol_table)
+            make_ir_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+            false_context.builder.branch(context.scope.end_block)
 
-        base.switch_to_block(continue_block)
+          else:  # neither terminated
+            assert not true_context.base.all_paths_returned and not false_context.base.all_paths_returned
+            symbol_table.apply_type_narrowings_from(true_symbol_table, false_symbol_table)
+            make_ir_end_block_jump(true_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+            make_ir_end_block_jump(false_context, continuation=continue_block, parent_end_block=context.scope.end_block)
+
+          base.switch_to_block(continue_block)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.condition_val, self.true_scope, self.false_scope]
@@ -649,7 +648,7 @@ class WhileStatementAst(StatementAst):
         self.body_scope.build_scope_ir(scope_symbol_table=body_symbol_table, scope_context=body_context)
 
         if body_context.base.all_paths_returned:  # all branches return, simply jump to parent cleanup
-          body_context.end_block_builder.branch(context.scope.end_block)
+          with body_context.goto_end_block(): body_context.builder.branch(context.scope.end_block)
         else:  # return or jump back to condition check
           make_ir_end_block_jump(
             body_context, continuation=condition_check_block,

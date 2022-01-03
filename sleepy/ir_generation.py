@@ -13,13 +13,17 @@ from sleepy.types import CleanupHandlingCG, Type, CodegenContext, UnionType, LLV
 
 def make_ir_end_block_jump(context: CleanupHandlingCG, continuation: ir.Block, parent_end_block: ir.Block):
   assert context.scope.depth != 0
-  builder = context.end_block_builder
-  target_depth_reached = builder.icmp_unsigned('==', builder.load(context.function.unroll_count_ir),
-                        ir.Constant(typ=ir.IntType(bits=64), constant=context.scope.depth))
-  builder.cbranch(target_depth_reached, continuation, parent_end_block)
+
+  with context.builder.goto_block(context.scope.end_block):
+    target_depth_reached = context.builder.icmp_unsigned(
+      '==',
+      context.builder.load(context.function.unroll_count_ir),
+      ir.Constant(typ=ir.IntType(bits=64), constant=context.scope.depth))
+    context.builder.cbranch(target_depth_reached, continuation, parent_end_block)
 
 def make_ir_end_block_return(context: CleanupHandlingCG):
-  context.end_block_builder.ret(context.end_block_builder.load(context.function.return_slot_ir))
+  with context.builder.goto_block(context.scope.end_block):
+    context.builder.ret(context.builder.load(context.function.return_slot_ir))
 
 
 def make_ir_val_is_type(ir_val: ir.values.Value,

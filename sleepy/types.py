@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 import ctypes
 import dataclasses
@@ -1741,11 +1742,15 @@ class CleanupHandlingCG:
     self.base = codegen_context
     self.scope = scope
     self.function = function
-    self.end_block_builder = ir.IRBuilder(self.scope.end_block)
 
   @property
   def builder(self) -> ir.IRBuilder:
     return self.base.builder
+
+  @contextlib.contextmanager
+  def goto_end_block(self):
+    with self.builder.goto_block(self.scope.end_block):
+      yield
 
   def make_child_scope(self, scope_name: str) -> CleanupHandlingCG:
     new_block = self.builder.append_basic_block(scope_name)
