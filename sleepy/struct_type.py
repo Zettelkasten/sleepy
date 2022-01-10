@@ -170,11 +170,4 @@ class DestructorFunctionTemplate(FunctionTemplate):
               context=context
           )
 
-          # make_func_call_ir(
-          #   func=self.captured_symbol_table.free_overloads, template_arguments=template_arguments,
-          #   func_args=[TypedValue(
-          #     typ=concrete_member_type,
-          #     ir_val=member_ir_val,
-          #     num_unbindings=concrete_member_type.num_possible_unbindings())],
-          #   context=context)
         context.builder.ret(SLEEPY_UNIT.unit_constant())
