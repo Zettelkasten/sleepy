@@ -136,13 +136,14 @@ class FunctionDeclarationAst(DeclarationAst):
     template_arguments = concrete_func.template_arguments
 
     argument_symbols = {}
-    for identifier, ir_value, mutates, typ in zip(concrete_func.arg_identifiers,
-                                                  ir_func_args,
-                                                  concrete_func.arg_mutates,
-                                                  concrete_func.arg_types):
+    for identifier, ir_value, mutates, typ in zip(
+            concrete_func.arg_identifiers, ir_func_args, concrete_func.arg_mutates, concrete_func.arg_types):
       if mutates:
-        argument_symbols[identifier] = VariableSymbol.make_ref_to_variable(ir_value, ReferenceType(typ),
-                                                                           identifier, body_context.base)
+        argument_symbols[identifier] = VariableSymbol.make_ref_to_variable(
+          initial_ir_alloca=ir_value,
+          variable_type=ReferenceType(typ),
+          identifier=identifier,
+          context=body_context.base)
       else:
         ir_value.name = identifier
         symbol = VariableSymbol.make_new_variable(ReferenceType(typ), identifier, body_context.base)
@@ -178,10 +179,10 @@ class FunctionDeclarationAst(DeclarationAst):
 
   def __repr__(self) -> str:
     return (
-            'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
-            'return_type=%r, %s)' % (
-              self.identifier, self.arg_identifiers, self.arg_types, self.return_type,
-              'extern' if self.is_extern else self.body_scope))
+      'FunctionDeclarationAst(identifier=%r, arg_identifiers=%r, arg_types=%r, '
+      'return_type=%r, %s)' % (
+        self.identifier, self.arg_identifiers, self.arg_types, self.return_type,
+        'extern' if self.is_extern else self.body_scope))
 
 
 class ConcreteDeclaredFunction(ConcreteFunction):
@@ -209,28 +210,27 @@ class ConcreteDeclaredFunction(ConcreteFunction):
                                caller_context: CodegenContext) -> Optional[ir.Value]:
     assert len(func_args) == len(self.arg_identifiers)
     assert caller_context.emits_ir
-    assert not caller_context.all_paths_returned
+    assert not caller_context.is_terminated
 
-    inline_context = caller_context.copy_with_cleanup_handling_inline_function(self,
-                                                                               existing_entry_block=caller_context.block,
-                                                                               identifier=self.ast.identifier)
+    inline_context = caller_context.copy_with_cleanup_handling_inline_function(
+      self, existing_entry_block=caller_context.block, identifier=self.ast.identifier)
     self.ast.build_body_ir(
       parent_symbol_table=self.captured_symbol_table,
       concrete_func=self,
       body_context=inline_context,
       ir_func_args=[arg.ir_val for arg in func_args])
     assert inline_context.base.all_paths_returned
+    assert not inline_context.base.is_terminated
 
     # continue in end_block
     caller_context.switch_to_block(inline_context.scope.end_block)
 
-    return_val = caller_context.builder.load(inline_context.function.return_slot_ir,
-                                             name='return_%s' % self.ast.identifier)
-    assert not caller_context.all_paths_returned
+    return_val = caller_context.builder.load(
+      inline_context.function.return_slot_ir, name='return_%s' % self.ast.identifier)
     return return_val
 
   def build_ir(self):
-    assert not self.captured_context.all_paths_returned
+    # assert not self.captured_context.is_terminated TODO
     with self.captured_context.use_pos(self.ast.pos):
       if self.ast.is_extern:
         if self.captured_symbol_table.has_extern_func(self.ast.identifier):
@@ -263,8 +263,8 @@ class ConcreteDeclaredFunction(ConcreteFunction):
         # check symbol tables without emitting ir
         self.ast.check_body(symbol_table=self.captured_symbol_table)
       else:
-        body_context = self.captured_context.copy_with_cleanup_handling_func(concrete_function=self,
-                                                                             identifier=self.ast.identifier)
+        body_context = self.captured_context.copy_with_cleanup_handling_func(
+          concrete_function=self, identifier=self.ast.identifier)
 
         self.ast.build_body_ir(
           parent_symbol_table=self.captured_symbol_table,

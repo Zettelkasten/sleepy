@@ -1511,6 +1511,10 @@ class CodegenContext:
     self._known_struct_c_types: Dict[(StructIdentity, Tuple[Type]), type] = {}
 
   @property
+  def is_terminated(self) -> bool:
+    return self.block.is_terminated
+
+  @property
   def emits_debug(self) -> bool:
     return self._emits_debug and self.emits_ir
 
@@ -1582,9 +1586,9 @@ class CodegenContext:
     return self.copy_with_builder(None)
 
   def copy_with_func(self, concrete_func: ConcreteFunction, builder: Optional[ir.IRBuilder]):
-    assert not concrete_func.is_inline
     new_context = self.copy_with_builder(builder)
-    if new_context.emits_debug:
+    new_context.all_paths_returned = False
+    if new_context.emits_debug and not concrete_func.is_inline:
       assert concrete_func.di_subprogram is not None
       new_context.current_di_scope = concrete_func.di_subprogram
       # as the current scope changed, reset the debug_metadata
@@ -1597,7 +1601,7 @@ class CodegenContext:
     assert concrete_function.is_inline
     assert concrete_function not in self.inline_func_call_stack
     builder = ir.IRBuilder(existing_entry_block)
-    new_context = self.copy_with_builder(builder)
+    new_context = self.copy_with_func(concrete_func=concrete_function, builder=builder)
     new_context.inline_func_call_stack.append(concrete_function)
     return CleanupHandlingCG(
       codegen_context=new_context,
@@ -1680,8 +1684,9 @@ class CodegenContext:
 
 
 class FlagState(Enum):
-  UNSET = 0
-  UNKNOWN = 1
+  DESTROY = 1
+  DONT_DESTROY = 2
+  UNKNOWN = 3
 
 @dataclass
 class IrDestructionFlag:
@@ -1690,7 +1695,7 @@ class IrDestructionFlag:
   name: str
   value: TypedValue
   _flag_alloca: ir.AllocaInstr
-  _statically_known_value: Union[bool, FlagState] = field(default=FlagState.UNSET)
+  _statically_known_value: Union[bool, FlagState] = field(default=FlagState.DESTROY)
 
   def __init__(self, value: TypedValue, value_name: str, context: CodegenContext):
     self._flag_alloca = context.alloca_at_entry(
@@ -1700,21 +1705,20 @@ class IrDestructionFlag:
     self.value = value
 
   @property
-  def statically_known_value(self) -> Union[bool, FlagState]:
+  def statically_known_value(self) -> FlagState:
     return self._statically_known_value
 
   def load_flag(self, context: CodegenContext) -> ir.LoadInstr:
     return context.builder.load(self._flag_alloca, name=f"{self._flag_alloca.name}_loaded")
 
   def set_flag(self, context: CodegenContext, value: bool) -> ir.StoreInstr:
-    if self._statically_known_value == FlagState.UNSET:
-      self._statically_known_value = value
-    elif self._statically_known_value != value:
+    if self._statically_known_value != value:
       self._statically_known_value = FlagState.UNKNOWN
 
     return context.builder.store(
       ptr=self._flag_alloca,
       value=ir.Constant(typ=IrDestructionFlag.ir_type, constant=value))
+
 
 @dataclass(frozen=True)
 class CGScope:
@@ -2183,7 +2187,7 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
   return_vals: List[TypedValue] = []
   for case_func, case_context in zip(case_funcs.values(), case_contexts.values()):
     case_return_val = case_func(caller_context=case_context)  # noqa
-    assert not case_context.all_paths_returned
+    assert not case_context.is_terminated
     return_vals.append(case_return_val)
   assert len(case_funcs) == len(return_vals)
 

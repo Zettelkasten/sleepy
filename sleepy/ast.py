@@ -176,13 +176,13 @@ class AbstractScopeAst(AbstractSyntaxTree):
     super().__init__(pos)
     self.stmt_list = stmt_list
 
-  def create_symbols(self, scope_symbol_table: SymbolTable, scope_context: CodegenContext):
+  def collect_symbols(self, scope_symbol_table: SymbolTable, scope_context: CodegenContext):
     with scope_context.use_pos(self.pos):
       for declaration in [e for e in self.stmt_list if isinstance(e, DeclarationAst)]:
         scope_symbol_table[declaration.identifier] = declaration.create_symbol(scope_symbol_table, scope_context)
 
   def build_scope_ir(self, scope_symbol_table: SymbolTable, scope_context: CleanupHandlingCG):
-    self.create_symbols(scope_symbol_table, scope_context.base)
+    self.collect_symbols(scope_symbol_table, scope_context.base)
 
     with scope_context.base.use_pos(self.pos):
       for stmt in [e for e in self.stmt_list if isinstance(e, StatementAst)]:
@@ -193,54 +193,34 @@ class AbstractScopeAst(AbstractSyntaxTree):
       scope_context.jump_to_end_block()
 
 
-    tb_destroyed = scope_context.scope.to_be_destroyed.items()
+    scope_context.builder.position_at_end(scope_context.scope.end_block)
 
-    definitely_destroy = [(val, flag) for val, flag in tb_destroyed if
-                          flag.statically_known_value in {True, FlagState.UNSET}]
+    free_caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
 
-    maybe_destroy = [(val, flag) for val, flag in tb_destroyed if flag.statically_known_value == FlagState.UNKNOWN]
+    for name, destroy_flag in reversed(list(scope_context.scope.to_be_destroyed.items())):
+      flag_value = destroy_flag.load_flag(scope_context.base)
 
-    all_paths_returned_before = scope_context.base.all_paths_returned
-    scope_context.base.all_paths_returned = False
-    scope_context.base.switch_to_block(scope_context.scope.end_block)
-    regular_block = scope_context.base.block
+      free_block = scope_context.builder.append_basic_block(name=f"free_{name}")
+      next_check_block = scope_context.builder.append_basic_block(name=f"check_next_free_after_{name}")
 
-    for name, destruction_flag in definitely_destroy:
-      caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
+      if destroy_flag.statically_known_value == FlagState.DESTROY:
+        scope_context.builder.branch(target=free_block)
+      elif destroy_flag.statically_known_value == FlagState.DONT_DESTROY:
+        scope_context.builder.branch(target=next_check_block)
+      else:
+        scope_context.builder.cbranch(cond=flag_value, truebr=free_block, falsebr=next_check_block)
+
+      scope_context.builder.position_at_start(free_block)
       make_call_ir(
-        self.pos,
-        caller=caller,
-        argument_values=[destruction_flag.value],
+        pos=self.pos,
+        caller=free_caller,
+        argument_values=[destroy_flag.value],
         context=scope_context.base
       )
+      scope_context.builder.branch(next_check_block)
+      scope_context.builder.position_at_start(next_check_block)
 
-    if not maybe_destroy:
-      scope_context.base.all_paths_returned = all_paths_returned_before
-      scope_context.scope = dataclasses.replace(scope_context.scope, end_block=scope_context.builder.block)
-      scope_context.base.switch_to_block(regular_block)
-      return
-
-    continuation_block = scope_context.builder.append_basic_block('end_block_continuation')
-
-    for name, destruction_flag in maybe_destroy:
-      call_destruct_block = scope_context.builder.append_basic_block(name=f"{destruction_flag.name}_destruct_block")
-
-      flag_value = destruction_flag.load_flag(scope_context.base)
-      scope_context.builder.cbranch(cond=flag_value, truebr=call_destruct_block, falsebr=continuation_block)
-
-      scope_context.base.switch_to_block(call_destruct_block)
-
-      caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
-      make_call_ir(
-        self.pos,
-        caller=caller,
-        argument_values=[destruction_flag.value],
-        context=scope_context.base
-      )
-
-    scope_context.scope = dataclasses.replace(scope_context.scope, end_block=continuation_block)
-    scope_context.base.all_paths_returned = all_paths_returned_before
-    scope_context.base.switch_to_block(regular_block)
+    scope_context.scope = dataclasses.replace(scope_context.scope, end_block=scope_context.builder.block)
 
   def _enumerate_variable_definitions(self, symbol_table: SymbolTable) -> List[AssignStatementAst]:
     variable_symbols = []
@@ -271,7 +251,7 @@ class FileAst(AbstractSyntaxTree):
 
   def build_ir(self, symbol_table: SymbolTable, context: CodegenContext):
     with context.use_pos(self.pos):
-      self.scope.create_symbols(symbol_table, context)
+      self.scope.collect_symbols(symbol_table, context)
 
   def children(self) -> List[AbstractSyntaxTree]:
     return [self.imports_ast, self.scope]
