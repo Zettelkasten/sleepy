@@ -106,3 +106,29 @@ def test_destruct_function_body_returned():
     """
     main = compile_program(engine, program, add_preamble=True)
     assert_equal(main(), 0)
+
+
+def test_destruct_nested_if_scopes():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    @destructible
+    struct S { num_destruct_calls: Ref[Int] }
+    func destruct(self: S) { self.num_destruct_calls += 1 }
+
+    func main() -> Int {
+      num_destruct_calls_outer = 0
+      num_destruct_calls_inner = 0
+      if 1 == 1 {
+        outer = S(!num_destruct_calls_outer)
+        if 2 == 2 {
+          inner = S(!num_destruct_calls_inner)
+        }
+        assert(num_destruct_calls_outer == 0)
+        assert(num_destruct_calls_inner == 1)
+      }
+      return num_destruct_calls_outer * 10 + num_destruct_calls_inner
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    assert_equal(main(), 10 + 1)
