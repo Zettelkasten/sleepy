@@ -22,6 +22,7 @@ jobs:
           - TEST=ast
           - TEST=examples
           - TEST=compile_examples
+          - TEST=destructors
 
     steps:
     - uses: actions/checkout@v2
