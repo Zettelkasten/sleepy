@@ -61,3 +61,25 @@ def test_destruct_if_clause_with_template():
     main = compile_program(engine, program, main_func_identifier='main', add_preamble=True)
     assert_equal(main(True), 1)
     assert_equal(main(False), 0)
+
+
+def test_destruct_function_body():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    @destructible
+    struct S { num_destruct_calls: Ref[Int] }
+    func destruct(self: S) { self.num_destruct_calls += 1 }
+
+    func main() -> Int {
+      func foo(mutates num_destruct_calls: Int) {
+        s = S(!num_destruct_calls)
+        # should directly be destructed again
+      }
+      num_destruct_calls = 0
+      foo(num_destruct_calls)
+      return num_destruct_calls
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    assert_equal(main(), 1)
