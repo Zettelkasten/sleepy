@@ -7,6 +7,7 @@ from tests.compile import compile_program
 
 from nose.tools import assert_equal
 
+
 def test_str_destructor():
   with make_execution_engine() as engine:
     # language=Sleepy
@@ -20,40 +21,43 @@ def test_str_destructor():
     main()
 
 
-def test_side_effect_in_destruct():
+def test_destruct_if_clause():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
     @destructible
-    struct S { b: Ref[Bool]}
-    func destruct(self: S) { self.b = True() }
+    struct S { b: Ref[Int] }
+    func destruct(self: S) { self.b += 1 }
 
-    func main() -> Bool {
-      s_destructed = False()
-      if True() {
-        s = S(!s_destructed)
+    func main(should_construct: Bool) -> Int {
+      num_destruct_calls = 0
+      if should_construct {
+        s = S(!num_destruct_calls)
       }
-      return s_destructed
+      return num_destruct_calls
     }
     """
     main = compile_program(engine, program, main_func_identifier='main', add_preamble=True)
-    assert_equal(main(), True)
+    assert_equal(main(True), 1)
+    assert_equal(main(False), 0)
 
-def test_destructible_templated_struct():
+
+def test_destruct_if_clause_with_template():
   with make_execution_engine() as engine:
     # language=Sleepy
     program = """
     @destructible
-    struct S[T] { value: T; b: Ref[Bool] }
-    func destruct[T](self: S[T]) { self.b = True() }
+    struct S[T] { value: T; b: Ref[Int] }
+    func destruct[T](self: S[T]) { self.b += 1 }
 
-    func main() -> Bool {
-      s_destructed = False()
-      if True() {
-        s = S(12, !s_destructed)
+    func main(should_construct: Bool) -> Int {
+      num_destruct_calls = 0
+      if should_construct {
+        s = S(12, !num_destruct_calls)
       }
-      return s_destructed
+      return num_destruct_calls
     }
     """
     main = compile_program(engine, program, main_func_identifier='main', add_preamble=True)
-    assert_equal(main(), True)
+    assert_equal(main(True), 1)
+    assert_equal(main(False), 0)
