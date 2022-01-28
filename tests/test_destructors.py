@@ -83,3 +83,26 @@ def test_destruct_function_body():
     """
     main = compile_program(engine, program, add_preamble=True)
     assert_equal(main(), 1)
+
+
+def test_destruct_function_body_returned():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    @destructible
+    struct S { num_destruct_calls: Ref[Int] }
+    func destruct(self: S) { self.num_destruct_calls += 1 }
+
+    func main() -> Int {
+      func foo(mutates num_destruct_calls: Int) -> S {
+        s = S(!num_destruct_calls)
+        # should not be destructed here, because it is returned!
+        return s
+      }
+      num_destruct_calls = 0
+      foo(num_destruct_calls)
+      return num_destruct_calls  # executed before destructing.
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    assert_equal(main(), 0)
