@@ -466,6 +466,15 @@ class AssignStatementAst(StatementAst):
           value_name=var_identifier,
           context=context,
           value=symbol.typed_value)
+      else:  # not self.is_declaration, need to call destructor on old value
+        free_caller = FunctionSymbolCaller(overload_set=symbol_table.free_overloads, template_parameters=None)
+        previous_val = self.target_ast.make_as_val(symbol_table=symbol_table, context=context).copy_collapse(
+          context=context, name="previous_val_for_free")
+        make_call_ir(
+          pos=self.pos,
+          caller=free_caller,
+          argument_values=[previous_val],
+          context=context)
 
       # check that declared type matches assigned type
       uncollapsed_target_val = self.target_ast.make_as_val(symbol_table=symbol_table, context=context)  # Ref[A|B]
