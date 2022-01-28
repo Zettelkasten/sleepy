@@ -132,3 +132,23 @@ def test_destruct_nested_if_scopes():
     """
     main = compile_program(engine, program, add_preamble=True)
     assert_equal(main(), 10 + 1)
+
+
+def test_destruct_double_assignment():
+  with make_execution_engine() as engine:
+    # language=Sleepy
+    program = """
+    @destructible
+    struct S { num_destruct_calls: Ref[Int] }
+    func destruct(self: S) { self.num_destruct_calls += 1 }
+
+    func main() -> Int {
+      num_destruct_calls_first = 0
+      num_destruct_calls_second = 0
+      s = S(!num_destruct_calls_first)
+      s = S(!num_destruct_calls_second)
+      return num_destruct_calls_first * 10 + num_destruct_calls_second  # second S has not been destructed yet.
+    }
+    """
+    main = compile_program(engine, program, add_preamble=True)
+    assert_equal(main(), 10 + 0)
