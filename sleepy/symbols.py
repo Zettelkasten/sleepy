@@ -175,23 +175,21 @@ class SymbolTable:
 
   def make_child_scope(self, *,
                        inherit_outer_variables: bool,
-                       type_substitutions: Optional[Iterable[Tuple[str, Type]]] = None,
+                       replace_types: Optional[Dict[str, Type]] = None,
                        new_function: Optional[ConcreteFunction] = None,
                        new_symbols: Optional[Dict[str, Symbol]] = None) -> SymbolTable:
-    if type_substitutions is None:
-      type_substitutions = []
-
-    new_table = SymbolTable(parent=self,
-                            inherit_outer_variables=inherit_outer_variables,
-                            new_function=new_function,
-                            new_symbols=new_symbols)
-    # shadow placeholder types with their concrete substitutions
-    for name, t in type_substitutions:
-      existing_symbol = new_table[name]
-      assert isinstance(existing_symbol, TypeTemplateSymbol)
-      assert isinstance(existing_symbol.signature_type, PlaceholderTemplateType)
-
-      new_table[name] = TypeTemplateSymbol.make_concrete_type_symbol(t)
+    new_table = SymbolTable(
+      parent=self,
+      inherit_outer_variables=inherit_outer_variables,
+      new_function=new_function,
+      new_symbols=new_symbols)
+    if replace_types is not None:
+      # shadow placeholder types with their concrete substitutions
+      for name, t in replace_types.items():
+        existing_symbol = new_table[name]
+        assert isinstance(existing_symbol, TypeTemplateSymbol)
+        assert isinstance(existing_symbol.signature_type, PlaceholderTemplateType)
+        new_table[name] = TypeTemplateSymbol.make_concrete_type_symbol(t)
 
     return new_table
 
@@ -276,7 +274,7 @@ class SymbolTable:
     return True
 
   @property
-  def free_overloads(self) -> OverloadSet:
+  def free_func_overloads(self) -> OverloadSet:
     assert 'free' in self
     return self.get_overloads('free')
 

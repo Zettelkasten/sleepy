@@ -151,8 +151,9 @@ class FunctionDeclarationAst(DeclarationAst):
         argument_symbols[identifier] = symbol
 
     body_symbol_table = parent_symbol_table.make_child_scope(
-      inherit_outer_variables=False, new_function=concrete_func,
-      type_substitutions=zip(template_parameter_names, template_arguments),
+      inherit_outer_variables=False,
+      new_function=concrete_func,
+      replace_types=dict(zip(template_parameter_names, template_arguments)),
       new_symbols=argument_symbols)
 
     # build function body
