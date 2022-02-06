@@ -546,8 +546,8 @@ class IfStatementAst(StatementAst):
       if not cond_val.narrowed_type == SLEEPY_BOOL:
         raise_error('Cannot use expression of type %r as if-condition' % cond_val.type, self.pos)
 
-      true_symbol_table, false_symbol_table = symbol_table.make_child_scope(
-        inherit_outer_variables=True), symbol_table.make_child_scope(inherit_outer_variables=True)
+      true_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=True)
+      false_symbol_table = symbol_table.make_child_scope(inherit_outer_variables=True)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=True, symbol_table=true_symbol_table)
       make_narrow_type_from_valid_cond_ast(self.condition_val, cond_holds=False, symbol_table=false_symbol_table)
 
