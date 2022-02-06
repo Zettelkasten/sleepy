@@ -161,7 +161,7 @@ class DestructorFunctionTemplate(FunctionTemplate):
           make_call_ir(
             pos=DUMMY_POS,
             caller=FunctionSymbolCaller(
-              overload_set=self.captured_symbol_table.free_overloads,
+              overload_set=self.captured_symbol_table.free_func_overloads,
               template_parameters=None),  # infer
             argument_values=[TypedValue.create(
               typ=concrete_member_type,

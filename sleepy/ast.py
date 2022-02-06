@@ -195,7 +195,7 @@ class AbstractScopeAst(AbstractSyntaxTree):
 
     scope_context.builder.position_at_end(scope_context.scope.end_block)
 
-    free_caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_overloads, template_parameters=None)
+    free_caller = FunctionSymbolCaller(overload_set=scope_symbol_table.free_func_overloads, template_parameters=None)
 
     for name, destroy_flag in reversed(list(scope_context.scope.to_be_destroyed.items())):
       flag_value = destroy_flag.load_flag(scope_context.base)
@@ -467,7 +467,7 @@ class AssignStatementAst(StatementAst):
           context=context,
           value=symbol.typed_value)
       else:  # not self.is_declaration, need to call destructor on old value
-        free_caller = FunctionSymbolCaller(overload_set=symbol_table.free_overloads, template_parameters=None)
+        free_caller = FunctionSymbolCaller(overload_set=symbol_table.free_func_overloads, template_parameters=None)
         previous_val = self.target_ast.make_as_val(symbol_table=symbol_table, context=context).copy_collapse(
           context=context, name="previous_val_for_free")
         make_call_ir(
