@@ -77,8 +77,7 @@ class ConstructorFunctionTemplate(FunctionTemplate):
 
       if self.captured_context.emits_ir:
         concrete_function.make_ir_func(
-          identifier=self.struct.struct_identifier, extern=False, context=(
-            self.captured_context))
+          identifier=self.struct.struct_identifier, extern=False, context=self.captured_context)
         constructor_block = concrete_function.ir_func.append_basic_block(name='entry')
         context = self.captured_context.copy_with_func(concrete_function, builder=ir.IRBuilder(constructor_block))
         self_ir_alloca = context.alloca_at_entry(concrete_struct_type.ir_type, name='self')
@@ -141,23 +140,16 @@ class DestructorFunctionTemplate(FunctionTemplate):
             pos=self.struct_code_position,
             caller=FunctionSymbolCaller(
               overload_set=destruct_overloads,
-              template_parameters=None
-            ),
-            argument_values=[TypedValue.create(
-              typ=self_type,
-              ir_val=self_ir_alloca
-            )],
+              template_parameters=None),
+            argument_values=[TypedValue.create(typ=self_type, ir_val=self_ir_alloca)],
             context=context)
 
         # Free members in reversed order
         for member_num in reversed(range(len(self.struct.member_identifiers))):
           member_identifier = self.struct.member_identifiers[member_num]
           concrete_member_type = concrete_struct_type.member_types[member_num]
-
           member_ir_val = self.struct.make_extract_member_val_ir(
             member_identifier, struct_ir_val=self_ir_alloca, context=context)
-
-
           make_call_ir(
             pos=DUMMY_POS,
             caller=FunctionSymbolCaller(
@@ -167,7 +159,6 @@ class DestructorFunctionTemplate(FunctionTemplate):
               typ=concrete_member_type,
               ir_val=member_ir_val,
               num_unbindings=concrete_member_type.num_possible_unbindings())],
-              context=context
-          )
+            context=context)
 
         context.builder.ret(SLEEPY_UNIT.unit_constant())
