@@ -171,21 +171,27 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeTemplateSymbol:
   # add destructor
   destructor_signature = BuiltinOperationFunctionTemplate(
-    placeholder_template_types=[], return_type=SLEEPY_UNIT, arg_identifiers=['raw_ptr'], arg_types=[SLEEPY_RAW_PTR],
-    arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False], instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
+    placeholder_template_types=[],
+    return_type=SLEEPY_UNIT,
+    arg_identifiers=['raw_ptr'],
+    arg_types=[SLEEPY_RAW_PTR],
+    arg_type_narrowings=[SLEEPY_NEVER],
+    arg_mutates=[False],
+    instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
     emits_ir=context.emits_ir)
   symbol_table.add_overload('free', destructor_signature)
 
   pointee_type = PlaceholderTemplateType(identifier='T')
   ptr_type = PointerType(pointee_type=pointee_type)
+
   # RawPtr[T](Ptr[T]) -> RawPtr
   from_specific_signature = BitcastFunctionTemplate(
     placeholder_template_types=[pointee_type], return_type=SLEEPY_RAW_PTR, arg_identifiers=['ptr'],
     arg_types=[ptr_type], arg_type_narrowings=[ptr_type])
   symbol_table.add_overload('RawPtr', from_specific_signature)
-  # RawPtr(Int) -> RawPtr
 
-  from_int_signatures: Set[FunctionTemplate] = {
+  # RawPtr(Int) -> RawPtr
+  from_int_signatures = {
     BuiltinOperationFunctionTemplate(
       placeholder_template_types=[], return_type=SLEEPY_RAW_PTR, arg_identifiers=['int'], arg_types=[int_type],
       arg_type_narrowings=[int_type], arg_mutates=[False],
@@ -196,7 +202,6 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   }
 
   symbol_table.add_overload('int_to_ptr', from_int_signatures)
-
   SLEEPY_RAW_PTR.constructor = OverloadSet(identifier='RawPtr', signatures=from_int_signatures | {from_specific_signature})
 
   raw_ptr_symbol = TypeTemplateSymbol.make_concrete_type_symbol(SLEEPY_RAW_PTR)
