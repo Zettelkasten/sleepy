@@ -13,3 +13,5 @@ indent_style = space
 [{*.py,*.pyw}]
 ij_python_call_parameters_new_line_after_left_paren = true
 ij_python_call_parameters_wrap = on_every_item
+ij_python_dict_new_line_after_left_brace = true
+ij_python_dict_new_line_before_right_brace = true
