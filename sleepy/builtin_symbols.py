@@ -32,10 +32,7 @@ class BuiltinOperationFunctionTemplate(FunctionSignature):
     self.instruction = instruction
     self.emits_ir = emits_ir
 
-  def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                             concrete_parameter_types: List[Type],
-                             concrete_narrowed_parameter_types: List[Type],
-                             concrete_return_type: Type) -> ConcreteFunction:
+  def _get_concrete_function(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
     concrete_function = ConcreteBuiltinOperationFunction(
       signature=self, templ_args=template_args, instruction=self.instruction, context=context)
     self._initialized_templ_funcs[tuple(template_args)] = concrete_function

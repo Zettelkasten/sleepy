@@ -1373,7 +1373,9 @@ class OverloadSet(MutableSet[FunctionSignature]):
         placeholder_templ_types=placeholder_templ_types, expanded_arg_types=list(expanded_arg_types))
       for signature in signatures for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types))
 
-  def get_concrete_funcs(self, template_arguments: List[Type], arg_types: List[Type]) -> List[ConcreteFunction]:
+  def get_concrete_funcs(self, template_arguments: List[Type],
+                         arg_types: List[Type],
+                         context: CodegenContext) -> List[ConcreteFunction]:
     signatures = self.signatures_by_number_of_templ_args.get(len(template_arguments), [])
     possible_concrete_funcs = []
     for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types):
@@ -1381,7 +1383,7 @@ class OverloadSet(MutableSet[FunctionSignature]):
         if signature.can_call_with_expanded_arg_types(
           concrete_templ_types=template_arguments,
           expanded_arg_types=expanded_arg_types):  # noqa
-          concrete_func = signature.get_concrete_func(concrete_templ_types=template_arguments)
+          concrete_func = signature.get_concrete_func(concrete_templ_types=template_arguments, context=context)
           if concrete_func not in possible_concrete_funcs:
             possible_concrete_funcs.append(concrete_func)
     return possible_concrete_funcs
@@ -1389,9 +1391,9 @@ class OverloadSet(MutableSet[FunctionSignature]):
   def has_single_concrete_func(self) -> bool:
     return len(self.signatures) == 1 and len(self.signatures[0].placeholder_template_types) == 0
 
-  def get_single_concrete_func(self) -> ConcreteFunction:
+  def get_single_concrete_func(self, context: CodegenContext) -> ConcreteFunction:
     assert self.has_single_concrete_func()
-    return self.signatures[0].get_concrete_func(concrete_templ_types=[])
+    return self.signatures[0].get_concrete_func(concrete_templ_types=[], context=context)
 
   @staticmethod
   def iter_expanded_possible_arg_types(arg_types: Iterable[Type]) -> Iterable[Iterable[Type]]:
@@ -1740,7 +1742,8 @@ def make_func_call_ir(func: OverloadSet,
   calling_collapsed_args = [arg.copy_collapse(context=context) for arg in func_args]
   calling_arg_types = [arg.narrowed_type for arg in calling_collapsed_args]
   assert func.can_call_with_arg_types(template_arguments=template_arguments, arg_types=calling_arg_types)
-  possible_concrete_funcs = func.get_concrete_funcs(template_arguments=template_arguments, arg_types=calling_arg_types)
+  possible_concrete_funcs = func.get_concrete_funcs(
+    template_arguments=template_arguments, arg_types=calling_arg_types, context=context)
   from functools import partial
   return make_union_switch_ir(
     case_funcs={

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Any, Union
+from typing import List, Optional, Any, Union, Set
 
 from llvmlite import ir
 
@@ -36,7 +36,8 @@ class AbstractSyntaxTree(ABC):
 
   def _resolve_possible_concrete_funcs(self,
                                        func_caller: FunctionSymbolCaller,
-                                       calling_types: List[Type]) -> List[ConcreteFunction]:
+                                       calling_types: List[Type],
+                                       context: CodegenContext) -> List[ConcreteFunction]:
     func, templ_types = func_caller.func, func_caller.template_parameters
     if templ_types is None:
       templ_types = self._infer_template_arguments(func=func, calling_types=calling_types)
@@ -55,7 +56,8 @@ class AbstractSyntaxTree(ABC):
         'Cannot call function %r with argument of types %r which are unrealizable' % (
           func.identifier, ', '.join([str(called_type) for called_type in calling_types])), self.pos)
 
-    possible_concrete_funcs = func.get_concrete_funcs(template_arguments=templ_types, arg_types=calling_types)
+    possible_concrete_funcs = func.get_concrete_funcs(
+      template_arguments=templ_types, arg_types=calling_types, context=context)
     assert len(possible_concrete_funcs) >= 1
     return possible_concrete_funcs
 
@@ -118,7 +120,7 @@ class AbstractSyntaxTree(ABC):
           "Cannot call function %r with argument of unrealizable type" % overloads.identifier,
           arg_expression.pos)
     possible_concrete_funcs = self._resolve_possible_concrete_funcs(
-      func_caller=caller, calling_types=calling_types)
+      func_caller=caller, calling_types=calling_types, context=context)
 
     if template_arguments is None:
       template_arguments = self._infer_template_arguments(func=overloads, calling_types=calling_types)
@@ -302,8 +304,10 @@ class TranslationUnitAst:
   def make_module_ir_and_symbol_table(self, module_name: str,
                                       emit_debug: bool,
                                       main_file_path: Path | DummyPath = DummyPath("module"),
-                                      implicitly_exported_functions: Set(str) = set()) -> (str, SymbolTable):  # noqa
+                                      implicitly_exported_functions: Optional[Set[str]] = None
+                                      ) -> (str, SymbolTable, Set[ConcreteFunction]):
     assert self.check_pos_validity()
+    if implicitly_exported_functions is None: implicitly_exported_functions = {}
 
     module = ir.Module(name=module_name, context=ir.Context())
 
@@ -317,6 +321,7 @@ class TranslationUnitAst:
       ast.build_ir(symbol_table=symbol_table, context=context)
     assert not context.is_terminated
 
+    exported_functions = set()
     for identifier in implicitly_exported_functions:
       if identifier not in symbol_table:
         raise CompilerError("Function %s is supposed to be exported, but does not exist." % identifier)
@@ -326,11 +331,11 @@ class TranslationUnitAst:
       if not symbol.has_single_concrete_func(): raise CompilerError(
         "Function %s is supposed to be exported, but is not uniquely identifiable by its name."
         "Possible overloads are %s" % (identifier, repr(symbol)))
-      symbol.get_single_concrete_func()
+      exported_functions.add(symbol.get_single_concrete_func(context))
 
     context.is_terminated = True
 
-    return context.get_patched_ir(), symbol_table
+    return context.get_patched_ir(), symbol_table, exported_functions
 
   def check_pos_validity(self) -> bool:
     return all(child.check_pos_validity() for child in self.file_asts)
