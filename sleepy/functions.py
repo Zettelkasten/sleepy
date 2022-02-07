@@ -188,17 +188,11 @@ class FunctionDeclarationAst(DeclarationAst):
 
 class ConcreteDeclaredFunction(ConcreteFunction):
   def __init__(self, signature: FunctionSignature,
-               ir_func: Optional[ir.Function],
-               concrete_template_types: List[Type],
-               return_type: Type, arg_types: List[Type],
-               arg_type_narrowings: List[Type],
-               arg_mutates: List[bool],
+               template_args: List[Type],
                ast: FunctionDeclarationAst,
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
-    super().__init__(
-      signature, ir_func, concrete_template_types, return_type, arg_types, arg_type_narrowings,
-      parameter_mutates=arg_mutates)
+    super().__init__(signature=signature, template_args=template_args, context=captured_context)
     self.ast = ast
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
@@ -288,24 +282,20 @@ class DeclaredFunctionTemplate(FunctionSignature):
                arg_type_narrowings: List[Type],
                arg_mutates: List[bool],
                ast: FunctionDeclarationAst,
-               captured_symbol_table: SymbolTable,
-               captured_context: CodegenContext):
+               captured_symbol_table: SymbolTable):
     super().__init__(
       placeholder_template_types=placeholder_template_types, return_type=return_type, arg_identifiers=arg_identifiers,
-      arg_types=arg_types, arg_type_narrowings=arg_type_narrowings, arg_mutates=arg_mutates)
+      arg_types=arg_types, arg_type_narrowings=arg_type_narrowings, arg_mutates=arg_mutates, identifier=ast.identifier)
     self.ast = ast
     self.captured_symbol_table = captured_symbol_table
-    self.captured_context = captured_context
 
-  def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                             concrete_parameter_types: List[Type],
-                             concrete_narrowed_parameter_types: List[Type],
-                             concrete_return_type: Type) -> ConcreteFunction:
+  def _get_concrete_func(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
     concrete_function = ConcreteDeclaredFunction(
-      signature=self, ir_func=None, concrete_template_types=concrete_template_arguments,
-      return_type=concrete_return_type, arg_types=concrete_parameter_types,
-      arg_type_narrowings=concrete_narrowed_parameter_types, arg_mutates=self.arg_mutates, ast=self.ast,
-      captured_symbol_table=self.captured_symbol_table, captured_context=self.captured_context)
-    self._initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
+      signature=self,
+      ast=self.ast,
+      captured_symbol_table=self.captured_symbol_table,
+      captured_context=context,
+      template_args=template_args)
+    self._initialized_templ_funcs[tuple(template_args)] = concrete_function
     concrete_function.build_ir()
     return concrete_function

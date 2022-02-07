@@ -34,7 +34,7 @@ class BuiltinOperationFunctionTemplate(FunctionSignature):
 
   def _get_concrete_function(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
     concrete_function = ConcreteBuiltinOperationFunction(
-      signature=self, templ_args=template_args, instruction=self.instruction, context=context)
+      signature=self, template_args=template_args, instruction=self.instruction, context=context)
     self._initialized_templ_funcs[tuple(template_args)] = concrete_function
     return concrete_function
 
@@ -45,7 +45,7 @@ class BitcastFunctionTemplate(FunctionSignature):
     super().__init__(
       placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings, arg_mutates=[False])
 
-  def _get_concrete_function(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
+  def _get_concrete_func(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
     concrete_function = ConcreteBitcastFunction(signature=self, template_arguments=template_args, context=context)
     self._initialized_templ_funcs[tuple(template_args)] = concrete_function
     return concrete_function
