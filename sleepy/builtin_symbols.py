@@ -1,17 +1,19 @@
+from __future__ import annotations
+
 from enum import Enum
-from typing import List, Callable, Optional, Dict, Set, Union, Tuple
+from typing import List, Callable, Optional, Dict, Set, Tuple
 
 from llvmlite import ir
 from llvmlite.ir import IRBuilder
 
+from sleepy.struct_type import build_destructor, build_constructor
+from sleepy.symbols import TypeTemplateSymbol, SymbolTable
 from sleepy.syntactical_analysis.grammar import TreePosition
 from sleepy.types import FunctionTemplate, PlaceholderTemplateType, Type, ConcreteFunction, \
   ConcreteBuiltinOperationFunction, ConcreteBitcastFunction, DoubleType, FloatType, BoolType, \
   IntType, LongType, CharType, RawPointerType, PointerType, CodegenContext, OverloadSet, \
   LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, StructType, SLEEPY_UNIT, SLEEPY_NEVER, \
   ReferenceType, StructIdentity, DummyFunctionTemplate
-from sleepy.struct_type import build_destructor, build_constructor
-from sleepy.symbols import TypeTemplateSymbol, SymbolTable
 from sleepy.utilities import concat_dicts
 
 
@@ -72,7 +74,8 @@ SLEEPY_RAW_PTR = RawPointerType()
 SLEEPY_CHAR_PTR = PointerType(SLEEPY_CHAR)
 SLEEPY_TYPES: Dict[str, Type] = {
   'Unit': SLEEPY_UNIT, 'Double': SLEEPY_DOUBLE, 'Float': SLEEPY_FLOAT, 'Bool': SLEEPY_BOOL, 'Int': SLEEPY_INT,
-  'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR}
+  'Long': SLEEPY_LONG, 'Char': SLEEPY_CHAR
+}
 INT_TYPES: Set[Type] = {SLEEPY_INT, SLEEPY_LONG}
 FLOAT_TYPES: Set[Type] = {SLEEPY_FLOAT, SLEEPY_DOUBLE}
 SLEEPY_NUMERICAL_TYPES: Set[Type] = INT_TYPES | FLOAT_TYPES
@@ -94,10 +97,10 @@ class BuiltinBinaryOps(Enum):
   Mod = 'mod'
 
 
-Simple_Arithmetic_Ops: List[BuiltinBinaryOps] = \
-  [BuiltinBinaryOps.Addition, BuiltinBinaryOps.Subtraction, BuiltinBinaryOps.Multiplication, BuiltinBinaryOps.Division]
-Simple_Comparison_Ops: List[BuiltinBinaryOps] = \
- [BuiltinBinaryOps.Equality, BuiltinBinaryOps.Inequality, BuiltinBinaryOps.Less, BuiltinBinaryOps.Greater,
+Simple_Arithmetic_Ops: List[BuiltinBinaryOps] = [
+  BuiltinBinaryOps.Addition, BuiltinBinaryOps.Subtraction, BuiltinBinaryOps.Multiplication, BuiltinBinaryOps.Division]
+Simple_Comparison_Ops: List[BuiltinBinaryOps] = [
+  BuiltinBinaryOps.Equality, BuiltinBinaryOps.Inequality, BuiltinBinaryOps.Less, BuiltinBinaryOps.Greater,
   BuiltinBinaryOps.GreaterOrEqual, BuiltinBinaryOps.LessOrEqual]
 
 
@@ -147,7 +150,8 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     [(lambda builder, lhs, rhs: builder.gep(lhs, (rhs,)), [ptr_type, i], ptr_type) for i in INT_TYPES] +
     [(lambda builder, lhs, rhs: builder.gep(rhs, (lhs,)), [i, ptr_type], ptr_type) for i in INT_TYPES]),
     (BuiltinBinaryOps.Subtraction,
-    [(lambda builder, lhs, rhs: builder.gep(lhs, (builder.mul(ir.Constant(i.ir_type, -1), rhs),)), [ptr_type, i], ptr_type) for i in INT_TYPES])]  # noqa
+     [(lambda builder, lhs, rhs: builder.gep(lhs, (builder.mul(ir.Constant(i.ir_type, -1), rhs),)), [ptr_type, i],
+       ptr_type) for i in INT_TYPES])]
   ptr_op_decls += [
     (
       op,
@@ -161,8 +165,13 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
       symbol_table.add_overload(operator.value, signature)
 
   free_signature = BuiltinOperationFunctionTemplate(
-    placeholder_template_types=[pointee_type], return_type=SLEEPY_UNIT, arg_identifiers=['ptr'], arg_types=[ptr_type],
-    arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False], instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
+    placeholder_template_types=[pointee_type],
+    return_type=SLEEPY_UNIT,
+    arg_identifiers=['ptr'],
+    arg_types=[ptr_type],
+    arg_type_narrowings=[SLEEPY_NEVER],
+    arg_mutates=[False],
+    instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
     emits_ir=context.emits_ir)
   symbol_table.add_overload('free', free_signature)
   return TypeTemplateSymbol(template_parameters=[pointee_type], signature_type=ptr_type)
@@ -202,7 +211,9 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   }
 
   symbol_table.add_overload('int_to_ptr', from_int_signatures)
-  SLEEPY_RAW_PTR.constructor = OverloadSet(identifier='RawPtr', signatures=from_int_signatures | {from_specific_signature})
+  SLEEPY_RAW_PTR.constructor = OverloadSet(
+    identifier='RawPtr',
+    signatures=from_int_signatures | {from_specific_signature})
 
   raw_ptr_symbol = TypeTemplateSymbol.make_concrete_type_symbol(SLEEPY_RAW_PTR)
   return raw_ptr_symbol
@@ -243,8 +254,13 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
 
     # add destructor
     destructor_signature = BuiltinOperationFunctionTemplate(
-      placeholder_template_types=[], return_type=SLEEPY_UNIT, arg_identifiers=['var'], arg_types=[builtin_type],
-      arg_type_narrowings=[SLEEPY_NEVER], instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(), emits_ir=context.emits_ir,
+      placeholder_template_types=[],
+      return_type=SLEEPY_UNIT,
+      arg_identifiers=['var'],
+      arg_types=[builtin_type],
+      arg_type_narrowings=[SLEEPY_NEVER],
+      instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
+      emits_ir=context.emits_ir,
       arg_mutates=[False])
     symbol_table.add_overload('free', destructor_signature)
 
@@ -263,7 +279,8 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
 
   builtin_symbols = {
     'Str': _make_str_symbol, 'Ptr': _make_ptr_symbol, 'RawPtr': _make_raw_ptr_symbol, 'Ref': _make_ref_symbol,
-    'bitcast': _make_bitcast_symbol}
+    'bitcast': _make_bitcast_symbol
+  }
   with context.use_pos(builtin_pos):
     for symbol_identifier, setup_func in builtin_symbols.items():
       assert symbol_identifier not in symbol_table
@@ -274,26 +291,32 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
     _make_builtin_operator_functions(symbol_table, context.emits_ir)
 
 
-Instructions: Dict[Tuple[BuiltinBinaryOps, Type], Callable[[CodegenContext, ir.Value, ir.Value], ir.Value]] = concat_dicts([  # noqa
-  {(BuiltinBinaryOps.Addition, Int): IRBuilder.add for Int in INT_TYPES},
-  {(BuiltinBinaryOps.Subtraction, Int): IRBuilder.sub for Int in INT_TYPES},
-  {(BuiltinBinaryOps.Multiplication, Int): IRBuilder.mul for Int in INT_TYPES},
-  {(BuiltinBinaryOps.Division, Int): IRBuilder.sdiv for Int in INT_TYPES},
+Instructions: Dict[
+  Tuple[BuiltinBinaryOps, Type], Callable[[CodegenContext, ir.Value, ir.Value], ir.Value]] = concat_dicts(
+  [
+    {(BuiltinBinaryOps.Addition, Int): IRBuilder.add for Int in INT_TYPES},
+    {(BuiltinBinaryOps.Subtraction, Int): IRBuilder.sub for Int in INT_TYPES},
+    {(BuiltinBinaryOps.Multiplication, Int): IRBuilder.mul for Int in INT_TYPES},
+    {(BuiltinBinaryOps.Division, Int): IRBuilder.sdiv for Int in INT_TYPES},
 
-  {(BuiltinBinaryOps.Addition, T): IRBuilder.fadd for T in FLOAT_TYPES},
-  {(BuiltinBinaryOps.Subtraction, T): IRBuilder.fsub for T in FLOAT_TYPES},
-  {(BuiltinBinaryOps.Multiplication, T): IRBuilder.fmul for T in FLOAT_TYPES},
-  {(BuiltinBinaryOps.Division, T): IRBuilder.fdiv for T in FLOAT_TYPES},
+    {(BuiltinBinaryOps.Addition, T): IRBuilder.fadd for T in FLOAT_TYPES},
+    {(BuiltinBinaryOps.Subtraction, T): IRBuilder.fsub for T in FLOAT_TYPES},
+    {(BuiltinBinaryOps.Multiplication, T): IRBuilder.fmul for T in FLOAT_TYPES},
+    {(BuiltinBinaryOps.Division, T): IRBuilder.fdiv for T in FLOAT_TYPES},
 
-  {
-    (op, T): lambda builder, lhs, rhs, op=op: builder.icmp_signed(op.value, lhs, rhs) for op in Simple_Comparison_Ops
-    for T in INT_TYPES},
-  {
-    (op, T): lambda builder, lhs, rhs, op=op: builder.icmp_unsigned(op.value, lhs, rhs) for op in Simple_Comparison_Ops
-    for T in {SLEEPY_CHAR, SLEEPY_BOOL}},
-  {
-    (op, T): lambda builder, lhs, rhs, op=op: builder.fcmp_ordered(op.value, lhs, rhs)
-    for op in Simple_Comparison_Ops for T in FLOAT_TYPES}
+    {
+      (op, T): lambda builder, lhs, rhs, op=op: builder.icmp_signed(op.value, lhs, rhs) for op in Simple_Comparison_Ops
+      for T in INT_TYPES
+    },
+    {
+      (op, T): lambda builder, lhs, rhs, op=op: builder.icmp_unsigned(op.value, lhs, rhs) for op in
+      Simple_Comparison_Ops
+      for T in {SLEEPY_CHAR, SLEEPY_BOOL}
+    },
+    {
+      (op, T): lambda builder, lhs, rhs, op=op: builder.fcmp_ordered(op.value, lhs, rhs)
+      for op in Simple_Comparison_Ops for T in FLOAT_TYPES
+    }
   ])
 BINARY_OP_DECL: List[Tuple[BuiltinBinaryOps, List[Tuple[Callable[..., ir.Value], List[Type], Type]]]] = (
   # simple arithmetic on all arithmetic types
@@ -352,7 +375,7 @@ def _make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
 
 
 def _make_func_signature(instruction: Callable[..., ir.Value],
-                         op_placeholder_templ_types: Union[Tuple[PlaceholderTemplateType], List[PlaceholderTemplateType]],  # noqa
+                         op_placeholder_templ_types: Tuple[PlaceholderTemplateType] | List[PlaceholderTemplateType],
                          op_arg_types: List[Type], op_return_type: Type, emits_ir: bool) -> FunctionTemplate:
   assert len(op_arg_types) in {1, 2}
   unary: bool = len(op_arg_types) == 1

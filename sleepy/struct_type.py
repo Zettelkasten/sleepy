@@ -9,7 +9,8 @@ from sleepy.types import StructType, CodegenContext, OverloadSet, PlaceholderTem
   ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, make_func_call_ir, TypedValue
 
 
-def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> OverloadSet:
+def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable,
+                     parent_context: CodegenContext) -> OverloadSet:
   assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
   placeholder_template_types = [
@@ -23,7 +24,8 @@ def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable, 
   return parent_symbol_table.free_overloads
 
 
-def build_constructor(struct_type: StructType, parent_symbol_table: SymbolTable, parent_context: CodegenContext) -> OverloadSet:
+def build_constructor(struct_type: StructType, parent_symbol_table: SymbolTable,
+                      parent_context: CodegenContext) -> OverloadSet:
   assert not parent_context.emits_debug or parent_context.builder.debug_metadata is not None
 
   placeholder_templ_types = [
@@ -135,5 +137,3 @@ class DestructorFunctionTemplate(FunctionTemplate):
             func=self.captured_symbol_table.free_overloads, template_arguments=templ_types,
             func_args=[TypedValue(typ=signature_member_type, ir_val=member_ir_val)], context=context)
         context.builder.ret(SLEEPY_UNIT.unit_constant())
-
-

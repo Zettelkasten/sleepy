@@ -52,7 +52,8 @@ class VariableSymbol:
     di_local_var = context.module.add_debug_info(
       'DILocalVariable', {
         'name': identifier, 'scope': context.current_di_scope, 'file': context.current_di_file,
-        'line': context.current_pos.get_from_line(), 'type': self.declared_var_type.make_di_type(context=context)})
+        'line': context.current_pos.get_from_line(), 'type': self.declared_var_type.make_di_type(context=context)
+      })
     di_expression = context.module.add_debug_info('DIExpression', {})
     assert context.builder.debug_metadata is not None
     context.builder.call(context.di_declare_func, args=[self.ir_alloca, di_local_var, di_expression])
@@ -74,19 +75,22 @@ class VariableSymbol:
     return self.copy_set_narrowed_type(new_narrow_type=self.declared_var_type)
 
   def copy_set_narrowed_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
-    return self.copy_set_narrowed_type(narrow_with_collapsed_type(
-      from_type=self.declared_var_type, collapsed_type=collapsed_type))
+    return self.copy_set_narrowed_type(
+      narrow_with_collapsed_type(
+        from_type=self.declared_var_type, collapsed_type=collapsed_type))
 
   def copy_narrow_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
-    return self.copy_set_narrowed_type(narrow_with_collapsed_type(
-      from_type=self.narrowed_var_type, collapsed_type=collapsed_type))
+    return self.copy_set_narrowed_type(
+      narrow_with_collapsed_type(
+        from_type=self.narrowed_var_type, collapsed_type=collapsed_type))
 
   def copy_exclude_type(self, excluded: Type) -> VariableSymbol:
     return self.copy_set_narrowed_type(new_narrow_type=exclude_type(self.narrowed_var_type, excluded))
 
   def copy_exclude_collapsed_type(self, collapsed_type: Type) -> VariableSymbol:
-    return self.copy_set_narrowed_type(exclude_with_collapsed_type(
-      from_type=self.narrowed_var_type, collapsed_type=collapsed_type))
+    return self.copy_set_narrowed_type(
+      exclude_with_collapsed_type(
+        from_type=self.narrowed_var_type, collapsed_type=collapsed_type))
 
   def __repr__(self) -> str:
     return 'VariableSymbol(ir_alloca=%r, declared_var_type=%r, narrowed_var_type=%r)' % (
@@ -149,8 +153,9 @@ class SymbolTable:
     self.parent = parent = SymbolTableStub() if parent is None else parent
 
     if new_symbols is not None:
-      assert all(symbol_declaration_check(
-        name, symbol, self.parent, inherit_outer_variables) for name, symbol in new_symbols.items())
+      assert all(
+        symbol_declaration_check(
+          name, symbol, self.parent, inherit_outer_variables) for name, symbol in new_symbols.items())
 
     self.dict: HierarchicalDict[str, Symbol] = HierarchicalDict(parent.dict, new_symbols)
     self.inherit_outer_variables = inherit_outer_variables
@@ -173,10 +178,11 @@ class SymbolTable:
     if type_substitutions is None:
       type_substitutions = []
 
-    new_table = SymbolTable(parent=self,
-                            inherit_outer_variables=inherit_outer_variables,
-                            new_function=new_function,
-                            new_symbols=new_symbols)
+    new_table = SymbolTable(
+      parent=self,
+      inherit_outer_variables=inherit_outer_variables,
+      new_function=new_function,
+      new_symbols=new_symbols)
     # shadow placeholder types with their concrete substitutions
     for name, t in type_substitutions:
       existing_symbol = new_table[name]

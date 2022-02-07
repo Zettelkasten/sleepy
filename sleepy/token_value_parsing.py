@@ -7,6 +7,7 @@ class InvalidLiteralError(CompilerError):
   """
   Error raised when a literal is invalid.
   """
+
   def __init__(self, literal: str, message: str):
     super().__init__("Literal: " + literal + " invalid.\n" + message)
 

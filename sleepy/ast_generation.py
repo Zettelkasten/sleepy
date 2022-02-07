@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from sleepy.ast import FileAst, TranslationUnitAst
-from sleepy.syntactical_analysis.grammar import DummyPath
 from sleepy.lexer_definition import SLEEPY_LEXER
 from sleepy.parser_definition import SLEEPY_ATTR_GRAMMAR, SLEEPY_PARSER
+from sleepy.syntactical_analysis.grammar import DummyPath
 
 
 def make_file_ast(file_path: Path) -> FileAst:

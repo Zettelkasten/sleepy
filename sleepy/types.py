@@ -113,8 +113,9 @@ class UnitType(Type):
   """
 
   def __init__(self):
-    super().__init__(template_param_or_arg=[], ir_type=ir.types.LiteralStructType(()), c_type=ctypes.c_char * 0,
-                     constructor=None)
+    super().__init__(
+      template_param_or_arg=[], ir_type=ir.types.LiteralStructType(()), c_type=ctypes.c_char * 0,
+      constructor=None)
 
   def __repr__(self) -> str:
     return 'Unit'
@@ -339,7 +340,8 @@ class PointerType(Type):
     return context.module.add_debug_info(
       'DIDerivedType', {
         'tag': ir.DIToken('DW_TAG_pointer_type'), 'baseType': self.pointee_type.make_di_type(context=context),
-        'size': LLVM_POINTER_SIZE})
+        'size': LLVM_POINTER_SIZE
+      })
 
   def __repr__(self) -> str:
     return 'Ptr[%r]' % self.pointee_type
@@ -492,7 +494,8 @@ class UnionType(Type):
       context.module.add_debug_info(
         'DIDerivedType', {
           'tag': ir.DIToken('DW_TAG_inheritance'), 'baseType': member_type.make_di_type(context=context),
-          'size': member_type.size * 8})
+          'size': member_type.size * 8
+        })
       for member_type in self.possible_types]
     di_tag_type = context.module.add_debug_info(
       'DIBasicType',
@@ -500,11 +503,13 @@ class UnionType(Type):
     di_untagged_union_type = context.module.add_debug_info(
       'DICompositeType', {
         'name': repr(self), 'size': self.val_size * 8, 'tag': ir.DIToken('DW_TAG_union_type'),
-        'file': context.current_di_file, 'elements': [di_derived_types]})
+        'file': context.current_di_file, 'elements': [di_derived_types]
+      })
     return context.module.add_debug_info(
       'DICompositeType', {
         'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
-        'elements': [di_tag_type, di_untagged_union_type]})
+        'elements': [di_tag_type, di_untagged_union_type]
+      })
 
   def is_realizable(self) -> bool:
     return len(self.possible_types) > 0
@@ -624,7 +629,7 @@ class UnionType(Type):
         next_type_num = max(new_possible_type_nums) + 1 if len(new_possible_type_nums) > 0 else 0
         new_possible_type_nums.append(next_type_num)
     if self.val_size is None or any(
-            extended_type.has_unfilled_template_parameters() for extended_type in extended_types):
+      extended_type.has_unfilled_template_parameters() for extended_type in extended_types):
       new_val_size = None
     else:
       new_val_size = max([self.val_size] + [extended_type.size for extended_type in extended_types])
@@ -657,7 +662,7 @@ class PartialIdentifiedStructType(Type):
     self.identity = identity
     self.templ_types = template_param_or_arg
     if identity.context is not None and not any(
-            templ_type.has_unfilled_template_parameters() for templ_type in template_param_or_arg):
+      templ_type.has_unfilled_template_parameters() for templ_type in template_param_or_arg):
       ir_type = identity.context.make_struct_ir_type(identity=self.identity, templ_types=template_param_or_arg)
       c_type = identity.context.make_struct_c_type(identity=self.identity, templ_types=template_param_or_arg)
     else:
@@ -725,8 +730,9 @@ class StructType(Type):
       assert None not in member_c_types
 
       if partial_struct_type is None:
-        partial_struct_type = PartialIdentifiedStructType(identity=self.identity,
-                                                          template_param_or_arg=template_param_or_arg)
+        partial_struct_type = PartialIdentifiedStructType(
+          identity=self.identity,
+          template_param_or_arg=template_param_or_arg)
       ir_type, c_type = partial_struct_type.ir_type, partial_struct_type.c_type
       assert ir_type is not None
       assert c_type is not None
@@ -737,8 +743,9 @@ class StructType(Type):
       else:  # already defined before
         assert ir_type.elements == tuple(member_ir_types)
         # Note that we do not check c_type._fields_ here because ctypes do not properly compare for equality always
-      super().__init__(template_param_or_arg=template_param_or_arg, ir_type=ir_type, c_type=c_type,
-                       constructor=constructor)
+      super().__init__(
+        template_param_or_arg=template_param_or_arg, ir_type=ir_type, c_type=c_type,
+        constructor=constructor)
 
     if partial_struct_type is not None:
       self.member_types = [member_type.replace_types({partial_struct_type: self}) for member_type in self.member_types]
@@ -779,15 +786,18 @@ class StructType(Type):
 
     di_derived_types = []
     for member_identifier, member_type in zip(self.member_identifiers, self.member_types):
-      di_derived_types.append(context.module.add_debug_info(
-        'DIDerivedType', {
-          'tag': ir.DIToken('DW_TAG_member'), 'baseType': member_type.make_di_type(context=context),
-          'name': member_identifier, 'size': member_type.size * 8,
-          'offset': getattr(self.c_type, member_identifier).offset * 8}))
+      di_derived_types.append(
+        context.module.add_debug_info(
+          'DIDerivedType', {
+            'tag': ir.DIToken('DW_TAG_member'), 'baseType': member_type.make_di_type(context=context),
+            'name': member_identifier, 'size': member_type.size * 8,
+            'offset': getattr(self.c_type, member_identifier).offset * 8
+          }))
     debug_value = context.module.add_debug_info(
       'DICompositeType', {
         'name': repr(self), 'size': self.size * 8, 'tag': ir.DIToken('DW_TAG_structure_type'),
-        'file': context.current_di_file, 'elements': di_derived_types})
+        'file': context.current_di_file, 'elements': di_derived_types
+      })
 
     # set replacement for placeholder for this type
     context.debug_ir_patcher.add_replacement(placeholder, debug_value.get_reference())
@@ -907,8 +917,9 @@ def can_implicit_cast_to(from_type: Type, to_type: Type) -> bool:
   for a in list(possible_from_types):
     if not isinstance(a, ReferenceType):
       continue
-    if not any(isinstance(b, ReferenceType) and can_implicit_cast_ref_to(a.pointee_type, b.pointee_type) for b in
-               possible_to_types):  # noqa
+    if not any(
+      isinstance(b, ReferenceType) and can_implicit_cast_ref_to(a.pointee_type, b.pointee_type) for b in
+      possible_to_types):  # noqa
       return False
     possible_from_types.remove(a)
   # Note: These elements really need to match exactly,
@@ -935,8 +946,9 @@ def is_subtype(a: Type, b: Type) -> bool:
     if not a.has_same_symbol_as(possible_b):
       continue
     assert len(a.template_param_or_arg) == len(possible_b.template_param_or_arg)
-    if all(is_subtype(a_templ, b_templ) for a_templ, b_templ in
-           zip(a.template_param_or_arg, possible_b.template_param_or_arg)):
+    if all(
+      is_subtype(a_templ, b_templ) for a_templ, b_templ in
+      zip(a.template_param_or_arg, possible_b.template_param_or_arg)):
       return True
   return False
 
@@ -1032,8 +1044,8 @@ def _uncollapse_type(from_type: Type, collapsed_type: Type) -> Type:
   to_min_ref_depth, to_max_ref_depth = min_max_ref_depth(collapsed_type)
   check_from = max(min_ref_depth - to_max_ref_depth, 0)
   check_to = max(max_ref_depth - to_min_ref_depth + 1, 0)
-  uncollapsed_type = get_common_type([
-    ReferenceType.wrap(collapsed_type, depth) for depth in range(check_from, check_to)])
+  uncollapsed_type = get_common_type(
+    [ReferenceType.wrap(collapsed_type, depth) for depth in range(check_from, check_to)])
   return uncollapsed_type
 
 
@@ -1128,10 +1140,10 @@ class ConcreteFunction:
 
   def __repr__(self) -> str:
     return (
-            'ConcreteFunction(signature=%r, concrete_templ_types=%r, return_type=%r, arg_types=%r, '
-            'arg_type_narrowings=%r, arg_mutates=%r)' % (
-              self.signature, self.template_arguments, self.return_type, self.arg_types, self.arg_type_narrowings,
-              self.arg_mutates))
+      'ConcreteFunction(signature=%r, concrete_templ_types=%r, return_type=%r, arg_types=%r, '
+      'arg_type_narrowings=%r, arg_mutates=%r)' % (
+        self.signature, self.template_arguments, self.return_type, self.arg_types, self.arg_type_narrowings,
+        self.arg_mutates))
 
   @property
   def uncollapsed_arg_types(self) -> List[Type]:
@@ -1141,8 +1153,8 @@ class ConcreteFunction:
 
   def has_same_signature_as(self, other: ConcreteFunction) -> bool:
     return (
-            self.return_type == other.return_type and self.arg_types == other.arg_types and
-            self.arg_type_narrowings == other.arg_type_narrowings)
+      self.return_type == other.return_type and self.arg_types == other.arg_types and
+      self.arg_type_narrowings == other.arg_type_narrowings)
 
   def make_ir_func(self, identifier: str, extern: bool, context: CodegenContext):
     assert context.emits_ir
@@ -1255,9 +1267,10 @@ class FunctionTemplate:
   def to_signature_str(self) -> str:
     templ_args = '' if len(self.placeholder_templ_types) == 0 else '[%s]' % (
       ', '.join([templ_type.identifier for templ_type in self.placeholder_templ_types]))
-    args = ', '.join([
-      '%s%s: %s' % ('mutates ' if mutates else '', identifier, typ)
-      for mutates, identifier, typ in zip(self.arg_mutates, self.arg_identifiers, self.arg_types)])
+    args = ', '.join(
+      [
+        '%s%s: %s' % ('mutates ' if mutates else '', identifier, typ)
+        for mutates, identifier, typ in zip(self.arg_mutates, self.arg_identifiers, self.arg_types)])
     return '%s(%s) -> %s' % (templ_args, args, self.return_type)
 
   def get_concrete_func(self, concrete_templ_types: List[Type]) -> ConcreteFunction:
@@ -1360,8 +1373,7 @@ class OverloadSet(MutableSet[FunctionTemplate]):
     assert all(not arg_type.has_unfilled_template_parameters() for arg_type in arg_types)
     all_expanded_arg_types = self.iter_expanded_possible_arg_types(arg_types)
     return all(
-      self.can_call_with_expanded_arg_types(concrete_templ_types=template_arguments,
-                                            expanded_arg_types=list(arg_types))
+      self.can_call_with_expanded_arg_types(concrete_templ_types=template_arguments, expanded_arg_types=list(arg_types))
       for arg_types in all_expanded_arg_types)
 
   def is_undefined_for_arg_types(self, placeholder_templ_types: List[PlaceholderTemplateType], arg_types: List[Type]):
@@ -1376,8 +1388,9 @@ class OverloadSet(MutableSet[FunctionTemplate]):
     possible_concrete_funcs = []
     for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types):
       for signature in signatures:
-        if signature.can_call_with_expanded_arg_types(concrete_templ_types=template_arguments,
-                                                      expanded_arg_types=expanded_arg_types):  # noqa
+        if signature.can_call_with_expanded_arg_types(
+          concrete_templ_types=template_arguments,
+          expanded_arg_types=expanded_arg_types):  # noqa
           concrete_func = signature.get_concrete_func(concrete_templ_types=template_arguments)
           if concrete_func not in possible_concrete_funcs:
             possible_concrete_funcs.append(concrete_func)
@@ -1393,22 +1406,23 @@ class OverloadSet(MutableSet[FunctionTemplate]):
   @staticmethod
   def iter_expanded_possible_arg_types(arg_types: Iterable[Type]) -> Iterable[Iterable[Type]]:
     import itertools
-    return itertools.product(*[
-      arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type] for arg_type in arg_types])
+    return itertools.product(
+      *[arg_type.possible_types if isinstance(arg_type, UnionType) else [arg_type] for arg_type in arg_types])
 
   def __repr__(self) -> str:
     return 'OverloadSet(identifier=%r, signatures=%r)' % (self.identifier, self.signatures)
 
   def make_signature_list_str(self) -> str:
     return '\n'.join([' - ' + signature.to_signature_str() for signature in self.signatures])
-  
+
   ##
   ## MutableSet implementation
   ##
-  
+
   def add(self, signature: FunctionTemplate):
-    assert self.is_undefined_for_arg_types(placeholder_templ_types=signature.placeholder_templ_types,
-                                           arg_types=signature.arg_types)
+    assert self.is_undefined_for_arg_types(
+      placeholder_templ_types=signature.placeholder_templ_types,
+      arg_types=signature.arg_types)
     self.signatures_by_number_of_templ_args.setdefault(len(signature.placeholder_templ_types), []).append(signature)
 
   def discard(self, value: FunctionTemplate):
@@ -1427,7 +1441,6 @@ class OverloadSet(MutableSet[FunctionTemplate]):
   # is used by the MutableSet mixin
   def _from_iterable(self, iterable: Iterable[FunctionTemplate]) -> OverloadSet:
     return OverloadSet(identifier=self.identifier, signatures=iterable)
-
 
 
 class FunctionSymbolCaller:
@@ -1504,7 +1517,8 @@ class CodegenContext:
       self.current_di_compile_unit: Optional[ir.DIValue] = module.add_debug_info(
         'DICompileUnit', {
           'language': ir.DIToken('DW_LANG_C'), 'file': self.current_di_file, 'producer': producer,
-          'isOptimized': False, 'runtimeVersion': 1, 'emissionKind': ir.DIToken('FullDebug')},
+          'isOptimized': False, 'runtimeVersion': 1, 'emissionKind': ir.DIToken('FullDebug')
+        },
         is_distinct=True)
 
       self.module.add_named_metadata('llvm.dbg.cu', self.current_di_compile_unit)
@@ -1780,8 +1794,10 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
 
   # Go through all concrete functions, and add one block for each
   case_contexts: Dict[Tuple[Type], CodegenContext] = {
-    case_arg_types: context.copy_with_builder(ir.IRBuilder(context.builder.append_basic_block("call_%s_%s" % (
-      name, '_'.join(str(arg_type) for arg_type in case_arg_types)))))
+    case_arg_types: context.copy_with_builder(
+      ir.IRBuilder(
+        context.builder.append_basic_block(
+          "call_%s_%s" % (name, '_'.join(str(arg_type) for arg_type in case_arg_types)))))
     for case_arg_types in case_funcs.keys()}
   for case_arg_types, case_context in case_contexts.items():
     assert not case_context.emits_debug or case_context.builder.debug_metadata is not None
@@ -1821,8 +1837,9 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
   # Look it up in the table and call the function
   ir_block_addresses_type = ir.types.VectorType(
     LLVM_VOID_POINTER_TYPE, np.prod(block_addresses_distinguished_mapping.shape))
-  ir_block_addresses = ir.values.Constant(ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
-    list(block_addresses_distinguished_mapping.flatten())))
+  ir_block_addresses = ir.values.Constant(
+    ir_block_addresses_type, ir_block_addresses_type.wrap_constant_value(
+      list(block_addresses_distinguished_mapping.flatten())))
   ir_call_block_target = context.builder.extract_element(ir_block_addresses, call_block_index_ir)
   indirect_branch = context.builder.branch_indirect(ir_call_block_target)
   for case_context in case_contexts.values():

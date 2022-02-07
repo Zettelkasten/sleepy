@@ -6,12 +6,12 @@ from llvmlite import ir
 
 from sleepy.ast import TypeAst, AnnotationAst, AbstractScopeAst, ReturnStatementAst, AbstractSyntaxTree, \
   DeclarationAst
-from sleepy.errors import raise_error
 from sleepy.builtin_symbols import SLEEPY_BOOL
+from sleepy.errors import raise_error
+from sleepy.symbols import VariableSymbol, SymbolTable, Symbol
 from sleepy.syntactical_analysis.grammar import TreePosition
 from sleepy.types import Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
   PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType
-from sleepy.symbols import VariableSymbol, SymbolTable, Symbol
 
 
 class FunctionDeclarationAst(DeclarationAst):
@@ -68,11 +68,13 @@ class FunctionDeclarationAst(DeclarationAst):
     for arg_annotation_list in all_annotation_list:
       for arg_annotation_num, arg_annotation in enumerate(arg_annotation_list):
         if arg_annotation.identifier in arg_annotation_list[:arg_annotation_num]:
-          raise_error('Cannot apply annotation with identifier %r twice' % arg_annotation.identifier,
-                                     arg_annotation.pos)
+          raise_error(
+            'Cannot apply annotation with identifier %r twice' % arg_annotation.identifier,
+            arg_annotation.pos)
         if arg_annotation.identifier not in self.allowed_arg_annotation_identifiers:
-          raise_error('Cannot apply annotation with identifier %r, allowed: %r' % (
-            arg_annotation.identifier, ', '.join(self.allowed_arg_annotation_identifiers)), arg_annotation.pos)
+          raise_error(
+            'Cannot apply annotation with identifier %r, allowed: %r' % (
+              arg_annotation.identifier, ', '.join(self.allowed_arg_annotation_identifiers)), arg_annotation.pos)
     return arg_types
 
   def create_symbol(self, symbol_table: SymbolTable, context: CodegenContext) -> Symbol:
@@ -93,10 +95,12 @@ class FunctionDeclarationAst(DeclarationAst):
     if self.identifier in symbol_table:
       func_symbol = symbol_table[self.identifier]
       if not isinstance(func_symbol, OverloadSet):
-        raise_error('Cannot redefine previously declared non-function %r with a function' % self.identifier,
-                         self.pos)
-      if not func_symbol.is_undefined_for_arg_types(placeholder_templ_types=placeholder_templ_types,
-                                                    arg_types=arg_types):
+        raise_error(
+          'Cannot redefine previously declared non-function %r with a function' % self.identifier,
+          self.pos)
+      if not func_symbol.is_undefined_for_arg_types(
+        placeholder_templ_types=placeholder_templ_types,
+        arg_types=arg_types):
         raise_error(
           'Cannot override definition of function %r with signature [%s](%s), already declared:\n%s' % (  # noqa
             self.identifier,
@@ -108,8 +112,9 @@ class FunctionDeclarationAst(DeclarationAst):
 
     if self.identifier in {'assert', 'unchecked_assert'}:
       if len(arg_types) < 1 or arg_types[0] != SLEEPY_BOOL:
-        raise_error('Builtin %r must be overloaded with signature(Bool condition, ...)' % self.identifier,
-                         self.pos)
+        raise_error(
+          'Builtin %r must be overloaded with signature(Bool condition, ...)' % self.identifier,
+          self.pos)
 
     if self.is_inline and self.is_extern:
       raise_error('Extern function %r cannot be inlined' % self.identifier, self.pos)
@@ -133,13 +138,15 @@ class FunctionDeclarationAst(DeclarationAst):
     template_arguments = concrete_func.template_arguments
 
     argument_symbols = {}
-    for identifier, ir_value, mutates, typ in zip(concrete_func.arg_identifiers,
-                                                  ir_func_args,
-                                                  concrete_func.arg_mutates,
-                                                  concrete_func.arg_types):
+    for identifier, ir_value, mutates, typ in zip(
+      concrete_func.arg_identifiers,
+      ir_func_args,
+      concrete_func.arg_mutates,
+      concrete_func.arg_types):
       if mutates:
-        argument_symbols[identifier] = VariableSymbol.make_ref_to_variable(ir_value, ReferenceType(typ),
-                                                                           identifier, body_context)
+        argument_symbols[identifier] = VariableSymbol.make_ref_to_variable(
+          ir_value, ReferenceType(typ),
+          identifier, body_context)
       else:
         ir_value.name = identifier
         symbol = VariableSymbol.make_new_variable(ReferenceType(typ), identifier, body_context)
@@ -161,14 +168,15 @@ class FunctionDeclarationAst(DeclarationAst):
         self.pos.to_pos)
       return_ast = ReturnStatementAst(return_pos, [])
       if concrete_func.return_type != SLEEPY_UNIT:
-        raise_error('Not all branches within function declaration of %r return something' % self.identifier,
-                               return_ast.pos)
+        raise_error(
+          'Not all branches within function declaration of %r return something' % self.identifier,
+          return_ast.pos)
       return_ast.build_ir(symbol_table=body_symbol_table, context=body_context)
     assert body_context.is_terminated
 
   def children(self) -> List[AbstractSyntaxTree]:
-    return cast(List[AbstractSyntaxTree], [el for lst in self.arg_annotations for el in lst])\
-           + self.arg_types + ([self.return_type] if self.return_type else [])
+    return (cast(List[AbstractSyntaxTree], [el for lst in self.arg_annotations for el in lst])
+            + self.arg_types + ([self.return_type] if self.return_type else []))
 
   def __repr__(self) -> str:
     return (
@@ -231,9 +239,10 @@ class ConcreteDeclaredFunction(ConcreteFunction):
         if self.captured_symbol_table.has_extern_func(self.ast.identifier):
           extern_concrete_func = self.captured_symbol_table.get_extern_func(self.ast.identifier)
           if not extern_concrete_func.has_same_signature_as(self):
-            raise_error('Cannot redefine extern func %r previously declared as %s with new signature %s' % (
-              self.ast.identifier, extern_concrete_func.signature.to_signature_str(),
-              self.signature.to_signature_str()), self.ast.pos)
+            raise_error(
+              'Cannot redefine extern func %r previously declared as %s with new signature %s' % (
+                self.ast.identifier, extern_concrete_func.signature.to_signature_str(),
+                self.signature.to_signature_str()), self.ast.pos)
           # Sometimes the ir_func has not been set for a previously declared extern func,
           # e.g. because it was declared in an inlined func.
           should_declare_func = extern_concrete_func.ir_func is None

@@ -28,12 +28,13 @@ def make_error_message(program_path: Path | DummyPath,
       to_col = len(context_lines[line])
   else:
     to_col = from_col
-  return '%s in %r on line %s:%s\n\n' % (error_name, program_path, line, from_col) + '\n'.join([
-    ('%0' + str(line_num_pad_size) + 'i: %s%s') % (
-      context_line_num, context_line,
-      ('\n' + (' ' * (from_col - 1 + line_num_pad_size + 2)) + '^' * max(1, to_col - from_col))
-      if context_line_num == line else '')
-    for context_line_num, context_line in context_lines.items()]
+  return '%s in %r on line %s:%s\n\n' % (error_name, program_path, line, from_col) + '\n'.join(
+    [
+      ('%0' + str(line_num_pad_size) + 'i: %s%s') % (
+        context_line_num, context_line,
+        ('\n' + (' ' * (from_col - 1 + line_num_pad_size + 2)) + '^' * max(1, to_col - from_col))
+        if context_line_num == line else '')
+      for context_line_num, context_line in context_lines.items()]
   ) + '\n\n' + message
 
 
@@ -43,8 +44,9 @@ class LexError(CompilerError):
   """
 
   def __init__(self, program_path: Path | DummyPath, word: str, pos: int, message: str):
-    super().__init__(make_error_message(
-      program_path=program_path, word=word, from_pos=pos, error_name='Lexical error', message=message))
+    super().__init__(
+      make_error_message(
+        program_path=program_path, word=word, from_pos=pos, error_name='Lexical error', message=message))
 
 
 class ParseError(CompilerError):
@@ -53,8 +55,9 @@ class ParseError(CompilerError):
   """
 
   def __init__(self, program_path: Path | DummyPath, word: str, pos: int, message: str):
-    super().__init__(make_error_message(
-      program_path=program_path, word=word, from_pos=pos, error_name='Parse error', message=message))
+    super().__init__(
+      make_error_message(
+        program_path=program_path, word=word, from_pos=pos, error_name='Parse error', message=message))
 
 
 class SemanticError(CompilerError):
@@ -63,9 +66,10 @@ class SemanticError(CompilerError):
   """
 
   def __init__(self, program_path: Path | DummyPath, word: str, from_pos: int, to_pos: int, message: str):
-    super().__init__(make_error_message(
-      program_path=program_path, word=word, from_pos=from_pos, error_name='Semantic error',
-      message=message, to_pos=to_pos))
+    super().__init__(
+      make_error_message(
+        program_path=program_path, word=word, from_pos=from_pos, error_name='Semantic error',
+        message=message, to_pos=to_pos))
 
 
 def raise_error(message: str, pos: TreePosition):
