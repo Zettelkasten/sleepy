@@ -9,7 +9,7 @@ from llvmlite import ir
 
 from sleepy.hierarchical_dictionary import HierarchicalDict, STUB
 from sleepy.types import Type, narrow_type, narrow_with_collapsed_type, exclude_type, exclude_with_collapsed_type, \
-  CodegenContext, ReferenceType, TypedValue, FunctionTemplate, PlaceholderTemplateType, ConcreteFunction, \
+  CodegenContext, ReferenceType, TypedValue, FunctionSignature, PlaceholderTemplateType, ConcreteFunction, \
   get_common_type, OverloadSet
 
 
@@ -133,7 +133,7 @@ class SymbolTableStub:
     self.dict = STUB
     self.current_func = None
     self.known_extern_funcs = {}
-    self.builtin_symbols = set()
+    self.special_func_identifiers: Set[str] = {'size', '|', 'is', 'index'}
     self.current_scope_identifiers = frozenset()
 
 
@@ -161,7 +161,7 @@ class SymbolTable:
     self.inherit_outer_variables = inherit_outer_variables
     self.current_func = parent.current_func if new_function is None else new_function
     self.known_extern_funcs = parent.known_extern_funcs
-    self.builtin_symbols = parent.builtin_symbols
+    self.special_func_identifiers: Set[str] = parent.special_func_identifiers  # representing an empty OverloadSet
 
   @property
   def current_scope_identifiers(self) -> Collection[str]:
@@ -205,9 +205,11 @@ class SymbolTable:
       self.dict[key] = value
 
   def __contains__(self, item) -> bool:
-    return item in self.dict
+    return item in self.dict or item in self.special_func_identifiers
 
   def __getitem__(self, key: str) -> Symbol:
+    if key not in self.dict and key in self.special_func_identifiers:
+      return OverloadSet(identifier=key, signatures=[])
     value = self.dict[key]
     if isinstance(value, OverloadSet):
       return self.get_overloads(key)
@@ -264,7 +266,7 @@ class SymbolTable:
 
     return functools.reduce(lambda l, r: l | r, functions)
 
-  def add_overload(self, identifier: str, overload: Union[FunctionTemplate | Set[FunctionTemplate]]) -> bool:
+  def add_overload(self, identifier: str, overload: Union[FunctionSignature | Set[FunctionSignature]]) -> bool:
     if not isinstance(overload, Set): overload = {overload}
 
     symbol = self.dict.underlying_dict.setdefault(identifier, OverloadSet(identifier, []))

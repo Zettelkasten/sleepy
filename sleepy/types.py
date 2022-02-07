@@ -1088,28 +1088,62 @@ class ConcreteFunction:
   """
 
   def __init__(self,
-               signature: FunctionTemplate,
-               ir_func: Optional[ir.Function],
-               template_arguments: List[Type],
-               return_type: Type,
-               parameter_types: List[Type],
-               narrowed_parameter_types: List[Type],
-               parameter_mutates: List[bool]):
-    assert ir_func is None or isinstance(ir_func, ir.Function)
-    assert (len(signature.arg_identifiers) == len(parameter_types)
-            == len(narrowed_parameter_types) == len(parameter_mutates))
-    assert all(not templ_type.has_unfilled_template_parameters() for templ_type in template_arguments)
-    assert not return_type.has_unfilled_template_parameters()
-    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in parameter_types)
-    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in narrowed_parameter_types)
+               signature: FunctionSignature,
+               template_args: List[Type],
+               context: CodegenContext):
+    assert len(signature.placeholder_template_types) == len(template_args)
     self.signature = signature
-    self.ir_func = ir_func
-    self.template_arguments = template_arguments
-    self.return_type = return_type
-    self.arg_types = parameter_types
-    self.arg_type_narrowings = narrowed_parameter_types
-    self.arg_mutates = parameter_mutates
-    self.di_subprogram: Optional[ir.DIValue] = None
+    self.template_args = template_args
+
+    templ_type_replacements = dict(zip(signature.placeholder_template_types, template_args))
+    self.return_type = signature.return_type.replace_types(replacements=templ_type_replacements)
+    self.arg_types = [
+      arg_type.replace_types(replacements=templ_type_replacements) for arg_type in signature.arg_types]
+    self.arg_type_narrowings = [
+      arg_type.replace_types(replacements=templ_type_replacements) for arg_type in signature.arg_type_narrowings]
+
+    # check that everything is concrete now
+    assert all(not templ_type.has_unfilled_template_parameters() for templ_type in template_args)
+    assert not self.return_type.has_unfilled_template_parameters()
+    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in self.arg_types)
+    assert all(not arg_type.has_unfilled_template_parameters() for arg_type in self.arg_type_narrowings)
+
+    # set self.ir_func and self.di_subprogram
+    self.ir_func, self.di_subprogram = None, None
+    if context.emits_ir and not self.is_inline:
+      ir_func_name = context.make_ir_func_name(self)
+
+      existing_extern_ir_func = context.declared_extern_funcs.get(self.identifier)
+      if self.is_extern and existing_extern_ir_func is not None:
+        # extern func was encountered before
+        self.ir_func = existing_extern_ir_func
+      else:
+        ir_func_type = self.make_ir_function_type()
+        self.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
+
+        if self.is_extern:
+          context.declared_extern_funcs[self.identifier] = self.ir_func
+
+      if context.emits_debug and not self.is_extern:
+        di_return_type = self.return_type.make_di_type(context=context)
+        di_arg_types = [arg_type.make_di_type(context=context) for arg_type in self.arg_types]
+        di_arg_types = [
+          context.module.add_debug_info(
+            'DIDerivedType',
+            {'tag': ir.DIToken('DW_TAG_reference_type'), 'baseType': di_type, 'size': LLVM_POINTER_SIZE * 8})
+          if mutates else di_type
+          for di_type, mutates in zip(di_arg_types, self.arg_mutates)]
+        di_func_type = context.module.add_debug_info(
+          'DISubroutineType', {'types': context.module.add_metadata([di_return_type] + di_arg_types)})
+        self.di_subprogram = context.module.add_debug_info(
+          'DISubprogram', {
+            'name': ir_func_name, 'file': context.current_di_file, 'scope': context.current_di_scope,
+            'line': context.current_pos.get_from_line(), 'scopeLine': context.current_pos.get_from_line(),
+            'type': di_func_type,
+            'isLocal': False, 'isDefinition': True,
+            'unit': context.current_di_compile_unit
+          }, is_distinct=True)
+        self.ir_func.set_metadata('dbg', self.di_subprogram)
 
   def get_c_arg_types(self) -> Tuple[Any]:
     return (cast(Any, self.return_type.c_type),) + tuple(cast(Any, arg_type.c_type) for arg_type in self.arg_types)
@@ -1131,19 +1165,27 @@ class ConcreteFunction:
     return py_func
 
   @property
+  def identifier(self) -> str:
+    return self.signature.identifier
+
+  @property
+  def arg_mutates(self) -> List[bool]:
+    return self.signature.arg_mutates
+
+  @property
   def arg_identifiers(self) -> List[str]:
     return self.signature.arg_identifiers
 
   @property
   def is_inline(self) -> bool:
-    return False
+    return self.signature.is_inline
+
+  @property
+  def is_extern(self) -> bool:
+    return self.signature.extern
 
   def __repr__(self) -> str:
-    return (
-      'ConcreteFunction(signature=%r, concrete_templ_types=%r, return_type=%r, arg_types=%r, '
-      'arg_type_narrowings=%r, arg_mutates=%r)' % (
-        self.signature, self.template_arguments, self.return_type, self.arg_types, self.arg_type_narrowings,
-        self.arg_mutates))
+    return 'ConcreteFunction(signature=%r, template_args=%r)' % (self.signature, self.template_args)
 
   @property
   def uncollapsed_arg_types(self) -> List[Type]:
@@ -1156,61 +1198,22 @@ class ConcreteFunction:
       self.return_type == other.return_type and self.arg_types == other.arg_types and
       self.arg_type_narrowings == other.arg_type_narrowings)
 
-  def make_ir_func(self, identifier: str, extern: bool, context: CodegenContext):
-    assert context.emits_ir
-    assert not self.is_inline
-    assert self.ir_func is None
-    ir_func_name = context.make_ir_function_name(identifier, self, extern)
-    ir_func_type = self.make_ir_function_type()
-    self.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
-    if context.emits_debug and not extern:
-      assert self.di_subprogram is None
-      di_return_type = self.return_type.make_di_type(context=context)
-      di_arg_types = [arg_type.make_di_type(context=context) for arg_type in self.arg_types]
-      di_arg_types = [
-        context.module.add_debug_info(
-          'DIDerivedType',
-          {'tag': ir.DIToken('DW_TAG_reference_type'), 'baseType': di_type, 'size': LLVM_POINTER_SIZE * 8})
-        if mutates else di_type
-        for di_type, mutates in zip(di_arg_types, self.arg_mutates)]
-      di_func_type = context.module.add_debug_info(
-        'DISubroutineType', {'types': context.module.add_metadata([di_return_type] + di_arg_types)})
-      self.di_subprogram = context.module.add_debug_info(
-        'DISubprogram', {
-          'name': ir_func_name, 'file': context.current_di_file, 'scope': context.current_di_scope,
-          'line': context.current_pos.get_from_line(), 'scopeLine': context.current_pos.get_from_line(),
-          'type': di_func_type,
-          'isLocal': False, 'isDefinition': True,
-          'unit': context.current_di_compile_unit
-        }, is_distinct=True)
-      self.ir_func.set_metadata('dbg', self.di_subprogram)
-
-  # noinspection PyTypeChecker
+  @abstractmethod
   def make_inline_func_call_ir(self,
                                func_args: List[TypedValue],
                                caller_context: CodegenContext) -> ir.Instruction:
-    assert self.is_inline
-    assert False, 'not implemented!'
+    raise NotImplementedError()
 
 
 class ConcreteBuiltinOperationFunction(ConcreteFunction):
   def __init__(self,
-               signature: FunctionTemplate,
-               ir_func: Optional[ir.Function],
-               template_arguments: List[Type],
-               return_type: Type,
-               parameter_types: List[Type],
-               narrowed_parameter_types: List[Type],
-               parameter_mutates: List[bool],
+               signature: FunctionSignature,
+               template_args: List[Type],
                instruction: Callable[..., Optional[ir.Instruction]],
-               emits_ir: bool):
-    super().__init__(
-      signature=signature, ir_func=ir_func, template_arguments=template_arguments, return_type=return_type,
-      parameter_types=parameter_types, narrowed_parameter_types=narrowed_parameter_types,
-      parameter_mutates=parameter_mutates)
+               context: CodegenContext):
+    super().__init__(signature=signature, template_args=template_args, context=context)
     assert callable(instruction)
     self.instruction = instruction
-    self.emits_ir = emits_ir
 
   def make_inline_func_call_ir(self, func_args: List[TypedValue],
                                caller_context: CodegenContext) -> ir.Instruction:
@@ -1224,12 +1227,8 @@ class ConcreteBuiltinOperationFunction(ConcreteFunction):
 
 
 class ConcreteBitcastFunction(ConcreteFunction):
-  def __init__(self, signature: FunctionTemplate, ir_func: Optional[ir.Function], template_arguments: List[Type],
-               return_type: Type, parameter_types: List[Type], narrowed_parameter_types: List[Type]):
-    super().__init__(
-      signature=signature, ir_func=ir_func, template_arguments=template_arguments, return_type=return_type,
-      parameter_types=parameter_types, narrowed_parameter_types=narrowed_parameter_types,
-      parameter_mutates=[False] * len(parameter_types))
+  def __init__(self, signature: FunctionSignature, template_arguments: List[Type], context: CodegenContext):
+    super().__init__(signature=signature, template_args=template_arguments, context=context)
 
   def make_inline_func_call_ir(self, func_args: List[TypedValue],
                                caller_context: CodegenContext) -> ir.Instruction:
@@ -1242,69 +1241,71 @@ class ConcreteBitcastFunction(ConcreteFunction):
     return True
 
 
-class FunctionTemplate:
+class FunctionSignature:
   """
   Given template arguments, this builds a concrete function implementation on demand.
   """
 
-  def __init__(self, placeholder_template_types: List[PlaceholderTemplateType],
+  def __init__(self, *,
+               identifier: str,
+               extern: bool,
+               is_inline: bool,
+               placeholder_template_types: List[PlaceholderTemplateType],
                return_type: Type,
                arg_identifiers: List[str],
                arg_types: List[Type],
                arg_type_narrowings: List[Type],
                arg_mutates: List[bool]):
-    assert isinstance(return_type, Type)
+    assert not is_inline or not extern
     assert len(arg_identifiers) == len(arg_types) == len(arg_type_narrowings) == len(arg_mutates)
     assert all(isinstance(templ_type, PlaceholderTemplateType) for templ_type in placeholder_template_types)
-    self.placeholder_templ_types = placeholder_template_types
+    self.identifier = identifier
+    self.extern = extern
+    self.is_inline = is_inline
+    self.placeholder_template_types = placeholder_template_types
     self.return_type = return_type
     self.arg_identifiers = arg_identifiers
     self.arg_types = arg_types
     self.arg_type_narrowings = arg_type_narrowings
     self.arg_mutates = arg_mutates
-    self.initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
+    self._initialized_templ_funcs: Dict[Tuple[Type], ConcreteFunction] = {}
 
   def to_signature_str(self) -> str:
-    templ_args = '' if len(self.placeholder_templ_types) == 0 else '[%s]' % (
-      ', '.join([templ_type.identifier for templ_type in self.placeholder_templ_types]))
+    templ_args = '' if len(self.placeholder_template_types) == 0 else '[%s]' % (
+      ', '.join([templ_type.identifier for templ_type in self.placeholder_template_types]))
     args = ', '.join(
       [
         '%s%s: %s' % ('mutates ' if mutates else '', identifier, typ)
         for mutates, identifier, typ in zip(self.arg_mutates, self.arg_identifiers, self.arg_types)])
     return '%s(%s) -> %s' % (templ_args, args, self.return_type)
 
-  def get_concrete_func(self, concrete_templ_types: List[Type]) -> ConcreteFunction:
-    assert len(concrete_templ_types) == len(self.placeholder_templ_types)
+  def get_concrete_func(self, concrete_templ_types: List[Type], context: CodegenContext) -> ConcreteFunction:
+    assert len(concrete_templ_types) == len(self.placeholder_template_types)
     concrete_templ_types = tuple(concrete_templ_types)
-    if concrete_templ_types in self.initialized_templ_funcs:
-      return self.initialized_templ_funcs[concrete_templ_types]
-    concrete_type_replacements = dict(zip(self.placeholder_templ_types, concrete_templ_types))
-    concrete_return_type = self.return_type.replace_types(replacements=concrete_type_replacements)
-    concrete_arg_types = [
-      arg_type.replace_types(replacements=concrete_type_replacements) for arg_type in self.arg_types]
-    concrete_arg_types_narrowings = [
-      arg_type.replace_types(replacements=concrete_type_replacements) for arg_type in self.arg_type_narrowings]
-
-    return self._get_concrete_function(
-      concrete_template_arguments=list(concrete_templ_types), concrete_parameter_types=concrete_arg_types,
-      concrete_narrowed_parameter_types=concrete_arg_types_narrowings, concrete_return_type=concrete_return_type)
+    if concrete_templ_types in self._initialized_templ_funcs:
+      return self._initialized_templ_funcs[concrete_templ_types]
+    return self._get_concrete_func(template_args=list(concrete_templ_types), context=context)
 
   @abstractmethod
-  def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                             concrete_parameter_types: List[Type],
-                             concrete_narrowed_parameter_types: List[Type],
-                             concrete_return_type: Type) -> ConcreteFunction:
+  def _get_concrete_func(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
+    """
+    Creates a concrete function instance.
+    When the concrete function is inline, this should not generate ir directly.
+    If it is not inline, it should generate ir for the concrete function.
+
+    TODO: we should unify this: Building non-inline IR is the same building inline IR inside a new function.
+    """
     raise NotImplementedError()
 
   def can_call_with_expanded_arg_types(self, concrete_templ_types: List[Type], expanded_arg_types: List[Type]):
     assert all(not isinstance(arg_type, UnionType) for arg_type in expanded_arg_types)
     assert all(not templ_type.has_unfilled_template_parameters() for templ_type in concrete_templ_types)
     assert all(not arg_type.has_unfilled_template_parameters() for arg_type in expanded_arg_types)
-    if len(concrete_templ_types) != len(self.placeholder_templ_types):
+    if len(concrete_templ_types) != len(self.placeholder_template_types):
       return False
     if len(expanded_arg_types) != len(self.arg_types):
       return False
-    replacements = dict(zip(self.placeholder_templ_types, concrete_templ_types))
+    replacements = dict(zip(self.placeholder_template_types, concrete_templ_types))
     concrete_arg_types = [arg_type.replace_types(replacements=replacements) for arg_type in self.arg_types]
     assert all(not arg_type.has_unfilled_template_parameters() for arg_type in concrete_arg_types)
     return all(
@@ -1313,34 +1314,23 @@ class FunctionTemplate:
   def is_undefined_for_expanded_arg_types(self, placeholder_templ_types: List[PlaceholderTemplateType],
                                           expanded_arg_types: List[Type]) -> bool:
     assert all(not isinstance(arg_type, UnionType) for arg_type in expanded_arg_types)
-    if len(placeholder_templ_types) != len(self.placeholder_templ_types):
+    if len(placeholder_templ_types) != len(self.placeholder_template_types):
       return True
     if len(expanded_arg_types) != len(self.arg_types):
       return True
     # convert own template variables to calling template variables s.t. we can try to unify them
-    templ_to_templ_replacements = dict(zip(self.placeholder_templ_types, placeholder_templ_types))
+    templ_to_templ_replacements = dict(zip(self.placeholder_template_types, placeholder_templ_types))
     own_arg_types = [arg_type.replace_types(templ_to_templ_replacements) for arg_type in self.arg_types]
     inferred_templ_types = try_infer_template_arguments(
       calling_types=expanded_arg_types, signature_types=own_arg_types, template_parameters=placeholder_templ_types)
     return inferred_templ_types is None
 
   def __repr__(self) -> str:
-    return 'FunctionSignature(placeholder_templ_types=%r, return_type=%r, arg_identifiers=%r, arg_types=%r)' % (
-      self.placeholder_templ_types, self.return_type, self.arg_identifiers, self.arg_types)
+    return 'FunctionSignature(%s, placeholder_templ_types=%r, return_type=%r, arg_identifiers=%r, arg_types=%r)' % (
+      self.identifier, self.placeholder_template_types, self.return_type, self.arg_identifiers, self.arg_types)
 
 
-class DummyFunctionTemplate(FunctionTemplate):
-
-  def __init__(self):
-    super().__init__([], SLEEPY_NEVER, [], [], [], [])
-
-  def _get_concrete_function(self, concrete_template_arguments: List[Type], concrete_parameter_types: List[Type],
-                             concrete_narrowed_parameter_types: List[Type],
-                             concrete_return_type: Type) -> ConcreteFunction:
-    raise NotImplementedError()
-
-
-class OverloadSet(MutableSet[FunctionTemplate]):
+class OverloadSet(MutableSet[FunctionSignature]):
   """
   A set of declared overloaded function signatures with the same name.
   Can have one or multiple overloaded signatures accepting different parameter types (FunctionSignature).
@@ -1348,13 +1338,14 @@ class OverloadSet(MutableSet[FunctionTemplate]):
   where template types have been replaced with concrete types.
   """
 
-  def __init__(self, identifier: str, signatures: Iterable[FunctionTemplate]):
+  def __init__(self, identifier: str, signatures: Iterable[FunctionSignature]):
     self.identifier = identifier
-    self.signatures_by_number_of_templ_args: Dict[int, List[FunctionTemplate]] = {}
-    for s in signatures: self.add(s)
+    self.signatures_by_number_of_templ_args: Dict[int, List[FunctionSignature]] = {}
+    for s in signatures:
+      self.add(s)
 
   @property
-  def signatures(self) -> List[FunctionTemplate]:
+  def signatures(self) -> List[FunctionSignature]:
     return [signature for signatures in self.signatures_by_number_of_templ_args.values() for signature in signatures]
 
   def can_call_with_expanded_arg_types(self, concrete_templ_types: List[Type], expanded_arg_types: List[Type]) -> bool:
@@ -1383,7 +1374,9 @@ class OverloadSet(MutableSet[FunctionTemplate]):
         placeholder_templ_types=placeholder_templ_types, expanded_arg_types=list(expanded_arg_types))
       for signature in signatures for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types))
 
-  def get_concrete_funcs(self, template_arguments: List[Type], arg_types: List[Type]) -> List[ConcreteFunction]:
+  def get_concrete_funcs(self, template_arguments: List[Type],
+                         arg_types: List[Type],
+                         context: CodegenContext) -> List[ConcreteFunction]:
     signatures = self.signatures_by_number_of_templ_args.get(len(template_arguments), [])
     possible_concrete_funcs = []
     for expanded_arg_types in self.iter_expanded_possible_arg_types(arg_types):
@@ -1391,17 +1384,17 @@ class OverloadSet(MutableSet[FunctionTemplate]):
         if signature.can_call_with_expanded_arg_types(
           concrete_templ_types=template_arguments,
           expanded_arg_types=expanded_arg_types):  # noqa
-          concrete_func = signature.get_concrete_func(concrete_templ_types=template_arguments)
+          concrete_func = signature.get_concrete_func(concrete_templ_types=template_arguments, context=context)
           if concrete_func not in possible_concrete_funcs:
             possible_concrete_funcs.append(concrete_func)
     return possible_concrete_funcs
 
   def has_single_concrete_func(self) -> bool:
-    return len(self.signatures) == 1 and len(self.signatures[0].placeholder_templ_types) == 0
+    return len(self.signatures) == 1 and len(self.signatures[0].placeholder_template_types) == 0
 
-  def get_single_concrete_func(self) -> ConcreteFunction:
+  def get_single_concrete_func(self, context: CodegenContext) -> ConcreteFunction:
     assert self.has_single_concrete_func()
-    return self.signatures[0].get_concrete_func(concrete_templ_types=[])
+    return self.signatures[0].get_concrete_func(concrete_templ_types=[], context=context)
 
   @staticmethod
   def iter_expanded_possible_arg_types(arg_types: Iterable[Type]) -> Iterable[Iterable[Type]]:
@@ -1419,27 +1412,27 @@ class OverloadSet(MutableSet[FunctionTemplate]):
   ## MutableSet implementation
   ##
 
-  def add(self, signature: FunctionTemplate):
+  def add(self, signature: FunctionSignature):
     assert self.is_undefined_for_arg_types(
-      placeholder_templ_types=signature.placeholder_templ_types,
+      placeholder_templ_types=signature.placeholder_template_types,
       arg_types=signature.arg_types)
-    self.signatures_by_number_of_templ_args.setdefault(len(signature.placeholder_templ_types), []).append(signature)
+    self.signatures_by_number_of_templ_args.setdefault(len(signature.placeholder_template_types), []).append(signature)
 
-  def discard(self, value: FunctionTemplate):
-    lst = self.signatures_by_number_of_templ_args.get(len(value.placeholder_templ_types))
+  def discard(self, value: FunctionSignature):
+    lst = self.signatures_by_number_of_templ_args.get(len(value.placeholder_template_types))
     if lst is not None: lst.remove(value)
 
   def __contains__(self, x: object) -> bool:
-    return isinstance(x, FunctionTemplate) and any(x in fs for fs in self.signatures_by_number_of_templ_args.values())
+    return isinstance(x, FunctionSignature) and any(x in fs for fs in self.signatures_by_number_of_templ_args.values())
 
   def __len__(self) -> int:
     return sum(len(fs) for fs in self.signatures_by_number_of_templ_args.values())
 
-  def __iter__(self) -> Iterator[FunctionTemplate]:
+  def __iter__(self) -> Iterator[FunctionSignature]:
     return self.signatures.__iter__()
 
   # is used by the MutableSet mixin
-  def _from_iterable(self, iterable: Iterable[FunctionTemplate]) -> OverloadSet:
+  def _from_iterable(self, iterable: Iterable[FunctionSignature]) -> OverloadSet:
     return OverloadSet(identifier=self.identifier, signatures=iterable)
 
 
@@ -1499,6 +1492,7 @@ class CodegenContext:
     self.current_func_inline_return_ir_alloca: Optional[ir.AllocaInstr] = None
     self.inline_func_call_stack: List[ConcreteFunction] = []
     self.ir_func_malloc: Optional[ir.Function] = None
+    self.declared_extern_funcs: Dict[str, ir.Function] = {}
 
     self.debug_ir_patcher = DebugValueIrPatcher()
 
@@ -1653,15 +1647,15 @@ class CodegenContext:
   def use_pos(self, pos: TreePosition) -> UsePosRuntimeContext:
     return UsePosRuntimeContext(pos, context=self)
 
-  def make_ir_function_name(self, identifier: str, concrete_function: ConcreteFunction, extern: bool):
-    if extern:
-      if any(f.name == identifier for f in self.module.functions):
+  def make_ir_func_name(self, concrete_func: ConcreteFunction) -> str | None:
+    if concrete_func.is_extern:
+      if any(f.name == concrete_func.identifier for f in self.module.functions):
         return None
-      return identifier
+      return concrete_func.identifier
     else:
       ir_func_name = '_'.join(
-        [identifier]
-        + [str(arg_type) for arg_type in concrete_function.template_arguments + concrete_function.arg_types])
+        [concrete_func.identifier]
+        + [str(arg_type) for arg_type in concrete_func.template_args + concrete_func.arg_types])
       return self.module.get_unique_name(ir_func_name)
 
   @staticmethod
@@ -1749,7 +1743,8 @@ def make_func_call_ir(func: OverloadSet,
   calling_collapsed_args = [arg.copy_collapse(context=context) for arg in func_args]
   calling_arg_types = [arg.narrowed_type for arg in calling_collapsed_args]
   assert func.can_call_with_arg_types(template_arguments=template_arguments, arg_types=calling_arg_types)
-  possible_concrete_funcs = func.get_concrete_funcs(template_arguments=template_arguments, arg_types=calling_arg_types)
+  possible_concrete_funcs = func.get_concrete_funcs(
+    template_arguments=template_arguments, arg_types=calling_arg_types, context=context)
   from functools import partial
   return make_union_switch_ir(
     case_funcs={

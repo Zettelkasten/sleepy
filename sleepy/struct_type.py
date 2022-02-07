@@ -5,7 +5,7 @@ from typing import List
 from llvmlite import ir
 
 from sleepy.symbols import SymbolTable
-from sleepy.types import StructType, CodegenContext, OverloadSet, PlaceholderTemplateType, FunctionTemplate, Type, \
+from sleepy.types import StructType, CodegenContext, OverloadSet, PlaceholderTemplateType, FunctionSignature, Type, \
   ConcreteFunction, SLEEPY_UNIT, SLEEPY_NEVER, PointerType, make_func_call_ir, TypedValue
 
 
@@ -17,9 +17,9 @@ def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable,
     templ_type for templ_type in struct_type.template_param_or_arg if isinstance(templ_type, PlaceholderTemplateType)]
   # TODO: Narrow type to something more meaningful then SLEEPY_NEVER
   # E.g. make a copy of the never union type and give that a name ("Freed" or sth)
-  signature_ = DestructorFunctionTemplate(
+  signature_ = DestructorFunctionSignature(
     placeholder_templ_types=placeholder_template_types, struct=struct_type,
-    captured_symbol_table=parent_symbol_table, captured_context=parent_context)
+    captured_symbol_table=parent_symbol_table)
   parent_symbol_table.add_overload('free', signature_)
   return parent_symbol_table.free_overloads
 
@@ -30,19 +30,20 @@ def build_constructor(struct_type: StructType, parent_symbol_table: SymbolTable,
 
   placeholder_templ_types = [
     templ_type for templ_type in struct_type.template_param_or_arg if isinstance(templ_type, PlaceholderTemplateType)]
-  signature = ConstructorFunctionTemplate(
+  signature = ConstructorFunctionSignature(
     placeholder_templ_types=placeholder_templ_types, struct=struct_type,
     captured_symbol_table=parent_symbol_table, captured_context=parent_context)
   return OverloadSet(identifier=struct_type.struct_identifier, signatures=[signature])
 
 
-class ConstructorFunctionTemplate(FunctionTemplate):
+class ConstructorFunctionSignature(FunctionSignature):
   def __init__(self,
                placeholder_templ_types: List[PlaceholderTemplateType],
                struct: StructType,
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
     super().__init__(
+      identifier=struct.struct_identifier, extern=False, is_inline=False,
       placeholder_template_types=placeholder_templ_types, return_type=struct, arg_identifiers=struct.member_identifiers,
       arg_types=struct.member_types, arg_type_narrowings=struct.member_types,
       arg_mutates=[False] * len(struct.member_types))
@@ -50,71 +51,55 @@ class ConstructorFunctionTemplate(FunctionTemplate):
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
 
-  def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                             concrete_parameter_types: List[Type],
-                             concrete_narrowed_parameter_types: List[Type],
-                             concrete_return_type: Type) -> ConcreteFunction:
-    concrete_function = ConcreteFunction(
-      signature=self, ir_func=None, template_arguments=concrete_template_arguments, return_type=concrete_return_type,
-      parameter_types=concrete_parameter_types, narrowed_parameter_types=concrete_narrowed_parameter_types,
-      parameter_mutates=self.arg_mutates)
-    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
+  def _get_concrete_func(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
+    concrete_function = ConcreteFunction(signature=self, template_args=template_args, context=context)
+    self._initialized_templ_funcs[tuple(template_args)] = concrete_function
     self.build_concrete_function_ir(concrete_function)
     return concrete_function
 
-  def build_concrete_function_ir(self, concrete_function: ConcreteFunction):
+  def build_concrete_function_ir(self, concrete_func: ConcreteFunction):
     with self.captured_context.use_pos(self.captured_context.current_pos):
-      concrete_struct_type = concrete_function.return_type
+      concrete_struct_type = concrete_func.return_type
       assert isinstance(concrete_struct_type, StructType)
 
       if self.captured_context.emits_ir:
-        concrete_function.make_ir_func(
-          identifier=self.struct.struct_identifier, extern=False, context=(
-            self.captured_context))
-        constructor_block = concrete_function.ir_func.append_basic_block(name='entry')
-        context = self.captured_context.copy_with_func(concrete_function, builder=ir.IRBuilder(constructor_block))
+        constructor_block = concrete_func.ir_func.append_basic_block(name='entry')
+        context = self.captured_context.copy_with_func(concrete_func, builder=ir.IRBuilder(constructor_block))
         self_ir_alloca = context.alloca_at_entry(concrete_struct_type.ir_type, name='self')
 
-        for member_identifier, ir_func_arg in zip(self.struct.member_identifiers, concrete_function.ir_func.args):
+        for member_identifier, ir_func_arg in zip(self.struct.member_identifiers, concrete_func.ir_func.args):
           ir_func_arg.struct_identifier = member_identifier
         concrete_struct_type.make_store_members_ir(
-          member_ir_vals=concrete_function.ir_func.args, struct_ir_alloca=self_ir_alloca, context=context)
+          member_ir_vals=concrete_func.ir_func.args, struct_ir_alloca=self_ir_alloca, context=context)
         context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
 
 
-class DestructorFunctionTemplate(FunctionTemplate):
-  def __init__(self, placeholder_templ_types: List[PlaceholderTemplateType],
+class DestructorFunctionSignature(FunctionSignature):
+  def __init__(self,
+               placeholder_templ_types: List[PlaceholderTemplateType],
                struct: StructType,
-               captured_symbol_table: SymbolTable,
-               captured_context: CodegenContext):
+               captured_symbol_table: SymbolTable):
     super().__init__(
+      identifier='free', extern=False, is_inline=False,
       placeholder_template_types=placeholder_templ_types, return_type=SLEEPY_UNIT, arg_types=[struct],
       arg_identifiers=['self'], arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False])
     self.struct = struct
     self.captured_symbol_table = captured_symbol_table
-    self.captured_context = captured_context
 
-  def _get_concrete_function(self, concrete_template_arguments: List[Type],
-                             concrete_parameter_types: List[Type],
-                             concrete_narrowed_parameter_types: List[Type],
-                             concrete_return_type: Type) -> ConcreteFunction:
-    concrete_function = ConcreteFunction(
-      signature=self, ir_func=None, template_arguments=concrete_template_arguments, return_type=concrete_return_type,
-      parameter_types=concrete_parameter_types, narrowed_parameter_types=concrete_narrowed_parameter_types,
-      parameter_mutates=self.arg_mutates)
-    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
-    self.build_concrete_function_ir(concrete_function)
+  def _get_concrete_func(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
+    concrete_function = ConcreteFunction(signature=self, template_args=template_args, context=context)
+    self._initialized_templ_funcs[tuple(template_args)] = concrete_function
+    self.build_concrete_function_ir(concrete_function, context=context)
     return concrete_function
 
-  def build_concrete_function_ir(self, concrete_function: ConcreteFunction):
-    with self.captured_context.use_pos(self.captured_context.current_pos):
+  def build_concrete_function_ir(self, concrete_function: ConcreteFunction, context: CodegenContext):
+    with context.use_pos(context.current_pos):
       assert len(concrete_function.arg_types) == 1
       concrete_struct_type = concrete_function.arg_types[0]
       assert isinstance(concrete_struct_type, StructType)
-      if self.captured_context.emits_ir:
-        concrete_function.make_ir_func(identifier='free', extern=False, context=self.captured_context)
+      if context.emits_ir:
         destructor_block = concrete_function.ir_func.append_basic_block(name='entry')
-        context = self.captured_context.copy_with_func(concrete_function, builder=ir.IRBuilder(destructor_block))
+        context = context.copy_with_func(concrete_function, builder=ir.IRBuilder(destructor_block))
 
         assert len(concrete_function.ir_func.args) == 1
         self_ir_alloca = concrete_function.ir_func.args[0]

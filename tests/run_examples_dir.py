@@ -14,15 +14,16 @@ def run_example(code_file_name: Optional[str] = None):
   print('\nLoading example from %s.' % code_file_name)
   with make_execution_engine() as engine:
     ast = make_translation_unit_ast(file_path=Path(code_file_name))
-    module_ir, symbol_table = ast.make_module_ir_and_symbol_table(module_name='test_parse_ast', emit_debug=False,
-                                                                  implicitly_exported_functions={'main'})
+    module_ir, symbol_table, exported_functions = ast.make_module_ir_and_symbol_table(
+      module_name='test_parse_ast', emit_debug=False,
+      implicitly_exported_functions={'main'})
     compile_ir(engine, module_ir)
-    assert 'main' in symbol_table, 'Need to declare a main function'
-    main_func_symbol = symbol_table['main']
-    assert isinstance(main_func_symbol, OverloadSet), 'main needs to be a function'
-    assert len(main_func_symbol.signatures) == 1, 'need to declare exactly one main function'
-    concrete_main_func = main_func_symbol.get_single_concrete_func()
+
+    concrete_main_func = next((func for func in exported_functions if func.identifier == 'main'), None)
+    assert concrete_main_func is not None, 'Need to declare a main function'
+
     py_func = concrete_main_func.make_py_func(engine)
+
     print('Now executing:')
     return_val = py_func()
     print('Returned value: %r of type %r' % (return_val, concrete_main_func.return_type))
