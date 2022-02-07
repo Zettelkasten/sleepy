@@ -44,7 +44,9 @@ class BitcastFunctionTemplate(FunctionSignature):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
                arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type]):
     super().__init__(
-      placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings, arg_mutates=[False])
+      identifier='bitcast', extern=False, is_inline=True, placeholder_template_types=placeholder_template_types,
+      return_type=return_type, arg_identifiers=arg_identifiers,
+      arg_types=arg_types, arg_type_narrowings=arg_type_narrowings, arg_mutates=[False])
 
   def _get_concrete_func(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
     concrete_function = ConcreteBitcastFunction(signature=self, template_arguments=template_args, context=context)
@@ -110,17 +112,19 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 
   assert 'load' not in symbol_table
   load_signature = BuiltinOperationFunctionSignature(
+    identifier='load',
     placeholder_template_types=[pointee_type], return_type=ReferenceType(pointee_type), arg_identifiers=['ptr'],
-    arg_types=[ptr_type], arg_type_narrowings=[ptr_type], arg_mutates=[False],
-    instruction=lambda builder, ptr: ptr, emits_ir=context.emits_ir)
+    arg_types=[ptr_type], arg_type_narrowings=[ptr_type],
+    instruction=lambda builder, ptr: ptr)
   symbol_table.add_overload('load', load_signature)
   symbol_table.builtin_symbols.add('load')
 
   assert 'store' not in symbol_table
   store_signature = BuiltinOperationFunctionSignature(
+    identifier='store',
     placeholder_template_types=[pointee_type], return_type=SLEEPY_UNIT, arg_identifiers=['ptr', 'value'],
-    arg_types=[ptr_type, pointee_type], arg_type_narrowings=[ptr_type, pointee_type], arg_mutates=[False, False],
-    instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr), emits_ir=context.emits_ir)
+    arg_types=[ptr_type, pointee_type], arg_type_narrowings=[ptr_type, pointee_type],
+    instruction=lambda builder, ptr, value: builder.store(value=value, ptr=ptr))
   symbol_table.add_overload('store', store_signature)
 
   # cast from RawPtr -> Ptr[T] and Ref[T] -> Ptr[T]
@@ -128,9 +132,9 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     placeholder_template_types=[pointee_type], return_type=ptr_type, arg_identifiers=['raw_ptr'],
     arg_types=[SLEEPY_RAW_PTR], arg_type_narrowings=[ptr_type])
   ref_cast_signature = BuiltinOperationFunctionSignature(
-    placeholder_template_types=[pointee_type], return_type=ptr_type, arg_identifiers=['reference'],
-    arg_types=[ReferenceType(pointee_type)], arg_type_narrowings=[ReferenceType(pointee_type)], arg_mutates=[False],
-    instruction=lambda builder, ptr: ptr, emits_ir=context.emits_ir)
+    identifier='Ptr', placeholder_template_types=[pointee_type], return_type=ptr_type, arg_identifiers=['reference'],
+    arg_types=[ReferenceType(pointee_type)], arg_type_narrowings=[ReferenceType(pointee_type)],
+    instruction=lambda builder, ptr: ptr)
   ptr_type.constructor = OverloadSet('Ptr', [constructor_signature, ref_cast_signature])
 
   ptr_op_decls = [(
@@ -148,19 +152,18 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   for operator, overloads in ptr_op_decls:
     for instruction, arg_types, return_type in overloads:
       signature = _make_func_signature(
-        instruction, op_placeholder_templ_types=[pointee_type], op_arg_types=arg_types, op_return_type=return_type,
-        emits_ir=context.emits_ir)
+        identifier=operator.value, instruction=instruction, op_placeholder_templ_types=[pointee_type],
+        op_arg_types=arg_types, op_return_type=return_type)
       symbol_table.add_overload(operator.value, signature)
 
   free_signature = BuiltinOperationFunctionSignature(
+    identifier='free',
     placeholder_template_types=[pointee_type],
     return_type=SLEEPY_UNIT,
     arg_identifiers=['ptr'],
     arg_types=[ptr_type],
     arg_type_narrowings=[SLEEPY_NEVER],
-    arg_mutates=[False],
-    instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
-    emits_ir=context.emits_ir)
+    instruction=lambda builder, value: SLEEPY_UNIT.unit_constant())
   symbol_table.add_overload('free', free_signature)
   return TypeTemplateSymbol(template_parameters=[pointee_type], signature_type=ptr_type)
 
@@ -168,14 +171,13 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
 def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> TypeTemplateSymbol:
   # add destructor
   destructor_signature = BuiltinOperationFunctionSignature(
+    identifier='free',
     placeholder_template_types=[],
     return_type=SLEEPY_UNIT,
     arg_identifiers=['raw_ptr'],
     arg_types=[SLEEPY_RAW_PTR],
     arg_type_narrowings=[SLEEPY_NEVER],
-    arg_mutates=[False],
-    instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
-    emits_ir=context.emits_ir)
+    instruction=lambda builder, value: SLEEPY_UNIT.unit_constant())
   symbol_table.add_overload('free', destructor_signature)
 
   pointee_type = PlaceholderTemplateType(identifier='T')
@@ -190,11 +192,9 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   # RawPtr(Int) -> RawPtr
   from_int_signatures = {
     BuiltinOperationFunctionSignature(
-      placeholder_template_types=[], return_type=SLEEPY_RAW_PTR, arg_identifiers=['int'], arg_types=[int_type],
-      arg_type_narrowings=[int_type], arg_mutates=[False],
-      instruction=lambda builder, integer: builder.inttoptr(integer, typ=SLEEPY_RAW_PTR.ir_type, name='int_to_ptr'),
-      emits_ir=context.emits_ir)
-
+      identifier='RawPtr', placeholder_template_types=[], return_type=SLEEPY_RAW_PTR, arg_identifiers=['int'],
+      arg_types=[int_type], arg_type_narrowings=[int_type],
+      instruction=lambda builder, integer: builder.inttoptr(integer, typ=SLEEPY_RAW_PTR.ir_type, name='int_to_ptr'))
     for int_type in INT_TYPES
   }
 
@@ -237,14 +237,13 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
 
     # add destructor
     destructor_signature = BuiltinOperationFunctionSignature(
+      identifier='free',
       placeholder_template_types=[],
       return_type=SLEEPY_UNIT,
       arg_identifiers=['var'],
       arg_types=[builtin_type],
       arg_type_narrowings=[SLEEPY_NEVER],
-      instruction=lambda builder, value: SLEEPY_UNIT.unit_constant(),
-      emits_ir=context.emits_ir,
-      arg_mutates=[False])
+      instruction=lambda builder, value: SLEEPY_UNIT.unit_constant())
     symbol_table.add_overload('free', destructor_signature)
 
   for assert_identifier in ['assert', 'unchecked_assert']:
