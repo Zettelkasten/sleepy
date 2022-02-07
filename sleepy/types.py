@@ -1198,12 +1198,11 @@ class ConcreteFunction:
       self.return_type == other.return_type and self.arg_types == other.arg_types and
       self.arg_type_narrowings == other.arg_type_narrowings)
 
-  # noinspection PyTypeChecker
+  @abstractmethod
   def make_inline_func_call_ir(self,
                                func_args: List[TypedValue],
                                caller_context: CodegenContext) -> ir.Instruction:
-    assert self.is_inline
-    assert False, 'not implemented!'
+    raise NotImplementedError()
 
 
 class ConcreteBuiltinOperationFunction(ConcreteFunction):

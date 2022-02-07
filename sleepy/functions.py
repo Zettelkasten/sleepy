@@ -206,7 +206,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
     return_val_ir_alloca = caller_context.alloca_at_entry(
       self.return_type.ir_type, name='return_%s_alloca' % self.ast.identifier)
 
-    collect_block = caller_context.builder.append_basic_block('collect_return_%s_block' % self.ast.identifier)
+    collect_block = caller_context.builder.append_basic_block('collect_return_%s_block' % self.identifier)
     inline_context = caller_context.copy_with_inline_func(
       self, return_ir_alloca=return_val_ir_alloca, return_collect_block=collect_block)
     self.ast.build_body_ir(
