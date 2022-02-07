@@ -117,7 +117,6 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
     arg_types=[ptr_type], arg_type_narrowings=[ptr_type],
     instruction=lambda builder, ptr: ptr)
   symbol_table.add_overload('load', load_signature)
-  symbol_table.builtin_symbols.add('load')
 
   assert 'store' not in symbol_table
   store_signature = BuiltinOperationFunctionSignature(
@@ -227,8 +226,6 @@ def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
 
 def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   assert 'free' not in symbol_table
-  symbol_table.builtin_symbols.add('free')
-
   for type_identifier, builtin_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table
     symbol_table[type_identifier] = TypeTemplateSymbol.make_concrete_type_symbol(builtin_type)
@@ -245,10 +242,6 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
       arg_type_narrowings=[SLEEPY_NEVER],
       instruction=lambda builder, value: SLEEPY_UNIT.unit_constant())
     symbol_table.add_overload('free', destructor_signature)
-
-  for assert_identifier in ['assert', 'unchecked_assert']:
-    assert assert_identifier not in symbol_table
-    symbol_table.builtin_symbols.add(assert_identifier)
 
   if context.emits_ir:
     context.ir_func_malloc = ir.Function(
@@ -268,7 +261,6 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
       assert symbol_identifier not in symbol_table
       symbol = setup_func(symbol_table=symbol_table, context=context)
       symbol_table[symbol_identifier] = symbol
-      symbol_table.builtin_symbols.add(symbol_identifier)
 
     _make_builtin_operator_functions(symbol_table)
 

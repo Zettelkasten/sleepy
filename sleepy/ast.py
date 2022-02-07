@@ -729,7 +729,7 @@ class StringLiteralExpressionAst(ExpressionAst):
 
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert 'Str' in symbol_table.builtin_symbols
+      assert 'Str' in symbol_table.special_func_identifiers
       str_symbol = symbol_table['Str']
       assert isinstance(str_symbol, TypeTemplateSymbol)
       str_type = str_symbol.get_type(template_arguments=[])
@@ -906,7 +906,7 @@ class CallExpressionAst(ExpressionAst):
   def _is_special_call(self, builtin_func_identifier: str, symbol_table: SymbolTable):
     return isinstance(self.func_expr, IdentifierExpressionAst) \
            and self.func_expr.identifier == builtin_func_identifier \
-           and builtin_func_identifier in symbol_table.builtin_symbols
+           and builtin_func_identifier in symbol_table.special_func_identifiers
 
   def _is_size_call(self, symbol_table: SymbolTable):
     # TODO: make this a normal compile time function operating on types
