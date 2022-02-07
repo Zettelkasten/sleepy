@@ -56,20 +56,20 @@ class ConstructorFunctionTemplate(FunctionSignature):
     self.build_concrete_function_ir(concrete_function)
     return concrete_function
 
-  def build_concrete_function_ir(self, concrete_function: ConcreteFunction):
+  def build_concrete_function_ir(self, concrete_func: ConcreteFunction):
     with self.captured_context.use_pos(self.captured_context.current_pos):
-      concrete_struct_type = concrete_function.return_type
+      concrete_struct_type = concrete_func.return_type
       assert isinstance(concrete_struct_type, StructType)
 
       if self.captured_context.emits_ir:
-        constructor_block = concrete_function.ir_func.append_basic_block(name='entry')
-        context = self.captured_context.copy_with_func(concrete_function, builder=ir.IRBuilder(constructor_block))
+        constructor_block = concrete_func.ir_func.append_basic_block(name='entry')
+        context = self.captured_context.copy_with_func(concrete_func, builder=ir.IRBuilder(constructor_block))
         self_ir_alloca = context.alloca_at_entry(concrete_struct_type.ir_type, name='self')
 
-        for member_identifier, ir_func_arg in zip(self.struct.member_identifiers, concrete_function.ir_func.args):
+        for member_identifier, ir_func_arg in zip(self.struct.member_identifiers, concrete_func.ir_func.args):
           ir_func_arg.struct_identifier = member_identifier
         concrete_struct_type.make_store_members_ir(
-          member_ir_vals=concrete_function.ir_func.args, struct_ir_alloca=self_ir_alloca, context=context)
+          member_ir_vals=concrete_func.ir_func.args, struct_ir_alloca=self_ir_alloca, context=context)
         context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
 
 

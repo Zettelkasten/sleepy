@@ -1249,18 +1249,22 @@ class FunctionSignature:
   Given template arguments, this builds a concrete function implementation on demand.
   """
 
-  def __init__(self,
+  def __init__(self, *,
                identifier: str,
+               extern: bool,
+               is_inline: bool,
                placeholder_template_types: List[PlaceholderTemplateType],
                return_type: Type,
                arg_identifiers: List[str],
                arg_types: List[Type],
                arg_type_narrowings: List[Type],
                arg_mutates: List[bool]):
-    assert isinstance(return_type, Type)
+    assert not is_inline or not extern
     assert len(arg_identifiers) == len(arg_types) == len(arg_type_narrowings) == len(arg_mutates)
     assert all(isinstance(templ_type, PlaceholderTemplateType) for templ_type in placeholder_template_types)
     self.identifier = identifier
+    self.extern = extern
+    self.is_inline = is_inline
     self.placeholder_template_types = placeholder_template_types
     self.return_type = return_type
     self.arg_identifiers = arg_identifiers
@@ -1491,7 +1495,7 @@ class CodegenContext:
     self.current_func_inline_return_ir_alloca: Optional[ir.AllocaInstr] = None
     self.inline_func_call_stack: List[ConcreteFunction] = []
     self.ir_func_malloc: Optional[ir.Function] = None
-    self.declared_extern_funcs: Dict[str, ConcreteFunction] = [] if builder is None else builder.declared_extern_funcs
+    self.declared_extern_funcs: Dict[str, ConcreteFunction] = []
 
     self.debug_ir_patcher = DebugValueIrPatcher()
 
