@@ -9,7 +9,7 @@ from llvmlite import ir
 
 from sleepy.hierarchical_dictionary import HierarchicalDict, STUB
 from sleepy.types import Type, narrow_type, narrow_with_collapsed_type, exclude_type, exclude_with_collapsed_type, \
-  CodegenContext, ReferenceType, TypedValue, FunctionTemplate, PlaceholderTemplateType, ConcreteFunction, \
+  CodegenContext, ReferenceType, TypedValue, FunctionSignature, PlaceholderTemplateType, ConcreteFunction, \
   get_common_type, OverloadSet
 
 
@@ -264,7 +264,7 @@ class SymbolTable:
 
     return functools.reduce(lambda l, r: l | r, functions)
 
-  def add_overload(self, identifier: str, overload: Union[FunctionTemplate | Set[FunctionTemplate]]) -> bool:
+  def add_overload(self, identifier: str, overload: Union[FunctionSignature | Set[FunctionSignature]]) -> bool:
     if not isinstance(overload, Set): overload = {overload}
 
     symbol = self.dict.underlying_dict.setdefault(identifier, OverloadSet(identifier, []))

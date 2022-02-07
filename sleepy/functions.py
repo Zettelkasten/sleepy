@@ -10,7 +10,7 @@ from sleepy.builtin_symbols import SLEEPY_BOOL
 from sleepy.errors import raise_error
 from sleepy.symbols import VariableSymbol, SymbolTable, Symbol
 from sleepy.syntactical_analysis.grammar import TreePosition
-from sleepy.types import Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionTemplate, \
+from sleepy.types import Type, CodegenContext, OverloadSet, ConcreteFunction, FunctionSignature, \
   PlaceholderTemplateType, SLEEPY_UNIT, TypedValue, ReferenceType
 
 
@@ -134,7 +134,7 @@ class FunctionDeclarationAst(DeclarationAst):
     if not body_context.emits_ir or ir_func_args is None: return
     assert not self.is_extern
 
-    template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_templ_types]
+    template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_template_types]
     template_arguments = concrete_func.template_arguments
 
     argument_symbols = {}
@@ -187,7 +187,7 @@ class FunctionDeclarationAst(DeclarationAst):
 
 
 class ConcreteDeclaredFunction(ConcreteFunction):
-  def __init__(self, signature: FunctionTemplate,
+  def __init__(self, signature: FunctionSignature,
                ir_func: Optional[ir.Function],
                concrete_template_types: List[Type],
                return_type: Type, arg_types: List[Type],
@@ -254,7 +254,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
         should_declare_func = True
       if self.captured_context.emits_ir and not self.ast.is_inline:
         if should_declare_func:
-          self.make_ir_func(identifier=self.ast.identifier, extern=self.ast.is_extern, context=self.captured_context)
+          self._make_ir_func(identifier=self.ast.identifier, extern=self.ast.is_extern, context=self.captured_context)
         else:
           assert not should_declare_func
           assert self.ast.is_extern and self.captured_symbol_table.has_extern_func(self.ast.identifier)
@@ -280,7 +280,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
           ir_func_args=self.ir_func.args if body_context.emits_ir else None)
 
 
-class DeclaredFunctionTemplate(FunctionTemplate):
+class DeclaredFunctionTemplate(FunctionSignature):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType],
                return_type: Type,
                arg_identifiers: List[str],
@@ -306,6 +306,6 @@ class DeclaredFunctionTemplate(FunctionTemplate):
       return_type=concrete_return_type, arg_types=concrete_parameter_types,
       arg_type_narrowings=concrete_narrowed_parameter_types, arg_mutates=self.arg_mutates, ast=self.ast,
       captured_symbol_table=self.captured_symbol_table, captured_context=self.captured_context)
-    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
+    self._initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
     concrete_function.build_ir()
     return concrete_function

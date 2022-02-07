@@ -72,7 +72,7 @@ class AbstractSyntaxTree(ABC):
       infers = [
         try_infer_template_arguments(
           calling_types=list(expanded_calling_types), signature_types=signature.arg_types,
-          template_parameters=signature.placeholder_templ_types)
+          template_parameters=signature.placeholder_template_types)
         for signature in func.signatures]
       possible_infers = [idx for idx, infer in enumerate(infers) if infer is not None]
       if len(possible_infers) == 0:

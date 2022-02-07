@@ -9,7 +9,7 @@ from llvmlite.ir import IRBuilder
 from sleepy.struct_type import build_destructor, build_constructor
 from sleepy.symbols import TypeTemplateSymbol, SymbolTable
 from sleepy.syntactical_analysis.grammar import TreePosition
-from sleepy.types import FunctionTemplate, PlaceholderTemplateType, Type, ConcreteFunction, \
+from sleepy.types import FunctionSignature, PlaceholderTemplateType, Type, ConcreteFunction, \
   ConcreteBuiltinOperationFunction, ConcreteBitcastFunction, DoubleType, FloatType, BoolType, \
   IntType, LongType, CharType, RawPointerType, PointerType, CodegenContext, OverloadSet, \
   LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, StructType, SLEEPY_UNIT, SLEEPY_NEVER, \
@@ -17,7 +17,7 @@ from sleepy.types import FunctionTemplate, PlaceholderTemplateType, Type, Concre
 from sleepy.utilities import concat_dicts
 
 
-class BuiltinOperationFunctionTemplate(FunctionTemplate):
+class BuiltinOperationFunctionTemplate(FunctionSignature):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType],
                return_type: Type,
                arg_identifiers: List[str],
@@ -37,30 +37,20 @@ class BuiltinOperationFunctionTemplate(FunctionTemplate):
                              concrete_narrowed_parameter_types: List[Type],
                              concrete_return_type: Type) -> ConcreteFunction:
     concrete_function = ConcreteBuiltinOperationFunction(
-      signature=self, ir_func=None, template_arguments=concrete_template_arguments, return_type=concrete_return_type,
-      parameter_types=concrete_parameter_types, narrowed_parameter_types=concrete_narrowed_parameter_types,
-      parameter_mutates=self.arg_mutates, instruction=self.instruction, emits_ir=self.emits_ir)
-    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
+      signature=self, templ_args=template_args, instruction=self.instruction, context=context)
+    self._initialized_templ_funcs[tuple(template_args)] = concrete_function
     return concrete_function
 
 
-class BitcastFunctionTemplate(FunctionTemplate):
+class BitcastFunctionTemplate(FunctionSignature):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
                arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type]):
     super().__init__(
       placeholder_template_types, return_type, arg_identifiers, arg_types, arg_type_narrowings, arg_mutates=[False])
 
-  def _get_concrete_function(self, concrete_template_arguments: List[Type], concrete_parameter_types: List[Type],
-                             concrete_narrowed_parameter_types: List[Type],
-                             concrete_return_type: Type) -> ConcreteFunction:
-    concrete_function = ConcreteBitcastFunction(
-      signature=self,
-      ir_func=None,
-      template_arguments=concrete_template_arguments,
-      return_type=concrete_return_type,
-      parameter_types=concrete_parameter_types,
-      narrowed_parameter_types=concrete_narrowed_parameter_types)
-    self.initialized_templ_funcs[tuple(concrete_template_arguments)] = concrete_function
+  def _get_concrete_function(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
+    concrete_function = ConcreteBitcastFunction(signature=self, template_arguments=template_args, context=context)
+    self._initialized_templ_funcs[tuple(template_args)] = concrete_function
     return concrete_function
 
 
@@ -241,11 +231,6 @@ def build_initial_ir(symbol_table: SymbolTable, context: CodegenContext):
   assert 'free' not in symbol_table
   symbol_table.builtin_symbols.add('free')
 
-  for func_identifier in ['index', 'size', 'is', '|']:
-    assert func_identifier not in symbol_table
-    symbol_table.builtin_symbols.add(func_identifier)
-    symbol_table.add_overload(func_identifier, DummyFunctionTemplate())
-
   for type_identifier, builtin_type in SLEEPY_TYPES.items():
     assert type_identifier not in symbol_table
     symbol_table[type_identifier] = TypeTemplateSymbol.make_concrete_type_symbol(builtin_type)
@@ -376,7 +361,7 @@ def _make_builtin_operator_functions(symbol_table: SymbolTable, emits_ir: bool):
 
 def _make_func_signature(instruction: Callable[..., ir.Value],
                          op_placeholder_templ_types: Tuple[PlaceholderTemplateType] | List[PlaceholderTemplateType],
-                         op_arg_types: List[Type], op_return_type: Type, emits_ir: bool) -> FunctionTemplate:
+                         op_arg_types: List[Type], op_return_type: Type, emits_ir: bool) -> FunctionSignature:
   assert len(op_arg_types) in {1, 2}
   unary: bool = len(op_arg_types) == 1
   op_arg_identifiers = ['arg'] if unary else ['lhs', 'rhs']
