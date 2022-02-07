@@ -729,7 +729,7 @@ class StringLiteralExpressionAst(ExpressionAst):
 
   def make_as_val(self, symbol_table: SymbolTable, context: CodegenContext) -> TypedValue:
     with context.use_pos(self.pos):
-      assert 'Str' in symbol_table.special_func_identifiers
+      assert 'Str' in symbol_table
       str_symbol = symbol_table['Str']
       assert isinstance(str_symbol, TypeTemplateSymbol)
       str_type = str_symbol.get_type(template_arguments=[])

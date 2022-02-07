@@ -133,7 +133,7 @@ class SymbolTableStub:
     self.dict = STUB
     self.current_func = None
     self.known_extern_funcs = {}
-    self.special_func_identifiers: Set[str] = {'size', '|', 'is'}
+    self.special_func_identifiers: Set[str] = {'size', '|', 'is', 'index'}
     self.current_scope_identifiers = frozenset()
 
 
