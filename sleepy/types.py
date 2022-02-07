@@ -1294,6 +1294,13 @@ class FunctionTemplate:
                              concrete_parameter_types: List[Type],
                              concrete_narrowed_parameter_types: List[Type],
                              concrete_return_type: Type) -> ConcreteFunction:
+    """
+    Creates a concrete function instance.
+    When the concrete function is inline, this should not generate ir directly.
+    If it is not inline, it should generate ir for the concrete function.
+
+    TODO: we should unify this: Building non-inline IR is the same building inline IR inside a new function.
+    """
     raise NotImplementedError()
 
   def can_call_with_expanded_arg_types(self, concrete_templ_types: List[Type], expanded_arg_types: List[Type]):
