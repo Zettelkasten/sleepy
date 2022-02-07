@@ -1091,7 +1091,7 @@ class ConcreteFunction:
                signature: FunctionSignature,
                template_args: List[Type],
                context: CodegenContext):
-    assert len(signature.arg_identifiers) == len(template_args)
+    assert len(signature.placeholder_template_types) == len(template_args)
     self.signature = signature
     self.template_args = template_args
 
@@ -1109,20 +1109,22 @@ class ConcreteFunction:
     assert all(not arg_type.has_unfilled_template_parameters() for arg_type in self.arg_type_narrowings)
 
     # set self.ir_func and self.di_subprogram
+    self.ir_func, self.di_subprogram = None, None
     if context.emits_ir and not self.is_inline:
-      assert context.emits_ir
       ir_func_name = context.make_ir_func_name(self)
-      existing_extern_concrete_func = context.declared_extern_funcs.get(self.identifier)
-      if existing_extern_concrete_func is not None:
-        self.ir_func = existing_extern_concrete_func.ir_func
+
+      existing_extern_ir_func = context.declared_extern_funcs.get(self.identifier)
+      if self.is_extern and existing_extern_ir_func is not None:
+        # extern func was encountered before
+        self.ir_func = existing_extern_ir_func
       else:
-        context.declared_extern_funcs[self.identifier] = self
-      if self.ir_func is None:
         ir_func_type = self.make_ir_function_type()
         self.ir_func = ir.Function(context.module, ir_func_type, name=ir_func_name)
-        if existing_extern_concrete_func is not None:
-          existing_extern_concrete_func.ir_func = self.ir_func  # add if previously incomplete
-      if context.emits_debug and not self.extern:
+
+        if self.is_extern:
+          context.declared_extern_funcs[self.identifier] = self.ir_func
+
+      if context.emits_debug and not self.is_extern:
         di_return_type = self.return_type.make_di_type(context=context)
         di_arg_types = [arg_type.make_di_type(context=context) for arg_type in self.arg_types]
         di_arg_types = [
@@ -1142,10 +1144,6 @@ class ConcreteFunction:
             'unit': context.current_di_compile_unit
           }, is_distinct=True)
         self.ir_func.set_metadata('dbg', self.di_subprogram)
-      else:
-        self.di_subprogram = None
-    else:
-      self.ir_func, self.di_subprogram = None, None
 
   def get_c_arg_types(self) -> Tuple[Any]:
     return (cast(Any, self.return_type.c_type),) + tuple(cast(Any, arg_type.c_type) for arg_type in self.arg_types)
@@ -1183,7 +1181,7 @@ class ConcreteFunction:
     return self.signature.is_inline
 
   @property
-  def extern(self) -> bool:
+  def is_extern(self) -> bool:
     return self.signature.extern
 
   def __repr__(self) -> str:
@@ -1495,7 +1493,7 @@ class CodegenContext:
     self.current_func_inline_return_ir_alloca: Optional[ir.AllocaInstr] = None
     self.inline_func_call_stack: List[ConcreteFunction] = []
     self.ir_func_malloc: Optional[ir.Function] = None
-    self.declared_extern_funcs: Dict[str, ConcreteFunction] = []
+    self.declared_extern_funcs: Dict[str, ir.Function] = {}
 
     self.debug_ir_patcher = DebugValueIrPatcher()
 
@@ -1651,7 +1649,7 @@ class CodegenContext:
     return UsePosRuntimeContext(pos, context=self)
 
   def make_ir_func_name(self, concrete_func: ConcreteFunction) -> str | None:
-    if concrete_func.extern:
+    if concrete_func.is_extern:
       if any(f.name == concrete_func.identifier for f in self.module.functions):
         return None
       return concrete_func.identifier

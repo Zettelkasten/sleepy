@@ -122,7 +122,7 @@ class FunctionDeclarationAst(DeclarationAst):
     signature = DeclaredFunctionTemplate(
       placeholder_template_types=placeholder_templ_types,
       return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types, arg_type_narrowings=arg_types,
-      arg_mutates=self.arg_mutates, ast=self, captured_symbol_table=func_symbol_table, captured_context=context)
+      arg_mutates=self.arg_mutates, ast=self, captured_symbol_table=func_symbol_table)
 
     return OverloadSet(self.identifier, [signature])
     # TODO: check symbol table generically: e.g. use a concrete functions with the template type arguments
@@ -135,7 +135,7 @@ class FunctionDeclarationAst(DeclarationAst):
     assert not self.is_extern
 
     template_parameter_names = [t.identifier for t in concrete_func.signature.placeholder_template_types]
-    template_arguments = concrete_func.template_arguments
+    template_args = concrete_func.template_args
 
     argument_symbols = {}
     for identifier, ir_value, mutates, typ in zip(
@@ -155,7 +155,7 @@ class FunctionDeclarationAst(DeclarationAst):
 
     body_symbol_table = parent_symbol_table.make_child_scope(
       inherit_outer_variables=False, new_function=concrete_func,
-      type_substitutions=zip(template_parameter_names, template_arguments),
+      type_substitutions=zip(template_parameter_names, template_args),
       new_symbols=argument_symbols)
 
     # build function body
@@ -197,10 +197,6 @@ class ConcreteDeclaredFunction(ConcreteFunction):
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
 
-  @property
-  def is_inline(self) -> bool:
-    return self.ast.is_inline
-
   def make_inline_func_call_ir(self, func_args: List[TypedValue],
                                caller_context: CodegenContext) -> Optional[ir.Value]:
     assert len(func_args) == len(self.arg_identifiers)
@@ -237,24 +233,8 @@ class ConcreteDeclaredFunction(ConcreteFunction):
               'Cannot redefine extern func %r previously declared as %s with new signature %s' % (
                 self.ast.identifier, extern_concrete_func.signature.to_signature_str(),
                 self.signature.to_signature_str()), self.ast.pos)
-          # Sometimes the ir_func has not been set for a previously declared extern func,
-          # e.g. because it was declared in an inlined func.
-          should_declare_func = extern_concrete_func.ir_func is None
         else:
           self.captured_symbol_table.add_extern_func(self.ast.identifier, self)
-          should_declare_func = True
-      else:
-        assert not self.ast.is_extern
-        should_declare_func = True
-      if self.captured_context.emits_ir and not self.ast.is_inline:
-        if should_declare_func:
-          self._make_ir_func(identifier=self.ast.identifier, extern=self.ast.is_extern, context=self.captured_context)
-        else:
-          assert not should_declare_func
-          assert self.ast.is_extern and self.captured_symbol_table.has_extern_func(self.ast.identifier)
-          self.ir_func = self.captured_symbol_table.get_extern_func(self.ast.identifier).ir_func
-
-      if self.ast.is_extern:
         return
 
       if self.ast.is_inline:
@@ -285,7 +265,8 @@ class DeclaredFunctionTemplate(FunctionSignature):
                captured_symbol_table: SymbolTable):
     super().__init__(
       placeholder_template_types=placeholder_template_types, return_type=return_type, arg_identifiers=arg_identifiers,
-      arg_types=arg_types, arg_type_narrowings=arg_type_narrowings, arg_mutates=arg_mutates, identifier=ast.identifier)
+      arg_types=arg_types, arg_type_narrowings=arg_type_narrowings, arg_mutates=arg_mutates, identifier=ast.identifier,
+      extern=ast.is_extern, is_inline=ast.is_inline)
     self.ast = ast
     self.captured_symbol_table = captured_symbol_table
 

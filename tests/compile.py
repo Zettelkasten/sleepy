@@ -20,7 +20,7 @@ def compile_program(engine: ExecutionEngine,
   print(module_ir)
   compile_ir(engine, module_ir)
 
-  main_func = next((func for func in exported_funcs if func.indentifier == main_func_identifier), None)
+  main_func = next((func for func in exported_funcs if func.identifier == main_func_identifier), None)
   assert main_func is not None
   py_func = main_func.make_py_func(engine)
 
