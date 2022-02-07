@@ -30,7 +30,7 @@ class BuiltinOperationFunctionSignature(FunctionSignature):
       identifier=identifier, extern=False, is_inline=True,
       placeholder_template_types=placeholder_template_types, return_type=return_type, arg_identifiers=arg_identifiers,
       arg_types=arg_types, arg_type_narrowings=arg_type_narrowings,
-      arg_mutates=[False] * len(self.arg_identifiers))
+      arg_mutates=[False] * len(arg_identifiers))
     self.instruction = instruction
 
   def _get_concrete_func(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:

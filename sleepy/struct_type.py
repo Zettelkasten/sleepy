@@ -17,9 +17,9 @@ def build_destructor(struct_type: StructType, parent_symbol_table: SymbolTable,
     templ_type for templ_type in struct_type.template_param_or_arg if isinstance(templ_type, PlaceholderTemplateType)]
   # TODO: Narrow type to something more meaningful then SLEEPY_NEVER
   # E.g. make a copy of the never union type and give that a name ("Freed" or sth)
-  signature_ = DestructorFunctionTemplate(
+  signature_ = DestructorFunctionSignature(
     placeholder_templ_types=placeholder_template_types, struct=struct_type,
-    captured_symbol_table=parent_symbol_table, captured_context=parent_context)
+    captured_symbol_table=parent_symbol_table)
   parent_symbol_table.add_overload('free', signature_)
   return parent_symbol_table.free_overloads
 
@@ -30,22 +30,23 @@ def build_constructor(struct_type: StructType, parent_symbol_table: SymbolTable,
 
   placeholder_templ_types = [
     templ_type for templ_type in struct_type.template_param_or_arg if isinstance(templ_type, PlaceholderTemplateType)]
-  signature = ConstructorFunctionTemplate(
+  signature = ConstructorFunctionSignature(
     placeholder_templ_types=placeholder_templ_types, struct=struct_type,
     captured_symbol_table=parent_symbol_table, captured_context=parent_context)
   return OverloadSet(identifier=struct_type.struct_identifier, signatures=[signature])
 
 
-class ConstructorFunctionTemplate(FunctionSignature):
+class ConstructorFunctionSignature(FunctionSignature):
   def __init__(self,
                placeholder_templ_types: List[PlaceholderTemplateType],
                struct: StructType,
                captured_symbol_table: SymbolTable,
                captured_context: CodegenContext):
     super().__init__(
+      identifier=struct.struct_identifier, extern=False, is_inline=False,
       placeholder_template_types=placeholder_templ_types, return_type=struct, arg_identifiers=struct.member_identifiers,
       arg_types=struct.member_types, arg_type_narrowings=struct.member_types,
-      arg_mutates=[False] * len(struct.member_types), identifier=struct.struct_identifier)
+      arg_mutates=[False] * len(struct.member_types))
     self.struct = struct
     self.captured_symbol_table = captured_symbol_table
     self.captured_context = captured_context
@@ -73,11 +74,13 @@ class ConstructorFunctionTemplate(FunctionSignature):
         context.builder.ret(context.builder.load(self_ir_alloca, name='self'))
 
 
-class DestructorFunctionTemplate(FunctionSignature):
-  def __init__(self, placeholder_templ_types: List[PlaceholderTemplateType],
+class DestructorFunctionSignature(FunctionSignature):
+  def __init__(self,
+               placeholder_templ_types: List[PlaceholderTemplateType],
                struct: StructType,
                captured_symbol_table: SymbolTable):
     super().__init__(
+      identifier='free', extern=False, is_inline=False,
       placeholder_template_types=placeholder_templ_types, return_type=SLEEPY_UNIT, arg_types=[struct],
       arg_identifiers=['self'], arg_type_narrowings=[SLEEPY_NEVER], arg_mutates=[False])
     self.struct = struct
