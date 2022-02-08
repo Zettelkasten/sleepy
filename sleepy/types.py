@@ -463,8 +463,7 @@ class UnionType(Type):
       assert val_size is not None
       assert all(val_size >= possible_type.size for possible_type in self.possible_types)
       self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), val_size)
-      self.untagged_union_c_type = ctypes.c_ubyte * max(
-        (ctypes.sizeof(possible_type.c_type) for possible_type in self.possible_types), default=0)
+      self.untagged_union_c_type = ctypes.c_ubyte * val_size
       c_type = type(
         '%s_CType' % self.identifier, (ctypes.Structure,),
         {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
