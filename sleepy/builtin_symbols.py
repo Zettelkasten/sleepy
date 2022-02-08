@@ -40,7 +40,7 @@ class BuiltinOperationFunctionSignature(FunctionSignature):
     return concrete_function
 
 
-class BitcastFunctionTemplate(FunctionSignature):
+class BitcastFunctionSignature(FunctionSignature):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
                arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type]):
     super().__init__(
@@ -127,7 +127,7 @@ def _make_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> Type
   symbol_table.add_overload('store', store_signature)
 
   # cast from RawPtr -> Ptr[T] and Ref[T] -> Ptr[T]
-  constructor_signature = BitcastFunctionTemplate(
+  constructor_signature = BitcastFunctionSignature(
     placeholder_template_types=[pointee_type], return_type=ptr_type, arg_identifiers=['raw_ptr'],
     arg_types=[SLEEPY_RAW_PTR], arg_type_narrowings=[ptr_type])
   ref_cast_signature = BuiltinOperationFunctionSignature(
@@ -183,7 +183,7 @@ def _make_raw_ptr_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   ptr_type = PointerType(pointee_type=pointee_type)
 
   # RawPtr[T](Ptr[T]) -> RawPtr
-  from_specific_signature = BitcastFunctionTemplate(
+  from_specific_signature = BitcastFunctionSignature(
     placeholder_template_types=[pointee_type], return_type=SLEEPY_RAW_PTR, arg_identifiers=['ptr'],
     arg_types=[ptr_type], arg_type_narrowings=[ptr_type])
   symbol_table.add_overload('RawPtr', from_specific_signature)
@@ -218,7 +218,7 @@ def _make_bitcast_symbol(symbol_table: SymbolTable, context: CodegenContext) -> 
   del symbol_table  # only to keep API consistent
   del context
   to_type, from_type = PlaceholderTemplateType('T'), PlaceholderTemplateType('U')
-  bitcast_signature = BitcastFunctionTemplate(
+  bitcast_signature = BitcastFunctionSignature(
     placeholder_template_types=[to_type, from_type], return_type=to_type,
     arg_identifiers=['from'], arg_types=[from_type], arg_type_narrowings=[to_type])
   return OverloadSet('bitcast', [bitcast_signature])

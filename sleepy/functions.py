@@ -119,7 +119,7 @@ class FunctionDeclarationAst(DeclarationAst):
     if self.is_inline and self.is_extern:
       raise_error('Extern function %r cannot be inlined' % self.identifier, self.pos)
 
-    signature = DeclaredFunctionTemplate(
+    signature = DeclaredFunctionSignature(
       placeholder_template_types=placeholder_templ_types,
       return_type=return_type, arg_identifiers=self.arg_identifiers, arg_types=arg_types, arg_type_narrowings=arg_types,
       arg_mutates=self.arg_mutates, ast=self, captured_symbol_table=func_symbol_table)
@@ -254,7 +254,7 @@ class ConcreteDeclaredFunction(ConcreteFunction):
           ir_func_args=self.ir_func.args if body_context.emits_ir else None)
 
 
-class DeclaredFunctionTemplate(FunctionSignature):
+class DeclaredFunctionSignature(FunctionSignature):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType],
                return_type: Type,
                arg_identifiers: List[str],
