@@ -640,7 +640,7 @@ class UnionType(Type):
 
   @staticmethod
   def from_types(possible_types: Collection[Type], val_size: Optional[int] = None) -> UnionType:
-    possible_types = set(possible_types)
+    possible_types = list(dict.fromkeys(possible_types)) # python-y way to remove duplicates while preserving order
     if val_size is None: val_size = UnionType._new_val_size(possible_types)
 
     return UnionType(type_mapping=frozendict(zip(possible_types, range(len(possible_types)))), val_size=val_size)
