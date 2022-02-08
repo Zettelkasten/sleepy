@@ -1226,21 +1226,6 @@ class ConcreteBuiltinOperationFunction(ConcreteFunction):
     return True
 
 
-class ConcreteBitcastFunction(ConcreteFunction):
-  def __init__(self, signature: FunctionSignature, template_arguments: List[Type], context: CodegenContext):
-    super().__init__(signature=signature, template_args=template_arguments, context=context)
-
-  def make_inline_func_call_ir(self, func_args: List[TypedValue],
-                               caller_context: CodegenContext) -> ir.Instruction:
-    assert len(func_args) == 1
-    assert func_args[0].ir_val is not None
-    return caller_context.builder.bitcast(val=func_args[0].ir_val, typ=self.return_type.ir_type, name="bitcast")
-
-  @property
-  def is_inline(self) -> bool:
-    return True
-
-
 class FunctionSignature:
   """
   Given template arguments, this builds a concrete function implementation on demand.

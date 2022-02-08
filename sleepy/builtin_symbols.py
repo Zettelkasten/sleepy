@@ -10,10 +10,9 @@ from sleepy.struct_type import build_destructor, build_constructor
 from sleepy.symbols import TypeTemplateSymbol, SymbolTable
 from sleepy.syntactical_analysis.grammar import TreePosition
 from sleepy.types import FunctionSignature, PlaceholderTemplateType, Type, ConcreteFunction, \
-  ConcreteBuiltinOperationFunction, ConcreteBitcastFunction, DoubleType, FloatType, BoolType, \
-  IntType, LongType, CharType, RawPointerType, PointerType, CodegenContext, OverloadSet, \
-  LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, StructType, SLEEPY_UNIT, SLEEPY_NEVER, \
-  ReferenceType, StructIdentity
+  ConcreteBuiltinOperationFunction, DoubleType, FloatType, BoolType, IntType, LongType, CharType, RawPointerType, \
+  PointerType, CodegenContext, OverloadSet, LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, StructType, SLEEPY_UNIT, \
+  SLEEPY_NEVER, ReferenceType, StructIdentity, TypedValue
 from sleepy.utilities import concat_dicts
 
 
@@ -40,6 +39,17 @@ class BuiltinOperationFunctionSignature(FunctionSignature):
     return concrete_function
 
 
+class ConcreteBitcastFunction(ConcreteFunction):
+  def __init__(self, signature: FunctionSignature, template_args: List[Type], context: CodegenContext):
+    super().__init__(signature=signature, template_args=template_args, context=context)
+
+  def make_inline_func_call_ir(self, func_args: List[TypedValue],
+                               caller_context: CodegenContext) -> ir.Instruction:
+    assert len(func_args) == 1
+    assert func_args[0].ir_val is not None
+    return caller_context.builder.bitcast(val=func_args[0].ir_val, typ=self.return_type.ir_type, name="bitcast")
+
+
 class BitcastFunctionSignature(FunctionSignature):
   def __init__(self, placeholder_template_types: List[PlaceholderTemplateType], return_type: Type,
                arg_identifiers: List[str], arg_types: List[Type], arg_type_narrowings: List[Type]):
@@ -49,7 +59,7 @@ class BitcastFunctionSignature(FunctionSignature):
       arg_types=arg_types, arg_type_narrowings=arg_type_narrowings, arg_mutates=[False])
 
   def _get_concrete_func(self, template_args: List[Type], context: CodegenContext) -> ConcreteFunction:
-    concrete_function = ConcreteBitcastFunction(signature=self, template_arguments=template_args, context=context)
+    concrete_function = ConcreteBitcastFunction(signature=self, template_args=template_args, context=context)
     self._initialized_templ_funcs[tuple(template_args)] = concrete_function
     return concrete_function
 
