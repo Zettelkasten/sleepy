@@ -439,22 +439,20 @@ class UnionType(Type):
   A tagged union, i.e. a type that can be one of a set of different types.
   """
 
-  def __init__(self, possible_types: Collection[Type],
-               possible_type_nums: Collection[int],
+  def __init__(self, type_mapping: Mapping[Type, int],
                val_size: Optional[int],
                constructor: Optional[OverloadSet] = None):
-    assert len(possible_types) == len(possible_type_nums)
-    assert len(set(possible_types)) == len(possible_types)
-    assert all(not isinstance(possible_type, UnionType) for possible_type in possible_types)
+    assert all(not isinstance(possible_type, UnionType) for possible_type in type_mapping.values())
 
-    self.type_mapping = frozendict(dict(zip(possible_types, possible_type_nums)))
-    self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
+    self.type_mapping = type_mapping if isinstance(type_mapping, frozendict) else frozendict(type_mapping)
+
+    self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in self.possible_types)
     self.val_size = val_size
 
     self.tag_c_type = ctypes.c_uint8
     self.tag_ir_type = ir.types.IntType(8)
     self.tag_size = 8
-    if any(possible_type.has_unfilled_template_parameters() for possible_type in possible_types):
+    if self.has_unfilled_template_parameters():
       assert val_size is None
       self.tag_c_type = None
       self.tag_ir_type = None
@@ -463,10 +461,10 @@ class UnionType(Type):
       ir_type, c_type = None, None
     else:  # default case, non-template
       assert val_size is not None
-      assert all(val_size >= possible_type.size for possible_type in possible_types)
+      assert all(val_size >= possible_type.size for possible_type in self.possible_types)
       self.untagged_union_ir_type = ir.types.ArrayType(ir.types.IntType(8), val_size)
       self.untagged_union_c_type = ctypes.c_ubyte * max(
-        (ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
+        (ctypes.sizeof(possible_type.c_type) for possible_type in self.possible_types), default=0)
       c_type = type(
         '%s_CType' % self.identifier, (ctypes.Structure,),
         {'_fields_': [('tag', self.tag_c_type), ('untagged_union', self.untagged_union_c_type)]})
@@ -489,7 +487,7 @@ class UnionType(Type):
 
 
   @staticmethod
-  def _new_val_size(types: Iterable[Type], prev_val_size: Optional[int]) -> Optional[int]:
+  def _new_val_size(types: Iterable[Type], prev_val_size: Optional[int] = None) -> Optional[int]:
     if any(t.has_unfilled_template_parameters() for t in types): return None
     if prev_val_size is None: prev_val_size = 0
     return max(prev_val_size, max((t.size for t in types), default=0))
@@ -556,8 +554,7 @@ class UnionType(Type):
       new_mapping[possible_type] = UnionType._first_unused_index(new_mapping.values())
 
     return UnionType(
-      possible_types=new_mapping.keys(),
-      possible_type_nums=new_mapping.values(),
+      type_mapping=new_mapping,
       val_size=UnionType._new_val_size(new_mapping.keys(), self.val_size),
       constructor=self.constructor)
 
@@ -625,20 +622,14 @@ class UnionType(Type):
     return context.builder.load(untagged_union_ptr, name=name)
 
   def copy_with_narrowed_types(self, narrow_to_types: List[Type] | Set[Type]) -> UnionType:
-    possible_types = [possible_type for possible_type in self.possible_types if possible_type in narrow_to_types]
-    possible_type_nums = [
-      possible_type_num
-      for possible_type, possible_type_num in zip(self.possible_types, self.possible_type_nums)
-      if possible_type in narrow_to_types]
-    return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=self.val_size)
+    return UnionType(
+      type_mapping=frozendict((t, self.type_mapping[t]) for t in narrow_to_types),
+      val_size=self.val_size)
 
   def copy_with_extended_types_and_indices(self, added_type_mapping: Mapping[Type, int]):
     new_mapping = added_type_mapping | self.type_mapping # values from rhs are preferred
 
-    return UnionType(
-      possible_types=new_mapping.keys(),
-      possible_type_nums=new_mapping.values(),
-      val_size=UnionType._new_val_size(new_mapping, self.val_size))
+    return UnionType(type_mapping=new_mapping, val_size=UnionType._new_val_size(new_mapping, self.val_size))
 
   def copy_with_extended_types(self, extended_types: Set[Type]) -> UnionType:
     new_mapping = dict(self.type_mapping)
@@ -646,18 +637,18 @@ class UnionType(Type):
       new_index = max(new_mapping.values(), default=-1) + 1
       new_mapping[typ] = new_index
 
-    return UnionType(
-      possible_types=new_mapping.keys(),
-      possible_type_nums=new_mapping.values(),
-      val_size=UnionType._new_val_size(new_mapping, self.val_size))
+    return UnionType(type_mapping=new_mapping, val_size=UnionType._new_val_size(new_mapping, self.val_size))
 
-  @classmethod
-  def from_types(cls, possible_types: List[Type], val_size: Optional[int] = None) -> UnionType:
-    possible_types = list(dict.fromkeys(possible_types))  # possibly remove duplicates
-    possible_type_nums = list(range(len(possible_types)))
-    if val_size is None and not any(typ.has_unfilled_template_parameters() for typ in possible_types):
-      val_size = max((ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
-    return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
+  @staticmethod
+  def from_types(possible_types: Collection[Type], val_size: Optional[int] = None) -> UnionType:
+    possible_types = set(possible_types)
+    if val_size is None: val_size = UnionType._new_val_size(possible_types)
+
+    return UnionType(type_mapping=frozendict(zip(possible_types, range(len(possible_types)))), val_size=val_size)
+
+  @staticmethod
+  def from_mapping(type_mapping: Mapping[Type, int]) -> UnionType:
+    return UnionType(type_mapping=type_mapping, val_size=UnionType._new_val_size(type_mapping.keys()))
 
   def children(self) -> Collection[Type]:
     return self.possible_types
@@ -1914,7 +1905,7 @@ def min_max_ref_depth(typ: Type) -> (int, int):
 
 
 SLEEPY_UNIT = UnitType()
-SLEEPY_NEVER = UnionType(possible_types=[], possible_type_nums=[], val_size=0)
+SLEEPY_NEVER = UnionType(type_mapping=frozendict(), val_size=0)
 
 
 class TypedValue:

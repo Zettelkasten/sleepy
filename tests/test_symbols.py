@@ -21,36 +21,36 @@ def test_can_implicit_cast_to():
   context = make_test_context()
   assert_equal(can_implicit_cast_to(SLEEPY_INT, SLEEPY_DOUBLE), False)
   assert_equal(can_implicit_cast_to(SLEEPY_INT, SLEEPY_INT), True)
-  assert_equal(can_implicit_cast_to(UnionType([SLEEPY_INT], [0], 8), SLEEPY_INT), True)
+  assert_equal(can_implicit_cast_to(UnionType.from_types([SLEEPY_INT]), SLEEPY_INT), True)
   assert_equal(can_implicit_cast_to(
-    UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_DOUBLE), False)
+    UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE]), SLEEPY_DOUBLE), False)
   assert_equal(can_implicit_cast_to(
-    SLEEPY_DOUBLE, UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), True)
+    SLEEPY_DOUBLE, UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE])), True)
   assert_equal(can_implicit_cast_to(ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_DOUBLE)), False)
   assert_equal(can_implicit_cast_to(ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_INT)), True)
   assert_equal(can_implicit_cast_to(
-    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
+    ReferenceType(UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE])), ReferenceType(SLEEPY_INT)), False)
   assert_equal(can_implicit_cast_to(
-    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
+    ReferenceType(SLEEPY_INT), ReferenceType(UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE]))), False)
   T = PlaceholderTemplateType('T')
   List = StructType(
     identity=StructIdentity('List', context=context), template_param_or_arg=[T], member_identifiers=[], member_types=[])
   assert_equal(can_implicit_cast_to(
-    ReferenceType(SLEEPY_INT), ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))), False)
+    ReferenceType(SLEEPY_INT), ReferenceType(UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE]))), False)
   assert_equal(can_implicit_cast_to(
-    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)), ReferenceType(SLEEPY_INT)), False)
+    ReferenceType(UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE])), ReferenceType(SLEEPY_INT)), False)
   assert_equal(can_implicit_cast_to(
-    ReferenceType(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)),
+    ReferenceType(UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE])),
     UnionType.from_types([ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_DOUBLE)])), False)
   assert_equal(
     can_implicit_cast_to(
-      List.replace_types({T: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)}),
+      List.replace_types({T: UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE])}),
       List.replace_types({T: SLEEPY_INT})),
     False)
   assert_equal(
     can_implicit_cast_to(
       List.replace_types({T: SLEEPY_INT}),
-      List.replace_types({T: UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8)})),
+      List.replace_types({T: UnionType.from_types([SLEEPY_INT, SLEEPY_DOUBLE])})),
     False)
 
 
@@ -58,16 +58,16 @@ def test_narrow_type():
   from sleepy.types import narrow_type, UnionType
   from sleepy.builtin_symbols import SLEEPY_INT, SLEEPY_BOOL
   assert_equal(narrow_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_INT)
-  assert_equal(narrow_type(UnionType([SLEEPY_INT], [0], 4), SLEEPY_INT), UnionType([SLEEPY_INT], [0], 4))
-  assert_equal(narrow_type(SLEEPY_INT, UnionType([SLEEPY_INT], [0], 4)), SLEEPY_INT)
+  assert_equal(narrow_type(UnionType.from_types([SLEEPY_INT]), SLEEPY_INT), UnionType.from_types([SLEEPY_INT]))
+  assert_equal(narrow_type(SLEEPY_INT, UnionType.from_types([SLEEPY_INT])), SLEEPY_INT)
   assert_equal(
-    narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4), UnionType([SLEEPY_INT], [0], 4)),
-    UnionType([SLEEPY_INT], [0], 4))
+    narrow_type(UnionType.from_types([SLEEPY_INT, SLEEPY_BOOL]), UnionType.from_types([SLEEPY_INT])),
+    UnionType.from_types([SLEEPY_INT]))
   assert_equal(
-    narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4), SLEEPY_BOOL), UnionType([SLEEPY_BOOL], [1], 4))
+    narrow_type(UnionType.from_types([SLEEPY_INT, SLEEPY_BOOL]), SLEEPY_BOOL), UnionType({SLEEPY_BOOL: 1}, val_size=4))
   assert_equal(
-    narrow_type(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4), UnionType([SLEEPY_BOOL], [0], 1)),
-    UnionType([SLEEPY_BOOL], [1], 4))
+    narrow_type(UnionType.from_types([SLEEPY_INT, SLEEPY_BOOL]), UnionType.from_types([SLEEPY_BOOL])),
+    UnionType({SLEEPY_BOOL: 1}, val_size=4))
   assert_equal(narrow_type(SLEEPY_INT, SLEEPY_BOOL), SLEEPY_NEVER)
 
 
@@ -107,15 +107,15 @@ def test_narrow_type_references():
   # narrow(Ref[A], Ref[A]) = Ref[A]
   assert_equal(narrow_type(Ref(Int), Ref(Int)), Ref(Int))
   # narrow(Ref[0:A|1:B], Ref[A]) = Ref[0:A]
-  assert_equal(narrow_type(Ref(UnionType([Int, Bool], [0, 1], 4)), Ref(Int)), Ref(UnionType.from_types([Int])))
+  assert_equal(narrow_type(Ref(UnionType({Int: 0, Bool: 1}, 4)), Ref(Int)), Ref(UnionType.from_types([Int])))
   # narrow(0:Ref[0:A|1:B]|1:Ref[A], Ref[B]) = 0:Ref[1:B]
   assert_equal(
-    narrow_type(UnionType.from_types([Ref(UnionType([Int, Bool], [0, 1], 4)), Ref(Int)]), Ref(Bool)),
-    UnionType([Ref(UnionType([Bool], [1], 4))], [0], 8))
+    narrow_type(UnionType.from_types([Ref(UnionType({Int: 0, Bool: 1}, 4)), Ref(Int)]), Ref(Bool)),
+    UnionType({Ref(UnionType({Bool: 1}, 4)): 0}, 8))
   # narrow(Ref[0:A|1:B], Ref[A]|Ref[B]) = Ref[0:A|1:B]
   assert_equal(
-    narrow_type(Ref(UnionType([Int, Bool], [0, 1], 8)), UnionType([Ref(Int), Ref(Bool)], [0, 1], 8)),
-    Ref(UnionType([Int, Bool], [0, 1], 8)))
+    narrow_type(Ref(UnionType({Int: 0, Bool: 1}, 8)), UnionType({Ref(Int): 0, Ref(Bool): 1}, 8)),
+    Ref(UnionType({Int: 0, Bool: 1}, 8)))
   # narrow(Ref[A]|Ref[B], Ref[A|B]) = Ref[A]|Ref[B]
   assert_equal(
     narrow_type(UnionType.from_types([Ref(Int), Ref(Bool)]), Ref(UnionType.from_types([Int, Bool]))),
@@ -136,22 +136,22 @@ def test_exclude_type():
   assert_equal(exclude_type(SLEEPY_INT, SLEEPY_NEVER), SLEEPY_INT)
   assert_equal(exclude_type(SLEEPY_INT, SLEEPY_INT), SLEEPY_NEVER)
   assert_equal(
-    exclude_type(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_DOUBLE), UnionType([SLEEPY_INT], [0], 8))
+    exclude_type(UnionType({SLEEPY_INT: 0, SLEEPY_DOUBLE: 1}, 8), SLEEPY_DOUBLE), UnionType({SLEEPY_INT: 0}, 8))
   assert_equal(
-    exclude_type(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_INT), UnionType([SLEEPY_DOUBLE], [1], 8))
+    exclude_type(UnionType({SLEEPY_INT: 0, SLEEPY_DOUBLE: 1}, 8), SLEEPY_INT), UnionType({SLEEPY_DOUBLE: 1}, 8))
   assert_equal(
-    exclude_type(UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8), SLEEPY_BOOL),
-    UnionType([SLEEPY_INT, SLEEPY_DOUBLE], [0, 1], 8))
+    exclude_type(UnionType({SLEEPY_INT: 0, SLEEPY_DOUBLE: 1}, 8), SLEEPY_BOOL),
+    UnionType({SLEEPY_INT: 0, SLEEPY_DOUBLE: 1}, 8))
   assert_equal(
     exclude_type(ReferenceType(SLEEPY_INT), ReferenceType(SLEEPY_INT)), SLEEPY_NEVER)
   assert_equal(
     exclude_type(ReferenceType(SLEEPY_INT), SLEEPY_NEVER), ReferenceType(SLEEPY_INT))
   assert_equal(
-    exclude_type(ReferenceType(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4)), ReferenceType(SLEEPY_INT)),
-    ReferenceType(UnionType([SLEEPY_BOOL], [1], 4)))
+    exclude_type(ReferenceType(UnionType({SLEEPY_INT: 0, SLEEPY_BOOL: 1}, 4)), ReferenceType(SLEEPY_INT)),
+    ReferenceType(UnionType({SLEEPY_BOOL: 1}, 4)))
   assert_equal(
-    exclude_type(ReferenceType(UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4)), ReferenceType(SLEEPY_BOOL)),
-    ReferenceType(UnionType([SLEEPY_INT], [0], 4)))
+    exclude_type(ReferenceType(UnionType({SLEEPY_INT: 0, SLEEPY_BOOL: 1}, 4)), ReferenceType(SLEEPY_BOOL)),
+    ReferenceType(UnionType({SLEEPY_INT: 0}, 4)))
 
 
 def test_get_common_type():
@@ -161,13 +161,13 @@ def test_get_common_type():
   from sleepy.builtin_symbols import SLEEPY_DOUBLE
   assert_equal(get_common_type([SLEEPY_INT]), SLEEPY_INT)
   assert_equal(get_common_type([SLEEPY_INT, SLEEPY_INT]), SLEEPY_INT)
-  int_bool_union = UnionType([SLEEPY_INT, SLEEPY_BOOL], [0, 1], 4)
-  bool_int_union = UnionType([SLEEPY_INT, SLEEPY_BOOL], [1, 0], 4)
+  int_bool_union = UnionType({SLEEPY_INT: 0, SLEEPY_BOOL: 1}, 4)
+  bool_int_union = UnionType({SLEEPY_INT: 1, SLEEPY_BOOL: 0}, 4)
   assert_equal(get_common_type([SLEEPY_INT, SLEEPY_BOOL]), int_bool_union)
   assert_equal(get_common_type([SLEEPY_INT, SLEEPY_BOOL, int_bool_union]), int_bool_union)
   assert_equal(get_common_type([int_bool_union, bool_int_union]), int_bool_union)
   assert_equal(
-    get_common_type([int_bool_union, SLEEPY_DOUBLE]), UnionType([SLEEPY_INT, SLEEPY_BOOL, SLEEPY_DOUBLE], [0, 1, 2], 8))
+    get_common_type([int_bool_union, SLEEPY_DOUBLE]), UnionType({SLEEPY_INT: 0, SLEEPY_BOOL: 1, SLEEPY_DOUBLE: 2}, 8))
 
 
 # noinspection PyPep8Naming
