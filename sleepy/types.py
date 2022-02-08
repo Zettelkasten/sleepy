@@ -520,16 +520,17 @@ class UnionType(Type):
       return replacements[self]
     if len(self.possible_types) == 0:
       return self
-    replaced_possible_types = [possible_type.replace_types(replacements) for possible_type in self.possible_types]
     new_possible_types: List[Type] = []
     new_possible_type_nums: List[int] = []
-    for replaced_type in replaced_possible_types:
+    for old_possible_type in self.possible_types:
+      replaced_type = old_possible_type.replace_types(replacements)
       possible_replaced_types = (
         replaced_type.possible_types if isinstance(replaced_type, UnionType) else [replaced_type])
       for possible_type in possible_replaced_types:
-        if possible_type in new_possible_types:
+        if possible_type in new_possible_types:  # already covered, do not add twice
           continue
-        if possible_type in self.possible_types:  # keep type nums as before
+        # else add possible_type, keep type nums as before if possible
+        if possible_type in self.possible_types:
           new_possible_type_num = self.get_variant_num(possible_type)
         else:
           new_possible_type_num = max(new_possible_type_nums, default=-1) + 1
