@@ -1205,27 +1205,6 @@ class ConcreteFunction:
     raise NotImplementedError()
 
 
-class ConcreteBuiltinOperationFunction(ConcreteFunction):
-  def __init__(self,
-               signature: FunctionSignature,
-               template_args: List[Type],
-               instruction: Callable[..., Optional[ir.Instruction]],
-               context: CodegenContext):
-    super().__init__(signature=signature, template_args=template_args, context=context)
-    assert callable(instruction)
-    self.instruction = instruction
-
-  def make_inline_func_call_ir(self, func_args: List[TypedValue],
-                               caller_context: CodegenContext) -> ir.Instruction:
-    ir_func_args = [arg.ir_val for arg in func_args]
-    assert None not in ir_func_args
-    return self.instruction(caller_context.builder, *ir_func_args)
-
-  @property
-  def is_inline(self) -> bool:
-    return True
-
-
 class FunctionSignature:
   """
   Given template arguments, this builds a concrete function implementation on demand.

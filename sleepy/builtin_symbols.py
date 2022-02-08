@@ -10,10 +10,31 @@ from sleepy.struct_type import build_destructor, build_constructor
 from sleepy.symbols import TypeTemplateSymbol, SymbolTable
 from sleepy.syntactical_analysis.grammar import TreePosition
 from sleepy.types import FunctionSignature, PlaceholderTemplateType, Type, ConcreteFunction, \
-  ConcreteBuiltinOperationFunction, DoubleType, FloatType, BoolType, IntType, LongType, CharType, RawPointerType, \
+  DoubleType, FloatType, BoolType, IntType, LongType, CharType, RawPointerType, \
   PointerType, CodegenContext, OverloadSet, LLVM_VOID_POINTER_TYPE, LLVM_SIZE_TYPE, StructType, SLEEPY_UNIT, \
   SLEEPY_NEVER, ReferenceType, StructIdentity, TypedValue
 from sleepy.utilities import concat_dicts
+
+
+class ConcreteBuiltinOperationFunction(ConcreteFunction):
+  def __init__(self,
+               signature: FunctionSignature,
+               template_args: List[Type],
+               instruction: Callable[..., Optional[ir.Instruction]],
+               context: CodegenContext):
+    super().__init__(signature=signature, template_args=template_args, context=context)
+    assert callable(instruction)
+    self.instruction = instruction
+
+  def make_inline_func_call_ir(self, func_args: List[TypedValue],
+                               caller_context: CodegenContext) -> ir.Instruction:
+    ir_func_args = [arg.ir_val for arg in func_args]
+    assert None not in ir_func_args
+    return self.instruction(caller_context.builder, *ir_func_args)
+
+  @property
+  def is_inline(self) -> bool:
+    return True
 
 
 class BuiltinOperationFunctionSignature(FunctionSignature):
