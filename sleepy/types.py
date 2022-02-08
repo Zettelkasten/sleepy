@@ -4,8 +4,10 @@ import copy
 import ctypes
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, Iterator, MutableSet
+from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, Iterator, MutableSet, \
+  Mapping, KeysView, ValuesView, Collection
 
+from frozendict import frozendict
 import llvmlite
 from llvmlite import ir
 from llvmlite.binding import ExecutionEngine
@@ -54,7 +56,7 @@ class Type(ABC):
     return False
 
   @abstractmethod
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     raise NotImplementedError()
 
   @abstractmethod
@@ -120,7 +122,7 @@ class UnitType(Type):
   def __repr__(self) -> str:
     return 'Unit'
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -161,7 +163,7 @@ class DoubleType(Type):
   def __repr__(self) -> str:
     return 'Double'
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -191,7 +193,7 @@ class FloatType(Type):
   def __repr__(self) -> str:
     return 'Float'
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -221,7 +223,7 @@ class BoolType(Type):
   def __repr__(self) -> str:
     return 'Bool'
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -251,7 +253,7 @@ class IntType(Type):
   def __repr__(self) -> str:
     return 'Int'
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -281,7 +283,7 @@ class LongType(Type):
   def __repr__(self) -> str:
     return 'Long'
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -311,7 +313,7 @@ class CharType(Type):
   def __repr__(self) -> str:
     return 'Char'
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -359,7 +361,7 @@ class PointerType(Type):
       return replacements[self]
     return PointerType(pointee_type=self.pointee_type.replace_types(replacements), constructor=self.constructor)
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def has_same_symbol_as(self, other: Type) -> bool:
@@ -383,7 +385,7 @@ class RawPointerType(Type):
   def __repr__(self) -> str:
     return 'RawPtr'
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def __eq__(self, other) -> bool:
@@ -436,13 +438,15 @@ class UnionType(Type):
   A tagged union, i.e. a type that can be one of a set of different types.
   """
 
-  def __init__(self, possible_types: List[Type], possible_type_nums: List[int], val_size: Optional[int],
+  def __init__(self, possible_types: Collection[Type],
+               possible_type_nums: Collection[int],
+               val_size: Optional[int],
                constructor: Optional[OverloadSet] = None):
     assert len(possible_types) == len(possible_type_nums)
     assert len(set(possible_types)) == len(possible_types)
     assert all(not isinstance(possible_type, UnionType) for possible_type in possible_types)
-    self.possible_types = possible_types
-    self.possible_type_nums = possible_type_nums
+
+    self.type_mapping = frozendict(dict(zip(possible_types, possible_type_nums)))
     self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in possible_types)
     self.val_size = val_size
 
@@ -485,9 +489,15 @@ class UnionType(Type):
     return self_types_dict == other_types_dict and self.val_size == other.val_size
 
   def __hash__(self) -> int:
-    if len(self.possible_types) == 0:  # self = SLEEPY_NEVER
-      return 0
-    return hash(tuple(sorted(zip(self.possible_type_nums, self.possible_types))) + (self.val_size,))
+    return hash((self.type_mapping, self.val_size))
+
+  @property
+  def possible_types(self) -> KeysView[Type]:
+    return self.type_mapping.keys()
+
+  @property
+  def possible_type_nums(self) -> ValuesView[int]:
+    return self.type_mapping.values()
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -561,7 +571,7 @@ class UnionType(Type):
 
   def get_variant_num(self, variant_type: Type) -> int:
     assert variant_type in self.possible_types
-    return self.possible_type_nums[self.possible_types.index(variant_type)]
+    return self.type_mapping[variant_type]
 
   @staticmethod
   def make_tag_ptr(union_ir_alloca: ir.AllocaInstr,
@@ -620,31 +630,28 @@ class UnionType(Type):
       if possible_type in narrow_to_types]
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=self.val_size)
 
-  def copy_with_extended_types(self, extended_types: List[Type],
-                               extended_type_nums: Union[List[Union[int, None]], None] = None) -> UnionType:
-    assert all(not isinstance(extended_type, UnionType) for extended_type in extended_types)
-    if extended_type_nums is None:
-      extended_type_nums = [None] * len(extended_types)
-    assert len(extended_types) == len(extended_type_nums)
-    new_possible_types = self.possible_types.copy()
-    new_possible_type_nums = self.possible_type_nums.copy()
-    for extended_type, extended_type_num in zip(extended_types, extended_type_nums):
-      if extended_type in new_possible_types:
-        continue
-      new_possible_types.append(extended_type)
-      if extended_type_num is not None and extended_type_num not in new_possible_type_nums:
-        # noinspection PyTypeChecker
-        new_possible_type_nums.append(extended_type_num)
-      else:
-        next_type_num = max(new_possible_type_nums) + 1 if len(new_possible_type_nums) > 0 else 0
-        new_possible_type_nums.append(next_type_num)
-    if self.val_size is None or any(
-      extended_type.has_unfilled_template_parameters() for extended_type in extended_types):
-      new_val_size = None
-    else:
-      new_val_size = max([self.val_size] + [extended_type.size for extended_type in extended_types])
+  @staticmethod
+  def _new_val_size(types: Iterable[Type], prev_val_size) -> int:
+    return max(prev_val_size, max((t.size for t in types), default=0))
+
+  def copy_with_extended_types_and_indices(self, added_type_mapping: Mapping[Type, int]):
+    new_mapping = added_type_mapping | self.type_mapping # values from rhs are preferred
+
     return UnionType(
-      possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=new_val_size)
+      possible_types=new_mapping.keys(),
+      possible_type_nums=new_mapping.values(),
+      val_size=UnionType._new_val_size(new_mapping, self.val_size))
+
+  def copy_with_extended_types(self, extended_types: Set[Type]) -> UnionType:
+    new_mapping = dict(self.type_mapping)
+    for typ in extended_types - self.possible_types:
+      new_index = max(new_mapping.values(), default=-1) + 1
+      new_mapping[typ] = new_index
+
+    return UnionType(
+      possible_types=new_mapping.keys(),
+      possible_type_nums=new_mapping.values(),
+      val_size=UnionType._new_val_size(new_mapping, self.val_size))
 
   @classmethod
   def from_types(cls, possible_types: List[Type], val_size: Optional[int] = None) -> UnionType:
@@ -654,7 +661,7 @@ class UnionType(Type):
       val_size = max((ctypes.sizeof(possible_type.c_type) for possible_type in possible_types), default=0)
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=val_size)
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return self.possible_types
 
   def has_same_symbol_as(self, other: Type) -> bool:
@@ -687,7 +694,7 @@ class PartialIdentifiedStructType(Type):
   def __repr__(self) -> str:
     return self.struct_identifier + 'Partial'
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def has_same_symbol_as(self, other: Type) -> bool:
@@ -838,7 +845,7 @@ class StructType(Type):
       member_ptr = context.builder.gep(struct_ir_alloca, gep_indices, name='%s_ptr' % member_identifier)
       context.builder.store(ir_func_arg, member_ptr)
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return self.member_types
 
   def has_same_symbol_as(self, other: Type) -> bool:
@@ -873,7 +880,7 @@ class PlaceholderTemplateType(Type):
   def has_unfilled_template_parameters(self) -> bool:
     return True
 
-  def children(self) -> List[Type]:
+  def children(self) -> Collection[Type]:
     return []
 
   def has_same_symbol_as(self, other: Type) -> bool:
@@ -1032,18 +1039,17 @@ def get_common_type(possible_types: List[Type]) -> Type:
   if len(possible_types) == 0: return SLEEPY_NEVER
 
   common_type = possible_types[0]
-  common_type = common_type if isinstance(common_type, UnionType) \
-    else UnionType.from_types(possible_types=[possible_types[0]])
+  common_type = common_type if isinstance(common_type, UnionType) else UnionType.from_types(
+    possible_types=[possible_types[0]])
 
   for other_type in possible_types[1:]:
     if isinstance(other_type, UnionType):
-      common_type = common_type.copy_with_extended_types(
-        extended_types=other_type.possible_types, extended_type_nums=other_type.possible_type_nums)
+      common_type = common_type.copy_with_extended_types_and_indices(added_type_mapping=other_type.type_mapping)
     else:
-      common_type = common_type.copy_with_extended_types(extended_types=[other_type])
+      common_type = common_type.copy_with_extended_types(extended_types={other_type})
 
   if isinstance(common_type, UnionType) and len(common_type.possible_types) == 1:
-    return common_type.possible_types[0]  # stay as simple as possible
+    return next(iter(common_type.possible_types))  # stay as simple as possible
   return common_type
 
 
