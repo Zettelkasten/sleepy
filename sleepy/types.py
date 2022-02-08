@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import ctypes
+import itertools
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Optional, List, Tuple, Set, Union, Callable, Iterable, cast, Any, Iterator, MutableSet, \
@@ -480,16 +481,23 @@ class UnionType(Type):
       for possible_type_num, possible_type in zip(self.possible_type_nums, self.possible_types))
 
   def __eq__(self, other) -> bool:
-    if not isinstance(other, UnionType):
-      return False
-    if len(self.possible_types) == len(other.possible_types) == 0:  # self = SLEEPY_NEVER
-      return True
-    self_types_dict = dict(zip(self.possible_types, self.possible_type_nums))
-    other_types_dict = dict(zip(other.possible_types, other.possible_type_nums))
-    return self_types_dict == other_types_dict and self.val_size == other.val_size
+    if not isinstance(other, UnionType): return False
+    return self.type_mapping == other.type_mapping and self.val_size == other.val_size
 
   def __hash__(self) -> int:
     return hash((self.type_mapping, self.val_size))
+
+
+  @staticmethod
+  def _new_val_size(types: Iterable[Type], prev_val_size: Optional[int]) -> Optional[int]:
+    if any(t.has_unfilled_template_parameters() for t in types): return None
+    if prev_val_size is None: prev_val_size = 0
+    return max(prev_val_size, max((t.size for t in types), default=0))
+
+  @staticmethod
+  def _first_unused_index(used_indices: Collection[int]) -> int:
+    return next(i for i in itertools.count() if i not in used_indices)
+
 
   @property
   def possible_types(self) -> KeysView[Type]:
@@ -526,37 +534,31 @@ class UnionType(Type):
     return len(self.possible_types) > 0 and all(possible_type.is_realizable() for possible_type in self.possible_types)
 
   def replace_types(self, replacements: Dict[Type, Type]) -> Type:
-    if self in replacements:
-      return replacements[self]
-    if len(self.possible_types) == 0:
-      return self
-    new_possible_types: List[Type] = []
-    new_possible_type_nums: List[int] = []
-    for old_possible_type in self.possible_types:
-      replaced_type = old_possible_type.replace_types(replacements)
-      possible_replaced_types = (
-        replaced_type.possible_types if isinstance(replaced_type, UnionType) else [replaced_type])
-      for possible_type in possible_replaced_types:
-        if possible_type in new_possible_types:  # already covered, do not add twice
-          continue
-        # else add possible_type, keep type nums as before if possible
-        if possible_type in self.possible_types:
-          new_possible_type_num = self.get_variant_num(possible_type)
-        else:
-          new_possible_type_num = max(new_possible_type_nums, default=-1) + 1
-        new_possible_types.append(possible_type)
-        new_possible_type_nums.append(new_possible_type_num)
-    assert len(new_possible_types) == len(new_possible_type_nums)
-    if any(possible_type.has_unfilled_template_parameters() for possible_type in new_possible_types):
-      val_size = None
-    else:  # default case
-      val_size = max([ctypes.sizeof(possible_type.c_type) for possible_type in new_possible_types])
-      # Note: We don't decrease the size of the union value to stay compatible to before.
-      if self.val_size is not None:
-        val_size = max(val_size, self.val_size)
+    if self in replacements: return replacements[self]
+    if len(self.possible_types) == 0: return self
+
+    # replace types and flatten one level
+    new_possible_types = set()
+    for possible_type in self.possible_types:
+      replaced_type = possible_type.replace_types(replacements)
+      if isinstance(replaced_type, UnionType):
+        new_possible_types |= replaced_type.possible_types
+      else:
+        new_possible_types.add(replaced_type)
+
+    new_mapping = {}
+    # insert those that existed before and use the same indices
+    for possible_type in new_possible_types & self.possible_types:
+        new_mapping[possible_type] = self.type_mapping[possible_type]
+
+    # insert the others with new indices
+    for possible_type in new_possible_types - self.possible_types:
+      new_mapping[possible_type] = UnionType._first_unused_index(new_mapping.values())
 
     return UnionType(
-      possible_types=new_possible_types, possible_type_nums=new_possible_type_nums, val_size=val_size,
+      possible_types=new_mapping.keys(),
+      possible_type_nums=new_mapping.values(),
+      val_size=UnionType._new_val_size(new_mapping.keys(), self.val_size),
       constructor=self.constructor)
 
   def has_unfilled_template_parameters(self) -> bool:
@@ -629,10 +631,6 @@ class UnionType(Type):
       for possible_type, possible_type_num in zip(self.possible_types, self.possible_type_nums)
       if possible_type in narrow_to_types]
     return UnionType(possible_types=possible_types, possible_type_nums=possible_type_nums, val_size=self.val_size)
-
-  @staticmethod
-  def _new_val_size(types: Iterable[Type], prev_val_size) -> int:
-    return max(prev_val_size, max((t.size for t in types), default=0))
 
   def copy_with_extended_types_and_indices(self, added_type_mapping: Mapping[Type, int]):
     new_mapping = added_type_mapping | self.type_mapping # values from rhs are preferred
