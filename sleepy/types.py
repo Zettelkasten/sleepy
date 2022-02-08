@@ -439,12 +439,13 @@ class UnionType(Type):
   A tagged union, i.e. a type that can be one of a set of different types.
   """
 
-  def __init__(self, type_mapping: Mapping[Type, int],
+  def __init__(self, type_index_map: Mapping[Type, int],
                val_size: Optional[int],
                constructor: Optional[OverloadSet] = None):
-    assert all(not isinstance(possible_type, UnionType) for possible_type in type_mapping.values())
+    assert all(not isinstance(possible_type, UnionType) for possible_type in type_index_map.keys())
+    assert len(set(type_index_map.values())) == len(type_index_map.values())
 
-    self.type_mapping = type_mapping if isinstance(type_mapping, frozendict) else frozendict(type_mapping)
+    self.variant_index_map = type_index_map if isinstance(type_index_map, frozendict) else frozendict(type_index_map)
 
     self.identifier = 'Union(%s)' % '_'.join(str(possible_type) for possible_type in self.possible_types)
     self.val_size = val_size
@@ -479,11 +480,10 @@ class UnionType(Type):
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, UnionType): return False
-    return self.type_mapping == other.type_mapping and self.val_size == other.val_size
+    return self.variant_index_map == other.variant_index_map and self.val_size == other.val_size
 
   def __hash__(self) -> int:
-    return hash((self.type_mapping, self.val_size))
-
+    return hash((self.variant_index_map, self.val_size))
 
   @staticmethod
   def _new_val_size(types: Iterable[Type], prev_val_size: Optional[int] = None) -> Optional[int]:
@@ -495,14 +495,13 @@ class UnionType(Type):
   def _first_unused_index(used_indices: Collection[int]) -> int:
     return next(i for i in itertools.count() if i not in used_indices)
 
-
   @property
   def possible_types(self) -> KeysView[Type]:
-    return self.type_mapping.keys()
+    return self.variant_index_map.keys()
 
   @property
   def possible_type_nums(self) -> ValuesView[int]:
-    return self.type_mapping.values()
+    return self.variant_index_map.values()
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -543,18 +542,18 @@ class UnionType(Type):
       else:
         new_possible_types.add(replaced_type)
 
-    new_mapping = {}
+    new_variant_index_map = {}
     # insert those that existed before and use the same indices
     for possible_type in new_possible_types & self.possible_types:
-        new_mapping[possible_type] = self.type_mapping[possible_type]
+        new_variant_index_map[possible_type] = self.variant_index_map[possible_type]
 
     # insert the others with new indices
     for possible_type in new_possible_types - self.possible_types:
-      new_mapping[possible_type] = UnionType._first_unused_index(new_mapping.values())
+      new_variant_index_map[possible_type] = UnionType._first_unused_index(new_variant_index_map.values())
 
     return UnionType(
-      type_mapping=new_mapping,
-      val_size=UnionType._new_val_size(new_mapping.keys(), self.val_size),
+      type_index_map=new_variant_index_map,
+      val_size=UnionType._new_val_size(new_variant_index_map.keys(), self.val_size),
       constructor=self.constructor)
 
   def has_unfilled_template_parameters(self) -> bool:
@@ -618,32 +617,37 @@ class UnionType(Type):
 
   def copy_with_narrowed_types(self, narrow_to_types: List[Type] | Set[Type]) -> UnionType:
     return UnionType(
-      type_mapping=frozendict((t, self.type_mapping[t]) for t in narrow_to_types),
+      type_index_map=frozendict((t, self.variant_index_map[t]) for t in narrow_to_types & self.possible_types),
       val_size=self.val_size)
 
-  def copy_with_extended_types_and_indices(self, added_type_mapping: Mapping[Type, int]):
-    new_mapping = added_type_mapping | self.type_mapping # values from rhs are preferred
+  def copy_with_extended_variant_index_map(self, added_variant_index_map: Mapping[Type, int]):
 
-    return UnionType(type_mapping=new_mapping, val_size=UnionType._new_val_size(new_mapping, self.val_size))
+    new_variant_index_map = added_variant_index_map | self.variant_index_map  # values from rhs are preferred
+
+    return UnionType(
+      type_index_map=new_variant_index_map,
+      val_size=UnionType._new_val_size(new_variant_index_map, self.val_size))
 
   def copy_with_extended_types(self, extended_types: Set[Type]) -> UnionType:
-    new_mapping = dict(self.type_mapping)
+    new_variant_index_map = dict(self.variant_index_map)
     for typ in extended_types - self.possible_types:
-      new_index = max(new_mapping.values(), default=-1) + 1
-      new_mapping[typ] = new_index
+      new_index = self._first_unused_index(new_variant_index_map.values())
+      new_variant_index_map[typ] = new_index
 
-    return UnionType(type_mapping=new_mapping, val_size=UnionType._new_val_size(new_mapping, self.val_size))
+    return UnionType(
+      type_index_map=new_variant_index_map,
+      val_size=UnionType._new_val_size(new_variant_index_map, self.val_size))
 
   @staticmethod
   def from_types(possible_types: Collection[Type], val_size: Optional[int] = None) -> UnionType:
     possible_types = list(dict.fromkeys(possible_types)) # python-y way to remove duplicates while preserving order
     if val_size is None: val_size = UnionType._new_val_size(possible_types)
 
-    return UnionType(type_mapping=frozendict(zip(possible_types, range(len(possible_types)))), val_size=val_size)
+    return UnionType(type_index_map=frozendict(zip(possible_types, range(len(possible_types)))), val_size=val_size)
 
   @staticmethod
-  def from_mapping(type_mapping: Mapping[Type, int]) -> UnionType:
-    return UnionType(type_mapping=type_mapping, val_size=UnionType._new_val_size(type_mapping.keys()))
+  def from_map(variant_index_map: Mapping[Type, int]) -> UnionType:
+    return UnionType(type_index_map=variant_index_map, val_size=UnionType._new_val_size(variant_index_map.keys()))
 
   def children(self) -> Collection[Type]:
     return self.possible_types
@@ -888,7 +892,7 @@ def can_implicit_cast_ref_to(from_pointee_type: Type, to_pointee_type: Type) -> 
     return True
   if isinstance(from_pointee_type, UnionType) and isinstance(to_pointee_type, UnionType):
     simple_subset = all(
-      to_pointee_type.contains(a_type) and to_pointee_type.type_mapping[a_type] == a_num
+      to_pointee_type.contains(a_type) and to_pointee_type.variant_index_map[a_type] == a_num
       for a_num, a_type in zip(from_pointee_type.possible_type_nums, from_pointee_type.possible_types))
     if simple_subset:
       return True
@@ -1028,7 +1032,8 @@ def get_common_type(possible_types: List[Type]) -> Type:
 
   for other_type in possible_types[1:]:
     if isinstance(other_type, UnionType):
-      common_type = common_type.copy_with_extended_types_and_indices(added_type_mapping=other_type.type_mapping)
+      common_type = common_type.copy_with_extended_variant_index_map(
+        added_variant_index_map=other_type.variant_index_map)
     else:
       common_type = common_type.copy_with_extended_types(extended_types={other_type})
 
@@ -1076,7 +1081,7 @@ def make_ir_val_is_type(ir_val: ir.values.Value,
   assert not isinstance(check_type, UnionType), 'not implemented yet'
   union_tag = context.builder.extract_value(ir_val, 0, name='tmp_is_val')
   cmp_val = context.builder.icmp_signed(
-    '==', union_tag, ir.Constant(known_type.tag_ir_type, known_type.type_mapping[check_type]), name='tmp_is_check')
+    '==', union_tag, ir.Constant(known_type.tag_ir_type, known_type.variant_index_map[check_type]), name='tmp_is_check')
   return cmp_val
 
 
@@ -1773,7 +1778,7 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
     for expanded_case_types in itertools.product(*case_possible_types_per_arg):
       assert len(expanded_case_types) == len(distinguishing_calling_arg_types)
       distinguishing_variant_nums = tuple(
-        calling_arg_type.type_mapping[concrete_arg_type]
+        calling_arg_type.variant_index_map[concrete_arg_type]
         for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_case_types))
       assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
       block_addresses_distinguished_mapping[distinguishing_variant_nums] = case_block_address
@@ -1900,7 +1905,7 @@ def min_max_ref_depth(typ: Type) -> (int, int):
 
 
 SLEEPY_UNIT = UnitType()
-SLEEPY_NEVER = UnionType(type_mapping=frozendict(), val_size=0)
+SLEEPY_NEVER = UnionType(type_index_map=frozendict(), val_size=0)
 
 
 class TypedValue:
@@ -1972,7 +1977,7 @@ class TypedValue:
       assert isinstance(from_pointee_type, UnionType)
       if isinstance(to_pointee_type, UnionType):
         simple_subset = all(
-          to_pointee_type.contains(a_type) and to_pointee_type.type_mapping[a_type] == a_num
+          to_pointee_type.contains(a_type) and to_pointee_type.variant_index_map[a_type] == a_num
           for a_num, a_type in zip(from_pointee_type.possible_type_nums, from_pointee_type.possible_types))
         assert simple_subset
 
@@ -1993,7 +1998,7 @@ class TypedValue:
         tag_mapping = [-1] * (max(from_type.possible_type_nums) + 1)
         for from_variant_num, from_variant_type in zip(from_type.possible_type_nums, from_type.possible_types):
           assert to_type.contains(from_variant_type)
-          tag_mapping[from_variant_num] = to_type.type_mapping[from_variant_type]
+          tag_mapping[from_variant_num] = to_type.variant_index_map[from_variant_type]
         ir_tag_mapping = ir.values.Constant(tag_mapping_ir_type, tag_mapping_ir_type.wrap_constant_value(tag_mapping))
         ir_from_tag = from_type.make_extract_tag(self.ir_val, context=context, name='%s_from_tag' % name)
         ir_to_tag = context.builder.extract_element(ir_tag_mapping, ir_from_tag, name='%s_to_tag' % name)
@@ -2016,7 +2021,7 @@ class TypedValue:
         context.builder.store(ir_from_untagged_union_truncated, ir_to_untagged_union_ptr_casted)
       else:
         assert not isinstance(from_type, UnionType)
-        ir_to_tag = ir.Constant(to_type.tag_ir_type, to_type.type_mapping[from_type])
+        ir_to_tag = ir.Constant(to_type.tag_ir_type, to_type.variant_index_map[from_type])
         context.builder.store(
           ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
         context.builder.store(
