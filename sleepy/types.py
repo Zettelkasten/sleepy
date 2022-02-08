@@ -567,10 +567,6 @@ class UnionType(Type):
       contained_possible_types = {contained_type}
     return contained_possible_types.issubset(self.possible_types)
 
-  def get_variant_num(self, variant_type: Type) -> int:
-    assert variant_type in self.possible_types
-    return self.type_mapping[variant_type]
-
   @staticmethod
   def make_tag_ptr(union_ir_alloca: ir.AllocaInstr,
                    context: CodegenContext,
@@ -892,7 +888,7 @@ def can_implicit_cast_ref_to(from_pointee_type: Type, to_pointee_type: Type) -> 
     return True
   if isinstance(from_pointee_type, UnionType) and isinstance(to_pointee_type, UnionType):
     simple_subset = all(
-      to_pointee_type.contains(a_type) and to_pointee_type.get_variant_num(a_type) == a_num
+      to_pointee_type.contains(a_type) and to_pointee_type.type_mapping[a_type] == a_num
       for a_num, a_type in zip(from_pointee_type.possible_type_nums, from_pointee_type.possible_types))
     if simple_subset:
       return True
@@ -1080,7 +1076,7 @@ def make_ir_val_is_type(ir_val: ir.values.Value,
   assert not isinstance(check_type, UnionType), 'not implemented yet'
   union_tag = context.builder.extract_value(ir_val, 0, name='tmp_is_val')
   cmp_val = context.builder.icmp_signed(
-    '==', union_tag, ir.Constant(known_type.tag_ir_type, known_type.get_variant_num(check_type)), name='tmp_is_check')
+    '==', union_tag, ir.Constant(known_type.tag_ir_type, known_type.type_mapping[check_type]), name='tmp_is_check')
   return cmp_val
 
 
@@ -1777,7 +1773,7 @@ def make_union_switch_ir(case_funcs: Dict[Tuple[Type], Callable[[CodegenContext]
     for expanded_case_types in itertools.product(*case_possible_types_per_arg):
       assert len(expanded_case_types) == len(distinguishing_calling_arg_types)
       distinguishing_variant_nums = tuple(
-        calling_arg_type.get_variant_num(concrete_arg_type)
+        calling_arg_type.type_mapping[concrete_arg_type]
         for calling_arg_type, concrete_arg_type in zip(distinguishing_calling_arg_types, expanded_case_types))
       assert block_addresses_distinguished_mapping[distinguishing_variant_nums] is None
       block_addresses_distinguished_mapping[distinguishing_variant_nums] = case_block_address
@@ -1976,7 +1972,7 @@ class TypedValue:
       assert isinstance(from_pointee_type, UnionType)
       if isinstance(to_pointee_type, UnionType):
         simple_subset = all(
-          to_pointee_type.contains(a_type) and to_pointee_type.get_variant_num(a_type) == a_num
+          to_pointee_type.contains(a_type) and to_pointee_type.type_mapping[a_type] == a_num
           for a_num, a_type in zip(from_pointee_type.possible_type_nums, from_pointee_type.possible_types))
         assert simple_subset
 
@@ -1997,7 +1993,7 @@ class TypedValue:
         tag_mapping = [-1] * (max(from_type.possible_type_nums) + 1)
         for from_variant_num, from_variant_type in zip(from_type.possible_type_nums, from_type.possible_types):
           assert to_type.contains(from_variant_type)
-          tag_mapping[from_variant_num] = to_type.get_variant_num(from_variant_type)
+          tag_mapping[from_variant_num] = to_type.type_mapping[from_variant_type]
         ir_tag_mapping = ir.values.Constant(tag_mapping_ir_type, tag_mapping_ir_type.wrap_constant_value(tag_mapping))
         ir_from_tag = from_type.make_extract_tag(self.ir_val, context=context, name='%s_from_tag' % name)
         ir_to_tag = context.builder.extract_element(ir_tag_mapping, ir_from_tag, name='%s_to_tag' % name)
@@ -2020,7 +2016,7 @@ class TypedValue:
         context.builder.store(ir_from_untagged_union_truncated, ir_to_untagged_union_ptr_casted)
       else:
         assert not isinstance(from_type, UnionType)
-        ir_to_tag = ir.Constant(to_type.tag_ir_type, to_type.get_variant_num(from_type))
+        ir_to_tag = ir.Constant(to_type.tag_ir_type, to_type.type_mapping[from_type])
         context.builder.store(
           ir_to_tag, to_type.make_tag_ptr(to_ir_alloca, context=context, name='%s_tag_ptr' % name))
         context.builder.store(
