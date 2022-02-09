@@ -672,18 +672,12 @@ class UnionType(Type):
     return isinstance(other, UnionType)
 
   def can_be_interpreted_as(self, other: Type) -> bool:
-    if not isinstance(other, UnionType):
-      return False
-    if self.val_size != other.val_size:
-      return False
-    for own_variant_type, variant_index in self.variant_index_map.items():
-      if variant_index not in other.variant_index_map.values():
-        return False
-      other_variant_type = other.get_variant_at_index(variant_index)
-      if not own_variant_type.can_be_interpreted_as(other_variant_type):
-        return False
-    return True
-
+      return (isinstance(other, UnionType) and
+            self.val_size == other.val_size and
+            # all type, index pairs of self have a corresponding one in other
+            all(
+              index in other.possible_type_nums and other.get_variant_at_index(index).can_be_interpreted_as(variant)
+              for variant, index in self.variant_index_map.items()))
 
 class PartialIdentifiedStructType(Type):
   """
