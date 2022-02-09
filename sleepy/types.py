@@ -621,8 +621,9 @@ class UnionType(Type):
       val_size=self.val_size)
 
   def copy_with_extended_variant_index_map(self, added_variant_index_map: Mapping[Type, int]):
-
-    new_variant_index_map = added_variant_index_map | self.variant_index_map  # values from rhs are preferred
+    new_variant_index_map = dict(self.variant_index_map)
+    for new_variant in added_variant_index_map.keys() - self.variant_index_map.keys():
+      new_variant_index_map[new_variant] = UnionType._first_unused_index(new_variant_index_map.values())
 
     return UnionType(
       type_index_map=new_variant_index_map,
