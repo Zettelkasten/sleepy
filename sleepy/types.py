@@ -64,6 +64,10 @@ class Type(ABC):
   def has_same_symbol_as(self, other: Type) -> bool:
     raise NotImplementedError()
 
+  def can_be_interpreted_as(self, other: Type) -> bool:
+    """Whether the memory of `self` can directly be interpreted as `other`"""
+    return self == other
+
   @abstractmethod
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     raise NotImplementedError()
@@ -91,7 +95,7 @@ class Type(ABC):
 
   @constructor.setter
   def constructor(self, new_constructor: OverloadSet):
-    assert new_constructor is None or all(not s.return_type is SLEEPY_UNIT for s in new_constructor.signatures)
+    assert new_constructor is None or all(s.return_type != SLEEPY_UNIT for s in new_constructor.signatures)
     self._constructor = new_constructor
 
   def copy(self) -> Type:
@@ -174,6 +178,9 @@ class DoubleType(Type):
     return id(type(self))
 
   def has_same_symbol_as(self, other: Type) -> bool:
+    return self == other
+
+  def can_be_interpreted_as(self, other: Type) -> bool:
     return self == other
 
 
@@ -426,6 +433,9 @@ class ReferenceType(PointerType):
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, ReferenceType)
 
+  def can_be_interpreted_as(self, other: Type) -> bool:
+    return isinstance(other, ReferenceType) and self.pointee_type.can_be_interpreted_as(other.pointee_type)
+
   @classmethod
   def wrap(cls, typ: Type, times: int) -> Type:
     assert times >= 0
@@ -502,6 +512,11 @@ class UnionType(Type):
   @property
   def possible_type_nums(self) -> ValuesView[int]:
     return self.variant_index_map.values()
+
+  def get_variant_at_index(self, variant_index: int) -> Type:
+    found_types = [variant_type for variant_type, index in self.variant_index_map.items() if index == variant_index]
+    assert len(found_types) == 1
+    return found_types[0]
 
   def _make_di_type(self, context: CodegenContext) -> ir.DIValue:
     assert context.emits_debug
@@ -655,6 +670,19 @@ class UnionType(Type):
 
   def has_same_symbol_as(self, other: Type) -> bool:
     return isinstance(other, UnionType)
+
+  def can_be_interpreted_as(self, other: Type) -> bool:
+    if not isinstance(other, UnionType):
+      return False
+    if self.val_size != other.val_size:
+      return False
+    for own_variant_type, variant_index in self.variant_index_map.items():
+      if variant_index not in other.variant_index_map.values():
+        return False
+      other_variant_type = other.get_variant_at_index(variant_index)
+      if not own_variant_type.can_be_interpreted_as(other_variant_type):
+        return False
+    return True
 
 
 class PartialIdentifiedStructType(Type):
@@ -1927,7 +1955,7 @@ class TypedValue:
                ir_val: Optional[ir.values.Value]):
     if narrowed_type is None:
       narrowed_type = typ
-    assert narrowed_type == SLEEPY_NEVER or (isinstance(typ, ReferenceType) == isinstance(narrowed_type, ReferenceType))
+    assert narrowed_type.can_be_interpreted_as(typ)
     self.type = typ
     self.narrowed_type = narrowed_type
     assert num_unbindings <= self.num_possible_unbindings()
