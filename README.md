@@ -62,14 +62,17 @@ func main() {
 
   # 4. Now that we sorted the array, we can use binary search to find values quickly!
   # For this we implement a function returning either a special "NotFound" type or the
-  # index of the value. The language provides typed unions for this: Long|NotFound
+  # index of the value. The language provides a tagged union type for this: Long|NotFound
+  # Further, we want it to work on lists holding any data type, so we define a
+  # function with a template type "T" here.
+  # Also note that functions and structs can be defined within any scope.
+  
   struct NotFound {}  # struct without any members
+  
   func my_binary_search[T](list: List[T], key: T) -> Long|NotFound {
-    # now T is a template type available in this scope.
-    # note that function scopes are not special and we can arbitrarily nest functions
-    begin = 0l;
-    end = list.size;
-    middle = begin + (end - begin) / 2l;
+    begin = 0l
+    end = list.size
+    middle = begin + (end - begin) / 2l
 
     while begin != end {
       if key < list[middle] {
@@ -89,17 +92,27 @@ func main() {
   # search for 0.0 within the list
   search_result: Long|NotFound = my_binary_search(list, 0.0)
   # the return value is either a Long or a NotFound.
+  # Unions are type-safe, i.e. the compiler implicitly allocates a bit to keep track of which type they are.
   if search_result is NotFound {
     print_line("Something went wrong! We did not find 0.0!")
   }  else {
-    # the compiler analyses control statements and now explicitly knows search_result must be a Long.
-    # therefore, you can use it as a Long now within this scope.
+    # The compiler analyses control statements and now explicitly knows search_result must be a Long.
+    # Therefore, you can use it as a Long now within this scope.
     print("We found our value at index ")
     print(search_result)
-    print(" with associated value ")
+    print(" with associated value ")  # will print 0.0
     print_line(list[search_result])
     # note that above we can only use list[search_result] because the compiler knows that it
     # will always be a Long here!
   }
 }
 ```
+
+## Thoughts on the Current State of this Project
+
+- Sleepy currently already supports all basic C features and many more and therefore could in theory be used on an everyday basis.
+- While we have created many unit tests and are confident that most features work as expected, of course there will still be some unexpected problems.
+- The biggest problem with the compiler right now is that the fact that it was written in Python (including the lexer and parser) and therefore is very slow. Compiling a small program already takes more than one second (reason for this is also that the standard library will be compiled as well).
+- However, as Sleepy creates LLVM bytecode the compiled executable will be very fast.
+- Some language features of Sleepy are not 100% thought through yet. For example, the most recent development of the language focused on reference types (like references in C++), which are essentially pointers that can syntactically also be used as if they directly were of the type they are pointing to instead.
+  We wanted to design references in Sleepy in a generalized way (e.g., allowing references to references) and experimented a lot with different semantics for this. You can find many examples using the `!` and the `Ref[T]` type in the test cases for this. However, this language feature is not at all finished yet and requires much more conceptual work to become stable.
